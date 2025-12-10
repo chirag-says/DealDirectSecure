@@ -1,7 +1,9 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// Initialize Gemini AI (optional - we will gracefully fall back if not configured or fails)
+const genAI = process.env.GEMINI_API_KEY
+  ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+  : null;
 
 // Format date to Indian format
 const formatDate = (dateString) => {
@@ -16,6 +18,51 @@ const calculateEndDate = (startDate, months) => {
   date.setMonth(date.getMonth() + parseInt(months));
   date.setDate(date.getDate() - 1);
   return formatDate(date);
+};
+
+// Simple local agreement generator used as a fallback when Gemini is unavailable
+const buildLocalAgreement = ({
+  agreementType,
+  landlordTitle,
+  tenantTitle,
+  landlordName,
+  landlordAge,
+  landlordAddress,
+  landlordPhone,
+  landlordAadhaar,
+  tenantName,
+  tenantAge,
+  tenantAddress,
+  tenantPhone,
+  tenantAadhaar,
+  propertyAddress,
+  state,
+  city,
+  propertyType,
+  bhkType,
+  furnishing,
+  carpetArea,
+  rentAmount,
+  securityDeposit,
+  maintenanceCharges,
+  rentInWords,
+  depositInWords,
+  maintenanceInWords,
+  rentDueDay,
+  formattedStartDate,
+  formattedEndDate,
+  durationMonths,
+  noticePeriod,
+  executionDate,
+  actReference,
+  additionalTerms,
+}) => {
+  const rentDateSuffix =
+    rentDueDay === 1 ? "st" : rentDueDay === 2 ? "nd" : rentDueDay === 3 ? "rd" : "th";
+
+  return `---\n⚠️ **LEGAL DISCLAIMER**\n\nThis document is an automatically generated draft for informational purposes only and does not constitute legal advice. Before signing:\n• Verify contents with a qualified legal professional\n• Print on appropriate Stamp Paper as per ${state} Stamp Act\n• Register as required under the Registration Act, 1908\n---\n\n# ${agreementType}\n\nThis ${agreementType} is made and executed on this **${executionDate}** at **${city}, ${state}**.\n\nBETWEEN\n\n**${landlordName}**, aged about ${landlordAge || "Adult"} years, residing at ${landlordAddress || "address as per ID proof"}, hereinafter called the **\"${landlordTitle}\"**, which expression shall, unless repugnant to the context or meaning thereof, include his/her heirs, executors, administrators and assigns, of the **FIRST PART**;\n\nAND\n\n**${tenantName}**, aged about ${tenantAge || "Adult"} years, residing at ${tenantAddress || "address as per ID proof"}, hereinafter called the **\"${tenantTitle}\"**, which expression shall, unless repugnant to the context or meaning thereof, include his/her heirs, executors, administrators and assigns, of the **SECOND PART**.\n\n(Each a **\"Party\"** and collectively the **\"Parties\"**.)\n\n---\n\n## RECITALS\n\n1. The ${landlordTitle} is the lawful owner/authorized holder of the premises described below (\"Premises\").\n2. The ${tenantTitle} has approached the ${landlordTitle} for ${agreementType.toLowerCase()} of the Premises for lawful ${propertyType.toLowerCase()} use.\n3. The Parties are desirous of recording the terms and conditions of this arrangement in writing.\n\nNOW, THEREFORE, in consideration of the mutual covenants herein contained, the Parties hereby agree as follows:\n\n---\n\n## 1. PROPERTY DESCRIPTION\n\n- Address: ${propertyAddress}, ${city}, ${state}\n- Type: ${bhkType ? bhkType + " " : ""}${propertyType}\n- Furnishing: ${furnishing}\n${carpetArea ? `- Carpet Area: ${carpetArea} sq.ft.` : ""}\n\n---\n\n## 2. TERM OF ${agreementType.includes("LICENSE") ? "LICENSE" : "TENANCY"}\n\n- Commencement Date: **${formattedStartDate}**\n- Expiry Date: **${formattedEndDate}**\n- Total Duration: **${durationMonths} months**\n- Notice Period: **${noticePeriod} month(s)** by either Party.\n\n---\n\n## 3. ${agreementType.includes("LICENSE") ? "LICENSE FEE" : "RENT"}\n\n- Monthly Amount: **₹${parseInt(rentAmount).toLocaleString("en-IN")}** (Rupees **${rentInWords} Only**)\n- Due Date: On or before the **${rentDueDay}${rentDateSuffix}** of each calendar month in advance.\n- Mode of Payment: Bank transfer/UPI/cheque or such other mode as mutually agreed.\n\n---\n\n## 4. SECURITY DEPOSIT\n\n- Amount: **₹${parseInt(securityDeposit).toLocaleString("en-IN")}** (Rupees **${depositInWords} Only**)\n- Nature: Interest-free, refundable subject to deductions for unpaid dues and damages, if any.\n- Refund: Within 30 (thirty) days of the ${tenantTitle} vacating the Premises and handing over peaceful possession.\n\n---\n\n## 5. MAINTENANCE AND CHARGES\n\n$${maintenanceCharges
+    ? `- Monthly Maintenance: **₹${parseInt(maintenanceCharges).toLocaleString("en-IN")}** (Rupees **${maintenanceInWords} Only**).`
+    : `- Society/common area maintenance shall be borne by the **${tenantTitle}**, as per actuals.`}\n- Minor repairs up to ₹2,000 per incident shall be borne by the **${tenantTitle}**.\n- Major structural repairs shall be borne by the **${landlordTitle}**.\n\n---\n\n## 6. USE OF PREMISES\n\n1. The Premises shall be used strictly for lawful ${propertyType.toLowerCase()} purposes only.\n2. The ${tenantTitle} shall not carry out any illegal, immoral or hazardous activities in or from the Premises.\n3. No structural alterations shall be made without prior written consent of the ${landlordTitle}.\n\n---\n\n## 7. TERMINATION AND VACATION\n\n1. Either Party may terminate this Agreement by giving not less than **${noticePeriod} month(s)** written notice to the other Party.\n2. Upon expiry or earlier termination, the ${tenantTitle} shall hand over peaceful and vacant possession of the Premises to the ${landlordTitle}.\n\n---\n\n## 8. INDEMNITY AND COMPLIANCE\n\n1. The ${tenantTitle} shall be responsible for compliance with all applicable laws in relation to its use of the Premises and shall indemnify the ${landlordTitle} against any claims arising out of such use.\n\n---\n\n## 9. GOVERNING LAW AND JURISDICTION\n\nThis Agreement shall be governed by and construed in accordance with the laws of India and the provisions of ${actReference}. The courts at **${city}, ${state}** shall have exclusive jurisdiction.\n\n---\n\n## 10. MISCELLANEOUS\n\n1. This Agreement constitutes the entire understanding between the Parties with respect to the subject matter hereof.\n2. Any amendment shall be in writing and signed by both Parties.\n\n$${additionalTerms ? `---\n\n## 11. SPECIAL CONDITIONS\n\n${additionalTerms}\n\n` : ""}---\n\n## SIGNATURES\n\nIN WITNESS WHEREOF, the Parties hereto have set their respective hands to this Agreement on the day, month and year first above written.\n\n**FOR ${landlordTitle.toUpperCase()}:**\n\n_______________________________\nName: ${landlordName}\nDate: ${executionDate}\nPlace: ${city}\n\n**FOR ${tenantTitle.toUpperCase()}:**\n\n_______________________________\nName: ${tenantName}\nDate: ${executionDate}\nPlace: ${city}\n\n**WITNESSES:**\n\n1. ________________________________\n   Name: ______________________\n   Address: ____________________\n\n2. ________________________________\n   Name: ______________________\n   Address: ____________________\n`;
 };
 
 // Generate Rental/Lease Agreement
@@ -75,210 +122,132 @@ export const generateAgreement = async (req, res) => {
     const rentInWords = numberToWords(parseInt(rentAmount));
     const depositInWords = numberToWords(parseInt(securityDeposit));
     const maintenanceInWords = maintenanceCharges ? numberToWords(parseInt(maintenanceCharges)) : null;
+    let agreementText;
 
-    const prompt = `
-You are an expert Legal Drafter specializing in Indian Real Estate Law. Generate a COMPLETE, PROFESSIONAL ${agreementType} with ALL details filled in. DO NOT use any placeholder text like [Age], [Address], etc. Use the EXACT values provided below.
-
-══════════════════════════════════════════════════════════════════════
-                    AGREEMENT DETAILS TO USE
-══════════════════════════════════════════════════════════════════════
-
-**AGREEMENT TYPE:** ${agreementType}
-
-**${landlordTitle} (FIRST PARTY):**
-- Full Name: ${landlordName}
-- Age: ${landlordAge || 'Adult'} years
-- Permanent Address: ${landlordAddress || 'As per ID proof'}
-- Contact: ${landlordPhone || 'As per records'}
-- Aadhaar (Last 4 digits): XXXX-XXXX-${landlordAadhaar || 'XXXX'}
-
-**${tenantTitle} (SECOND PARTY):**
-- Full Name: ${tenantName}
-- Age: ${tenantAge || 'Adult'} years
-- Permanent Address: ${tenantAddress || 'As per ID proof'}
-- Contact: ${tenantPhone || 'As per records'}
-- Aadhaar (Last 4 digits): XXXX-XXXX-${tenantAadhaar || 'XXXX'}
-
-**PROPERTY DETAILS:**
-- Type: ${bhkType ? bhkType + ' ' : ''}${propertyType} Property
-- Furnishing Status: ${furnishing}
-- Carpet Area: ${carpetArea ? carpetArea + ' sq.ft.' : 'As per actual measurement'}
-- Complete Address: ${propertyAddress}, ${city}, ${state}
-
-**FINANCIAL TERMS:**
-- Monthly Rent: ₹${parseInt(rentAmount).toLocaleString('en-IN')} (Rupees ${rentInWords} Only)
-- Security Deposit: ₹${parseInt(securityDeposit).toLocaleString('en-IN')} (Rupees ${depositInWords} Only)
-${maintenanceCharges ? `- Monthly Maintenance: ₹${parseInt(maintenanceCharges).toLocaleString('en-IN')} (Rupees ${maintenanceInWords} Only)` : '- Maintenance: As per society rules, payable separately'}
-- Rent Due Date: ${rentDueDay}${rentDueDay === 1 ? 'st' : rentDueDay === 2 ? 'nd' : rentDueDay === 3 ? 'rd' : 'th'} of each calendar month
-
-**AGREEMENT PERIOD:**
-- Start Date: ${formattedStartDate}
-- End Date: ${formattedEndDate}
-- Duration: ${durationMonths} months
-- Notice Period: ${noticePeriod} month(s)
-- Lock-in Period: ${Math.min(3, parseInt(durationMonths))} months
-
-**EXECUTION DETAILS:**
-- Date of Execution: ${executionDate}
-- Place of Execution: ${city}, ${state}
-- Jurisdiction: Courts at ${city}, ${state}
-
-${additionalTerms ? `**SPECIAL CONDITIONS:** ${additionalTerms}` : ''}
-
-══════════════════════════════════════════════════════════════════════
-
-══════════════════════════════════════════════════════════════════════
-
-**CRITICAL INSTRUCTIONS - READ CAREFULLY:**
-
-1. Use EXACTLY the values provided above. NO placeholders like [Age], [Address], [Name] etc.
-2. If a value says "As per ID proof" or similar, keep that exact text - don't add brackets.
-3. Format the agreement professionally with proper legal language.
-4. All monetary amounts must show both numerals and words.
-
-**DOCUMENT STRUCTURE:**
-
-Start with this disclaimer block:
----
-⚠️ **LEGAL DISCLAIMER**
-
-This AI-generated document is for informational purposes only and does not constitute legal advice. Before execution:
-• Verify with a qualified legal professional
-• Print on appropriate Stamp Paper as per ${state} Stamp Act
-• Register as required under the Registration Act, 1908
----
-
-**TITLE:** Center and bold - "${agreementType}"
-
-**PREAMBLE:**
-"This ${agreementType} is made and executed on this ${executionDate} at ${city}, ${state}
-
-BETWEEN
-
-**${landlordName}**, aged ${landlordAge || 'Adult'} years, residing at ${landlordAddress || 'address as per ID proof'}, hereinafter referred to as the "${landlordTitle}" (which expression shall unless repugnant to the context or meaning thereof, include his/her heirs, executors, administrators and assigns) of the FIRST PART;
-
-AND
-
-**${tenantName}**, aged ${tenantAge || 'Adult'} years, residing at ${tenantAddress || 'address as per ID proof'}, hereinafter referred to as the "${tenantTitle}" (which expression shall unless repugnant to the context or meaning thereof, include his/her heirs, executors, administrators and assigns) of the SECOND PART."
-
-**Include these sections with COMPLETE content:**
-
-**RECITALS (WHEREAS clauses):**
-- The ${landlordTitle} is the lawful owner of the property
-- The ${tenantTitle} has approached for ${isMaharashtra ? 'license' : 'tenancy'}
-- Both parties agree to terms herein
-
-**CLAUSE 1: PROPERTY DESCRIPTION**
-Address: ${propertyAddress}, ${city}, ${state}
-Type: ${bhkType ? bhkType + ' ' : ''}${propertyType}
-Furnishing: ${furnishing}
-${carpetArea ? `Carpet Area: ${carpetArea} sq.ft.` : ''}
-
-**CLAUSE 2: TERM OF ${isMaharashtra ? 'LICENSE' : 'TENANCY'}**
-- Commencement: ${formattedStartDate}
-- Expiry: ${formattedEndDate}
-- Duration: ${durationMonths} months
-- Lock-in Period: ${Math.min(3, parseInt(durationMonths))} months
-
-**CLAUSE 3: ${isMaharashtra ? 'LICENSE FEE' : 'RENT'}**
-- Monthly Amount: ₹${parseInt(rentAmount).toLocaleString('en-IN')} (Rupees ${rentInWords} Only)
-- Due Date: ${rentDueDay}${rentDueDay === 1 ? 'st' : rentDueDay === 2 ? 'nd' : rentDueDay === 3 ? 'rd' : 'th'} of each month
-- Payment Mode: Bank Transfer/UPI/Cheque
-- Late Fee: ₹100 per day after 7 days grace period
-
-**CLAUSE 4: SECURITY DEPOSIT**
-- Amount: ₹${parseInt(securityDeposit).toLocaleString('en-IN')} (Rupees ${depositInWords} Only)
-- Nature: Non-interest bearing, refundable
-- Refund: Within 30 days of vacating, after deductions if any
-
-**CLAUSE 5: MAINTENANCE**
-${maintenanceCharges ? `- Fixed Maintenance: ₹${parseInt(maintenanceCharges).toLocaleString('en-IN')}/month` : '- As per society charges, payable by ' + tenantTitle}
-- Minor repairs (up to ₹2,000): ${tenantTitle}'s responsibility
-- Major/structural repairs: ${landlordTitle}'s responsibility
-
-**CLAUSE 6: UTILITIES**
-- Electricity, Water, Gas: ${tenantTitle}'s responsibility
-- Property Tax: ${landlordTitle}'s responsibility
-
-**CLAUSE 7: USE OF PREMISES**
-- Strictly for ${propertyType.toLowerCase()} purpose
-- No subletting without written consent
-- No illegal activities
-
-**CLAUSE 8: TERMINATION**
-- Notice Period: ${noticePeriod} month(s) by either party
-- Immediate termination grounds listed
-
-**CLAUSE 9: INSPECTION**
-- ${landlordTitle} may inspect with 24-hour notice
-
-**CLAUSE 10: DISPUTE RESOLUTION**
-- Amicable settlement first
-- Arbitration under Arbitration Act, 1996
-- Jurisdiction: Courts at ${city}, ${state}
-
-**CLAUSE 11: GENERAL PROVISIONS**
-- Entire Agreement
-- Amendments in writing only
-- Governing Law: Laws of India, ${actReference}
-
-${additionalTerms ? `**CLAUSE 12: SPECIAL CONDITIONS**\n${additionalTerms}` : ''}
-
-${furnishing !== 'Unfurnished' ? `**SCHEDULE OF FIXTURES:**
-(To be prepared jointly at handover - standard items for ${furnishing} property)` : ''}
-
-**SIGNATURES:**
-
-IN WITNESS WHEREOF, the parties have executed this agreement on the date first mentioned above.
-
-**FOR ${landlordTitle.toUpperCase()}:**
-
-_________________________________
-Name: ${landlordName}
-Date: ${executionDate}
-Place: ${city}
-
-**FOR ${tenantTitle.toUpperCase()}:**
-
-_________________________________
-Name: ${tenantName}
-Date: ${executionDate}
-Place: ${city}
-
-**WITNESSES:**
-
-1. _________________________________
-   Name: ___________________
-   Address: ___________________
-
-2. _________________________________
-   Name: ___________________
-   Address: ___________________
-
----
-📋 **IMPORTANT NOTES FOR ${state.toUpperCase()}:**
-
-**Stamp Duty:** Contact local Sub-Registrar for exact stamp duty calculation based on rent + deposit.
-
-**Registration:** ${parseInt(durationMonths) > 11 ? '⚠️ MANDATORY - Agreement exceeds 11 months.' : 'Recommended but not mandatory for 11-month agreement.'}
-
-**Documents Required:**
-• Original agreement on stamp paper
-• ID proof (Aadhaar/PAN/Passport)
-• Address proof
-• Passport photos
-• Property ownership documents
----
-
-Now generate this COMPLETE agreement using ONLY the provided values. NO PLACEHOLDERS.
-`;
-
-    // Call Gemini API
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-    
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const agreementText = response.text();
+    // Prefer Gemini AI when available, but fall back to local template on error
+    if (genAI) {
+      try {
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const result = await model.generateContent(`Generate a clear, professional Indian rental/leave-and-license agreement in markdown using ONLY the following details. Do not use placeholders.\n\n${JSON.stringify(
+          {
+            agreementType,
+            landlordTitle,
+            tenantTitle,
+            landlordName,
+            landlordAge,
+            landlordAddress,
+            landlordPhone,
+            landlordAadhaar,
+            tenantName,
+            tenantAge,
+            tenantAddress,
+            tenantPhone,
+            tenantAadhaar,
+            propertyAddress,
+            state,
+            city,
+            propertyType,
+            bhkType,
+            furnishing,
+            carpetArea,
+            rentAmount,
+            securityDeposit,
+            maintenanceCharges,
+            rentInWords,
+            depositInWords,
+            maintenanceInWords,
+            rentDueDay,
+            formattedStartDate,
+            formattedEndDate,
+            durationMonths,
+            noticePeriod,
+            executionDate,
+            actReference,
+            additionalTerms,
+          },
+          null,
+          2
+        )}`);
+        const aiResponse = await result.response;
+        agreementText = aiResponse.text();
+      } catch (aiError) {
+        console.error("Gemini agreement generation failed, using local template:", aiError);
+        agreementText = buildLocalAgreement({
+          agreementType,
+          landlordTitle,
+          tenantTitle,
+          landlordName,
+          landlordAge,
+          landlordAddress,
+          landlordPhone,
+          landlordAadhaar,
+          tenantName,
+          tenantAge,
+          tenantAddress,
+          tenantPhone,
+          tenantAadhaar,
+          propertyAddress,
+          state,
+          city,
+          propertyType,
+          bhkType,
+          furnishing,
+          carpetArea,
+          rentAmount,
+          securityDeposit,
+          maintenanceCharges,
+          rentInWords,
+          depositInWords,
+          maintenanceInWords,
+          rentDueDay,
+          formattedStartDate,
+          formattedEndDate,
+          durationMonths,
+          noticePeriod,
+          executionDate,
+          actReference,
+          additionalTerms,
+        });
+      }
+    } else {
+      console.warn("GEMINI_API_KEY not configured, using local agreement template.");
+      agreementText = buildLocalAgreement({
+        agreementType,
+        landlordTitle,
+        tenantTitle,
+        landlordName,
+        landlordAge,
+        landlordAddress,
+        landlordPhone,
+        landlordAadhaar,
+        tenantName,
+        tenantAge,
+        tenantAddress,
+        tenantPhone,
+        tenantAadhaar,
+        propertyAddress,
+        state,
+        city,
+        propertyType,
+        bhkType,
+        furnishing,
+        carpetArea,
+        rentAmount,
+        securityDeposit,
+        maintenanceCharges,
+        rentInWords,
+        depositInWords,
+        maintenanceInWords,
+        rentDueDay,
+        formattedStartDate,
+        formattedEndDate,
+        durationMonths,
+        noticePeriod,
+        executionDate,
+        actReference,
+        additionalTerms,
+      });
+    }
 
     console.log("Agreement generated successfully for:", {
       landlord: landlordName,
