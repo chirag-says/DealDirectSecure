@@ -17,6 +17,7 @@ import {
   FaTimes,
   FaBuilding,
   FaUsers,
+  FaBell,
 } from "react-icons/fa";
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents, Circle } from "react-leaflet";
 import L from "leaflet";
@@ -283,6 +284,10 @@ const PropertyPage = () => {
   const [compareIds, setCompareIds] = useState([]); // property IDs selected for comparison
   const [showCompareModal, setShowCompareModal] = useState(false);
   const [compareBaseType, setCompareBaseType] = useState(null); // propertyTypeName string for current comparison group
+  const [showSaveSearch, setShowSaveSearch] = useState(false);
+  const [savingSearch, setSavingSearch] = useState(false);
+  const [savedSearchName, setSavedSearchName] = useState("");
+  const [notifyByEmail, setNotifyByEmail] = useState(true);
 
   // Pin drop states
   const [pinDropMode, setPinDropMode] = useState(false);
@@ -357,6 +362,69 @@ const PropertyPage = () => {
   };
 
   useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); }, []);
+
+  const buildDefaultSearchName = () => {
+    const parts = [];
+    if (filters.city) parts.push(filters.city);
+    if (filters.availableFor) parts.push(filters.availableFor);
+    if (filters.priceRange) {
+      if (filters.priceRange === "low") parts.push("Under 50L");
+      if (filters.priceRange === "mid") parts.push("50L - 1.5Cr");
+      if (filters.priceRange === "high") parts.push("Above 1.5Cr");
+    }
+    if (filters.propertyType) parts.push("Selected type");
+    return parts.length ? parts.join(" • ") : "All properties";
+  };
+
+  const handleSaveSearchClick = () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      toast.info("Login to save this search and get alerts");
+      navigate("/login", { state: { from: "/properties" } });
+      return;
+    }
+    if (!filters.city && !filters.search && !filters.propertyType && !filters.priceRange && !filters.availableFor) {
+      toast.warn("Apply at least one filter (city, type, price, etc.) before saving.");
+      return;
+    }
+    setSavedSearchName(buildDefaultSearchName());
+    setShowSaveSearch(true);
+  };
+
+  const handleConfirmSaveSearch = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      toast.info("Login required to save searches");
+      navigate("/login", { state: { from: "/properties" } });
+      return;
+    }
+
+    if (!savedSearchName.trim()) {
+      toast.warn("Give this search a name");
+      return;
+    }
+
+    setSavingSearch(true);
+    try {
+      await axios.post(
+        `${API_BASE}/api/saved-searches`,
+        {
+          name: savedSearchName.trim(),
+          filters,
+          notifyEmail: notifyByEmail,
+          notifyInApp: true,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast.success("Search saved. We'll use this for future alerts.");
+      setShowSaveSearch(false);
+    } catch (err) {
+      console.error("Save search error", err);
+      toast.error(err.response?.data?.message || "Failed to save search");
+    } finally {
+      setSavingSearch(false);
+    }
+  };
 
   const MAX_COMPARE = 3;
 
@@ -598,7 +666,18 @@ const PropertyPage = () => {
     const query = filters.search.toLowerCase();
 
     const matchesSearch = query
-      ? [p.title, p.address?.city, p.address?.state, p.propertyTypeName, p.propertyType?.name, p.bhk]
+      ? [
+          p.title,
+          p.address?.city,
+          p.address?.state,
+          p.address?.area,
+          p.address?.landmark,
+          p.city,
+          p.locality,
+          p.propertyTypeName,
+          p.propertyType?.name,
+          p.bhk,
+        ]
         .filter(Boolean).some((f) => f.toLowerCase().includes(query))
       : true;
 
@@ -957,45 +1036,99 @@ const PropertyPage = () => {
       {/* Content Grid */}
       <main className={viewMode === "map" ? "h-[calc(100vh-180px)]" : "max-w-7xl mx-auto px-6 py-8"}>
         {viewMode === "list" && (
-          <div className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">Real Estate Listings</h1>
-              <p className="text-slate-500 text-sm mt-1">
-                {loading
-                  ? "Searching the best options for you..."
-                  : `Showing ${filteredProperties.length} of ${properties.length} properties`}
-              </p>
+          <>
+            <div className="mb-4 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900">Real Estate Listings</h1>
+                <p className="text-slate-500 text-sm mt-1">
+                  {loading
+                    ? "Searching the best options for you..."
+                    : `Showing ${filteredProperties.length} of ${properties.length} properties`}
+                </p>
+              </div>
+              {!loading && filteredProperties.length > 0 && (
+                <div className="flex flex-col items-end gap-2 text-[11px] text-slate-600">
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {filters.city && (
+                      <span className="px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200">
+                        City: <span className="font-semibold">{filters.city}</span>
+                      </span>
+                    )}
+                    {filters.propertyType && (
+                      <span className="px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200">
+                        Type: <span className="font-semibold">{filters.propertyType}</span>
+                      </span>
+                    )}
+                    {filters.availableFor && (
+                      <span className="px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200">
+                        For: <span className="font-semibold">{filters.availableFor}</span>
+                      </span>
+                    )}
+                    {filters.priceRange && (
+                      <span className="px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200">
+                        Budget: <span className="font-semibold">{filters.priceRange}</span>
+                      </span>
+                    )}
+                    {filters.search && (
+                      <span className="px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200 max-w-[180px] truncate">
+                        Search: <span className="font-semibold">{filters.search}</span>
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSaveSearchClick}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-red-200 text-[11px] font-semibold text-red-600 hover:bg-red-50 shadow-sm"
+                  >
+                    <FaBell className="text-xs" />
+                    Save this search & alerts
+                  </button>
+                </div>
+              )}
             </div>
-            {!loading && filteredProperties.length > 0 && (
-              <div className="flex flex-wrap gap-2 text-[11px] text-slate-600">
-                {filters.city && (
-                  <span className="px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200">
-                    City: <span className="font-semibold">{filters.city}</span>
-                  </span>
-                )}
-                {filters.propertyType && (
-                  <span className="px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200">
-                    Type: <span className="font-semibold">{filters.propertyType}</span>
-                  </span>
-                )}
-                {filters.availableFor && (
-                  <span className="px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200">
-                    For: <span className="font-semibold">{filters.availableFor}</span>
-                  </span>
-                )}
-                {filters.priceRange && (
-                  <span className="px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200">
-                    Budget: <span className="font-semibold">{filters.priceRange}</span>
-                  </span>
-                )}
-                {filters.search && (
-                  <span className="px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200 max-w-[180px] truncate">
-                    Search: <span className="font-semibold">{filters.search}</span>
-                  </span>
-                )}
+
+            {showSaveSearch && (
+              <div className="mb-6 max-w-xl ml-auto bg-white border border-red-100 rounded-2xl shadow-sm p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-slate-700 mb-1">Save this search</p>
+                  <input
+                    type="text"
+                    value={savedSearchName}
+                    onChange={(e) => setSavedSearchName(e.target.value)}
+                    placeholder="Name this search (e.g. Bangalore rentals under 50L)"
+                    className="w-full text-xs sm:text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-red-400 focus:border-red-400"
+                  />
+                  <label className="mt-2 inline-flex items-center gap-2 text-[11px] text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={notifyByEmail}
+                      onChange={(e) => setNotifyByEmail(e.target.checked)}
+                      className="w-3 h-3 rounded border-slate-300 text-red-600 focus:ring-red-500"
+                    />
+                    Email me when new properties match this search
+                  </label>
+                </div>
+                <div className="flex sm:flex-col gap-2 sm:items-end">
+                  <button
+                    type="button"
+                    onClick={handleConfirmSaveSearch}
+                    disabled={savingSearch}
+                    className="px-3 py-1.5 rounded-full bg-red-600 text-white text-[11px] font-semibold hover:bg-red-700 disabled:opacity-60"
+                  >
+                    {savingSearch ? "Saving..." : "Save search"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowSaveSearch(false)}
+                    disabled={savingSearch}
+                    className="px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold hover:bg-slate-200 disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             )}
-          </div>
+          </>
         )}
 
         {loading ? (

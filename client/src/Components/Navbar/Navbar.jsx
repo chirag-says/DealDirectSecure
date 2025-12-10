@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "react-toastify";
-import { AiOutlineUser, AiOutlineMenu, AiOutlineClose, AiOutlineSearch, AiOutlineHome, AiOutlineInfoCircle, AiOutlinePhone, AiOutlineFileText, AiOutlinePlusCircle, AiOutlineLogin, AiOutlineLogout, AiOutlineSetting, AiOutlineHeart } from "react-icons/ai";
+import { AiOutlineUser, AiOutlineMenu, AiOutlineClose, AiOutlineSearch, AiOutlineHome, AiOutlineInfoCircle, AiOutlinePhone, AiOutlineFileText, AiOutlinePlusCircle, AiOutlineLogin, AiOutlineLogout, AiOutlineSetting, AiOutlineHeart, AiOutlineBell } from "react-icons/ai";
 import { FaMapMarkerAlt, FaMicrophone } from "react-icons/fa";
 import { BsBuilding, BsHouseDoor, BsPersonCircle } from "react-icons/bs";
 import { HiOutlineHome, HiOutlineDocumentText } from "react-icons/hi";
@@ -44,6 +44,7 @@ function Navbar() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const userDropdownRef = useRef(null);
 
   // Search Suggestions State
@@ -87,6 +88,32 @@ function Navbar() {
       window.removeEventListener("auth-change", handleStorage);
     };
   }, [syncUserFromStorage]);
+
+  // Fetch unread notification count when user logs in
+  useEffect(() => {
+    const fetchUnread = async () => {
+      if (!user) {
+        setUnreadNotifications(0);
+        return;
+      }
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        const res = await axios.get(`${API_BASE}/api/notifications`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.data.success) {
+          const list = res.data.notifications || [];
+          const count = list.filter((n) => !n.isRead).length;
+          setUnreadNotifications(count);
+        }
+      } catch (err) {
+        console.error("Failed to fetch notifications", err);
+      }
+    };
+
+    fetchUnread();
+  }, [user]);
 
   // Search Suggestions Logic
   useEffect(() => {
@@ -701,6 +728,19 @@ function Navbar() {
 
                     {/* Menu Items */}
                     <div className="py-2">
+                      <Link
+                        to="/notifications"
+                        onClick={() => setIsUserDropdownOpen(false)}
+                        className="flex items-center gap-3 px-4 py-2.5 text-gray-700 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="relative">
+                          <AiOutlineBell className="w-5 h-5 text-gray-500" />
+                          {unreadNotifications > 0 && (
+                            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500"></span>
+                          )}
+                        </div>
+                        <span className="font-medium">Notifications</span>
+                      </Link>
                       <Link
                         to="/profile"
                         onClick={() => setIsUserDropdownOpen(false)}

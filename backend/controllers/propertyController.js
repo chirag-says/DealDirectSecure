@@ -4,6 +4,8 @@ import mongoose from "mongoose";
 import Lead from "../models/Lead.js";
 import User from "../models/userModel.js";
 import Report from "../models/Report.js";
+import SavedSearch from "../models/SavedSearch.js";
+import Notification from "../models/Notification.js";
 
 const isCloudinaryUrl = (img = "") => typeof img === "string" && img.includes("cloudinary.com");
 
@@ -200,6 +202,54 @@ export const addProperty = async (req, res) => {
     console.log("Final data being saved:", JSON.stringify(data, null, 2)); // Debug log
 
     const prop = await Property.create(data);
+
+    // After creating a property, try to notify users whose saved searches match
+    try {
+      const savedSearches = await SavedSearch.find({ isActive: true }).lean();
+      const city = (prop.address?.city || "").toLowerCase();
+      const price = Number(prop.price) || 0;
+      const listingType = (prop.listingType || "").toLowerCase();
+      const propertyTypeId = prop.propertyType?.toString?.() || prop.propertyType?.toString?.() || "";
+
+      const notificationsToCreate = [];
+
+      for (const search of savedSearches) {
+        const f = search.filters || {};
+
+        // City match (if filter.city set)
+        if (f.city && city !== f.city.toLowerCase()) continue;
+
+        // Property type match (if filter.propertyType set)
+        if (f.propertyType && propertyTypeId && propertyTypeId !== String(f.propertyType)) continue;
+
+        // Listing type (availableFor) match
+        if (f.availableFor && listingType && listingType !== f.availableFor.toLowerCase()) continue;
+
+        // Price band match
+        if (f.priceRange && price) {
+          let matchPrice = false;
+          if (f.priceRange === "low") matchPrice = price < 5000000;
+          if (f.priceRange === "mid") matchPrice = price >= 5000000 && price <= 15000000;
+          if (f.priceRange === "high") matchPrice = price > 15000000;
+          if (!matchPrice) continue;
+        }
+
+        notificationsToCreate.push({
+          user: search.user,
+          title: "New property matches your saved search",
+          message: `${prop.title || "A new property"} in ${prop.address?.city || "your area"} matches "${search.name}"`,
+          type: "saved-search-match",
+          data: { savedSearchId: search._id, propertyId: prop._id },
+        });
+      }
+
+      if (notificationsToCreate.length) {
+        await Notification.insertMany(notificationsToCreate);
+      }
+    } catch (notifyErr) {
+      console.error("Error generating notifications for saved searches:", notifyErr);
+    }
+
     res.status(201).json(withPublicImages(req, prop));
   } catch (err) {
     console.error("Add Property Error:", err);

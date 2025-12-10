@@ -184,30 +184,6 @@ const Home = () => {
     fetchSubcategories();
   }, [filters.category]);
 
-  const minBudgetValue = parseBudgetValue(filters.minBudget);
-  const maxBudgetValue = parseBudgetValue(filters.maxBudget);
-  const selectedPropertyTypes = filters.propertyTypes || [];
-
-  const filteredProperties = properties.filter((p) => {
-    const title = (p.title || "").toLowerCase();
-    const city = (p.address?.city || "").toLowerCase();
-    const state = (p.address?.state || "").toLowerCase();
-    const propertyTypeName = (p.propertyTypeName || p.propertyType?.name || "").toLowerCase();
-    const q = filters.search.toLowerCase();
-    const priceInRupees = normalizePrice(p.price, p.priceUnit);
-
-    return (
-      (!q || title.includes(q) || city.includes(q) || state.includes(q)) &&
-      (!filters.category || p.category?._id === filters.category) &&
-      (!filters.subcategory || p.subcategory?._id === filters.subcategory) &&
-      (!filters.city || city.includes(filters.city.toLowerCase())) &&
-      (!filters.state || state.includes(filters.state.toLowerCase())) &&
-      (!minBudgetValue || priceInRupees >= minBudgetValue) &&
-      (!maxBudgetValue || priceInRupees <= maxBudgetValue) &&
-      (selectedPropertyTypes.length === 0 || selectedPropertyTypes.some((type) => propertyTypeName.includes(type.toLowerCase())))
-    );
-  });
-
   const handleViewDetails = (property) => {
     navigate(`/properties/${property._id}`, { state: { property } });
   };
@@ -247,8 +223,8 @@ const Home = () => {
             </button>
           </div>
 
-          {filteredProperties.length === 0 ? (
-            <p className="text-gray-500 text-lg text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">No properties found matching your search.</p>
+          {properties.length === 0 ? (
+            <p className="text-gray-500 text-lg text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">No popular properties available right now.</p>
           ) : (
             <div className="relative group">
               <button onClick={() => scroll('left')} className="absolute -left-4 top-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-white backdrop-blur-sm rounded-full shadow-xl flex items-center justify-center text-gray-800 hover:text-red-600 transition-all border border-gray-100 opacity-0 group-hover:opacity-100">
@@ -260,7 +236,7 @@ const Home = () => {
               </button>
 
               <div ref={scrollRef} className="flex gap-6 overflow-x-auto pb-8 pt-2 snap-x snap-mandatory scrollbar-hide px-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                {[...filteredProperties]
+                {[...properties]
                   .sort((a, b) => normalizePrice(b.price, b.priceUnit) - normalizePrice(a.price, a.priceUnit))
                   .slice(0, 8)
                   .map((property) => (

@@ -17,6 +17,8 @@ import leadRoutes from './routes/leadRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
 import contactRoutes from './routes/contactRoutes.js';
 import agreementRoutes from './routes/agreementRoutes.js';
+import savedSearchRoutes from './routes/savedSearchRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 
 connectDB();
 
@@ -102,6 +104,8 @@ app.use("/api/leads", leadRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/agreements", agreementRoutes);
+app.use("/api/saved-searches", savedSearchRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 const PORT = process.env.PORT || 9000;
 httpServer.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

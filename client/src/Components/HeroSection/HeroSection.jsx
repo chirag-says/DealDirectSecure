@@ -229,6 +229,19 @@ const HeroSection = ({ filters, setFilters, propertyTypes = [] }) => {
     navigate(`/properties?${searchParams.toString()}`);
   };
 
+  const handleSearchClick = () => {
+    const searchParams = new URLSearchParams();
+
+    if (filters.search) {
+      searchParams.set("search", filters.search);
+    }
+
+    // Optionally pass tab label as a generic hint (no hard filter)
+    searchParams.set("intent", activeTab);
+
+    navigate(`/properties?${searchParams.toString()}`);
+  };
+
   const startVoiceInput = () => {
     if (isListening) {
       if (recognitionRef.current) {
@@ -488,7 +501,10 @@ const HeroSection = ({ filters, setFilters, propertyTypes = [] }) => {
               )}
             </div>
 
-            <button className="bg-red-600 text-white p-3 sm:px-8 sm:py-4 rounded-full font-semibold text-sm sm:text-lg hover:bg-red-700 transition-all shadow-lg flex items-center justify-center gap-2 whitespace-nowrap flex-shrink-0 aspect-square sm:aspect-auto">
+            <button
+              onClick={handleSearchClick}
+              className="bg-red-600 text-white p-3 sm:px-8 sm:py-4 rounded-full font-semibold text-sm sm:text-lg hover:bg-red-700 transition-all shadow-lg flex items-center justify-center gap-2 whitespace-nowrap flex-shrink-0 aspect-square sm:aspect-auto"
+            >
               <AiOutlineSearch className="text-xl sm:text-xl" />
               <span className="hidden sm:inline">Search</span>
             </button>
