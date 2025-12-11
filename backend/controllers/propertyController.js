@@ -199,6 +199,30 @@ export const addProperty = async (req, res) => {
       delete data.longitude;
     }
 
+    // Normalize categoryName to high-level buckets (Residential / Commercial)
+    if (data.categoryName) {
+      const raw = data.categoryName.toString();
+      const lower = raw.toLowerCase();
+
+      if (lower.includes("residen")) {
+        data.categoryName = "Residential";
+      } else if (lower.includes("commercial")) {
+        data.categoryName = "Commercial";
+      } else if (data.propertyTypeName || data.propertyType) {
+        // Infer from property type when category text is generic like "Plot"
+        const typeName = (data.propertyTypeName || data.propertyType || "").toString().toLowerCase();
+        const isCommercialType = /office|shop|showroom|restaurant|cafe|warehouse|industrial|co-working|coworking|commercial/.test(typeName);
+        data.categoryName = isCommercialType ? "Commercial" : "Residential";
+      } else {
+        // Default to Residential if nothing else is known
+        data.categoryName = "Residential";
+      }
+    } else if (data.propertyTypeName || data.propertyType) {
+      const typeName = (data.propertyTypeName || data.propertyType || "").toString().toLowerCase();
+      const isCommercialType = /office|shop|showroom|restaurant|cafe|warehouse|industrial|co-working|coworking|commercial/.test(typeName);
+      data.categoryName = isCommercialType ? "Commercial" : "Residential";
+    }
+
     console.log("Final data being saved:", JSON.stringify(data, null, 2)); // Debug log
 
     const prop = await Property.create(data);

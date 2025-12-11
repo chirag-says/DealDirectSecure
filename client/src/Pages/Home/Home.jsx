@@ -76,6 +76,10 @@ const formatCategoryDisplay = (name) => {
   if (lower.includes("commercial land")) return "Commercial Property";
   if (lower.includes("commercial property")) return "Commercial Property";
   if (lower.includes("residential land") || lower.includes("residential plot")) return "Residential Property";
+  if (lower.includes("commercial plot")) return "Commercial Property";
+  if (lower === "plot" || lower === "plots" || lower.includes("plot & land") || lower.includes("plots & land")) {
+    return "Residential Property";
+  }
   if (lower.includes("residential")) return "Residential Property";
   if (lower.includes("commercial")) return "Commercial Property";
   return value || "Property";

@@ -240,6 +240,15 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
+const normalizePrice = (price, unit) => {
+  const amount = Number(price) || 0;
+  const normalizedUnit = (unit || "").toLowerCase();
+
+  if (normalizedUnit.includes("crore")) return amount * 10000000;
+  if (normalizedUnit.includes("lac") || normalizedUnit.includes("lakh")) return amount * 100000;
+  return amount;
+};
+
 // Simple in-memory cache for suggestions
 const suggestionsCache = new Map();
 const CACHE_TTL = 60000; // 1 minute cache
@@ -289,6 +298,16 @@ const PropertyPage = () => {
   const [savedSearchName, setSavedSearchName] = useState("");
   const [notifyByEmail, setNotifyByEmail] = useState(true);
 
+  // Property types to show in the Type dropdown (hide Plot / Land options)
+  const selectablePropertyTypes = useMemo(
+    () =>
+      propertyTypes.filter((pt) => {
+        const name = (pt.name || "").toString().toLowerCase();
+        return !name.includes("plot") && !name.includes("land");
+      }),
+    [propertyTypes]
+  );
+
   // Pin drop states
   const [pinDropMode, setPinDropMode] = useState(false);
   const [droppedPin, setDroppedPin] = useState(null); // { lat, lng }
@@ -320,6 +339,10 @@ const PropertyPage = () => {
     if (lower.includes("commercial land")) return "Commercial Property";
     if (lower.includes("commercial property")) return "Commercial Property";
     if (lower.includes("residential land") || lower.includes("residential plot")) return "Residential Property";
+    if (lower.includes("commercial plot")) return "Commercial Property";
+    if (lower === "plot" || lower === "plots" || lower.includes("plot & land") || lower.includes("plots & land")) {
+      return "Residential Property";
+    }
     if (lower.includes("residential")) return "Residential Property";
     if (lower.includes("commercial")) return "Commercial Property";
     return value || "Property";
@@ -662,6 +685,12 @@ const PropertyPage = () => {
     setFilters((prev) => ({ ...prev, [field]: value }));
   };
 
+  // Determine currently selected property type (if any)
+  const activePropertyType = filters.propertyType
+    ? propertyTypes.find((pt) => String(pt._id) === String(filters.propertyType))
+    : null;
+  const activePropertyTypeName = (activePropertyType?.name || "").toString().toLowerCase();
+
   const filteredProperties = properties.filter((p) => {
     const query = filters.search.toLowerCase();
 
@@ -681,12 +710,52 @@ const PropertyPage = () => {
         .filter(Boolean).some((f) => f.toLowerCase().includes(query))
       : true;
 
-    const matchType = filters.propertyType
-      ? String(p.propertyType?._id || p.propertyType) === String(filters.propertyType)
-      : true;
+    // Type filter: if a high-level type like Residential / Commercial / Plot
+    // is selected in the dropdown, use semantic flags instead of strict ID match.
+    const matchType = (() => {
+      if (!filters.propertyType) return true;
+
+      const propertyTypeName = (
+        p.propertyTypeName ||
+        (typeof p.propertyType === "object" ? p.propertyType?.name : p.propertyType) ||
+        ""
+      ).toString();
+      const propertyTypeLower = propertyTypeName.toLowerCase();
+
+      const { isResidential, isCommercial } = getTypeFlags(p);
+
+      if (!activePropertyTypeName) {
+        return String(p.propertyType?._id || p.propertyType) === String(filters.propertyType);
+      }
+
+      // If selected type name clearly indicates Residential
+      if (activePropertyTypeName.includes("residen")) {
+        return isResidential;
+      }
+
+      // If selected type name clearly indicates Commercial (but not specifically a plot)
+      if (activePropertyTypeName.includes("commercial") && !activePropertyTypeName.includes("plot")) {
+        return isCommercial;
+      }
+
+      // If selected type name is Plot / Land, match only land/plot style properties
+      if (
+        activePropertyTypeName.includes("plot") ||
+        activePropertyTypeName.includes("land")
+      ) {
+        const isPlotLike =
+          propertyTypeLower.includes("plot") ||
+          propertyTypeLower.includes("land") ||
+          Boolean(p.area?.plotSqft && !p.area?.builtUpSqft && !p.area?.carpetSqft && !p.area?.superBuiltUpSqft);
+        return isPlotLike;
+      }
+
+      // Fallback: strict match on propertyType id
+      return String(p.propertyType?._id || p.propertyType) === String(filters.propertyType);
+    })();
 
     const matchCity = filters.city
-      ? (p.address?.city || "").toLowerCase() === filters.city.toLowerCase()
+      ? ((p.address?.city || p.city || "").toLowerCase() === filters.city.toLowerCase())
       : true;
 
     // Filter by listing type (Rent/Sell)
@@ -696,10 +765,10 @@ const PropertyPage = () => {
 
     let matchPrice = true;
     if (filters.priceRange) {
-      const price = p.price || 0;
-      if (filters.priceRange === "low") matchPrice = price < 5000000;
-      if (filters.priceRange === "mid") matchPrice = price >= 5000000 && price <= 15000000;
-      if (filters.priceRange === "high") matchPrice = price > 15000000;
+      const priceInRupees = normalizePrice(p.price, p.priceUnit);
+      if (filters.priceRange === "low") matchPrice = priceInRupees < 5000000;
+      if (filters.priceRange === "mid") matchPrice = priceInRupees >= 5000000 && priceInRupees <= 15000000;
+      if (filters.priceRange === "high") matchPrice = priceInRupees > 15000000;
     }
 
     return matchesSearch && matchType && matchCity && matchPrice && matchListingType;
@@ -975,7 +1044,9 @@ const PropertyPage = () => {
                   onChange={(e) => handleFilterChange("propertyType", e.target.value)}
                 >
                   <option value="">All Types</option>
-                  {propertyTypes.map(pt => <option key={pt._id} value={pt._id}>{pt.name}</option>)}
+                  {selectablePropertyTypes.map(pt => (
+                    <option key={pt._id} value={pt._id}>{pt.name}</option>
+                  ))}
                 </select>
                 <FaFilter className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs" />
               </div>
@@ -1056,7 +1127,10 @@ const PropertyPage = () => {
                     )}
                     {filters.propertyType && (
                       <span className="px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200">
-                        Type: <span className="font-semibold">{filters.propertyType}</span>
+                        Type: {" "}
+                        <span className="font-semibold">
+                          {propertyTypes.find(pt => String(pt._id) === String(filters.propertyType))?.name || "Selected type"}
+                        </span>
                       </span>
                     )}
                     {filters.availableFor && (
@@ -1622,7 +1696,7 @@ const PropertyPage = () => {
                   onClick={() => { setShowCompareModal(false); clearCompare(); }}
                   className="hidden sm:inline-flex text-xs text-slate-500 hover:text-slate-800"
                 >
-                  Clear & close
+                  Close
                 </button>
                 <button
                   type="button"

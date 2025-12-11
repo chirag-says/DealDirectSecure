@@ -283,11 +283,31 @@ const AddProperty = () => {
         const simpleKeys = ["propertyType", "category", "subcategory", "title", "description", "price", "priceUnit"];
         simpleKeys.forEach((k) => data.append(k, formData[k] ? String(formData[k]) : ""));
 
-        // Add property type and category names for proper display
+        // Add property type and normalized category names
         const selectedPropertyType = propertyTypes.find(pt => pt._id === formData.propertyType);
         const selectedCategory = categories.find(c => c._id === formData.category);
-        if (selectedPropertyType) data.append("propertyTypeName", selectedPropertyType.name);
-        if (selectedCategory) data.append("categoryName", selectedCategory.name);
+
+        if (selectedPropertyType) {
+          data.append("propertyTypeName", selectedPropertyType.name);
+        }
+
+        if (selectedCategory) {
+          const rawName = selectedCategory.name || "";
+          const lower = rawName.toLowerCase();
+
+          let normalizedCategory = rawName;
+          if (lower.includes("residen")) normalizedCategory = "Residential";
+          else if (lower.includes("commercial")) normalizedCategory = "Commercial";
+          else if (selectedPropertyType?.name) {
+            const typeLower = selectedPropertyType.name.toLowerCase();
+            const isCommercialType = /office|shop|showroom|restaurant|cafe|warehouse|industrial|co-working|coworking|commercial/.test(typeLower);
+            normalizedCategory = isCommercialType ? "Commercial" : "Residential";
+          } else {
+            normalizedCategory = "Residential";
+          }
+
+          data.append("categoryName", normalizedCategory);
+        }
 
         ["area", "parking", "address", "flooring"].forEach((k) => {
           if (formData[k] !== undefined) data.append(k, JSON.stringify(formData[k]));
