@@ -2,32 +2,82 @@ import express from "express";
 import {
   registerAdmin,
   loginAdmin,
+  logoutAdmin,
+  logoutAllSessions,
+  verifyMfa,
+  setupMfa,
+  confirmMfaSetup,
+  disableMfa,
   getAdminProfile,
+  getActiveSessions,
+  revokeSession,
+  changePassword,
   getDashboardStats,
   getAdminLeads,
   updateAdminLeadStatus,
   getAdminReports,
   updateReportStatus,
+  getAuditLogs,
 } from "../controllers/adminController.js";
-import { protectAdmin } from "../middleware/authAdmin.js";
+import {
+  protectAdmin,
+  requirePermission,
+  requireRoleLevel,
+  requireSuperAdmin,
+  authRateLimit,
+} from "../middleware/authAdmin.js";
 import { getAllLeads } from "../controllers/leadController.js";
 
 const router = express.Router();
 
-router.post("/register", registerAdmin);
-router.post("/login", loginAdmin);
+// ============================================
+// PUBLIC ROUTES (No authentication required)
+// ============================================
+
+// Authentication
+router.post("/login", authRateLimit, loginAdmin);
+
+// MFA verification (after login, before full session)
+router.post("/mfa/verify", authRateLimit, verifyMfa);
+
+// ============================================
+// PROTECTED ROUTES (Authentication required)
+// ============================================
+
+// Session management
+router.post("/logout", protectAdmin, logoutAdmin);
+router.post("/logout-all", protectAdmin, logoutAllSessions);
+router.get("/sessions", protectAdmin, getActiveSessions);
+router.delete("/sessions/:sessionId", protectAdmin, revokeSession);
+
+// Profile & Security
 router.get("/profile", protectAdmin, getAdminProfile);
+router.post("/change-password", protectAdmin, changePassword);
+
+// MFA management
+router.post("/mfa/setup", protectAdmin, setupMfa);
+router.post("/mfa/confirm", protectAdmin, confirmMfaSetup);
+router.post("/mfa/disable", protectAdmin, disableMfa);
 
 // Dashboard & Analytics
-router.get("/dashboard/stats", protectAdmin, getDashboardStats);
+router.get("/dashboard/stats", protectAdmin, requirePermission("dashboard:read"), getDashboardStats);
 
 // Leads Management
-router.get("/leads", protectAdmin, getAllLeads);
-router.put("/leads/:id", protectAdmin, updateAdminLeadStatus);
+router.get("/leads", protectAdmin, requirePermission("leads:read"), getAllLeads);
+router.put("/leads/:id", protectAdmin, requirePermission("leads:update"), updateAdminLeadStatus);
 
+// Reports Management
+router.get("/reports", protectAdmin, requirePermission("reports:read"), getAdminReports);
+router.put("/reports/:id", protectAdmin, requirePermission("reports:update"), updateReportStatus);
 
-// Reported Messages
-router.get("/reports", protectAdmin, getAdminReports);
-router.put("/reports/:id", protectAdmin, updateReportStatus);
+// ============================================
+// ADMIN MANAGEMENT ROUTES (High privilege)
+// ============================================
+
+// Create new admin (requires admin management permission)
+router.post("/register", protectAdmin, requireRoleLevel(80), registerAdmin);
+
+// Audit Logs (Super Admin only)
+router.get("/audit-logs", protectAdmin, requireSuperAdmin, getAuditLogs);
 
 export default router;

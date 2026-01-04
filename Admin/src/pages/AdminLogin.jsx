@@ -23,21 +23,54 @@ const AdminLogin = () => {
 
     try {
       setLoading(true);
-      const { data } = await axios.post(`${API_URL}/api/admin/login`, form);
+      const { data } = await axios.post(`${API_URL}/api/admin/login`, form, {
+        withCredentials: true, // Enable cookies for session management
+      });
+
       toast.success("Login successful!");
 
-      // ✅ Save token and name properly
-      localStorage.setItem("adminToken", data.token);
+      // Save admin info to localStorage (for UI display purposes)
+      localStorage.setItem("adminToken", "authenticated"); // Marker for auth state
       localStorage.setItem("adminName", data.admin.name);
       if (data.admin?.role) {
         localStorage.setItem("adminRole", data.admin.role);
       }
       localStorage.setItem("adminInfo", JSON.stringify(data.admin));
 
-      const redirectPath = data.admin?.isEnvAgent ? "/add-property" : "/dashboard";
-      navigate(redirectPath);
+      // Check for MFA requirement
+      if (data.requiresMfa) {
+        navigate("/admin/mfa-verify");
+        return;
+      }
+
+      // Check for password change requirement
+      if (data.mustChangePassword) {
+        toast.info("You must change your password before continuing.");
+        navigate("/admin/change-password");
+        return;
+      }
+
+      // Check for MFA setup requirement
+      if (data.requiresMfaSetup) {
+        toast.info("Please setup multi-factor authentication.");
+        navigate("/admin/mfa-setup");
+        return;
+      }
+
+      // All admins go to dashboard
+      navigate("/dashboard");
     } catch (error) {
-      toast.error(error.response?.data?.message || "Login failed");
+      const message = error.response?.data?.message || "Login failed";
+      toast.error(message);
+
+      // Handle specific error codes
+      if (error.response?.data?.code === "ACCOUNT_LOCKED") {
+        const lockoutUntil = error.response?.data?.lockoutUntil;
+        if (lockoutUntil) {
+          const minutes = Math.ceil((new Date(lockoutUntil) - Date.now()) / 60000);
+          toast.error(`Account locked. Try again in ${minutes} minutes.`);
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -91,11 +124,10 @@ const AdminLogin = () => {
           <button
             type="submit"
             disabled={loading}
-            className={`w-full py-3 rounded-lg text-white font-semibold transition-all ${
-              loading
+            className={`w-full py-3 rounded-lg text-white font-semibold transition-all ${loading
                 ? "bg-blue-400 cursor-not-allowed"
                 : "bg-blue-600 hover:bg-blue-700 shadow-md"
-            }`}
+              }`}
           >
             {loading ? "Logging in..." : "Login"}
           </button>

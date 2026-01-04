@@ -1,0 +1,356 @@
+/**
+ * Global Error Handling Middleware - Production Hardened
+ * 
+ * SECURITY FEATURES:
+ * - Zero internal information leakage in production
+ * - Full server-side logging with stack traces
+ * - Request ID for support referencing
+ * - Safe error messages for clients
+ */
+
+import crypto from 'crypto';
+
+// ============================================
+// CUSTOM ERROR CLASS
+// ============================================
+
+export class AppError extends Error {
+    constructor(message, statusCode, code = 'ERROR') {
+        super(message);
+        this.statusCode = statusCode;
+        this.code = code;
+        this.isOperational = true; // Distinguishes operational errors from programming errors
+        this.timestamp = new Date().toISOString();
+
+        Error.captureStackTrace(this, this.constructor);
+    }
+}
+
+// ============================================
+// ERROR CODES - Safe Messages for Clients
+// ============================================
+
+const ERROR_CODES = {
+    VALIDATION_ERROR: { status: 400, message: 'Invalid request data' },
+    BAD_REQUEST: { status: 400, message: 'Invalid request' },
+    UNAUTHORIZED: { status: 401, message: 'Authentication required' },
+    INVALID_TOKEN: { status: 401, message: 'Session expired' },
+    TOKEN_EXPIRED: { status: 401, message: 'Session expired' },
+    FORBIDDEN: { status: 403, message: 'Access denied' },
+    NOT_FOUND: { status: 404, message: 'Resource not found' },
+    CONFLICT: { status: 409, message: 'Resource conflict' },
+    RATE_LIMITED: { status: 429, message: 'Too many requests' },
+    SERVER_ERROR: { status: 500, message: 'Internal server error' },
+};
+
+// ============================================
+// PRODUCTION SAFE MESSAGES
+// These are the ONLY messages that will be sent in production
+// ============================================
+
+const PRODUCTION_MESSAGES = {
+    400: 'Bad request',
+    401: 'Unauthorized',
+    403: 'Forbidden',
+    404: 'Not found',
+    409: 'Conflict',
+    429: 'Too many requests',
+    500: 'Internal server error',
+    502: 'Service temporarily unavailable',
+    503: 'Service temporarily unavailable',
+};
+
+// ============================================
+// ERROR LOGGING - Full Details Server-Side
+// ============================================
+
+const logError = (err, req) => {
+    const timestamp = new Date().toISOString();
+    const requestId = req.requestId || crypto.randomBytes(8).toString('hex');
+
+    // Collect request context (safe to log server-side)
+    const context = {
+        requestId,
+        timestamp,
+        method: req.method,
+        path: req.path,
+        originalUrl: req.originalUrl,
+        query: req.query,
+        // Sanitize body for logging (remove sensitive fields)
+        body: sanitizeBodyForLogging(req.body),
+        userId: req.user?._id?.toString() || 'anonymous',
+        userRole: req.user?.role || 'none',
+        ip: getClientIP(req),
+        userAgent: req.get('User-Agent')?.substring(0, 200),
+    };
+
+    // Full error details
+    const errorDetails = {
+        name: err.name,
+        message: err.message,
+        code: err.code,
+        statusCode: err.statusCode,
+        isOperational: err.isOperational,
+        stack: err.stack,
+    };
+
+    // Log to console (in production, this should be captured by a log aggregator)
+    console.error('\n' + '═'.repeat(70));
+    console.error(`[ERROR] ${timestamp} | Request ID: ${requestId}`);
+    console.error('─'.repeat(70));
+    console.error('REQUEST CONTEXT:');
+    console.error(JSON.stringify(context, null, 2));
+    console.error('─'.repeat(70));
+    console.error('ERROR DETAILS:');
+    console.error(`  Name: ${errorDetails.name}`);
+    console.error(`  Message: ${errorDetails.message}`);
+    console.error(`  Code: ${errorDetails.code || 'N/A'}`);
+    console.error(`  Status: ${errorDetails.statusCode || 500}`);
+    console.error(`  Operational: ${errorDetails.isOperational ? 'Yes' : 'No (Programming Error)'}`);
+    console.error('─'.repeat(70));
+    console.error('STACK TRACE:');
+    console.error(errorDetails.stack);
+
+    // Log validation errors if present
+    if (err.errors) {
+        console.error('─'.repeat(70));
+        console.error('VALIDATION ERRORS:');
+        console.error(JSON.stringify(err.errors, null, 2));
+    }
+
+    console.error('═'.repeat(70) + '\n');
+
+    return requestId;
+};
+
+/**
+ * Remove sensitive fields from body before logging
+ */
+const sanitizeBodyForLogging = (body) => {
+    if (!body || typeof body !== 'object') return body;
+
+    const sensitiveFields = [
+        'password', 'confirmPassword', 'currentPassword', 'newPassword',
+        'aadhaar', 'landlordAadhaar', 'tenantAadhaar',
+        'otp', 'token', 'refreshToken', 'accessToken',
+        'secret', 'apiKey', 'privateKey',
+        'creditCard', 'cardNumber', 'cvv', 'pin',
+    ];
+
+    const sanitized = { ...body };
+    for (const field of sensitiveFields) {
+        if (sanitized[field]) {
+            sanitized[field] = '[REDACTED]';
+        }
+    }
+
+    return sanitized;
+};
+
+/**
+ * Get real client IP (handles proxies)
+ */
+const getClientIP = (req) => {
+    return req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+        req.headers['x-real-ip'] ||
+        req.ip ||
+        req.connection?.remoteAddress ||
+        'unknown';
+};
+
+// ============================================
+// ERROR TRANSFORMERS
+// Convert known error types to AppError
+// ============================================
+
+const handleCastError = (err) => {
+    // Don't expose field names in production
+    return new AppError('Invalid identifier format', 400, 'CAST_ERROR');
+};
+
+const handleDuplicateKeyError = (err) => {
+    // Don't expose which field is duplicated
+    return new AppError('Duplicate entry', 409, 'DUPLICATE_KEY');
+};
+
+const handleValidationError = (err) => {
+    // Don't expose validation details
+    return new AppError('Validation failed', 400, 'VALIDATION_ERROR');
+};
+
+const handleJWTError = () => {
+    return new AppError('Session invalid', 401, 'INVALID_TOKEN');
+};
+
+const handleJWTExpiredError = () => {
+    return new AppError('Session expired', 401, 'TOKEN_EXPIRED');
+};
+
+const handleSyntaxError = () => {
+    return new AppError('Invalid request format', 400, 'SYNTAX_ERROR');
+};
+
+const handlePayloadTooLargeError = () => {
+    return new AppError('Request too large', 413, 'PAYLOAD_TOO_LARGE');
+};
+
+// ============================================
+// GET SAFE RESPONSE FOR CLIENT
+// ============================================
+
+const getSafeResponse = (err, requestId, isProduction) => {
+    const statusCode = err.statusCode || 500;
+
+    // PRODUCTION MODE: Return ONLY generic messages
+    if (isProduction) {
+        return {
+            success: false,
+            message: PRODUCTION_MESSAGES[statusCode] || 'An error occurred',
+            requestId, // Allow client to reference for support
+        };
+    }
+
+    // DEVELOPMENT MODE: Return more details (but still safe)
+    if (err.isOperational) {
+        return {
+            success: false,
+            message: err.message,
+            code: err.code,
+            requestId,
+        };
+    }
+
+    // Programming errors in development
+    return {
+        success: false,
+        message: err.message,
+        code: 'SERVER_ERROR',
+        requestId,
+        // Only in development, include stack
+        stack: err.stack?.split('\n').slice(0, 5),
+    };
+};
+
+// ============================================
+// GLOBAL ERROR HANDLER MIDDLEWARE
+// ============================================
+
+export const globalErrorHandler = (err, req, res, next) => {
+    // Ensure we have a request ID
+    const requestId = req.requestId || crypto.randomBytes(8).toString('hex');
+
+    // Default to 500 if no status code
+    err.statusCode = err.statusCode || 500;
+
+    // Always log full error details server-side
+    logError(err, req);
+
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    // Transform known error types
+    let error = err;
+
+    // Mongoose CastError (invalid ObjectId)
+    if (err.name === 'CastError') {
+        error = handleCastError(err);
+    }
+
+    // Mongoose Duplicate Key Error
+    if (err.code === 11000) {
+        error = handleDuplicateKeyError(err);
+    }
+
+    // Mongoose Validation Error
+    if (err.name === 'ValidationError') {
+        error = handleValidationError(err);
+    }
+
+    // JWT Errors
+    if (err.name === 'JsonWebTokenError') {
+        error = handleJWTError();
+    }
+
+    if (err.name === 'TokenExpiredError') {
+        error = handleJWTExpiredError();
+    }
+
+    // JSON Syntax Error (malformed request body)
+    if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+        error = handleSyntaxError();
+    }
+
+    // Payload too large
+    if (err.type === 'entity.too.large') {
+        error = handlePayloadTooLargeError();
+    }
+
+    // Rate limit error (from express-rate-limit)
+    if (err.statusCode === 429) {
+        error.isOperational = true;
+        error.code = 'RATE_LIMITED';
+    }
+
+    // Get safe response for client
+    const response = getSafeResponse(error, requestId, isProduction);
+
+    // Set security headers on error responses
+    res.setHeader('X-Request-ID', requestId);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    res.status(error.statusCode || 500).json(response);
+};
+
+// ============================================
+// ASYNC ERROR WRAPPER
+// ============================================
+
+export const catchAsync = (fn) => {
+    return (req, res, next) => {
+        Promise.resolve(fn(req, res, next)).catch(next);
+    };
+};
+
+// ============================================
+// 404 HANDLER
+// ============================================
+
+export const notFoundHandler = (req, res, next) => {
+    const requestId = req.requestId || crypto.randomBytes(8).toString('hex');
+
+    // Log 404s as they might indicate scanning attempts
+    console.warn(`[404] ${new Date().toISOString()} | ${req.method} ${req.originalUrl} | IP: ${getClientIP(req)} | Request ID: ${requestId}`);
+
+    const err = new AppError('Resource not found', 404, 'NOT_FOUND');
+    next(err);
+};
+
+// ============================================
+// ERROR HELPER
+// ============================================
+
+export const throwError = (message, statusCode = 500, code = 'ERROR') => {
+    throw new AppError(message, statusCode, code);
+};
+
+// ============================================
+// UNHANDLED REJECTION & EXCEPTION HANDLERS
+// ============================================
+
+process.on('uncaughtException', (err) => {
+    console.error('\n' + '🔴'.repeat(30));
+    console.error('UNCAUGHT EXCEPTION! Shutting down...');
+    console.error('Error:', err.name, err.message);
+    console.error('Stack:', err.stack);
+    console.error('🔴'.repeat(30) + '\n');
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('\n' + '🟠'.repeat(30));
+    console.error('UNHANDLED REJECTION! at:', promise);
+    console.error('Reason:', reason);
+    console.error('🟠'.repeat(30) + '\n');
+    // Don't exit - let the app handle it gracefully
+});
+
+export default globalErrorHandler;

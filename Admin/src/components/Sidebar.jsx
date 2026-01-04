@@ -25,8 +25,8 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
     }
   }, []);
 
-  const isEnvAgent = Boolean(adminInfo?.isEnvAgent);
-
+  // All menu items available to all authenticated admins
+  // Backend handles permission enforcement
   const menuItems = [
     {
       path: "/dashboard",
@@ -54,15 +54,15 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       icon: <BarChart3 className="h-5 w-5" />,
     },
     {
+      path: "/add-property",
+      name: "Add Property",
+      icon: <Home className="h-5 w-5" />,
+    },
+    {
       path: "/lead-monitoring",
-      name: "Lead-Monitoring",
+      name: "Lead Monitoring",
       icon: <BarChart3 className="h-5 w-5" />,
     },
-    // {
-    //   path: "/all-category",
-    //   name: "All Category",
-    //   icon: <BarChart3 className="h-5 w-5" />,
-    // },
     {
       path: "/contact-inquiries",
       name: "Contact Inquiries",
@@ -78,27 +78,14 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       name: "Property Reports",
       icon: <Flag className="h-5 w-5" />,
     },
-    // {
-    //   path: "/add-category",
-    //   name: "Add Category",
-    //   icon: <Users className="h-5 w-5" />,
-    // },
-    // {
-    //   path: "/add-subcategory",
-    //   name: "Add SubCategory",
-    //   icon: <Briefcase className="h-5 w-5" />,
-    // },
   ];
 
-  const filteredMenu = isEnvAgent
-    ? menuItems.filter((item) => item.path === "/add-property")
-    : menuItems;
   const handleLogout = () => {
     localStorage.removeItem("adminToken");
     localStorage.removeItem("adminInfo");
     localStorage.removeItem("adminName");
     localStorage.removeItem("adminRole");
-    window.location.href = "/admin/login"; // Redirect
+    window.location.href = "/admin/login";
   };
 
   return (
@@ -116,7 +103,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         {/* Menu items */}
         <nav className="flex-1 overflow-auto mt-2 px-2">
           <ul className="space-y-1">
-            {filteredMenu.map((item, idx) => (
+            {menuItems.map((item, idx) => (
               <li key={idx}>
                 <NavLink
                   to={item.path}

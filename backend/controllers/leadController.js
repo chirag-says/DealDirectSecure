@@ -4,6 +4,20 @@ import User from "../models/userModel.js";
 import mongoose from "mongoose";
 import { sendNewLeadNotification } from "../utils/emailService.js";
 
+// ============================================
+// SECURITY: Allowed status values for leads
+// ============================================
+const VALID_LEAD_STATUSES = ['new', 'contacted', 'interested', 'negotiating', 'converted', 'lost'];
+
+/**
+ * Sanitize and validate lead status
+ */
+const sanitizeLeadStatus = (status) => {
+  if (!status || typeof status !== 'string') return null;
+  const normalized = status.toLowerCase().trim();
+  return VALID_LEAD_STATUSES.includes(normalized) ? normalized : null;
+};
+
 // Create a new lead when user expresses interest
 export const createLead = async (userId, propertyId, userDetails) => {
   try {
@@ -47,13 +61,13 @@ export const createLead = async (userId, propertyId, userDetails) => {
     if (property.owner && property.owner.email) {
       const ownerName = property.owner.name || "Property Owner";
       const ownerEmail = property.owner.email;
-      
+
       const leadData = {
         name: userDetails.name,
         email: userDetails.email,
         phone: userDetails.phone || ""
       };
-      
+
       const propertyData = {
         title: property.title,
         price: property.price || property.expectedPrice,
@@ -63,7 +77,7 @@ export const createLead = async (userId, propertyId, userDetails) => {
         propertyType: property.propertyTypeName,
         bhk: property.bhk
       };
-      
+
       // Send email asynchronously (don't await to avoid blocking)
       sendNewLeadNotification(ownerEmail, ownerName, leadData, propertyData)
         .then(result => {
@@ -89,18 +103,18 @@ export const createLead = async (userId, propertyId, userDetails) => {
 
 //     // Build query
 //     const query = { propertyOwner: ownerId };
-    
+
 //     if (status && status !== "all") {
 //       query.status = status;
 //     }
-    
+
 //     if (property && mongoose.Types.ObjectId.isValid(property)) {
 //       query.property = property;
 //     }
 
 //     // Execute query with pagination
 //     const skip = (parseInt(page) - 1) * parseInt(limit);
-    
+
 //     const [leads, total] = await Promise.all([
 //       Lead.find(query)
 //         .populate("user", "name email phone profileImage")
@@ -176,51 +190,85 @@ export const getPropertyLeads = async (req, res) => {
   }
 };
 
-// Update lead status
+// Update lead status (with IDOR protection)
 export const updateLeadStatus = async (req, res) => {
   try {
     const ownerId = req.user._id;
     const leadId = req.params.id;
     const { status, notes } = req.body;
 
+    // Validate MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(leadId)) {
+      return res.status(400).json({ success: false, message: 'Invalid lead ID' });
+    }
+
+    // ============================================
+    // IDOR PROTECTION: Fetch lead and verify ownership
+    // ============================================
     const lead = await Lead.findById(leadId);
-    
+
     if (!lead) {
-      return res.status(404).json({ success: false, message: "Lead not found" });
+      return res.status(404).json({ success: false, message: 'Lead not found' });
     }
 
-    // Verify ownership
+    // Verify ownership - compare database record's propertyOwner with authenticated user
     if (lead.propertyOwner.toString() !== ownerId.toString()) {
-      return res.status(403).json({ success: false, message: "Access denied" });
+      console.warn(`⚠️ IDOR attempt: User ${ownerId} tried to update lead owned by ${lead.propertyOwner}`);
+      return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
-    // Update lead
+    // Sanitize and validate status
     const updates = {};
-    if (status) updates.status = status;
-    if (notes !== undefined) updates.notes = notes;
+    if (status) {
+      const sanitizedStatus = sanitizeLeadStatus(status);
+      if (!sanitizedStatus) {
+        return res.status(400).json({ success: false, message: 'Invalid lead status' });
+      }
+      updates.status = sanitizedStatus;
+    }
+
+    // Sanitize notes
+    if (notes !== undefined) {
+      updates.notes = String(notes).substring(0, 2000); // Limit notes length
+    }
 
     const updatedLead = await Lead.findByIdAndUpdate(
       leadId,
       { $set: updates },
       { new: true }
-    ).populate("user", "name email phone profileImage");
+    ).populate('user', 'name email phone profileImage');
 
     res.status(200).json({ success: true, data: updatedLead });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Error updating lead status:', error);
+    res.status(500).json({ success: false, message: 'An error occurred while updating the lead' });
   }
 };
 
-// Mark lead as viewed
+// Mark lead as viewed (with IDOR protection)
 export const markLeadViewed = async (req, res) => {
   try {
     const ownerId = req.user._id;
     const leadId = req.params.id;
 
+    // Validate MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(leadId)) {
+      return res.status(400).json({ success: false, message: 'Invalid lead ID' });
+    }
+
+    // ============================================
+    // IDOR PROTECTION: Fetch lead and verify ownership
+    // ============================================
     const lead = await Lead.findById(leadId);
-    
-    if (!lead || lead.propertyOwner.toString() !== ownerId.toString()) {
-      return res.status(403).json({ success: false, message: "Access denied" });
+
+    if (!lead) {
+      return res.status(404).json({ success: false, message: 'Lead not found' });
+    }
+
+    // Verify ownership from database record
+    if (lead.propertyOwner.toString() !== ownerId.toString()) {
+      console.warn(`⚠️ IDOR attempt: User ${ownerId} tried to mark lead owned by ${lead.propertyOwner} as viewed`);
+      return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
     await Lead.findByIdAndUpdate(leadId, {
@@ -230,37 +278,66 @@ export const markLeadViewed = async (req, res) => {
 
     res.status(200).json({ success: true });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Error marking lead as viewed:', error);
+    res.status(500).json({ success: false, message: 'An error occurred' });
   }
 };
 
-// Add contact history entry
+// Add contact history entry (with IDOR protection and sanitization)
 export const addContactHistory = async (req, res) => {
   try {
     const ownerId = req.user._id;
     const leadId = req.params.id;
     const { action, note } = req.body;
 
-    const lead = await Lead.findById(leadId);
-    
-    if (!lead || lead.propertyOwner.toString() !== ownerId.toString()) {
-      return res.status(403).json({ success: false, message: "Access denied" });
+    // Validate MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(leadId)) {
+      return res.status(400).json({ success: false, message: 'Invalid lead ID' });
     }
+
+    // Validate required fields
+    if (!action || typeof action !== 'string' || action.trim().length === 0) {
+      return res.status(400).json({ success: false, message: 'Action is required' });
+    }
+
+    // ============================================
+    // IDOR PROTECTION: Fetch lead and verify ownership
+    // ============================================
+    const lead = await Lead.findById(leadId);
+
+    if (!lead) {
+      return res.status(404).json({ success: false, message: 'Lead not found' });
+    }
+
+    // Verify ownership from database record
+    if (lead.propertyOwner.toString() !== ownerId.toString()) {
+      console.warn(`⚠️ IDOR attempt: User ${ownerId} tried to add history to lead owned by ${lead.propertyOwner}`);
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    // Sanitize inputs
+    const sanitizedAction = String(action).substring(0, 100);
+    const sanitizedNote = note ? String(note).substring(0, 1000) : '';
 
     const updatedLead = await Lead.findByIdAndUpdate(
       leadId,
       {
         $push: {
-          contactHistory: { action, note, date: new Date() }
+          contactHistory: {
+            action: sanitizedAction,
+            note: sanitizedNote,
+            date: new Date()
+          }
         },
-        $set: { status: "contacted" }
+        $set: { status: 'contacted' }
       },
       { new: true }
-    ).populate("user", "name email phone profileImage");
+    ).populate('user', 'name email phone profileImage');
 
     res.status(200).json({ success: true, data: updatedLead });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Error adding contact history:', error);
+    res.status(500).json({ success: false, message: 'An error occurred' });
   }
 };
 
@@ -358,12 +435,12 @@ export const getLeadAnalytics = async (req, res) => {
 
 // Helper function to get start and end of a day in UTC
 export const getTodayDateRange = () => {
-    const now = new Date();
-    // Start of today (00:00:00.000Z)
-    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
-    // Start of tomorrow (00:00:00.000Z)
-    const startOfTomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0));
-    return { startOfToday, startOfTomorrow };
+  const now = new Date();
+  // Start of today (00:00:00.000Z)
+  const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+  // Start of tomorrow (00:00:00.000Z)
+  const startOfTomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0));
+  return { startOfToday, startOfTomorrow };
 };
 
 export const getOwnerLeads = async (req, res) => {
@@ -372,23 +449,23 @@ export const getOwnerLeads = async (req, res) => {
     const { status, property, page = 1, limit = 20, sort = "-createdAt", startDate, endDate } = req.query;
 
     const query = { propertyOwner: ownerId };
-    
+
     if (status && status !== "all") query.status = status;
     if (property && mongoose.Types.ObjectId.isValid(property)) query.property = property;
-    
+
     // Date Filtering Logic
     if (startDate || endDate) {
-        query.createdAt = {};
-        if (startDate) {
-            const start = new Date(startDate);
-            start.setUTCHours(0, 0, 0, 0); 
-            query.createdAt.$gte = start;
-        }
-        if (endDate) {
-            const end = new Date(endDate);
-            end.setUTCHours(23, 59, 59, 999); 
-            query.createdAt.$lte = end;
-        }
+      query.createdAt = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setUTCHours(0, 0, 0, 0);
+        query.createdAt.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setUTCHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
     }
 
     // Stats Calculation
@@ -396,9 +473,9 @@ export const getOwnerLeads = async (req, res) => {
       { $match: { propertyOwner: new mongoose.Types.ObjectId(ownerId) } },
       { $group: { _id: "$status", count: { $sum: 1 } } }
     ]);
-    
+
     const statusStats = { new: 0, contacted: 0, interested: 0, negotiating: 0, converted: 0, lost: 0, total: 0, today: 0 };
-    
+
     statsResult.forEach(s => {
       statusStats[s._id] = s.count;
       statusStats.total += s.count;
@@ -414,7 +491,7 @@ export const getOwnerLeads = async (req, res) => {
 
     // Execute query with pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    
+
     const [leads, total] = await Promise.all([
       Lead.find(query)
         .populate("user", "name email phone profileImage")
@@ -446,211 +523,211 @@ export const getOwnerLeads = async (req, res) => {
 
 
 export const getAllLeads = async (req, res) => {
-    try {
-        const { page = 1, limit = 15, status, search, startDate, endDate } = req.query;
-        const pageNumber = parseInt(page);
-        const limitNumber = parseInt(limit);
-        
-        // 1. Build Query Filters
-        let matchQuery = {};
+  try {
+    const { page = 1, limit = 15, status, search, startDate, endDate } = req.query;
+    const pageNumber = parseInt(page);
+    const limitNumber = parseInt(limit);
 
-        // Status Filter
-        if (status && status !== 'all') {
-            matchQuery.status = status;
-        }
+    // 1. Build Query Filters
+    let matchQuery = {};
 
-        // Search Filter (by user name, email, or property title)
-        if (search) {
-            // NOTE: For performance on large datasets, consider an index on:
-            // { 'userSnapshot.name': 1, 'userSnapshot.email': 1, 'propertySnapshot.title': 1 }
-            const searchRegex = new RegExp(search, 'i');
-            matchQuery.$or = [
-                { 'userSnapshot.name': searchRegex },
-                { 'userSnapshot.email': searchRegex },
-                { 'propertySnapshot.title': searchRegex },
-            ];
-        }
-
-        // Date Range Filter
-        let dateQuery = {};
-        if (startDate) {
-            // Start of the day for the startDate (00:00:00.000Z)
-            const start = new Date(startDate);
-            start.setUTCHours(0, 0, 0, 0); // Ensure it's the start of the day in UTC
-            dateQuery.$gte = start;
-        }
-        if (endDate) {
-            // End of the day for the endDate (23:59:59.999Z)
-            const end = new Date(endDate);
-            end.setUTCHours(23, 59, 59, 999); // Ensure it's the end of the day in UTC
-            dateQuery.$lte = end;
-        }
-
-        if (startDate || endDate) {
-            matchQuery.createdAt = dateQuery;
-        }
-
-        // --- Stats Calculation ---
-        // Status aggregation for ALL leads (ignoring date/search filters for the main stats cards)
-        const allLeads = await Lead.aggregate([
-            { $group: { _id: '$status', count: { $sum: 1 } } }
-        ]);
-
-        const stats = {
-            total: 0,
-            today: 0, 
-            new: 0,
-            contacted: 0,
-            interested: 0,
-            negotiating: 0,
-            converted: 0,
-            lost: 0,
-        };
-
-        allLeads.forEach(item => {
-            stats.total += item.count;
-            if (stats[item._id] !== undefined) {
-                stats[item._id] = item.count;
-            }
-        });
-
-        // 2. Calculate Today's Leads Stat
-        const { startOfToday, startOfTomorrow } = getTodayDateRange();
-
-        const todayCount = await Lead.countDocuments({
-            createdAt: {
-                $gte: startOfToday,
-                $lt: startOfTomorrow,
-            },
-        });
-        stats.today = todayCount;
-
-
-        // --- Leads Fetching (with filters and pagination) ---
-
-        const totalLeadsInFilter = await Lead.countDocuments(matchQuery);
-        
-        // Fetch leads with necessary population for the Admin view
-        const leads = await Lead.find(matchQuery)
-            .populate("user", "name email phone profileImage")
-            .populate("property", "title price listingType city locality images categorizedImages")
-            .populate("propertyOwner", "name email phone profileImage") // Crucial for Admin view
-            .sort({ createdAt: -1 }) // Sort by latest first
-            .skip((pageNumber - 1) * limitNumber)
-            .limit(limitNumber);
-
-        const pagination = {
-            page: pageNumber,
-            pages: Math.ceil(totalLeadsInFilter / limitNumber),
-            limit: limitNumber,
-            total: totalLeadsInFilter,
-        };
-
-        res.status(200).json({
-            success: true,
-            data: leads,
-            stats,
-            pagination,
-        });
-
-    } catch (error) {
-        console.error('Error fetching leads:', error);
-        res.status(500).json({ success: false, message: 'Server error fetching leads.' });
+    // Status Filter
+    if (status && status !== 'all') {
+      matchQuery.status = status;
     }
+
+    // Search Filter (by user name, email, or property title)
+    if (search) {
+      // NOTE: For performance on large datasets, consider an index on:
+      // { 'userSnapshot.name': 1, 'userSnapshot.email': 1, 'propertySnapshot.title': 1 }
+      const searchRegex = new RegExp(search, 'i');
+      matchQuery.$or = [
+        { 'userSnapshot.name': searchRegex },
+        { 'userSnapshot.email': searchRegex },
+        { 'propertySnapshot.title': searchRegex },
+      ];
+    }
+
+    // Date Range Filter
+    let dateQuery = {};
+    if (startDate) {
+      // Start of the day for the startDate (00:00:00.000Z)
+      const start = new Date(startDate);
+      start.setUTCHours(0, 0, 0, 0); // Ensure it's the start of the day in UTC
+      dateQuery.$gte = start;
+    }
+    if (endDate) {
+      // End of the day for the endDate (23:59:59.999Z)
+      const end = new Date(endDate);
+      end.setUTCHours(23, 59, 59, 999); // Ensure it's the end of the day in UTC
+      dateQuery.$lte = end;
+    }
+
+    if (startDate || endDate) {
+      matchQuery.createdAt = dateQuery;
+    }
+
+    // --- Stats Calculation ---
+    // Status aggregation for ALL leads (ignoring date/search filters for the main stats cards)
+    const allLeads = await Lead.aggregate([
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
+
+    const stats = {
+      total: 0,
+      today: 0,
+      new: 0,
+      contacted: 0,
+      interested: 0,
+      negotiating: 0,
+      converted: 0,
+      lost: 0,
+    };
+
+    allLeads.forEach(item => {
+      stats.total += item.count;
+      if (stats[item._id] !== undefined) {
+        stats[item._id] = item.count;
+      }
+    });
+
+    // 2. Calculate Today's Leads Stat
+    const { startOfToday, startOfTomorrow } = getTodayDateRange();
+
+    const todayCount = await Lead.countDocuments({
+      createdAt: {
+        $gte: startOfToday,
+        $lt: startOfTomorrow,
+      },
+    });
+    stats.today = todayCount;
+
+
+    // --- Leads Fetching (with filters and pagination) ---
+
+    const totalLeadsInFilter = await Lead.countDocuments(matchQuery);
+
+    // Fetch leads with necessary population for the Admin view
+    const leads = await Lead.find(matchQuery)
+      .populate("user", "name email phone profileImage")
+      .populate("property", "title price listingType city locality images categorizedImages")
+      .populate("propertyOwner", "name email phone profileImage") // Crucial for Admin view
+      .sort({ createdAt: -1 }) // Sort by latest first
+      .skip((pageNumber - 1) * limitNumber)
+      .limit(limitNumber);
+
+    const pagination = {
+      page: pageNumber,
+      pages: Math.ceil(totalLeadsInFilter / limitNumber),
+      limit: limitNumber,
+      total: totalLeadsInFilter,
+    };
+
+    res.status(200).json({
+      success: true,
+      data: leads,
+      stats,
+      pagination,
+    });
+
+  } catch (error) {
+    console.error('Error fetching leads:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching leads.' });
+  }
 };
 
 // ... other imports
-import ExcelJS from 'exceljs'; 
+import ExcelJS from 'exceljs';
 
 // ... (other controller functions: createLead, getOwnerLeads, etc. remain unchanged)
 
 // EXPORT FUNCTION
 export const exportLeadsToExcel = async (req, res) => {
-    try {
-        const ownerId = req.user._id;
-        
-        // 1. Calculate Date Range (Default: Last 3 Months)
-        const endDate = new Date(); // Now
-        const startDate = new Date();
-        startDate.setMonth(endDate.getMonth() - 3); // 3 months ago
-        
-        // Ensure we capture the full day for end date
-        endDate.setUTCHours(23, 59, 59, 999);
-        startDate.setUTCHours(0, 0, 0, 0);
+  try {
+    const ownerId = req.user._id;
 
-        // 2. Fetch Leads
-        const query = {
-            propertyOwner: ownerId,
-            createdAt: { 
-                $gte: startDate, 
-                $lte: endDate 
-            }
-        };
+    // 1. Calculate Date Range (Default: Last 3 Months)
+    const endDate = new Date(); // Now
+    const startDate = new Date();
+    startDate.setMonth(endDate.getMonth() - 3); // 3 months ago
 
-        const leads = await Lead.find(query)
-            .populate("user", "name email phone") // Only need basic fields
-            .populate("property", "title locality city")
-            .sort({ createdAt: -1 })
-            .lean();
+    // Ensure we capture the full day for end date
+    endDate.setUTCHours(23, 59, 59, 999);
+    startDate.setUTCHours(0, 0, 0, 0);
 
-        if (!leads || leads.length === 0) {
-            return res.status(404).json({ success: false, message: "No leads found for the last 3 months." });
-        }
+    // 2. Fetch Leads
+    const query = {
+      propertyOwner: ownerId,
+      createdAt: {
+        $gte: startDate,
+        $lte: endDate
+      }
+    };
 
-        // 3. Create Workbook
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Leads Data');
+    const leads = await Lead.find(query)
+      .populate("user", "name email phone") // Only need basic fields
+      .populate("property", "title locality city")
+      .sort({ createdAt: -1 })
+      .lean();
 
-        // 4. Define Columns
-        worksheet.columns = [
-            { header: 'Date', key: 'date', width: 15 },
-            { header: 'Lead Name', key: 'name', width: 25 },
-            { header: 'Email', key: 'email', width: 30 },
-            { header: 'Phone', key: 'phone', width: 20 },
-            { header: 'Property Title', key: 'property', width: 40 },
-            { header: 'Location', key: 'location', width: 30 },
-            { header: 'Status', key: 'status', width: 15 },
-        ];
-
-        // 5. Add Rows
-        leads.forEach(lead => {
-            worksheet.addRow({
-                date: lead.createdAt ? new Date(lead.createdAt).toLocaleDateString('en-IN') : 'N/A',
-                name: lead.userSnapshot?.name || lead.user?.name || 'N/A',
-                email: lead.userSnapshot?.email || lead.user?.email || 'N/A',
-                phone: lead.userSnapshot?.phone || lead.user?.phone || 'N/A',
-                property: lead.propertySnapshot?.title || lead.property?.title || 'N/A',
-                location: lead.propertySnapshot 
-                    ? `${lead.propertySnapshot.locality}, ${lead.propertySnapshot.city}`
-                    : lead.property 
-                        ? `${lead.property.locality}, ${lead.property.city}` 
-                        : 'N/A',
-                status: lead.status || 'new',
-            });
-        });
-
-        // 6. Style Header (Optional but nice)
-        worksheet.getRow(1).font = { bold: true };
-        
-        // 7. Set Response Headers
-        res.setHeader(
-            "Content-Type", 
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        );
-        res.setHeader(
-            "Content-Disposition", 
-            "attachment; filename=" + "Leads_History_3Months.xlsx"
-        );
-
-        // 8. Write to Response
-        await workbook.xlsx.write(res);
-        res.status(200).end();
-
-    } catch (error) {
-        console.error('Error exporting leads to Excel:', error);
-        // Important: If headers are already sent, don't try to send JSON
-        if (!res.headersSent) {
-             res.status(500).json({ success: false, message: error.message || 'Server error during export.' });
-        }
+    if (!leads || leads.length === 0) {
+      return res.status(404).json({ success: false, message: "No leads found for the last 3 months." });
     }
+
+    // 3. Create Workbook
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Leads Data');
+
+    // 4. Define Columns
+    worksheet.columns = [
+      { header: 'Date', key: 'date', width: 15 },
+      { header: 'Lead Name', key: 'name', width: 25 },
+      { header: 'Email', key: 'email', width: 30 },
+      { header: 'Phone', key: 'phone', width: 20 },
+      { header: 'Property Title', key: 'property', width: 40 },
+      { header: 'Location', key: 'location', width: 30 },
+      { header: 'Status', key: 'status', width: 15 },
+    ];
+
+    // 5. Add Rows
+    leads.forEach(lead => {
+      worksheet.addRow({
+        date: lead.createdAt ? new Date(lead.createdAt).toLocaleDateString('en-IN') : 'N/A',
+        name: lead.userSnapshot?.name || lead.user?.name || 'N/A',
+        email: lead.userSnapshot?.email || lead.user?.email || 'N/A',
+        phone: lead.userSnapshot?.phone || lead.user?.phone || 'N/A',
+        property: lead.propertySnapshot?.title || lead.property?.title || 'N/A',
+        location: lead.propertySnapshot
+          ? `${lead.propertySnapshot.locality}, ${lead.propertySnapshot.city}`
+          : lead.property
+            ? `${lead.property.locality}, ${lead.property.city}`
+            : 'N/A',
+        status: lead.status || 'new',
+      });
+    });
+
+    // 6. Style Header (Optional but nice)
+    worksheet.getRow(1).font = { bold: true };
+
+    // 7. Set Response Headers
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + "Leads_History_3Months.xlsx"
+    );
+
+    // 8. Write to Response
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+
+  } catch (error) {
+    console.error('Error exporting leads to Excel:', error);
+    // Important: If headers are already sent, don't try to send JSON
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: error.message || 'Server error during export.' });
+    }
+  }
 };

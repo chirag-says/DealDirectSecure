@@ -1,49 +1,123 @@
+/**
+ * User Routes
+ * Enterprise-grade authentication with secure endpoints
+ */
 import express from "express";
-import { getAllUsers, loginUser, registerUser, registerUserDirect, verifyOtp, resendOtp, getProfile, updateProfile, changePassword, sendUpgradeOtp, verifyUpgradeOtp, forgotPassword, resetPassword, toggleBlockUser, exportUsersPDF, exportUsersCSV, exportOwnersPDF, exportOwnersCSV } from "../controllers/userController.js";
 import multer from "multer";
+import {
+  registerUser,
+  registerUserDirect,
+  verifyOtp,
+  resendOtp,
+  loginUser,
+  logoutUser,
+  logoutAllDevices,
+  getProfile,
+  updateProfile,
+  changePassword,
+  sendUpgradeOtp,
+  verifyUpgradeOtp,
+  forgotPassword,
+  resetPassword,
+  validateResetToken,
+  getActiveSessions,
+  revokeSession,
+  getAllUsers,
+  toggleBlockUser,
+  exportUsersPDF,
+  exportUsersCSV,
+  exportOwnersPDF,
+  exportOwnersCSV
+} from "../controllers/userController.js";
 import { addProperty, getOwnersWithProjects } from "../controllers/propertyController.js";
-import { authMiddleware } from "../middleware/authUser.js";
+import {
+  authMiddleware,
+  optionalAuth,
+  requireRole,
+  requireVerified,
+  authRateLimit
+} from "../middleware/authUser.js";
 import { upload } from "../middleware/upload.js";
-import {protectAdmin} from "../middleware/authAdmin.js"
+import { protectAdmin } from "../middleware/authAdmin.js";
+import { validateProfileUpdate } from "../middleware/validators/index.js";
+
 const router = express.Router();
 
-// 🖼️ Multer config for local storage (legacy)
+// Local storage for fallback
 const localStorage = multer.diskStorage({
   destination: "uploads/",
   filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
 });
 const localUpload = multer({ storage: localStorage });
 
-// ✅ Auth Routes
-router.post("/register", registerUser);           // Owner registration (with OTP)
-router.post("/register-direct", registerUserDirect); // Buyer registration (no OTP)
-router.post("/verify-otp", verifyOtp);
-router.post("/resend-otp", resendOtp);
-router.post("/login", loginUser);
+// ============================================
+// PUBLIC AUTH ROUTES (Rate limited)
+// ============================================
 
-// ✅ Password Reset Routes
-router.post("/forgot-password", forgotPassword);
-router.post("/reset-password", resetPassword);
+// Registration
+router.post("/register", authRateLimit, registerUser);
+router.post("/register-direct", authRateLimit, registerUserDirect);
+router.post("/verify-otp", authRateLimit, verifyOtp);
+router.post("/resend-otp", authRateLimit, resendOtp);
 
-// ✅ Upgrade Routes (Buyer to Owner)
-router.post("/send-upgrade-otp", authMiddleware, sendUpgradeOtp);
-router.post("/verify-upgrade-otp", authMiddleware, verifyUpgradeOtp);
+// Login
+router.post("/login", authRateLimit, loginUser);
 
-// ✅ Profile Routes (Protected)
+// Password Reset (public)
+router.post("/forgot-password", authRateLimit, forgotPassword);
+router.get("/reset-password/validate/:token", validateResetToken);
+router.post("/reset-password", authRateLimit, resetPassword);
+
+// ============================================
+// PROTECTED AUTH ROUTES
+// ============================================
+
+// Logout
+router.post("/logout", authMiddleware, logoutUser);
+router.post("/logout-all", authMiddleware, logoutAllDevices);
+
+// Session Management
+router.get("/sessions", authMiddleware, getActiveSessions);
+router.delete("/sessions/:sessionId", authMiddleware, revokeSession);
+
+// ============================================
+// PROFILE ROUTES (Protected with validation)
+// ============================================
+
 router.get("/profile", authMiddleware, getProfile);
-router.put("/profile", authMiddleware, upload.single("profileImage"), updateProfile);
+router.put("/profile", authMiddleware, validateProfileUpdate, upload.single("profileImage"), updateProfile);
 router.put("/change-password", authMiddleware, changePassword);
 
-// ✅ Property Route
-router.post("/add-property", authMiddleware, localUpload.array("images", 10), addProperty);
+// ============================================
+// UPGRADE ROUTES (Buyer to Owner)
+// ============================================
 
-// ✅ Admin Routes
+router.post("/send-upgrade-otp", authMiddleware, requireVerified, sendUpgradeOtp);
+router.post("/verify-upgrade-otp", authMiddleware, requireVerified, verifyUpgradeOtp);
+
+// ============================================
+// PROPERTY ROUTES (Owner only)
+// ============================================
+
+router.post(
+  "/add-property",
+  authMiddleware,
+  requireVerified,
+  requireRole("owner"),
+  localUpload.array("images", 10),
+  addProperty
+);
+
+// ============================================
+// ADMIN ROUTES (Admin protected)
+// ============================================
+
 router.get("/list", protectAdmin, getAllUsers);
 router.put("/block/:id", protectAdmin, toggleBlockUser);
 router.get("/owners-projects", protectAdmin, getOwnersWithProjects);
 router.get("/export-csv", protectAdmin, exportUsersCSV);
 router.get("/export-pdf", protectAdmin, exportUsersPDF);
-// ✅ NEW: Owner Export Routes
 router.get("/export-owners-csv", protectAdmin, exportOwnersCSV);
 router.get("/export-owners-pdf", protectAdmin, exportOwnersPDF);
+
 export default router;

@@ -53,9 +53,8 @@ const AddProperty = () => {
     subcategory: false,
     submit: false,
   });
-  const [isEnvAgent, setIsEnvAgent] = useState(false);
 
-  // utility - admin auth header (raw value). If your backend expects "Bearer <token>", save that string in localStorage.
+  // Utility - admin auth header
   const getAuthHeaders = () => {
     const token = localStorage.getItem("adminToken");
     return token ? { Authorization: `Bearer ${token}` } : {};
@@ -70,18 +69,6 @@ const AddProperty = () => {
     }
   };
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("adminInfo");
-      const info = stored ? JSON.parse(stored) : null;
-      setIsEnvAgent(Boolean(info?.isEnvAgent));
-    } catch (error) {
-      console.error("Failed to parse adminInfo", error);
-      setIsEnvAgent(false);
-    }
-  }, []);
-
-
   // Load property types
   useEffect(() => {
     loadPropertyTypes();
@@ -90,7 +77,6 @@ const AddProperty = () => {
   const loadPropertyTypes = async () => {
     try {
       const res = await axios.get(`${API_BASE_URL}/api/propertyTypes/list-propertytype`);
-      // backend returns array
       setPropertyTypes(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error("loadPropertyTypes:", err?.response?.data || err.message);
@@ -121,7 +107,7 @@ const AddProperty = () => {
     }
   };
 
-  // Load subcategories for selected category (server supports byCategory)
+  // Load subcategories for selected category
   useEffect(() => {
     if (!formData.category) {
       setSubcategories([]);
@@ -147,7 +133,6 @@ const AddProperty = () => {
   // Create helpers
   // -----------------------
   const handleAddPropertyType = async () => {
-    if (isEnvAgent) return toast.info("Agents cannot create new property types");
     if (!newPropertyType.trim()) return toast.error("Enter a property type name");
     await runWithAction("propertyType", async () => {
       try {
@@ -171,7 +156,6 @@ const AddProperty = () => {
   };
 
   const handleAddCategory = async () => {
-    if (isEnvAgent) return toast.info("Agents cannot create categories");
     const propertyTypeId = toIdString(formData.propertyType);
     if (!propertyTypeId) return toast.error("Select a property type first");
     if (!newCategory.trim()) return toast.error("Enter a category name");
@@ -196,7 +180,6 @@ const AddProperty = () => {
   };
 
   const handleAddSubcategory = async () => {
-    if (isEnvAgent) return toast.info("Agents cannot create subcategories");
     const categoryId = toIdString(formData.category);
     if (!categoryId) return toast.error("Select a category first");
     const propertyTypeId = toIdString(formData.propertyType);
@@ -313,7 +296,7 @@ const AddProperty = () => {
           if (formData[k] !== undefined) data.append(k, JSON.stringify(formData[k]));
         });
 
-        // Add images as files (Cloudinary handles upload via multer)
+        // Add images as files
         images.forEach((file) => data.append("images", file));
 
         await axios.post(`${API_BASE_URL}/api/properties/add`, data, {
@@ -330,9 +313,9 @@ const AddProperty = () => {
   };
 
   const invalid = (flag) => (flag ? "border-red-500 ring-red-200" : "border-gray-300");
-  const canAddPropertyType = !isEnvAgent && Boolean(newPropertyType.trim());
-  const canAddCategory = !isEnvAgent && Boolean(formData.propertyType && newCategory.trim());
-  const canAddSubcategory = !isEnvAgent && Boolean(formData.category && newSubcategory.trim());
+  const canAddPropertyType = Boolean(newPropertyType.trim());
+  const canAddCategory = Boolean(formData.propertyType && newCategory.trim());
+  const canAddSubcategory = Boolean(formData.category && newSubcategory.trim());
 
   return (
     <div className="max-w-6xl mx-auto bg-white p-8 mt-6 rounded-2xl shadow">
@@ -360,44 +343,37 @@ const AddProperty = () => {
                   </option>
                 ))}
               </select>
-              {!isEnvAgent && (
-                <>
-                  <input
-                    placeholder="Add new type"
-                    value={newPropertyType}
-                    onChange={(e) => setNewPropertyType(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleAddPropertyType();
-                      }
-                    }}
-                    className="p-2 rounded border flex-1 min-w-[180px]"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddPropertyType}
-                    disabled={!canAddPropertyType || actionLoading.propertyType}
-                    className={`flex items-center gap-1 px-4 rounded text-white text-sm font-medium ${
-                      !canAddPropertyType || actionLoading.propertyType
-                        ? "bg-blue-300 cursor-not-allowed"
-                        : "bg-blue-600 hover:bg-blue-700"
-                    }`}
-                  >
-                    {actionLoading.propertyType ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Plus className="h-4 w-4" />
-                    )}
-                    <span>Add Type</span>
-                  </button>
-                </>
-              )}
+              <input
+                placeholder="Add new type"
+                value={newPropertyType}
+                onChange={(e) => setNewPropertyType(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddPropertyType();
+                  }
+                }}
+                className="p-2 rounded border flex-1 min-w-[180px]"
+              />
+              <button
+                type="button"
+                onClick={handleAddPropertyType}
+                disabled={!canAddPropertyType || actionLoading.propertyType}
+                className={`flex items-center gap-1 px-4 rounded text-white text-sm font-medium ${!canAddPropertyType || actionLoading.propertyType
+                    ? "bg-blue-300 cursor-not-allowed"
+                    : "bg-blue-600 hover:bg-blue-700"
+                  }`}
+              >
+                {actionLoading.propertyType ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                <span>Add Type</span>
+              </button>
             </div>
             <p className="text-xs text-gray-500">
-              {isEnvAgent
-                ? "Agents can pick from existing property types. Contact an admin to add new ones."
-                : "Choose an existing type or create a new one to unlock category options."}
+              Choose an existing type or create a new one to unlock category options.
             </p>
           </div>
         </div>
@@ -421,40 +397,35 @@ const AddProperty = () => {
                   </option>
                 ))}
               </select>
-              {!isEnvAgent && (
-                <>
-                  <input
-                    placeholder="Add new category"
-                    value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleAddCategory();
-                      }
-                    }}
-                    className="p-2 rounded border flex-1 min-w-[180px]"
-                    disabled={!formData.propertyType}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddCategory}
-                    disabled={!canAddCategory || actionLoading.category}
-                    className={`flex items-center gap-1 px-4 rounded text-white text-sm font-medium ${
-                      !canAddCategory || actionLoading.category
-                        ? "bg-blue-300 cursor-not-allowed"
-                        : "bg-blue-600 hover:bg-blue-700"
-                    }`}
-                  >
-                    {actionLoading.category ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Plus className="h-4 w-4" />
-                    )}
-                    <span>Add Category</span>
-                  </button>
-                </>
-              )}
+              <input
+                placeholder="Add new category"
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddCategory();
+                  }
+                }}
+                className="p-2 rounded border flex-1 min-w-[180px]"
+                disabled={!formData.propertyType}
+              />
+              <button
+                type="button"
+                onClick={handleAddCategory}
+                disabled={!canAddCategory || actionLoading.category}
+                className={`flex items-center gap-1 px-4 rounded text-white text-sm font-medium ${!canAddCategory || actionLoading.category
+                    ? "bg-blue-300 cursor-not-allowed"
+                    : "bg-blue-600 hover:bg-blue-700"
+                  }`}
+              >
+                {actionLoading.category ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                <span>Add Category</span>
+              </button>
             </div>
             <p className="text-xs text-gray-500">
               Categories are filtered by the selected property type.
@@ -481,40 +452,35 @@ const AddProperty = () => {
                   </option>
                 ))}
               </select>
-              {!isEnvAgent && (
-                <>
-                  <input
-                    placeholder="Add new subcategory"
-                    value={newSubcategory}
-                    onChange={(e) => setNewSubcategory(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleAddSubcategory();
-                      }
-                    }}
-                    className="p-2 rounded border flex-1 min-w-[180px]"
-                    disabled={!formData.category}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddSubcategory}
-                    disabled={!canAddSubcategory || actionLoading.subcategory}
-                    className={`flex items-center gap-1 px-4 rounded text-white text-sm font-medium ${
-                      !canAddSubcategory || actionLoading.subcategory
-                        ? "bg-blue-300 cursor-not-allowed"
-                        : "bg-blue-600 hover:bg-blue-700"
-                    }`}
-                  >
-                    {actionLoading.subcategory ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Plus className="h-4 w-4" />
-                    )}
-                    <span>Add Subcategory</span>
-                  </button>
-                </>
-              )}
+              <input
+                placeholder="Add new subcategory"
+                value={newSubcategory}
+                onChange={(e) => setNewSubcategory(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddSubcategory();
+                  }
+                }}
+                className="p-2 rounded border flex-1 min-w-[180px]"
+                disabled={!formData.category}
+              />
+              <button
+                type="button"
+                onClick={handleAddSubcategory}
+                disabled={!canAddSubcategory || actionLoading.subcategory}
+                className={`flex items-center gap-1 px-4 rounded text-white text-sm font-medium ${!canAddSubcategory || actionLoading.subcategory
+                    ? "bg-blue-300 cursor-not-allowed"
+                    : "bg-blue-600 hover:bg-blue-700"
+                  }`}
+              >
+                {actionLoading.subcategory ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                <span>Add Subcategory</span>
+              </button>
             </div>
             <p className="text-xs text-gray-500">Subcategories depend on the selected category.</p>
           </div>
@@ -665,9 +631,8 @@ const AddProperty = () => {
           <button
             type="submit"
             disabled={actionLoading.submit}
-            className={`px-6 py-2 rounded text-white font-semibold flex items-center justify-center gap-2 ${
-              actionLoading.submit ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
-            }`}
+            className={`px-6 py-2 rounded text-white font-semibold flex items-center justify-center gap-2 ${actionLoading.submit ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
+              }`}
           >
             {actionLoading.submit && <Loader2 className="h-4 w-4 animate-spin" />}
             Submit Property

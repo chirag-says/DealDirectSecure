@@ -7,6 +7,26 @@ import Report from "../models/Report.js";
 import SavedSearch from "../models/SavedSearch.js";
 import Notification from "../models/Notification.js";
 
+// ============================================
+// SECURITY: Field blacklist for mass assignment prevention
+// ============================================
+const PROPERTY_FORBIDDEN_FIELDS = [
+  'owner', 'isApproved', 'rejectionReason', 'views', 'likes',
+  'interestedUsers', '_id', 'createdAt', 'updatedAt', '__v'
+];
+
+/**
+ * Sanitize property data by removing forbidden fields
+ * Prevents mass assignment attacks
+ */
+const sanitizePropertyData = (data) => {
+  const sanitized = { ...data };
+  for (const field of PROPERTY_FORBIDDEN_FIELDS) {
+    delete sanitized[field];
+  }
+  return sanitized;
+};
+
 const isCloudinaryUrl = (img = "") => typeof img === "string" && img.includes("cloudinary.com");
 
 // Process uploaded files from multer-cloudinary (they already have URLs)
@@ -28,7 +48,7 @@ const withPublicImages = (req, doc) => {
   if (!doc) return doc;
   const plain = doc.toObject ? doc.toObject() : doc;
   plain.images = (plain.images || []).map((img) => buildPublicImageUrl(req, img));
-  
+
   // Process categorized images as well
   if (plain.categorizedImages) {
     // Process residential categories
@@ -46,13 +66,13 @@ const withPublicImages = (req, doc) => {
       });
     }
   }
-  
+
   // Add latitude/longitude at top level for easy map access
   if (plain.address?.latitude && plain.address?.longitude) {
     plain.lat = plain.address.latitude;
     plain.lng = plain.address.longitude;
   }
-  
+
   return plain;
 };
 
@@ -83,10 +103,10 @@ export const addProperty = async (req, res) => {
     if (data.features && typeof data.features === 'object') {
       // Extract parking from features before spreading
       const { parking: featuresParking, extras: featuresExtras, ...restFeatures } = data.features;
-      
+
       // Spread rest of features to top level
       data = { ...data, ...restFeatures };
-      
+
       // Handle parking - merge or set from features
       if (featuresParking) {
         data.parking = {
@@ -94,12 +114,12 @@ export const addProperty = async (req, res) => {
           open: String(featuresParking.open || 0)
         };
       }
-      
+
       // Handle extras
       if (featuresExtras) {
         data.extras = featuresExtras;
       }
-      
+
       // Remove the features object after spreading
       delete data.features;
     }
@@ -110,25 +130,25 @@ export const addProperty = async (req, res) => {
     } else {
       data.images = [];
     }
-    
+
     // Process categorized images
     if (req.files?.categorizedImages?.length > 0 && data.imageCategoryMap) {
       const categorizedUrls = extractCloudinaryUrls(req.files.categorizedImages);
       const categoryMap = data.imageCategoryMap;
-      
+
       // Determine if property is residential or commercial
-      const isResidential = data.categoryName === 'Residential' || 
-                           (data.category && data.category.name === 'Residential');
-      
+      const isResidential = data.categoryName === 'Residential' ||
+        (data.category && data.category.name === 'Residential');
+
       // Initialize categorizedImages structure
       data.categorizedImages = {
         residential: {},
         commercial: {}
       };
-      
+
       // Track which URL index we're at
       let urlIndex = 0;
-      
+
       // Map images to their categories
       Object.entries(categoryMap).forEach(([categoryKey, indices]) => {
         const categoryImages = [];
@@ -136,7 +156,7 @@ export const addProperty = async (req, res) => {
           categoryImages.push(categorizedUrls[urlIndex]);
           urlIndex++;
         }
-        
+
         // Add to appropriate category (residential or commercial)
         if (isResidential) {
           data.categorizedImages.residential[categoryKey] = categoryImages;
@@ -144,19 +164,19 @@ export const addProperty = async (req, res) => {
           data.categorizedImages.commercial[categoryKey] = categoryImages;
         }
       });
-      
+
       // Also add categorized images to the main images array for backward compatibility
       if (data.images.length === 0) {
         data.images = categorizedUrls;
       }
-      
+
       // Clean up the temporary map
       delete data.imageCategoryMap;
     }
 
     // Explicitly set isApproved to true for all new properties (Auto-publish)
     data.isApproved = true;
-    
+
     // Set owner from auth token if available
     if (req.user?._id) {
       data.owner = req.user._id;
@@ -190,7 +210,7 @@ export const addProperty = async (req, res) => {
         data.address.longitude = parseFloat(data.address.longitude);
       }
     }
-    
+
     // Also handle top-level latitude/longitude if sent separately
     if (data.latitude && data.longitude && data.address) {
       data.address.latitude = parseFloat(data.latitude);
@@ -377,10 +397,20 @@ export const reportProperty = async (req, res) => {
   }
 };
 
-// Update Property
+// Update Property (Admin only - with sanitization)
 export const updateProperty = async (req, res) => {
   try {
+    // Validate property ID
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid property ID' });
+    }
+
     let data = req.body;
+
+    // ============================================
+    // SECURITY: Sanitize data - remove forbidden fields
+    // ============================================
+    data = sanitizePropertyData(data);
 
     // Parse JSON fields that might be stringified
     ["area", "parking", "address", "flooring", "features", "legal", "extras", "imageCategoryMap"].forEach((key) => {
@@ -396,20 +426,20 @@ export const updateProperty = async (req, res) => {
     // Spread features into top-level data if it exists
     if (data.features && typeof data.features === 'object') {
       const { parking: featuresParking, extras: featuresExtras, ...restFeatures } = data.features;
-      
+
       data = { ...data, ...restFeatures };
-      
+
       if (featuresParking) {
         data.parking = {
           covered: String(featuresParking.covered || 0),
           open: String(featuresParking.open || 0)
         };
       }
-      
+
       if (featuresExtras) {
         data.extras = featuresExtras;
       }
-      
+
       delete data.features;
     }
 
@@ -417,25 +447,25 @@ export const updateProperty = async (req, res) => {
     if (req.files?.images?.length > 0) {
       data.images = extractCloudinaryUrls(req.files.images);
     }
-    
+
     // Process categorized images
     if (req.files?.categorizedImages?.length > 0 && data.imageCategoryMap) {
       const categorizedUrls = extractCloudinaryUrls(req.files.categorizedImages);
       const categoryMap = data.imageCategoryMap;
-      
+
       // Determine if property is residential or commercial
-      const isResidential = data.categoryName === 'Residential' || 
-                           (data.category && data.category.name === 'Residential');
-      
+      const isResidential = data.categoryName === 'Residential' ||
+        (data.category && data.category.name === 'Residential');
+
       // Initialize categorizedImages structure
       data.categorizedImages = {
         residential: {},
         commercial: {}
       };
-      
+
       // Track which URL index we're at
       let urlIndex = 0;
-      
+
       // Map images to their categories
       Object.entries(categoryMap).forEach(([categoryKey, indices]) => {
         const categoryImages = [];
@@ -443,14 +473,14 @@ export const updateProperty = async (req, res) => {
           categoryImages.push(categorizedUrls[urlIndex]);
           urlIndex++;
         }
-        
+
         if (isResidential) {
           data.categorizedImages.residential[categoryKey] = categoryImages;
         } else {
           data.categorizedImages.commercial[categoryKey] = categoryImages;
         }
       });
-      
+
       delete data.imageCategoryMap;
     }
 
@@ -470,7 +500,7 @@ export const updateProperty = async (req, res) => {
         data.address.longitude = parseFloat(data.address.longitude);
       }
     }
-    
+
     // Also handle top-level latitude/longitude if sent separately
     if (data.latitude && data.longitude && data.address) {
       data.address.latitude = parseFloat(data.latitude);
@@ -479,21 +509,35 @@ export const updateProperty = async (req, res) => {
       delete data.longitude;
     }
 
+    // Re-sanitize after all modifications
+    data = sanitizePropertyData(data);
+
     const updated = await Property.findByIdAndUpdate(req.params.id, data, { new: true });
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Property not found' });
+    }
 
     res.json(withPublicImages(req, updated));
   } catch (err) {
     console.error("Update Property Error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, message: 'An error occurred while updating the property' });
   }
 };
 
 
-// Delete
+// Delete Property (Admin only - protected route)
 export const deleteProperty = async (req, res) => {
   try {
+    // Validate property ID
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid property ID' });
+    }
+
     const p = await Property.findById(req.params.id);
-    if (!p) return res.status(404).json({ message: "Not found" });
+    if (!p) {
+      return res.status(404).json({ success: false, message: 'Property not found' });
+    }
 
     // Delete images from Cloudinary
     for (const img of p.images || []) {
@@ -515,9 +559,10 @@ export const deleteProperty = async (req, res) => {
     }
 
     await p.deleteOne();
-    res.json({ message: "Deleted" });
+    res.json({ success: true, message: 'Property deleted successfully' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Delete Property Error:", err);
+    res.status(500).json({ success: false, message: 'An error occurred while deleting the property' });
   }
 };
 
@@ -584,15 +629,15 @@ export const getAllPropertiesList = async (req, res) => {
 export const getMyProperties = async (req, res) => {
   try {
     const userId = req.user._id;
-    
+
     console.log("Fetching properties for user:", userId);
-    
+
     // Convert to ObjectId if it's a valid string
     let ownerQuery = userId;
     if (typeof userId === 'string' && mongoose.Types.ObjectId.isValid(userId)) {
       ownerQuery = new mongoose.Types.ObjectId(userId);
     }
-    
+
     const properties = await Property.find({ owner: ownerQuery })
       .populate("category", "name")
       .populate("subcategory", "name")
@@ -601,8 +646,8 @@ export const getMyProperties = async (req, res) => {
 
     console.log(`Found ${properties.length} properties for user ${userId}`);
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       data: properties.map((item) => withPublicImages(req, item)),
       count: properties.length
     });
@@ -619,7 +664,7 @@ export const deleteMyProperty = async (req, res) => {
     const propertyId = req.params.id;
 
     const property = await Property.findOne({ _id: propertyId, owner: userId });
-    
+
     if (!property) {
       return res.status(404).json({ success: false, message: "Property not found or you don't have permission to delete it" });
     }
@@ -661,7 +706,7 @@ export const updateMyProperty = async (req, res) => {
 
     // Check if property exists and belongs to user
     const existingProperty = await Property.findOne({ _id: propertyId, owner: userId });
-    
+
     if (!existingProperty) {
       return res.status(404).json({ success: false, message: "Property not found or you don't have permission to edit it" });
     }
@@ -689,7 +734,7 @@ export const updateMyProperty = async (req, res) => {
       data.deposit = data.expectedDeposit;
       delete data.expectedDeposit;
     }
-    
+
     // Area fields - map to area object
     data.area = {
       ...(existingProperty.area || {}),
@@ -703,7 +748,7 @@ export const updateMyProperty = async (req, res) => {
     if (data.carpetArea) data.carpetArea = Number(data.carpetArea);
     if (data.superBuiltUpArea) data.superBuiltUpArea = Number(data.superBuiltUpArea);
     if (data.plotArea) data.plotArea = Number(data.plotArea);
-    
+
     // Extras - map boolean fields
     data.extras = {
       servantRoom: data.servantRoom === true || data.servantRoom === 'true',
@@ -715,7 +760,7 @@ export const updateMyProperty = async (req, res) => {
     delete data.poojaRoom;
     delete data.studyRoom;
     delete data.storeRoom;
-    
+
     // Legal - map reraId
     if (data.reraId) {
       data.legal = {
@@ -724,13 +769,13 @@ export const updateMyProperty = async (req, res) => {
       };
       delete data.reraId;
     }
-    
+
     // BHK type
     if (data.bhkType) {
       data.bhk = data.bhkType;
       delete data.bhkType;
     }
-    
+
     // Parking - already handled or map from parkingCovered/parkingOpen
     if (data.parkingCovered !== undefined || data.parkingOpen !== undefined) {
       data.parking = {
@@ -740,13 +785,13 @@ export const updateMyProperty = async (req, res) => {
       delete data.parkingCovered;
       delete data.parkingOpen;
     }
-    
+
     // Price negotiable
     if (data.priceNegotiable !== undefined) {
       data.negotiable = data.priceNegotiable === true || data.priceNegotiable === 'true';
       delete data.priceNegotiable;
     }
-    
+
     // Address fields
     if (data.city || data.locality || data.landmark || data.address) {
       data.address = {
@@ -762,7 +807,7 @@ export const updateMyProperty = async (req, res) => {
       data.city = data.city || existingProperty.city;
       data.locality = data.locality || existingProperty.locality;
     }
-    
+
     // Location coordinates for geo queries
     if (data.latitude && data.longitude) {
       data.location = {
@@ -774,33 +819,33 @@ export const updateMyProperty = async (req, res) => {
     // Spread features into top-level data if it exists
     if (data.features && typeof data.features === 'object') {
       const { parking: featuresParking, extras: featuresExtras, ...restFeatures } = data.features;
-      
+
       data = { ...data, ...restFeatures };
-      
+
       if (featuresParking) {
         data.parking = {
           covered: String(featuresParking.covered || 0),
           open: String(featuresParking.open || 0)
         };
       }
-      
+
       if (featuresExtras) {
         data.extras = { ...data.extras, ...featuresExtras };
       }
-      
+
       delete data.features;
     }
 
     // Determine if property is residential or commercial
-    const isResidential = data.propertyCategory === 'Residential' || 
-                         existingProperty.categoryName === 'Residential';
+    const isResidential = data.propertyCategory === 'Residential' ||
+      existingProperty.categoryName === 'Residential';
 
     // Initialize categorizedImages structure from existing images sent from frontend
     data.categorizedImages = {
       residential: {},
       commercial: {}
     };
-    
+
     // Keep existing categorized images (that weren't removed)
     if (data.existingCategorizedImages) {
       const existingCat = data.existingCategorizedImages;
@@ -815,18 +860,18 @@ export const updateMyProperty = async (req, res) => {
       });
       delete data.existingCategorizedImages;
     }
-    
+
     // Process new images with category map
     if (req.files?.images?.length > 0 && data.imageCategoryMap) {
       const newImageUrls = extractCloudinaryUrls(req.files.images);
       const categoryMap = data.imageCategoryMap;
-      
+
       // categoryMap format: [{index: 0, category: 'exterior'}, {index: 1, category: 'livingRoom'}, ...]
       categoryMap.forEach((mapping, idx) => {
         if (idx < newImageUrls.length) {
           const { category } = mapping;
           const url = newImageUrls[idx];
-          
+
           if (isResidential) {
             if (!data.categorizedImages.residential[category]) {
               data.categorizedImages.residential[category] = [];
@@ -841,7 +886,7 @@ export const updateMyProperty = async (req, res) => {
         }
       });
     }
-    
+
     // Build flat images array for backwards compatibility
     const allImages = [];
     const catImages = isResidential ? data.categorizedImages.residential : data.categorizedImages.commercial;
@@ -851,27 +896,27 @@ export const updateMyProperty = async (req, res) => {
       }
     });
     data.images = allImages;
-    
+
     delete data.imageCategoryMap;
     delete data.imagesToRemove;
 
     // Don't allow changing owner
     delete data.owner;
-    
+
     // Handle propertyType - it's sent as name string, not ObjectId
     // Store the name in propertyTypeName and remove propertyType to avoid ObjectId cast error
     if (data.propertyType && typeof data.propertyType === 'string' && !mongoose.Types.ObjectId.isValid(data.propertyType)) {
       data.propertyTypeName = data.propertyType;
       delete data.propertyType;
     }
-    
+
     // Handle category - it's sent as name string "Residential" or "Commercial"
     if (data.propertyCategory && typeof data.propertyCategory === 'string') {
       data.categoryName = data.propertyCategory;
       delete data.propertyCategory;
       delete data.category; // Remove category ObjectId reference if it's invalid
     }
-    
+
     // Remove subcategory if it's not a valid ObjectId
     if (data.subcategory && !mongoose.Types.ObjectId.isValid(data.subcategory)) {
       delete data.subcategory;
@@ -882,8 +927,8 @@ export const updateMyProperty = async (req, res) => {
       .populate("subcategory", "name")
       .populate("propertyType", "name");
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       message: "Property updated successfully",
       data: withPublicImages(req, updated)
     });
@@ -905,7 +950,7 @@ export const markInterested = async (req, res) => {
     }
 
     const property = await Property.findById(propertyId);
-    
+
     if (!property) {
       return res.status(404).json({ success: false, message: "Property not found" });
     }
@@ -953,7 +998,7 @@ export const markInterested = async (req, res) => {
     if (property.owner) {
       try {
         const existingLead = await Lead.findOne({ user: userId, property: propertyId });
-        
+
         if (!existingLead) {
           await Lead.create({
             property: propertyId,
@@ -987,9 +1032,9 @@ export const markInterested = async (req, res) => {
 
     console.log(`User ${userId} expressed interest in property ${propertyId}`);
 
-    res.status(200).json({ 
-      success: true, 
-      message: "Interest registered successfully! The owner will be notified." 
+    res.status(200).json({
+      success: true,
+      message: "Interest registered successfully! The owner will be notified."
     });
   } catch (error) {
     console.error("Error in markInterested:", error);
@@ -1048,7 +1093,7 @@ export const checkInterested = async (req, res) => {
     }
 
     const property = await Property.findById(propertyId);
-    
+
     if (!property) {
       return res.status(404).json({ success: false, isInterested: false });
     }
@@ -1121,7 +1166,7 @@ export const removeSavedProperty = async (req, res) => {
     }
 
     const property = await Property.findById(propertyId);
-    
+
     if (!property) {
       return res.status(404).json({ success: false, message: "Property not found" });
     }
@@ -1227,7 +1272,7 @@ export const searchProperties = async (req, res) => {
 export const getSuggestions = async (req, res) => {
   try {
     const { q } = req.query;
-    
+
     if (!q || q.trim().length < 2) {
       return res.json({ suggestions: [] });
     }
@@ -1243,13 +1288,13 @@ export const getSuggestions = async (req, res) => {
           // Match by title (projects)
           titles: [
             { $match: { title: regex } },
-            { 
-              $project: { 
-                title: 1, 
-                city: "$address.city", 
+            {
+              $project: {
+                title: 1,
+                city: "$address.city",
                 locality: "$address.locality",
                 image: { $arrayElemAt: ["$images", 0] }
-              } 
+              }
             },
             { $limit: 5 }
           ],
@@ -1364,48 +1409,48 @@ export const filterProperties = async (req, res) => {
 };
 
 export const getOwnersWithProjects = async (req, res) => {
-    try {
-        // 1. Fetch all users with the 'owner' role
-        const owners = await User.find({ role: 'owner' })
-            .select('name email phone company profileImage'); // Assuming 'company' field exists in User model
+  try {
+    // 1. Fetch all users with the 'owner' role
+    const owners = await User.find({ role: 'owner' })
+      .select('name email phone company profileImage'); // Assuming 'company' field exists in User model
 
-        // 2. Extract owner IDs
-        const ownerIds = owners.map(o => o._id);
+    // 2. Extract owner IDs
+    const ownerIds = owners.map(o => o._id);
 
-        // 3. Fetch all properties belonging to these owners
-        const properties = await Property.find({ owner: { $in: ownerIds } })
-            .populate("category")
-            .sort({ createdAt: -1 });
+    // 3. Fetch all properties belonging to these owners
+    const properties = await Property.find({ owner: { $in: ownerIds } })
+      .populate("category")
+      .sort({ createdAt: -1 });
 
-        // 4. Group properties by owner ID
-        const projectsByOwner = properties.reduce((acc, prop) => {
-            const ownerId = prop.owner.toString();
-            if (!acc[ownerId]) {
-                acc[ownerId] = [];
-            }
-            acc[ownerId].push(withPublicImages(req, prop)); // Use the image utility
-            return acc;
-        }, {});
+    // 4. Group properties by owner ID
+    const projectsByOwner = properties.reduce((acc, prop) => {
+      const ownerId = prop.owner.toString();
+      if (!acc[ownerId]) {
+        acc[ownerId] = [];
+      }
+      acc[ownerId].push(withPublicImages(req, prop)); // Use the image utility
+      return acc;
+    }, {});
 
-        // 5. Merge owners with their properties
-        const ownersWithProjects = owners.map(owner => {
-            const ownerObj = owner.toObject();
-            return {
-                ...ownerObj,
-                id: ownerObj._id,
-                projects: projectsByOwner[ownerObj._id.toString()] || []
-            };
-        });
+    // 5. Merge owners with their properties
+    const ownersWithProjects = owners.map(owner => {
+      const ownerObj = owner.toObject();
+      return {
+        ...ownerObj,
+        id: ownerObj._id,
+        projects: projectsByOwner[ownerObj._id.toString()] || []
+      };
+    });
 
-        res.status(200).json({ 
-            success: true, 
-            data: ownersWithProjects
-        });
+    res.status(200).json({
+      success: true,
+      data: ownersWithProjects
+    });
 
-    } catch (error) {
-        console.error("Error fetching owners with projects:", error);
-        res.status(500).json({ success: false, message: error.message });
-    }
+  } catch (error) {
+    console.error("Error fetching owners with projects:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
 
 
@@ -1416,76 +1461,76 @@ export const getOwnersWithProjects = async (req, res) => {
 
 // --- UPDATED: Admin Get Properties with Robust Search ---
 export const getAdminProperties = async (req, res) => {
-    try {
-        const { search, status, startDate, endDate } = req.query;
-        
-        console.log("Admin Search Params:", req.query); // 🔍 Debug Log
+  try {
+    const { search, status, startDate, endDate } = req.query;
 
-        let query = {};
+    console.log("Admin Search Params:", req.query); // 🔍 Debug Log
 
-        // 1. Status Filter
-        if (status) {
-            if (status === 'listed') {
-                query.isApproved = true;
-            } else if (status === 'rejected') {
-                query.isApproved = false;
-            }
-            // If 'all', we don't filter by isApproved (returns both)
-        }
+    let query = {};
 
-        // 2. Search Filter (Checks Title, City (root & nested), State, Area, and optionally ID)
-        if (search) {
-          const regex = new RegExp(search, 'i'); // Case insensitive
-          const orConditions = [
-            { title: regex },
-            { city: regex },             // Check root level city
-            { "address.city": regex },   // Check nested address city
-            { "address.state": regex },  // Check nested state
-            { "address.area": regex },   // Check nested area/locality
-            { "address.line": regex }    // Check full address line
-          ];
-
-          // If search looks like a valid ObjectId, also match by _id
-          if (mongoose.Types.ObjectId.isValid(search)) {
-            orConditions.push({ _id: search });
-          }
-
-          query.$or = orConditions;
-        }
-
-        // 3. Date Range Filter
-        if (startDate || endDate) {
-            query.createdAt = {};
-            if (startDate) {
-                query.createdAt.$gte = new Date(startDate);
-            }
-            if (endDate) {
-                const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
-                query.createdAt.$lte = end;
-            }
-        }
-
-        const properties = await Property.find(query)
-            .populate("category", "name")
-            .populate("subcategory", "name")
-            .populate("propertyType", "name")
-            .sort({ createdAt: -1 });
-
-        console.log(`Found ${properties.length} properties matching search.`); // 🔍 Debug Log
-
-        const processedProperties = properties.map((item) => withPublicImages(req, item));
-
-        res.status(200).json({ 
-            success: true, 
-            data: processedProperties,
-            count: processedProperties.length
-        });
-
-    } catch (err) {
-        console.error("Admin Filter Error:", err);
-        res.status(500).json({ error: err.message });
+    // 1. Status Filter
+    if (status) {
+      if (status === 'listed') {
+        query.isApproved = true;
+      } else if (status === 'rejected') {
+        query.isApproved = false;
+      }
+      // If 'all', we don't filter by isApproved (returns both)
     }
+
+    // 2. Search Filter (Checks Title, City (root & nested), State, Area, and optionally ID)
+    if (search) {
+      const regex = new RegExp(search, 'i'); // Case insensitive
+      const orConditions = [
+        { title: regex },
+        { city: regex },             // Check root level city
+        { "address.city": regex },   // Check nested address city
+        { "address.state": regex },  // Check nested state
+        { "address.area": regex },   // Check nested area/locality
+        { "address.line": regex }    // Check full address line
+      ];
+
+      // If search looks like a valid ObjectId, also match by _id
+      if (mongoose.Types.ObjectId.isValid(search)) {
+        orConditions.push({ _id: search });
+      }
+
+      query.$or = orConditions;
+    }
+
+    // 3. Date Range Filter
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) {
+        query.createdAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
+    }
+
+    const properties = await Property.find(query)
+      .populate("category", "name")
+      .populate("subcategory", "name")
+      .populate("propertyType", "name")
+      .sort({ createdAt: -1 });
+
+    console.log(`Found ${properties.length} properties matching search.`); // 🔍 Debug Log
+
+    const processedProperties = properties.map((item) => withPublicImages(req, item));
+
+    res.status(200).json({
+      success: true,
+      data: processedProperties,
+      count: processedProperties.length
+    });
+
+  } catch (err) {
+    console.error("Admin Filter Error:", err);
+    res.status(500).json({ error: err.message });
+  }
 };
 
 // ... keep approveProperty, disapproveProperty etc.
@@ -1494,8 +1539,8 @@ export const approveProperty = async (req, res) => {
   try {
     const updated = await Property.findByIdAndUpdate(
       req.params.id,
-      { 
-        isApproved: true, 
+      {
+        isApproved: true,
         rejectionReason: "" // ✅ Clear the rejection reason when re-listing
       },
       { new: true }
@@ -1513,13 +1558,13 @@ export const disapproveProperty = async (req, res) => {
     const { rejectionReason } = req.body;
 
     if (!rejectionReason || rejectionReason.trim() === "") {
-        return res.status(400).json({ message: "A reason is required to reject a property." });
+      return res.status(400).json({ message: "A reason is required to reject a property." });
     }
 
     const updated = await Property.findByIdAndUpdate(
       req.params.id,
-      { 
-        isApproved: false, 
+      {
+        isApproved: false,
         rejectionReason: rejectionReason // ✅ Save the reason
       },
       { new: true }

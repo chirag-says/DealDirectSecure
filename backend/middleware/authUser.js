@@ -1,46 +1,417 @@
-// server/middleware/auth.js
+/**
+ * User Authentication Middleware
+ * Enterprise-grade security with HttpOnly cookies and server-side session validation
+ */
 import jwt from "jsonwebtoken";
 import User from "../models/userModel.js";
+import UserSession from "../models/UserSession.js";
 
+// Cookie configuration
+const COOKIE_CONFIG = {
+  name: "user_session",
+  options: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    path: "/",
+    domain: process.env.COOKIE_DOMAIN || undefined,
+  },
+};
+
+/**
+ * Set session cookie
+ */
+export const setSessionCookie = (res, sessionToken) => {
+  res.cookie(COOKIE_CONFIG.name, sessionToken, COOKIE_CONFIG.options);
+};
+
+/**
+ * Clear session cookie
+ */
+export const clearSessionCookie = (res) => {
+  res.clearCookie(COOKIE_CONFIG.name, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+    path: "/",
+    domain: process.env.COOKIE_DOMAIN || undefined,
+  });
+};
+
+/**
+ * Extract and validate session from HttpOnly cookie
+ * Primary authentication method - uses server-side session storage
+ */
 export const authMiddleware = async (req, res, next) => {
   try {
-    const auth = req.headers.authorization;
-    if (!auth || !auth.startsWith("Bearer ")) return res.status(401).json({ message: "Unauthorized" });
+    // 1. Get session token from HttpOnly cookie
+    const sessionToken = req.cookies?.[COOKIE_CONFIG.name];
 
-    const token = auth.split(" ")[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!sessionToken) {
+      // Fallback to Authorization header for API clients/mobile apps
+      const authHeader = req.headers.authorization;
+      if (authHeader?.startsWith("Bearer ")) {
+        return handleJWTAuth(req, res, next, authHeader.split(" ")[1]);
+      }
 
-    if (decoded?.isEnvAgent) {
-      req.user = {
-        _id: decoded.id,
-        id: decoded.id,
-        name: process.env.AGENT_NAME || "DealDirect Agent",
-        email: process.env.AGENT_EMAIL || decoded.email,
-        role: "agent",
-        isEnvAgent: true,
-      };
-      return next();
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required. Please login.",
+        code: "NO_SESSION",
+      });
     }
 
-    if (decoded?.isEnvOwner) {
-      req.user = {
-        _id: decoded.id,
-        id: decoded.id,
-        name: process.env.OWNER_NAME || process.env.DEMO_OWNER_NAME || "Property Owner",
-        email: process.env.OWNER_EMAIL || process.env.DEMO_OWNER_EMAIL || decoded.email,
-        role: "owner",
-        isEnvOwner: true,
-      };
-      return next();
+    // 2. Validate session against database
+    const session = await UserSession.validateSession(sessionToken, req);
+
+    if (!session) {
+      clearSessionCookie(res);
+      return res.status(401).json({
+        success: false,
+        message: "Session expired or invalid. Please login again.",
+        code: "INVALID_SESSION",
+      });
     }
 
-    const user = await User.findById(decoded.id).select("-password");
-    if (!user) return res.status(401).json({ message: "User not found" });
+    // 3. Get user from session
+    const user = session.user;
 
-    req.user = { ...user.toObject(), role: user.role || decoded.role || "user" }; // attach user to request
+    if (!user) {
+      await UserSession.revokeSession(session._id, "user_not_found");
+      clearSessionCookie(res);
+      return res.status(401).json({
+        success: false,
+        message: "User not found. Account may have been deleted.",
+        code: "USER_NOT_FOUND",
+      });
+    }
+
+    // 4. Check if user is blocked
+    if (user.isBlocked) {
+      await UserSession.revokeSession(session._id, "user_blocked");
+      clearSessionCookie(res);
+      return res.status(403).json({
+        success: false,
+        message: "Your account has been blocked. Contact support.",
+        code: "ACCOUNT_BLOCKED",
+      });
+    }
+
+    // 5. Check if user is active
+    if (user.isActive === false) {
+      await UserSession.revokeSession(session._id, "user_deactivated");
+      clearSessionCookie(res);
+      return res.status(403).json({
+        success: false,
+        message: "Your account has been deactivated. Contact support.",
+        code: "ACCOUNT_DEACTIVATED",
+      });
+    }
+
+    // 6. Attach user and session to request (sanitized)
+    req.user = sanitizeUser(user);
+    req.userSession = session;
+
     next();
   } catch (err) {
-    console.error("Auth error:", err);
-    return res.status(401).json({ message: "Invalid/Expired token" });
+    console.error("User auth error:", err);
+    return res.status(401).json({
+      success: false,
+      message: "Authentication failed. Please login again.",
+      code: "AUTH_ERROR",
+    });
   }
 };
+
+/**
+ * Handle JWT-based authentication (fallback for API clients)
+ */
+const handleJWTAuth = async (req, res, next, token) => {
+  try {
+    // Verify token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      if (err.name === "TokenExpiredError") {
+        return res.status(401).json({
+          success: false,
+          message: "Session expired. Please login again.",
+          code: "TOKEN_EXPIRED",
+        });
+      }
+      if (err.name === "JsonWebTokenError") {
+        return res.status(401).json({
+          success: false,
+          message: "Invalid token. Please login again.",
+          code: "INVALID_TOKEN",
+        });
+      }
+      throw err;
+    }
+
+    // Get user from database with security fields
+    const user = await User.findById(decoded.id).select(User.getSafeFields());
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found. Account may have been deleted.",
+        code: "USER_NOT_FOUND",
+      });
+    }
+
+    // Check if user is blocked
+    if (user.isBlocked) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account has been blocked. Contact support.",
+        code: "ACCOUNT_BLOCKED",
+      });
+    }
+
+    // Check if user is active
+    if (user.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account has been deactivated. Contact support.",
+        code: "ACCOUNT_DEACTIVATED",
+      });
+    }
+
+    // Check if password changed after token issued
+    if (user.changedPasswordAfter(decoded.iat)) {
+      return res.status(401).json({
+        success: false,
+        message: "Password was recently changed. Please login again.",
+        code: "PASSWORD_CHANGED",
+      });
+    }
+
+    // Attach user to request (sanitized)
+    req.user = sanitizeUser(user);
+
+    next();
+  } catch (err) {
+    console.error("JWT auth error:", err);
+    return res.status(401).json({
+      success: false,
+      message: "Authentication failed. Please login again.",
+      code: "AUTH_ERROR",
+    });
+  }
+};
+
+/**
+ * Sanitize user object - remove all sensitive fields
+ */
+const sanitizeUser = (user) => {
+  const userObj = user.toObject ? user.toObject() : { ...user };
+
+  // Remove sensitive fields
+  const sensitiveFields = [
+    "password",
+    "otp",
+    "otpExpires",
+    "resetPasswordOtp",
+    "resetPasswordOtpExpires",
+    "blockReason",
+    "blockedAt",
+    "blockedBy",
+    "__v",
+  ];
+
+  sensitiveFields.forEach((field) => delete userObj[field]);
+
+  // Remove internal security fields
+  if (userObj.security) {
+    delete userObj.security.failedLoginAttempts;
+    delete userObj.security.lockoutUntil;
+    delete userObj.security.lastLoginIp;
+  }
+
+  return userObj;
+};
+
+/**
+ * Optional authentication - proceeds even without token
+ * Useful for routes that work for both authenticated and anonymous users
+ */
+export const optionalAuth = async (req, res, next) => {
+  const sessionToken = req.cookies?.[COOKIE_CONFIG.name];
+  const authHeader = req.headers.authorization;
+
+  if (!sessionToken && (!authHeader || !authHeader.startsWith("Bearer "))) {
+    req.user = null;
+    return next();
+  }
+
+  try {
+    if (sessionToken) {
+      // Cookie-based session
+      const session = await UserSession.validateSession(sessionToken, req);
+      if (session && session.user && !session.user.isBlocked && session.user.isActive !== false) {
+        req.user = sanitizeUser(session.user);
+        req.userSession = session;
+      } else {
+        req.user = null;
+      }
+    } else if (authHeader?.startsWith("Bearer ")) {
+      // JWT fallback
+      const token = authHeader.split(" ")[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findById(decoded.id).select(User.getSafeFields());
+
+      if (user && !user.isBlocked && user.isActive !== false && !user.changedPasswordAfter(decoded.iat)) {
+        req.user = sanitizeUser(user);
+      } else {
+        req.user = null;
+      }
+    }
+  } catch (err) {
+    // Token is invalid but we proceed anyway for optional auth
+    req.user = null;
+  }
+
+  next();
+};
+
+/**
+ * Role-based access control middleware
+ * Usage: requireRole("owner", "admin")
+ */
+export const requireRole = (...allowedRoles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+        code: "NOT_AUTHENTICATED",
+      });
+    }
+
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have permission to access this resource.",
+        code: "FORBIDDEN",
+        requiredRoles: allowedRoles,
+      });
+    }
+
+    next();
+  };
+};
+
+/**
+ * Verify user owns the resource or is admin
+ */
+export const requireOwnership = (getResourceOwnerId) => {
+  return async (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+        code: "NOT_AUTHENTICATED",
+      });
+    }
+
+    // Owners can access their own resources
+    try {
+      const ownerId = await getResourceOwnerId(req);
+
+      if (!ownerId) {
+        return res.status(404).json({
+          success: false,
+          message: "Resource not found.",
+          code: "NOT_FOUND",
+        });
+      }
+
+      if (ownerId.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "You do not have permission to access this resource.",
+          code: "NOT_OWNER",
+        });
+      }
+
+      next();
+    } catch (err) {
+      console.error("Ownership check error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Authorization check failed.",
+        code: "OWNERSHIP_CHECK_ERROR",
+      });
+    }
+  };
+};
+
+/**
+ * Require verified email
+ */
+export const requireVerified = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: "Authentication required.",
+      code: "NOT_AUTHENTICATED",
+    });
+  }
+
+  if (!req.user.isVerified) {
+    return res.status(403).json({
+      success: false,
+      message: "Email verification required.",
+      code: "EMAIL_NOT_VERIFIED",
+    });
+  }
+
+  next();
+};
+
+/**
+ * Rate limiting for auth endpoints
+ */
+const authAttempts = new Map();
+
+export const authRateLimit = (req, res, next) => {
+  const ip = req.ip || req.connection?.remoteAddress || "unknown";
+  const key = `auth:${ip}`;
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000; // 15 minutes
+  const maxAttempts = 10;
+
+  const attempts = authAttempts.get(key) || { count: 0, resetAt: now + windowMs };
+
+  if (now > attempts.resetAt) {
+    attempts.count = 0;
+    attempts.resetAt = now + windowMs;
+  }
+
+  attempts.count++;
+  authAttempts.set(key, attempts);
+
+  // Cleanup old entries periodically
+  if (authAttempts.size > 10000) {
+    for (const [k, v] of authAttempts.entries()) {
+      if (now > v.resetAt) authAttempts.delete(k);
+    }
+  }
+
+  if (attempts.count > maxAttempts) {
+    return res.status(429).json({
+      success: false,
+      message: "Too many attempts. Please try again later.",
+      code: "RATE_LIMITED",
+      retryAfter: Math.ceil((attempts.resetAt - now) / 1000),
+    });
+  }
+
+  next();
+};
+
+// Export cookie config for use in controllers
+export { COOKIE_CONFIG };

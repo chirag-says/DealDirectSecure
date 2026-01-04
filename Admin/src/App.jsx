@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react"; // ⬅️ useEffect is helpful for resizing
+import React, { useState, useEffect } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -8,7 +8,7 @@ import {
 } from "react-router-dom";
 
 import Header from "./components/Header";
-import Sidebar from "./components/Sidebar"; // Assuming Sidebar is imported from where you provided it
+import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import AddProperty from "./pages/AddProperty";
 import AddCategory from "./pages/AddCategory";
@@ -24,7 +24,6 @@ import ContactInquiries from "./pages/ContactInquiries";
 import ReportedMessages from "./pages/ReportedMessages";
 import PropertyReports from "./pages/PropertyReports";
 
-
 const getStoredAdminInfo = () => {
   try {
     const stored = localStorage.getItem("adminInfo");
@@ -35,16 +34,14 @@ const getStoredAdminInfo = () => {
   }
 };
 
-// Protected Route Component
-const ProtectedRoute = ({ children, allowEnvAgent = true }) => {
+/**
+ * Protected Route Component
+ * All authenticated admins have full access - no role-based restrictions on frontend
+ * (Authorization is handled by backend permissions)
+ */
+const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem("adminToken");
   if (!token) return <Navigate to="/admin/login" replace />;
-
-  const adminInfo = getStoredAdminInfo();
-  if (adminInfo?.isEnvAgent && !allowEnvAgent) {
-    return <Navigate to="/add-property" replace />;
-  }
-
   return children;
 };
 
@@ -71,7 +68,7 @@ const Layout = ({ isSidebarOpen, toggleSidebar, children }) => {
       {/* Main content area */}
       <div className="flex flex-1 h-full overflow-hidden relative">
         {/* Sidebar */}
-        {!isLoginPage && ( // ⬅️ Only show sidebar if not on login page
+        {!isLoginPage && (
           <>
             {/* Mobile Overlay */}
             <div
@@ -115,9 +112,8 @@ const Layout = ({ isSidebarOpen, toggleSidebar, children }) => {
   );
 };
 
-// 1. Function to determine initial state based on screen size
+// Function to determine initial state based on screen size
 const getInitialSidebarState = () => {
-  // Check if window is defined (for server-side rendering safety)
   if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
     return true; // Desktop: Start Open
   }
@@ -126,16 +122,13 @@ const getInitialSidebarState = () => {
 
 
 function App() {
-  // 2. Initialize with the determined initial state
   const [isSidebarOpen, setIsSidebarOpen] = useState(getInitialSidebarState);
-  
+
   const toggleSidebar = () => setIsSidebarOpen((prev) => !prev);
 
-  // Optional: Update state on resize, for dynamic behavior (recommended)
+  // Update state on resize for dynamic behavior
   useEffect(() => {
     const handleResize = () => {
-      // For large screens (desktop), keep it open unless explicitly closed.
-      // For small screens, keep it closed unless explicitly opened.
       if (window.innerWidth >= 1024) {
         setIsSidebarOpen(true);
       } else {
@@ -154,12 +147,11 @@ function App() {
           {/* Public Route */}
           <Route path="/admin/login" element={<AdminLogin />} />
 
-          {/* Protected Routes (unchanged) */}
-          {/* ... all your Protected Routes ... */}
+          {/* Protected Routes - All admins have access (backend handles permissions) */}
           <Route
             path="/dashboard"
             element={
-              <ProtectedRoute allowEnvAgent={false}>
+              <ProtectedRoute>
                 <Dashboard />
               </ProtectedRoute>
             }
@@ -167,7 +159,7 @@ function App() {
           <Route
             path="/add-property"
             element={
-              <ProtectedRoute allowEnvAgent>
+              <ProtectedRoute>
                 <AddProperty />
               </ProtectedRoute>
             }
@@ -175,7 +167,7 @@ function App() {
           <Route
             path="/lead-monitoring"
             element={
-              <ProtectedRoute allowEnvAgent>
+              <ProtectedRoute>
                 <LeadMonitoring />
               </ProtectedRoute>
             }
@@ -183,7 +175,7 @@ function App() {
           <Route
             path="/add-category"
             element={
-              <ProtectedRoute allowEnvAgent={false}>
+              <ProtectedRoute>
                 <AddCategory />
               </ProtectedRoute>
             }
@@ -191,7 +183,7 @@ function App() {
           <Route
             path="/add-subcategory"
             element={
-              <ProtectedRoute allowEnvAgent={false}>
+              <ProtectedRoute>
                 <AddSubCategory />
               </ProtectedRoute>
             }
@@ -199,7 +191,7 @@ function App() {
           <Route
             path="/all-owners"
             element={
-              <ProtectedRoute allowEnvAgent={false}>
+              <ProtectedRoute>
                 <BuilderVerification />
               </ProtectedRoute>
             }
@@ -207,7 +199,7 @@ function App() {
           <Route
             path="/owners-projects"
             element={
-              <ProtectedRoute allowEnvAgent={false}>
+              <ProtectedRoute>
                 <BuilderProjects />
               </ProtectedRoute>
             }
@@ -215,7 +207,7 @@ function App() {
           <Route
             path="/all-clients"
             element={
-              <ProtectedRoute allowEnvAgent={false}>
+              <ProtectedRoute>
                 <AllClients />
               </ProtectedRoute>
             }
@@ -223,7 +215,7 @@ function App() {
           <Route
             path="/all-properties"
             element={
-              <ProtectedRoute allowEnvAgent={false}>
+              <ProtectedRoute>
                 <AllProperty />
               </ProtectedRoute>
             }
@@ -231,7 +223,7 @@ function App() {
           <Route
             path="/all-category"
             element={
-              <ProtectedRoute allowEnvAgent={false}>
+              <ProtectedRoute>
                 <AllCategory />
               </ProtectedRoute>
             }
@@ -239,7 +231,7 @@ function App() {
           <Route
             path="/contact-inquiries"
             element={
-              <ProtectedRoute allowEnvAgent={false}>
+              <ProtectedRoute>
                 <ContactInquiries />
               </ProtectedRoute>
             }
@@ -247,7 +239,7 @@ function App() {
           <Route
             path="/reported-messages"
             element={
-              <ProtectedRoute allowEnvAgent={false}>
+              <ProtectedRoute>
                 <ReportedMessages />
               </ProtectedRoute>
             }
@@ -255,12 +247,12 @@ function App() {
           <Route
             path="/property-reports"
             element={
-              <ProtectedRoute allowEnvAgent={false}>
+              <ProtectedRoute>
                 <PropertyReports />
               </ProtectedRoute>
             }
           />
-           
+
 
           {/* Redirect all other routes */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

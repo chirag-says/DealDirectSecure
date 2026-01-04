@@ -24,61 +24,105 @@ import {
 } from "../controllers/propertyController.js";
 import { protectAdmin } from "../middleware/authAdmin.js";
 import { authMiddleware } from "../middleware/authUser.js";
-import { upload } from "../middleware/upload.js";
+import { upload, validateUploadedFiles } from "../middleware/upload.js";
+import { ownerOnlyListingAccess } from "../middleware/roleGuard.js";
+import {
+  validatePropertyCreate,
+  validatePropertyUpdate,
+  validatePropertyReport,
+  validateMongoId,
+} from "../middleware/validators/index.js";
 
 const router = express.Router();
 
-// ✅ Routes - Using Cloudinary upload middleware
-// Handle both legacy images and categorized images
-router.post("/add", authMiddleware, upload.fields([
-  { name: "images", maxCount: 15 },
-  { name: "categorizedImages", maxCount: 50 }
-]), addProperty);
+// ============================================
+// PUBLIC ROUTES (No authentication required)
+// ============================================
 
 // Public listing routes
 router.get("/list", getProperties);
-router.get("/property-list", getAllPropertiesList); // 🟢 For frontend home page
+router.get("/property-list", getAllPropertiesList); // For frontend home page
 
 // Public search & filter (MUST be before /:id)
 router.get("/search", searchProperties);
 router.get("/suggestions", getSuggestions); // Fast autocomplete
 router.get("/filter", filterProperties);
 
-// 🔒 Protected Routes - User's Own Properties (MUST be before /:id)
+// ============================================
+// PROTECTED ROUTES - AUTHENTICATED USERS
+// ============================================
+
+// 🔒 Protected: User's Own Properties (Owners only)
 router.get("/my-properties", authMiddleware, getMyProperties);
-router.put("/my-properties/:id", authMiddleware, upload.fields([
-  { name: "images", maxCount: 15 },
-  { name: "categorizedImages", maxCount: 50 }
-]), updateMyProperty);
 
-// 🔒 Protected: Saved/Interested Properties routes (MUST be before /:id)
+// 🔒 Protected: Add Property (Owners only with validation)
+router.post(
+  "/add",
+  authMiddleware,
+  ownerOnlyListingAccess, // Role enforcement: only Owners can add
+  upload.fields([
+    { name: "images", maxCount: 15 },
+    { name: "categorizedImages", maxCount: 50 }
+  ]),
+  validatePropertyCreate,
+  addProperty
+);
+
+// 🔒 Protected: Update own property (Owners only)
+router.put(
+  "/my-properties/:id",
+  authMiddleware,
+  ownerOnlyListingAccess,
+  validateMongoId('id'),
+  upload.fields([
+    { name: "images", maxCount: 15 },
+    { name: "categorizedImages", maxCount: 50 }
+  ]),
+  updateMyProperty
+);
+
+// 🔒 Protected: Saved/Interested Properties routes (Buyers can access)
 router.get("/saved", authMiddleware, getSavedProperties);
-router.delete("/saved/:id", authMiddleware, removeSavedProperty);
+router.delete("/saved/:id", authMiddleware, validateMongoId('id'), removeSavedProperty);
 
-// Admin routes (with specific paths before /:id)
-router.put("/edit/:id", protectAdmin, upload.fields([
-  { name: "images", maxCount: 15 },
-  { name: "categorizedImages", maxCount: 50 }
-]), updateProperty);
-router.delete("/delete/:id", protectAdmin, deleteProperty);
-// router.put("/approve/:id", protectAdmin, approveProperty);
-// router.put("/disapprove/:id", protectAdmin, disapproveProperty);
+// 🔒 Protected: Interest routes (Buyers can express interest)
+router.post("/interested/:id", authMiddleware, validateMongoId('id'), markInterested);
+router.get("/interested/:id/check", authMiddleware, validateMongoId('id'), checkInterested);
+router.delete("/interested/:id", authMiddleware, validateMongoId('id'), removeInterest);
 
-// 🔒 Protected: Interest routes (MUST be before /:id)
-router.post("/interested/:id", authMiddleware, markInterested);
-router.get("/interested/:id/check", authMiddleware, checkInterested);
-router.delete("/interested/:id", authMiddleware, removeInterest);
+// 🔒 Protected: Report property (Any authenticated user)
+router.post("/:id/report", authMiddleware, validatePropertyReport, reportProperty);
 
-// 🔒 Protected: Report property
-router.post("/:id/report", authMiddleware, reportProperty);
+// ============================================
+// ADMIN ROUTES (Admin authentication required)
+// ============================================
 
-// Dynamic ID routes (MUST be last)
-router.get("/:id", getPropertyById);
-router.delete("/:id", authMiddleware, deleteMyProperty);
-
+// Admin: Get all properties with filters
 router.get("/admin/all", protectAdmin, getAdminProperties);
 
-// Admin Action Routes
-router.put("/approve/:id", protectAdmin, approveProperty);
-router.put("/disapprove/:id", protectAdmin, disapproveProperty);
+// Admin: Update property
+router.put(
+  "/edit/:id",
+  protectAdmin,
+  validateMongoId('id'),
+  upload.fields([
+    { name: "images", maxCount: 15 },
+    { name: "categorizedImages", maxCount: 50 }
+  ]),
+  updateProperty
+);
+
+// Admin: Delete property
+router.delete("/delete/:id", protectAdmin, validateMongoId('id'), deleteProperty);
+
+// Admin: Approve/Disapprove property
+router.put("/approve/:id", protectAdmin, validateMongoId('id'), approveProperty);
+router.put("/disapprove/:id", protectAdmin, validateMongoId('id'), disapproveProperty);
+
+// ============================================
+// DYNAMIC ID ROUTES (MUST be last)
+// ============================================
+router.get("/:id", getPropertyById);
+router.delete("/:id", authMiddleware, validateMongoId('id'), deleteMyProperty);
+
 export default router;

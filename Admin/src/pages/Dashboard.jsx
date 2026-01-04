@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import adminApi from "../api/adminApi";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom"; // Import useNavigate
 import {
@@ -75,9 +75,9 @@ const Dashboard = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  
+
   // Initialize useNavigate
-  const navigate = useNavigate(); 
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchDashboardStats();
@@ -86,10 +86,8 @@ const Dashboard = () => {
   const fetchDashboardStats = async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
-      const token = localStorage.getItem("adminToken");
-      const { data } = await axios.get(`${API_URL}/api/admin/dashboard/stats`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // Using adminApi with automatic cookie authentication
+      const { data } = await adminApi.get(`/api/admin/dashboard/stats`);
       if (data.success) {
         // Generate last 6 months labels
         const last6Months = [];
@@ -116,12 +114,12 @@ const Dashboard = () => {
         const currentUserValue = data.data.charts?.users?.length
           ? data.data.charts.users[data.data.charts.users.length - 1].value
           : 0;
-        
+
         // Merge mock history with current real-time data
         const enhancedProperties = last6Months.map((month, idx) => ({
           label: month,
           // Using a mock value for historical data and the real-time value for the current month (index 5)
-          value: idx < 5 ? mockPropHistory[idx] : currentPropValue 
+          value: idx < 5 ? mockPropHistory[idx] : currentPropValue
         }));
 
         const enhancedLeads = last6Months.map((month, idx) => ({
@@ -131,9 +129,9 @@ const Dashboard = () => {
         }));
 
         const enhancedUsers = last6Months.map((month, idx) => ({
-            label: month,
-            // Using a mock value for historical data and the real-time value for the current month (index 5)
-            value: idx < 5 ? mockUserHistory[idx] : currentUserValue
+          label: month,
+          // Using a mock value for historical data and the real-time value for the current month (index 5)
+          value: idx < 5 ? mockUserHistory[idx] : currentUserValue
         }));
 
 
@@ -159,12 +157,8 @@ const Dashboard = () => {
   const handleStatusChange = async (id, newStatus) => {
     try {
       const action = newStatus === 'approved' ? 'approve' : 'disapprove';
-      const token = localStorage.getItem("adminToken");
-      await axios.put(
-        `${API_URL}/api/properties/${action}/${id}`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      // Using adminApi with automatic cookie authentication
+      await adminApi.put(`/api/properties/${action}/${id}`, {});
       toast.success(`Property ${newStatus === 'approved' ? 'published' : 'unpublished'} successfully!`);
       fetchDashboardStats();
     } catch (err) {
@@ -521,7 +515,7 @@ const Dashboard = () => {
                   }}
                   cursor={{ fill: 'rgba(139, 92, 246, 0.1)' }}
                 />
-                
+
                 {/* Bar Component with gradient fill and rounded top corners */}
                 <Bar
                   dataKey="value"

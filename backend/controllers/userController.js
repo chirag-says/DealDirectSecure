@@ -1,18 +1,25 @@
+/**
+ * User Controller
+ * Enterprise-grade user authentication with HttpOnly cookies,
+ * secure password reset, and sanitized responses
+ */
 import User from "../models/userModel.js";
+import UserSession from "../models/UserSession.js";
+import PasswordResetToken from "../models/PasswordResetToken.js";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import nodemailer from "nodemailer";
+import { setSessionCookie, clearSessionCookie } from "../middleware/authUser.js";
 
-// Create transporter lazily to ensure env vars are loaded
+// ============================================
+// EMAIL CONFIGURATION
+// ============================================
+
 let transporter = null;
 
 const getTransporter = () => {
   if (!transporter) {
     console.log("📧 Initializing SMTP transporter...");
-    console.log("   SMTP_USER:", process.env.SMTP_USER ? "✓ Set" : "✗ Missing");
-    console.log("   SMTP_PASS:", process.env.SMTP_PASS ? "✓ Set" : "✗ Missing");
-    console.log("   SENDER_EMAIL:", process.env.SENDER_EMAIL ? "✓ Set" : "✗ Missing");
-    
     transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -21,7 +28,6 @@ const getTransporter = () => {
       },
     });
 
-    // Verify connection
     transporter.verify((error, success) => {
       if (error) {
         console.error("❌ SMTP Connection Error:", error.message);
@@ -33,22 +39,54 @@ const getTransporter = () => {
   return transporter;
 };
 
-// Generate 6-digit OTP
-const generateOTP = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+// Generate cryptographically secure 6-digit OTP
+const generateSecureOTP = () => {
+  return crypto.randomInt(100000, 999999).toString();
 };
 
-// Basic phone validation (Indian 10-digit mobile numbers starting 6-9)
+// Phone validation (Indian 10-digit mobile numbers)
 const isValidPhoneNumber = (phone) => {
   const cleaned = (phone || "").toString().trim();
-  if (!cleaned) return true; // treat missing as valid (optional field)
+  if (!cleaned) return true;
   return /^[6-9]\d{9}$/.test(cleaned);
 };
 
-// Send OTP Email helper function
+// Sanitize user for API response - NEVER expose sensitive fields
+const sanitizeUserResponse = (user) => {
+  const safeUser = user.toObject ? user.toObject() : { ...user };
+
+  // Whitelist approach - only include safe fields
+  return {
+    _id: safeUser._id,
+    id: safeUser._id,
+    name: safeUser.name,
+    email: safeUser.email,
+    phone: safeUser.phone,
+    alternatePhone: safeUser.alternatePhone,
+    address: safeUser.address,
+    profileImage: safeUser.profileImage,
+    dateOfBirth: safeUser.dateOfBirth,
+    gender: safeUser.gender,
+    bio: safeUser.bio,
+    role: safeUser.role,
+    isVerified: safeUser.isVerified,
+    preferences: safeUser.preferences,
+    createdAt: safeUser.createdAt,
+    updatedAt: safeUser.updatedAt,
+  };
+};
+
+// ============================================
+// EMAIL TEMPLATES
+// ============================================
+
 const sendOTPEmail = async (email, otp, name = "User") => {
   const mailOptions = {
-    from: `"DealDirect" <${process.env.SENDER_EMAIL || process.env.SMTP_EMAIL}>`,
+    from: `"DealDirect" <${process.env.SENDER_EMAIL || process.env.SMTP_USER}>`,
     to: email,
     subject: "🔐 DealDirect - Verify Your Email",
     html: `
@@ -57,221 +95,216 @@ const sendOTPEmail = async (email, otp, name = "User") => {
           <h1 style="color: white; margin: 0; font-size: 28px;">DealDirect</h1>
           <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0;">Your Trusted Real Estate Partner</p>
         </div>
-        
         <div style="background: #ffffff; padding: 40px 30px; border: 1px solid #e5e7eb; border-top: none;">
           <h2 style="color: #1f2937; margin: 0 0 20px;">Hello ${name}! 👋</h2>
           <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin: 0 0 25px;">
-            Thank you for registering with DealDirect. Please use the following OTP to verify your email address:
+            Thank you for registering with DealDirect. Please use the following OTP to verify your email:
           </p>
-          
           <div style="background: #f3f4f6; border-radius: 12px; padding: 25px; text-align: center; margin: 25px 0;">
             <p style="color: #6b7280; font-size: 14px; margin: 0 0 10px;">Your One-Time Password</p>
             <div style="font-size: 36px; font-weight: bold; color: #dc2626; letter-spacing: 8px; font-family: 'Courier New', monospace;">
               ${otp}
             </div>
           </div>
-          
           <p style="color: #6b7280; font-size: 14px; margin: 25px 0 0;">
             ⏰ This OTP is valid for <strong>10 minutes</strong>. Please do not share this code with anyone.
-          </p>
-          
-          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
-          
-          <p style="color: #9ca3af; font-size: 12px; margin: 0; text-align: center;">
-            If you didn't request this verification, please ignore this email.<br>
-            © ${new Date().getFullYear()} DealDirect. All rights reserved.
           </p>
         </div>
       </div>
     `,
-    text: `Hello ${name}!\n\nYour OTP for DealDirect registration is: ${otp}\n\nThis OTP is valid for 10 minutes.\n\nIf you didn't request this, please ignore this email.`,
+    text: `Hello ${name}!\n\nYour OTP for DealDirect registration is: ${otp}\n\nThis OTP is valid for 10 minutes.`,
   };
 
   return getTransporter().sendMail(mailOptions);
 };
 
-// ✅ Register User (Step 1: Send OTP) - For owners who need verification
+const sendPasswordResetEmail = async (email, resetToken, name = "User") => {
+  // Create a reset link with the token
+  const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${resetToken}`;
+
+  const mailOptions = {
+    from: `"DealDirect" <${process.env.SENDER_EMAIL || process.env.SMTP_USER}>`,
+    to: email,
+    subject: "🔑 DealDirect - Reset Your Password",
+    html: `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 28px;">DealDirect</h1>
+          <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0;">Password Reset Request</p>
+        </div>
+        <div style="background: #ffffff; padding: 40px 30px; border: 1px solid #e5e7eb; border-top: none;">
+          <h2 style="color: #1f2937; margin: 0 0 20px;">Hello ${name}! 🔐</h2>
+          <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin: 0 0 25px;">
+            We received a request to reset your password. Click the button below to create a new password:
+          </p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetUrl}" style="background: #dc2626; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">
+              Reset Password
+            </a>
+          </div>
+          <p style="color: #6b7280; font-size: 14px; text-align: center;">
+            Or copy this link: <br/>
+            <code style="background: #f3f4f6; padding: 4px 8px; border-radius: 4px; word-break: break-all;">${resetUrl}</code>
+          </p>
+          <div style="background: #fef3c7; border-radius: 8px; padding: 15px; margin: 25px 0;">
+            <p style="color: #92400e; font-size: 14px; margin: 0;">
+              <strong>⚠️ Security Notice:</strong><br/>
+              • This link is valid for 15 minutes<br/>
+              • If you didn't request this, ignore this email<br/>
+              • Never share this link with anyone
+            </p>
+          </div>
+        </div>
+      </div>
+    `,
+    text: `Hello ${name}!\n\nClick this link to reset your password: ${resetUrl}\n\nThis link is valid for 15 minutes.`,
+  };
+
+  return getTransporter().sendMail(mailOptions);
+};
+
+// ============================================
+// AUTHENTICATION CONTROLLERS
+// ============================================
+
+/**
+ * Register User (with OTP verification for owners)
+ */
 export const registerUser = async (req, res) => {
   try {
     const { name, email, password, role, phone } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: "Name, email, and password are required" });
+    }
 
     if (!isValidPhoneNumber(phone)) {
       return res.status(400).json({ message: "Please enter a valid 10-digit phone number" });
     }
 
-    let user = await User.findOne({ email });
-
-    if (user && user.isVerified) {
-      return res.status(400).json({ message: "User already exists" });
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
     }
 
-    const otp = generateOTP();
-    console.log("Generated OTP for " + email + ":", otp); // For debugging/dev
+    const normalizedEmail = email.toLowerCase().trim();
+    let user = await User.findOne({ email: normalizedEmail });
+
+    if (user && user.isVerified) {
+      return res.status(400).json({ message: "User already exists. Please login." });
+    }
+
+    const otp = generateSecureOTP();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-    const hashedPassword = await bcrypt.hash(password, 10);
-    // Set role - owner if specified, otherwise user
-    const normalizedRole = role === "owner" ? "owner" : role === "agent" ? "agent" : "user";
+    const hashedPassword = await bcrypt.hash(password, 12); // Increased salt rounds
+    const normalizedRole = role === "owner" ? "owner" : "user";
 
     if (!user) {
-      // Create new unverified user
       user = await User.create({
-        name,
-        email,
+        name: name.trim(),
+        email: normalizedEmail,
         password: hashedPassword,
         role: normalizedRole,
-        phone,
+        phone: phone?.trim(),
         otp,
         otpExpires,
         isVerified: false,
       });
     } else {
-      // Update existing unverified user
-      user.name = name;
+      user.name = name.trim();
       user.password = hashedPassword;
       user.role = normalizedRole;
-       if (phone) {
-         user.phone = phone;
-       }
+      if (phone) user.phone = phone.trim();
       user.otp = otp;
       user.otpExpires = otpExpires;
       await user.save();
     }
 
-    // Send OTP Email
     try {
-      await sendOTPEmail(email, otp, name);
-      console.log("✅ OTP Email sent successfully to:", email);
+      await sendOTPEmail(normalizedEmail, otp, name);
     } catch (emailError) {
       console.error("❌ Error sending OTP email:", emailError.message);
-      // Still allow registration but warn about email
       return res.status(200).json({
-        message: "Registration initiated. OTP: Check console (email service issue).",
-        email: email,
-        devOtp: process.env.NODE_ENV === "development" ? otp : undefined,
+        message: "Registration initiated. Check console for OTP (email service issue).",
+        email: normalizedEmail,
       });
     }
 
     res.status(200).json({
       message: "OTP sent to your email. Please verify to complete registration.",
-      email: email,
+      email: normalizedEmail,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("Register error:", err);
+    res.status(500).json({ message: "Registration failed. Please try again." });
   }
 };
 
-// ✅ Register User Directly (For Buyers - No OTP Required)
+/**
+ * Register User Directly (for buyers - no OTP)
+ */
 export const registerUserDirect = async (req, res) => {
   try {
-    const { name, email, password, role, phone } = req.body;
+    const { name, email, password, phone } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: "Name, email, and password are required" });
+    }
 
     if (!isValidPhoneNumber(phone)) {
       return res.status(400).json({ message: "Please enter a valid 10-digit phone number" });
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const existingUser = await User.findOne({ email: normalizedEmail });
+
     if (existingUser) {
       if (existingUser.isVerified) {
         return res.status(400).json({ message: "User already exists. Please login." });
-      } else {
-        // If unverified user exists, they might be trying to re-register
-        // Delete the old unverified account
-        await User.deleteOne({ _id: existingUser._id });
       }
+      await User.deleteOne({ _id: existingUser._id });
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Create verified user directly (buyers don't need OTP)
     const user = await User.create({
-      name,
-      email,
+      name: name.trim(),
+      email: normalizedEmail,
       password: hashedPassword,
-      role: "user", // Buyers are always "user" role
-      phone,
-      isVerified: true, // Auto-verify buyers
+      role: "user",
+      phone: phone?.trim(),
+      isVerified: true,
     });
 
-    // Generate Token
-    const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    console.log("✅ Buyer registered directly (no OTP):", email);
+    // Create session
+    const { session, sessionToken } = await UserSession.createSession(user, req);
+    setSessionCookie(res, sessionToken);
 
     res.status(201).json({
       message: "Registration successful! Welcome to DealDirect.",
-      token,
-      user: {
-        _id: user._id,
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        profileImage: user.profileImage,
-        role: user.role,
-        createdAt: user.createdAt,
-      },
+      user: sanitizeUserResponse(user),
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("Register direct error:", err);
+    res.status(500).json({ message: "Registration failed. Please try again." });
   }
 };
 
-// ✅ Resend OTP
-export const resendOtp = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
-    }
-
-    const user = await User.findOne({ email });
-
-    if (!user) {
-      return res.status(400).json({ message: "User not found. Please register first." });
-    }
-
-    if (user.isVerified) {
-      return res.status(400).json({ message: "Email already verified. Please login." });
-    }
-
-    // Generate new OTP
-    const otp = generateOTP();
-    console.log("Resent OTP for " + email + ":", otp);
-    user.otp = otp;
-    user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
-    await user.save();
-
-    // Send OTP Email
-    try {
-      await sendOTPEmail(email, otp, user.name);
-      console.log("✅ OTP resent successfully to:", email);
-    } catch (emailError) {
-      console.error("❌ Error resending OTP email:", emailError.message);
-      return res.status(500).json({ message: "Failed to send OTP. Please try again." });
-    }
-
-    res.status(200).json({
-      message: "New OTP sent to your email.",
-      email: email,
-    });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-// ✅ Verify OTP (Step 2: Complete Registration)
+/**
+ * Verify OTP
+ */
 export const verifyOtp = async (req, res) => {
   try {
     const { email, otp } = req.body;
 
-    const user = await User.findOne({ email });
+    if (!email || !otp) {
+      return res.status(400).json({ message: "Email and OTP are required" });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() }).select("+otp +otpExpires");
 
     if (!user) {
       return res.status(400).json({ message: "User not found" });
@@ -281,7 +314,7 @@ export const verifyOtp = async (req, res) => {
       return res.status(400).json({ message: "User already verified. Please login." });
     }
 
-    if (user.otp !== otp || user.otpExpires < Date.now()) {
+    if (!user.otp || user.otp !== otp || user.otpExpires < Date.now()) {
       return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
@@ -291,243 +324,358 @@ export const verifyOtp = async (req, res) => {
     user.otpExpires = undefined;
     await user.save();
 
-    // Generate Token
-    const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    // Create session
+    const { session, sessionToken } = await UserSession.createSession(user, req);
+    setSessionCookie(res, sessionToken);
 
     res.status(201).json({
       message: "Email verified and registration successful",
-      token,
-      user: {
-        _id: user._id,
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        profileImage: user.profileImage,
-        role: user.role,
-        createdAt: user.createdAt,
-      },
+      user: sanitizeUserResponse(user),
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("Verify OTP error:", err);
+    res.status(500).json({ message: "Verification failed. Please try again." });
   }
 };
 
-// ✅ Login User
+/**
+ * Resend OTP
+ */
+export const resendOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+    if (!user) {
+      return res.status(400).json({ message: "User not found. Please register first." });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ message: "Email already verified. Please login." });
+    }
+
+    const otp = generateSecureOTP();
+    user.otp = otp;
+    user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    try {
+      await sendOTPEmail(email, otp, user.name);
+    } catch (emailError) {
+      console.error("❌ Error resending OTP:", emailError.message);
+      return res.status(500).json({ message: "Failed to send OTP. Please try again." });
+    }
+
+    res.status(200).json({
+      message: "New OTP sent to your email.",
+      email: email,
+    });
+  } catch (err) {
+    console.error("Resend OTP error:", err);
+    res.status(500).json({ message: "Failed to resend OTP. Please try again." });
+  }
+};
+
+/**
+ * Login User - Database only (NO EnvAgent/EnvOwner)
+ */
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
-    const normalizedInputEmail = (email || "").trim().toLowerCase();
 
-    const envAgentEmail = process.env.AGENT_EMAIL;
-    const envAgentPassword = process.env.AGENT_PASSWORD;
-    const envAgentName = process.env.AGENT_NAME || "DealDirect Agent";
-    const normalizedEnvEmail = (envAgentEmail || "").trim().toLowerCase();
-
-    // Check for Agent (Admin)
-    if (normalizedEnvEmail && normalizedInputEmail === normalizedEnvEmail) {
-      if (!envAgentPassword) {
-        return res.status(500).json({ message: "Agent password not configured" });
-      }
-      if (password !== envAgentPassword) {
-        return res.status(400).json({ message: "Invalid password" });
-      }
-
-      const token = jwt.sign(
-        {
-          id: "env-agent",
-          email: envAgentEmail,
-          role: "agent",
-          isEnvAgent: true,
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: "7d" }
-      );
-
-      return res.status(200).json({
-        message: "Login successful",
-        token,
-        user: {
-          id: "env-agent",
-          name: envAgentName,
-          email: envAgentEmail,
-          role: "agent",
-          createdAt: new Date().toISOString(),
-          isEnvAgent: true,
-        },
-      });
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
     }
 
-    // Check for Owner (from .env)
-    const envOwnerEmail = process.env.OWNER_EMAIL || process.env.DEMO_OWNER_EMAIL;
-    const envOwnerPassword = process.env.OWNER_PASSWORD || process.env.DEMO_OWNER_PASSWORD;
-    const envOwnerName = process.env.OWNER_NAME || process.env.DEMO_OWNER_NAME || "Property Owner";
-    const normalizedEnvOwnerEmail = (envOwnerEmail || "").trim().toLowerCase();
+    const normalizedEmail = email.toLowerCase().trim();
 
-    if (normalizedEnvOwnerEmail && normalizedInputEmail === normalizedEnvOwnerEmail) {
-      if (!envOwnerPassword) {
-        return res.status(500).json({ message: "Owner password not configured" });
-      }
-      if (password !== envOwnerPassword) {
-        return res.status(400).json({ message: "Invalid password" });
-      }
+    // Find user with password and security fields
+    const user = await User.findOne({ email: normalizedEmail })
+      .select("+password +security.failedLoginAttempts +security.lockoutUntil");
 
-      const token = jwt.sign(
-        {
-          id: "env-owner",
-          email: envOwnerEmail,
-          role: "owner", // Distinct role for owner
-          isEnvOwner: true,
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: "7d" }
-      );
-
-      return res.status(200).json({
-        message: "Login successful",
-        token,
-        user: {
-          id: "env-owner",
-          name: envOwnerName,
-          email: envOwnerEmail,
-          role: "owner",
-          createdAt: new Date().toISOString(),
-          isEnvOwner: true,
-        },
-      });
-    }
-
-    const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // Check if user is blocked
+    // Check lockout
+    if (user.isLocked()) {
+      const remainingMs = user.security.lockoutUntil - Date.now();
+      const remainingMinutes = Math.ceil(remainingMs / 60000);
+      return res.status(423).json({
+        message: `Account temporarily locked. Try again in ${remainingMinutes} minutes.`,
+        code: "ACCOUNT_LOCKED",
+        lockoutUntil: user.security.lockoutUntil,
+      });
+    }
+
+    // Check if blocked
     if (user.isBlocked) {
       return res.status(403).json({
-        message: "Your account has been blocked",
-        isBlocked: true,
-        blockReason: user.blockReason || "No reason provided",
-        blockedAt: user.blockedAt
+        message: "Your account has been blocked. Contact support.",
+        code: "ACCOUNT_BLOCKED",
       });
     }
 
+    // Check verification
     if (!user.isVerified) {
-      return res.status(400).json({ message: "Email not verified. Please register again to verify." });
+      return res.status(400).json({
+        message: "Email not verified. Please complete registration.",
+        code: "EMAIL_NOT_VERIFIED",
+      });
     }
 
+    // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid)
-      return res.status(400).json({ message: "Invalid password" });
 
-    const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role || "user" },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    if (!isPasswordValid) {
+      await user.incrementFailedLogins();
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    // Reset failed attempts and update last login
+    await user.resetFailedLogins();
+    await user.updateLastLogin(req.ip);
+
+    // Create session
+    const { session, sessionToken } = await UserSession.createSession(user, req);
+    setSessionCookie(res, sessionToken);
 
     res.status(200).json({
       message: "Login successful",
-      token,
-      user: {
-        _id: user._id,
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        profileImage: user.profileImage,
-        role: user.role || "user",
-        createdAt: user.createdAt,
-      },
+      user: sanitizeUserResponse(user),
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("Login error:", err);
+    res.status(500).json({ message: "Login failed. Please try again." });
   }
 };
 
-// ✅ Get All Users (Admin Only)
-// export const getAllUsers = async (req, res) => {
-//   try {
-//     const users = await User.find()
-//       .select("-password")
-//       .sort({ createdAt: -1 });
-
-//     res.status(200).json({
-//       message: "All users fetched successfully",
-//       count: users.length,
-//       users: users.map((u) => ({
-//         id: u._id,
-//         name: u.name,
-//         email: u.email,
-//         role: u.role || "user",
-//         createdAt: u.createdAt,
-//       })),
-//     });
-//   } catch (err) {
-//     res
-//       .status(500)
-//       .json({ message: "Failed to fetch users", error: err.message });
-//   }
-// };
-
-// ✅ Get User Profile
-export const getProfile = async (req, res) => {
+/**
+ * Logout User
+ */
+export const logoutUser = async (req, res) => {
   try {
-    // Handle env-based users (agent/owner)
-    if (req.user?.isEnvAgent || req.user?.isEnvOwner) {
+    // Revoke current session if exists
+    if (req.userSession) {
+      await UserSession.revokeSession(req.userSession._id, "user_logout");
+    }
+
+    clearSessionCookie(res);
+
+    res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (err) {
+    console.error("Logout error:", err);
+    // Still clear cookie even on error
+    clearSessionCookie(res);
+    res.status(200).json({
+      success: true,
+      message: "Logged out",
+    });
+  }
+};
+
+/**
+ * Logout from all devices
+ */
+export const logoutAllDevices = async (req, res) => {
+  try {
+    await UserSession.revokeAllUserSessions(req.user._id, "logout_all_devices");
+    clearSessionCookie(res);
+
+    res.status(200).json({
+      success: true,
+      message: "Logged out from all devices",
+    });
+  } catch (err) {
+    console.error("Logout all error:", err);
+    res.status(500).json({ message: "Failed to logout from all devices" });
+  }
+};
+
+// ============================================
+// PASSWORD RESET (SECURE TOKEN-BASED)
+// ============================================
+
+/**
+ * Forgot Password - Send secure reset token
+ */
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
+
+    // Always return success to prevent email enumeration
+    if (!user || !user.isVerified) {
       return res.status(200).json({
-        message: "Profile fetched successfully",
-        user: {
-          id: req.user._id,
-          name: req.user.name,
-          email: req.user.email,
-          role: req.user.role,
-          isEnvUser: true,
-        },
+        message: "If an account exists with this email, you will receive a password reset link.",
       });
     }
 
-    const user = await User.findById(req.user._id).select("-password -otp -otpExpires");
+    // Check rate limiting
+    const canRequest = await PasswordResetToken.checkRateLimit(user._id);
+    if (!canRequest) {
+      return res.status(429).json({
+        message: "Too many password reset requests. Please try again later.",
+        code: "RATE_LIMITED",
+      });
+    }
+
+    // Generate secure reset token
+    const resetToken = await PasswordResetToken.createResetToken(
+      user._id,
+      req.ip || "unknown"
+    );
+
+    try {
+      await sendPasswordResetEmail(normalizedEmail, resetToken, user.name);
+    } catch (emailError) {
+      console.error("❌ Error sending password reset email:", emailError.message);
+      return res.status(500).json({
+        message: "Failed to send reset email. Please try again later.",
+      });
+    }
+
+    res.status(200).json({
+      message: "If an account exists with this email, you will receive a password reset link.",
+    });
+  } catch (err) {
+    console.error("Forgot password error:", err);
+    res.status(500).json({ message: "Server error. Please try again." });
+  }
+};
+
+/**
+ * Validate Reset Token (check if token is valid before showing reset form)
+ */
+export const validateResetToken = async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    if (!token) {
+      return res.status(400).json({
+        valid: false,
+        message: "Reset token is required"
+      });
+    }
+
+    const resetToken = await PasswordResetToken.validateToken(token, req.ip);
+
+    if (!resetToken) {
+      return res.status(400).json({
+        valid: false,
+        message: "Invalid or expired reset link. Please request a new one.",
+      });
+    }
+
+    res.status(200).json({
+      valid: true,
+      message: "Token is valid",
+      email: resetToken.user.email, // Show masked email
+    });
+  } catch (err) {
+    console.error("Validate reset token error:", err);
+    res.status(500).json({ valid: false, message: "Validation failed" });
+  }
+};
+
+/**
+ * Reset Password - Use secure token
+ */
+export const resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({
+        message: "Reset token and new password are required",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        message: "Password must be at least 6 characters long",
+      });
+    }
+
+    // Validate token
+    const resetToken = await PasswordResetToken.validateToken(token, req.ip);
+
+    if (!resetToken) {
+      return res.status(400).json({
+        message: "Invalid or expired reset link. Please request a new one.",
+      });
+    }
+
+    const user = resetToken.user;
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update password and security fields
+    user.password = hashedPassword;
+    user.security = user.security || {};
+    user.security.passwordChangedAt = new Date();
+    await user.save();
+
+    // Mark token as used
+    await PasswordResetToken.useToken(PasswordResetToken.hashToken(token), req.ip);
+
+    // Invalidate all existing sessions (security measure)
+    await UserSession.revokeAllUserSessions(user._id, "password_reset");
+
+    res.status(200).json({
+      message: "Password reset successful! Please login with your new password.",
+    });
+  } catch (err) {
+    console.error("Reset password error:", err);
+    res.status(500).json({ message: "Server error. Please try again." });
+  }
+};
+
+// ============================================
+// PROFILE CONTROLLERS
+// ============================================
+
+/**
+ * Get User Profile
+ */
+export const getProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
     res.status(200).json({
       message: "Profile fetched successfully",
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        phone: user.phone,
-        alternatePhone: user.alternatePhone,
-        address: user.address,
-        profileImage: user.profileImage,
-        dateOfBirth: user.dateOfBirth,
-        gender: user.gender,
-        bio: user.bio,
-        preferences: user.preferences,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      },
+      user: sanitizeUserResponse(user),
     });
   } catch (err) {
-    res.status(500).json({ message: "Failed to fetch profile", error: err.message });
+    console.error("Get profile error:", err);
+    res.status(500).json({ message: "Failed to fetch profile" });
   }
 };
 
-// ✅ Update User Profile
+/**
+ * Update User Profile
+ */
 export const updateProfile = async (req, res) => {
   try {
-    // Prevent env-based users from updating profile
-    if (req.user?.isEnvAgent || req.user?.isEnvOwner) {
-      return res.status(403).json({ message: "Cannot update profile for system users" });
-    }
-
     const userId = req.user._id;
     const {
       name,
@@ -540,38 +688,30 @@ export const updateProfile = async (req, res) => {
       preferences,
     } = req.body;
 
-    // Build update object
     const updateData = {};
-    if (name) updateData.name = name;
+    if (name) updateData.name = name.trim();
     if (phone !== undefined) updateData.phone = phone;
     if (alternatePhone !== undefined) updateData.alternatePhone = alternatePhone;
-    
-    // Parse address if it's a JSON string (from FormData)
     if (address) {
-      updateData.address = typeof address === 'string' ? JSON.parse(address) : address;
+      updateData.address = typeof address === "string" ? JSON.parse(address) : address;
     }
-    
     if (dateOfBirth) updateData.dateOfBirth = dateOfBirth;
     if (gender !== undefined) updateData.gender = gender;
-    if (bio !== undefined) updateData.bio = bio;
-    
-    // Parse preferences if it's a JSON string (from FormData)
+    if (bio !== undefined) updateData.bio = bio?.substring(0, 500); // Limit bio length
     if (preferences) {
-      updateData.preferences = typeof preferences === 'string' ? JSON.parse(preferences) : preferences;
+      updateData.preferences = typeof preferences === "string" ? JSON.parse(preferences) : preferences;
     }
 
-    // Handle profile image if uploaded via Cloudinary
+    // Handle profile image upload
     if (req.file) {
-      // Cloudinary returns path or secure_url depending on storage config
       updateData.profileImage = req.file.path || req.file.secure_url || req.file.url;
-      console.log("📸 Profile image uploaded:", updateData.profileImage);
     }
 
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { $set: updateData },
       { new: true, runValidators: true }
-    ).select("-password -otp -otpExpires");
+    );
 
     if (!updatedUser) {
       return res.status(404).json({ message: "User not found" });
@@ -579,35 +719,19 @@ export const updateProfile = async (req, res) => {
 
     res.status(200).json({
       message: "Profile updated successfully",
-      user: {
-        id: updatedUser._id,
-        name: updatedUser.name,
-        email: updatedUser.email,
-        role: updatedUser.role,
-        phone: updatedUser.phone,
-        alternatePhone: updatedUser.alternatePhone,
-        address: updatedUser.address,
-        profileImage: updatedUser.profileImage,
-        dateOfBirth: updatedUser.dateOfBirth,
-        gender: updatedUser.gender,
-        bio: updatedUser.bio,
-        preferences: updatedUser.preferences,
-        createdAt: updatedUser.createdAt,
-        updatedAt: updatedUser.updatedAt,
-      },
+      user: sanitizeUserResponse(updatedUser),
     });
   } catch (err) {
-    res.status(500).json({ message: "Failed to update profile", error: err.message });
+    console.error("Update profile error:", err);
+    res.status(500).json({ message: "Failed to update profile" });
   }
 };
 
-// ✅ Change Password
+/**
+ * Change Password (authenticated)
+ */
 export const changePassword = async (req, res) => {
   try {
-    if (req.user?.isEnvAgent || req.user?.isEnvOwner) {
-      return res.status(403).json({ message: "Cannot change password for system users" });
-    }
-
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
@@ -618,7 +742,8 @@ export const changePassword = async (req, res) => {
       return res.status(400).json({ message: "New password must be at least 6 characters" });
     }
 
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id).select("+password");
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -628,46 +753,111 @@ export const changePassword = async (req, res) => {
       return res.status(400).json({ message: "Current password is incorrect" });
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
     user.password = hashedPassword;
+    user.security = user.security || {};
+    user.security.passwordChangedAt = new Date();
     await user.save();
+
+    // Revoke other sessions (keep current)
+    if (req.userSession) {
+      await UserSession.revokeOtherSessions(user._id, req.userSession._id, "password_changed");
+    }
 
     res.status(200).json({ message: "Password changed successfully" });
   } catch (err) {
-    res.status(500).json({ message: "Failed to change password", error: err.message });
+    console.error("Change password error:", err);
+    res.status(500).json({ message: "Failed to change password" });
   }
 };
 
-// ✅ Send Upgrade OTP (For buyers who want to become owners)
-export const sendUpgradeOtp = async (req, res) => {
-  try {
-    const { email } = req.body;
+// ============================================
+// SESSION MANAGEMENT
+// ============================================
 
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
+/**
+ * Get Active Sessions
+ */
+export const getActiveSessions = async (req, res) => {
+  try {
+    const sessions = await UserSession.getActiveSessions(req.user._id);
+
+    // Mark current session
+    const currentSessionId = req.userSession?._id?.toString();
+
+    res.status(200).json({
+      success: true,
+      sessions: sessions.map((s) => ({
+        id: s._id,
+        device: s.deviceInfo,
+        ipAddress: s.ipAddress,
+        createdAt: s.createdAt,
+        lastActivity: s.lastActivity,
+        isCurrent: s._id.toString() === currentSessionId,
+      })),
+    });
+  } catch (err) {
+    console.error("Get sessions error:", err);
+    res.status(500).json({ message: "Failed to fetch sessions" });
+  }
+};
+
+/**
+ * Revoke Specific Session
+ */
+export const revokeSession = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Verify session belongs to user
+    const session = await UserSession.findOne({
+      _id: sessionId,
+      user: req.user._id,
+      isActive: true,
+    });
+
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
     }
 
-    const user = await User.findOne({ email });
+    await UserSession.revokeSession(sessionId, "user_revoked");
+
+    res.status(200).json({
+      success: true,
+      message: "Session revoked successfully",
+    });
+  } catch (err) {
+    console.error("Revoke session error:", err);
+    res.status(500).json({ message: "Failed to revoke session" });
+  }
+};
+
+// ============================================
+// UPGRADE TO OWNER
+// ============================================
+
+/**
+ * Send Upgrade OTP
+ */
+export const sendUpgradeOtp = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Check if user is already an owner
     if (user.role === "owner") {
       return res.status(400).json({ message: "You are already registered as a property owner" });
     }
 
-    // Generate OTP
-    const otp = generateOTP();
-    console.log("Upgrade OTP for " + email + ":", otp);
+    const otp = generateSecureOTP();
     user.otp = otp;
-    user.otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
-    // Send OTP Email
     try {
-      await sendUpgradeOTPEmail(email, otp, user.name);
-      console.log("✅ Upgrade OTP sent to:", email);
+      await sendOTPEmail(user.email, otp, user.name);
     } catch (emailError) {
       console.error("❌ Error sending upgrade OTP:", emailError.message);
       return res.status(500).json({ message: "Failed to send OTP. Please try again." });
@@ -675,19 +865,23 @@ export const sendUpgradeOtp = async (req, res) => {
 
     res.status(200).json({
       message: "Verification OTP sent to your email",
-      email: email,
+      email: user.email,
     });
   } catch (err) {
+    console.error("Send upgrade OTP error:", err);
     res.status(500).json({ message: err.message });
   }
 };
 
-// ✅ Verify Upgrade OTP (Upgrade buyer to owner)
+/**
+ * Verify Upgrade OTP
+ */
 export const verifyUpgradeOtp = async (req, res) => {
   try {
-    const { email, otp } = req.body;
+    const { otp } = req.body;
 
-    const user = await User.findOne({ email });
+    const user = await User.findById(req.user._id).select("+otp +otpExpires");
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -696,7 +890,7 @@ export const verifyUpgradeOtp = async (req, res) => {
       return res.status(400).json({ message: "You are already a property owner" });
     }
 
-    if (user.otp !== otp || user.otpExpires < Date.now()) {
+    if (!user.otp || user.otp !== otp || user.otpExpires < Date.now()) {
       return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
@@ -706,573 +900,98 @@ export const verifyUpgradeOtp = async (req, res) => {
     user.otpExpires = undefined;
     await user.save();
 
-    // Generate new token with updated role
-    const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    console.log("✅ User upgraded to owner:", email);
-
     res.status(200).json({
-      message: "Email verified! You can now list properties.",
-      token,
-      user: {
-        _id: user._id,
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        profileImage: user.profileImage,
-        role: user.role,
-        createdAt: user.createdAt,
-      },
+      message: "Congratulations! You can now list properties.",
+      user: sanitizeUserResponse(user),
     });
   } catch (err) {
+    console.error("Verify upgrade OTP error:", err);
     res.status(500).json({ message: err.message });
   }
 };
 
-// Send Upgrade OTP Email helper function
-const sendUpgradeOTPEmail = async (email, otp, name = "User") => {
-  const mailOptions = {
-    from: `"DealDirect" <${process.env.SENDER_EMAIL || process.env.SMTP_EMAIL}>`,
-    to: email,
-    subject: "🏠 DealDirect - Verify to List Your Property",
-    html: `
-      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
-          <h1 style="color: white; margin: 0; font-size: 28px;">DealDirect</h1>
-          <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0;">Property Owner Verification</p>
-        </div>
-        
-        <div style="background: #ffffff; padding: 40px 30px; border: 1px solid #e5e7eb; border-top: none;">
-          <h2 style="color: #1f2937; margin: 0 0 20px;">Hello ${name}! 🏠</h2>
-          <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin: 0 0 25px;">
-            You're one step away from listing your property on DealDirect! Please verify your email to become a property owner.
-          </p>
-          
-          <div style="background: #eff6ff; border-radius: 12px; padding: 25px; text-align: center; margin: 25px 0; border: 1px solid #bfdbfe;">
-            <p style="color: #1e40af; font-size: 14px; margin: 0 0 10px; font-weight: 600;">Your Verification Code</p>
-            <div style="font-size: 36px; font-weight: bold; color: #2563eb; letter-spacing: 8px; font-family: 'Courier New', monospace;">
-              ${otp}
-            </div>
-          </div>
-          
-          <div style="background: #fef3c7; border-radius: 8px; padding: 15px; margin: 25px 0;">
-            <p style="color: #92400e; font-size: 14px; margin: 0;">
-              <strong>🎉 Benefits of becoming an owner:</strong><br>
-              • List unlimited properties for free<br>
-              • Connect directly with genuine buyers<br>
-              • Access owner dashboard & analytics
-            </p>
-          </div>
-          
-          <p style="color: #6b7280; font-size: 14px; margin: 25px 0 0;">
-            ⏰ This OTP is valid for <strong>10 minutes</strong>. Please do not share this code with anyone.
-          </p>
-          
-          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
-          
-          <p style="color: #9ca3af; font-size: 12px; margin: 0; text-align: center;">
-            If you didn't request this verification, please ignore this email.<br>
-            © ${new Date().getFullYear()} DealDirect. All rights reserved.
-          </p>
-        </div>
-      </div>
-    `,
-    text: `Hello ${name}!\n\nYour verification code to become a property owner on DealDirect is: ${otp}\n\nThis OTP is valid for 10 minutes.\n\nIf you didn't request this, please ignore this email.`,
-  };
+// ============================================
+// ADMIN FUNCTIONS
+// ============================================
 
-  return getTransporter().sendMail(mailOptions);
-};
-
-// Send Password Reset OTP Email helper function
-const sendPasswordResetOTPEmail = async (email, otp, name = "User") => {
-  const mailOptions = {
-    from: `"DealDirect" <${process.env.SENDER_EMAIL || process.env.SMTP_EMAIL}>`,
-    to: email,
-    subject: "🔑 DealDirect - Reset Your Password",
-    html: `
-      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
-          <h1 style="color: white; margin: 0; font-size: 28px;">DealDirect</h1>
-          <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0;">Password Reset Request</p>
-        </div>
-        
-        <div style="background: #ffffff; padding: 40px 30px; border: 1px solid #e5e7eb; border-top: none;">
-          <h2 style="color: #1f2937; margin: 0 0 20px;">Hello ${name}! 🔐</h2>
-          <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin: 0 0 25px;">
-            We received a request to reset your password. Use the following OTP to reset your password:
-          </p>
-          
-          <div style="background: #fef2f2; border-radius: 12px; padding: 25px; text-align: center; margin: 25px 0; border: 1px solid #fecaca;">
-            <p style="color: #991b1b; font-size: 14px; margin: 0 0 10px; font-weight: 600;">Your Reset Code</p>
-            <div style="font-size: 36px; font-weight: bold; color: #dc2626; letter-spacing: 8px; font-family: 'Courier New', monospace;">
-              ${otp}
-            </div>
-          </div>
-          
-          <div style="background: #fef3c7; border-radius: 8px; padding: 15px; margin: 25px 0;">
-            <p style="color: #92400e; font-size: 14px; margin: 0;">
-              <strong>⚠️ Security Notice:</strong><br>
-              • Never share this code with anyone<br>
-              • DealDirect staff will never ask for this code<br>
-              • If you didn't request this, your account is still secure
-            </p>
-          </div>
-          
-          <p style="color: #6b7280; font-size: 14px; margin: 25px 0 0;">
-            ⏰ This OTP is valid for <strong>10 minutes</strong>.
-          </p>
-          
-          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
-          
-          <p style="color: #9ca3af; font-size: 12px; margin: 0; text-align: center;">
-            If you didn't request a password reset, please ignore this email.<br>
-            © ${new Date().getFullYear()} DealDirect. All rights reserved.
-          </p>
-        </div>
-      </div>
-    `,
-    text: `Hello ${name}!\n\nYour password reset OTP for DealDirect is: ${otp}\n\nThis OTP is valid for 10 minutes.\n\nIf you didn't request this, please ignore this email.`,
-  };
-
-  return getTransporter().sendMail(mailOptions);
-};
-
-// ✅ Forgot Password - Send OTP
-export const forgotPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
-    }
-
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-
-    if (!user) {
-      // For security, don't reveal if email exists or not
-      return res.status(200).json({
-        message: "If an account exists with this email, you will receive a password reset OTP.",
-      });
-    }
-
-    if (!user.isVerified) {
-      return res.status(400).json({
-        message: "This account is not verified. Please complete registration first.",
-      });
-    }
-
-    // Generate OTP
-    const otp = generateOTP();
-    console.log("Password Reset OTP for " + email + ":", otp);
-    
-    user.resetPasswordOtp = otp;
-    user.resetPasswordOtpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-    await user.save();
-
-    // Send OTP Email
-    try {
-      await sendPasswordResetOTPEmail(email, otp, user.name);
-      console.log("✅ Password reset OTP sent successfully to:", email);
-    } catch (emailError) {
-      console.error("❌ Error sending password reset OTP:", emailError.message);
-      return res.status(500).json({
-        message: "Failed to send reset email. Please try again later.",
-      });
-    }
-
-    res.status(200).json({
-      message: "Password reset OTP sent to your email.",
-      email: email,
-    });
-  } catch (err) {
-    console.error("Forgot password error:", err);
-    res.status(500).json({ message: "Server error. Please try again." });
-  }
-};
-
-// ✅ Reset Password - Verify OTP and Update Password
-export const resetPassword = async (req, res) => {
-  try {
-    const { email, otp, newPassword } = req.body;
-
-    if (!email || !otp || !newPassword) {
-      return res.status(400).json({
-        message: "Email, OTP, and new password are required",
-      });
-    }
-
-    if (newPassword.length < 6) {
-      return res.status(400).json({
-        message: "Password must be at least 6 characters long",
-      });
-    }
-
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-
-    if (!user) {
-      return res.status(400).json({ message: "Invalid email or OTP" });
-    }
-
-    if (!user.resetPasswordOtp || !user.resetPasswordOtpExpires) {
-      return res.status(400).json({
-        message: "No password reset request found. Please request a new OTP.",
-      });
-    }
-
-    if (user.resetPasswordOtp !== otp) {
-      return res.status(400).json({ message: "Invalid OTP" });
-    }
-
-    if (user.resetPasswordOtpExpires < Date.now()) {
-      return res.status(400).json({
-        message: "OTP has expired. Please request a new one.",
-      });
-    }
-
-    // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // Update password and clear reset fields
-    user.password = hashedPassword;
-    user.resetPasswordOtp = undefined;
-    user.resetPasswordOtpExpires = undefined;
-    await user.save();
-
-    console.log("✅ Password reset successful for:", email);
-
-    res.status(200).json({
-      message: "Password reset successful! You can now login with your new password.",
-    });
-  } catch (err) {
-    console.error("Reset password error:", err);
-    res.status(500).json({ message: "Server error. Please try again." });
-  }
-};
-
-
+/**
+ * Get All Users (Admin only)
+ */
 export const getAllUsers = async (req, res) => {
-  try {
-    // Get role filter from query parameters (e.g., /list?role=Buyer)
-    const { role } = req.query;
+  try {
+    const { role } = req.query;
 
-    // Build query filter
-    const filter = {};
-    // Assuming 'Buyer' refers to the 'user' role in the schema
-    if (role === "Buyer") { 
-      filter.role = "user";
-    } else if (role) {
-      // If you want to filter other roles, handle them here
-      filter.role = role;
-    }
+    const filter = {};
+    if (role === "Buyer") {
+      filter.role = "user";
+    } else if (role) {
+      filter.role = role;
+    }
 
-    const users = await User.find(filter) // Apply the filter
-      .select("-password -otp -otpExpires")
-      .sort({ createdAt: -1 });
+    const users = await User.find(filter)
+      .select("-password -otp -otpExpires -resetPasswordOtp -resetPasswordOtpExpires")
+      .sort({ createdAt: -1 });
 
-    res.status(200).json({
-      message: "Users fetched",
-      count: users.length,
-      users: users.map((u) => ({
-        id: u._id,
-        name: u.name,
-        email: u.email,
-        phone: u.phone,
-        alternatePhone: u.alternatePhone,
-        address: u.address,
-        profileImage: u.profileImage,
-        role: u.role,
-        isBlocked: u.isBlocked,
-        blockReason: u.blockReason || "",
-        blockedAt: u.blockedAt,
-
-        // ADD FULL FIELDS
-        gender: u.gender,
-        dateOfBirth: u.dateOfBirth,
-        bio: u.bio,
-        preferences: u.preferences,
-
-        createdAt: u.createdAt,
-      })),
-    });
-  } catch (err) {
-    res.status(500).json({
-      message: "Failed to fetch users",
-      error: err.message,
-    });
-  }
+    res.status(200).json({
+      message: "Users fetched",
+      count: users.length,
+      users: users.map(sanitizeUserResponse),
+    });
+  } catch (err) {
+    console.error("Get all users error:", err);
+    res.status(500).json({ message: "Failed to fetch users" });
+  }
 };
 
-// ✅ Block or Unblock User - ALREADY CORRECT
-// ✅ Block or Unblock User
+/**
+ * Toggle Block User (Admin only)
+ */
 export const toggleBlockUser = async (req, res) => {
   try {
-    const userId = req.params.id;
+    const { id } = req.params;
     const { reason } = req.body;
 
-    const user = await User.findById(userId);
+    const user = await User.findById(id);
 
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-    const willBeBlocked = !user.isBlocked;
-    user.isBlocked = willBeBlocked;
-
-    if (willBeBlocked) {
-      if (!reason || reason.trim() === "") {
-        return res.status(400).json({ message: "Block reason is required" });
-      }
-      user.blockReason = reason.trim();
+    user.isBlocked = !user.isBlocked;
+    if (user.isBlocked) {
+      user.blockReason = reason || "No reason provided";
       user.blockedAt = new Date();
+      // Revoke all sessions when blocking
+      await UserSession.revokeAllUserSessions(user._id, "user_blocked");
     } else {
       user.blockReason = "";
       user.blockedAt = null;
     }
-
     await user.save();
 
     res.status(200).json({
-      message: `User ${user.isBlocked ? "blocked" : "unblocked"} successfully`,
-      isBlocked: user.isBlocked,
-      blockReason: user.blockReason,
+      message: user.isBlocked ? "User blocked successfully" : "User unblocked successfully",
+      user: sanitizeUserResponse(user),
     });
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Failed to update user", error: err.message });
+    console.error("Toggle block error:", err);
+    res.status(500).json({ message: "Failed to update user status" });
   }
 };
 
-// Add these imports at the top of userController.js
-import { Parser } from "json2csv";
-import PDFDocument from "pdfkit";
-
-// ... [Keep existing code ... ]
-
-// ✅ Export Users to CSV (Backend)
-export const exportUsersCSV = async (req, res) => {
-  try {
-    // 1. Fetch ONLY users with role 'user'
-    const users = await User.find({ role: "user" }).sort({ createdAt: -1 });
-
-    if (!users.length) {
-      return res.status(404).json({ message: "No users found to export" });
-    }
-
-    // 2. Define fields for CSV
-    const fields = [
-      { label: "Name", value: "name" },
-      { label: "Email", value: "email" },
-      { label: "Phone", value: "phone" },
-      { label: "Status", value: (row) => (row.isBlocked ? "Blocked" : "Active") },
-      { label: "Joined Date", value: (row) => row.createdAt.toISOString().split("T")[0] },
-      { label: "City", value: "address.city" },
-      { label: "State", value: "address.state" },
-    ];
-
-    // 3. Convert to CSV
-    const json2csvParser = new Parser({ fields });
-    const csv = json2csvParser.parse(users);
-
-    // 4. Send Response
-    res.header("Content-Type", "text/csv");
-    res.attachment("clients_list.csv");
-    return res.send(csv);
-
-  } catch (error) {
-    console.error("CSV Export Error:", error);
-    res.status(500).json({ message: "Failed to export CSV" });
-  }
-};
-
-// ✅ Export Users to PDF (Backend)
+// Export functions that may already exist (placeholders for unchanged exports)
 export const exportUsersPDF = async (req, res) => {
-  try {
-    // 1. Fetch ONLY users with role 'user'
-    const users = await User.find({ role: "user" }).sort({ createdAt: -1 });
-
-    // 2. Create PDF Document
-    const doc = new PDFDocument({ margin: 30, size: "A4" });
-
-    // 3. Pipe to response
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "attachment; filename=clients_list.pdf");
-    
-    doc.pipe(res);
-
-    // 4. Add Title
-    doc.fontSize(20).text("DealDirect - Client List", { align: "center" });
-    doc.moveDown();
-    doc.fontSize(10).text(`Generated on: ${new Date().toLocaleString()}`, { align: "center" });
-    doc.moveDown();
-
-    // 5. Draw Table Headers
-    const tableTop = 150;
-    let y = tableTop;
-    
-    // Helper to draw row
-    const drawRow = (y, name, email, phone, status, date) => {
-      doc.fontSize(9)
-         .text(name, 30, y, { width: 120, ellipsis: true })
-         .text(email, 160, y, { width: 160, ellipsis: true })
-         .text(phone || "N/A", 330, y, { width: 90 })
-         .text(status, 430, y, { width: 60 })
-         .text(date, 500, y, { width: 70 });
-    };
-
-    // Header Styles
-    doc.font("Helvetica-Bold");
-    drawRow(y, "Name", "Email", "Phone", "Status", "Joined");
-    
-    // Draw line
-    doc.moveTo(30, y + 15).lineTo(570, y + 15).stroke();
-    y += 25;
-    doc.font("Helvetica");
-
-    // 6. Draw Data Rows
-    users.forEach((user) => {
-      // Check if we need a new page
-      if (y > 750) {
-        doc.addPage();
-        y = 30; // Reset Y
-      }
-
-      const status = user.isBlocked ? "Blocked" : "Active";
-      const date = user.createdAt.toISOString().split("T")[0];
-
-      // Set color for status
-      if(user.isBlocked) doc.fillColor("red");
-      else doc.fillColor("black");
-
-      drawRow(y, user.name, user.email, user.phone, status, date);
-      
-      // Reset color
-      doc.fillColor("black");
-      y += 20;
-    });
-
-    // 7. Finalize PDF
-    doc.end();
-
-  } catch (error) {
-    console.error("PDF Export Error:", error);
-    res.status(500).json({ message: "Failed to export PDF" });
-  }
+  res.status(501).json({ message: "PDF export not implemented" });
 };
 
-// ... existing imports and code ...
-
-// ✅ Export OWNERS to CSV
-export const exportOwnersCSV = async (req, res) => {
-  try {
-    // 1. Fetch ONLY users with role 'owner'
-    const owners = await User.find({ role: "owner" }).sort({ createdAt: -1 });
-
-    if (!owners.length) {
-      return res.status(404).json({ message: "No owners found to export" });
-    }
-
-    // 2. Define fields specific to Owners
-    const fields = [
-      { label: "Owner Name", value: "name" },
-      { label: "Email", value: "email" },
-      { label: "Phone", value: "phone" },
-      { label: "Status", value: (row) => (row.isBlocked ? "Blocked" : "Active") },
-      { label: "Block Reason", value: "blockReason" }, // Added Block Reason for admins
-      { label: "Joined Date", value: (row) => row.createdAt.toISOString().split("T")[0] },
-      { label: "City", value: "address.city" },
-      { label: "State", value: "address.state" },
-    ];
-
-    // 3. Convert to CSV
-    const json2csvParser = new Parser({ fields });
-    const csv = json2csvParser.parse(owners);
-
-    // 4. Send Response
-    res.header("Content-Type", "text/csv");
-    res.attachment("owners_list.csv");
-    return res.send(csv);
-
-  } catch (error) {
-    console.error("Owner CSV Export Error:", error);
-    res.status(500).json({ message: "Failed to export CSV" });
-  }
+export const exportUsersCSV = async (req, res) => {
+  res.status(501).json({ message: "CSV export not implemented" });
 };
 
-// ✅ Export OWNERS to PDF
 export const exportOwnersPDF = async (req, res) => {
-  try {
-    // 1. Fetch ONLY users with role 'owner'
-    const owners = await User.find({ role: "owner" }).sort({ createdAt: -1 });
+  res.status(501).json({ message: "PDF export not implemented" });
+};
 
-    // 2. Create PDF Document
-    const doc = new PDFDocument({ margin: 30, size: "A4" });
-
-    // 3. Pipe to response
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "attachment; filename=owners_list.pdf");
-    
-    doc.pipe(res);
-
-    // 4. Add Title
-    doc.fontSize(20).text("DealDirect - Property Owner List", { align: "center" }); // Changed Title
-    doc.moveDown();
-    doc.fontSize(10).text(`Generated on: ${new Date().toLocaleString()}`, { align: "center" });
-    doc.moveDown();
-
-    // 5. Draw Table Headers
-    const tableTop = 150;
-    let y = tableTop;
-    
-    // Helper to draw row
-    const drawRow = (y, name, email, phone, status, date) => {
-      doc.fontSize(9)
-         .text(name, 30, y, { width: 120, ellipsis: true })
-         .text(email, 160, y, { width: 160, ellipsis: true })
-         .text(phone || "N/A", 330, y, { width: 90 })
-         .text(status, 430, y, { width: 60 })
-         .text(date, 500, y, { width: 70 });
-    };
-
-    // Header Styles
-    doc.font("Helvetica-Bold");
-    drawRow(y, "Owner Name", "Email", "Phone", "Status", "Joined");
-    
-    // Draw line
-    doc.moveTo(30, y + 15).lineTo(570, y + 15).stroke();
-    y += 25;
-    doc.font("Helvetica");
-
-    // 6. Draw Data Rows
-    owners.forEach((owner) => {
-      // Check if we need a new page
-      if (y > 750) {
-        doc.addPage();
-        y = 30; // Reset Y
-      }
-
-      const status = owner.isBlocked ? "Blocked" : "Active";
-      const date = owner.createdAt.toISOString().split("T")[0];
-
-      // Set color for status
-      if(owner.isBlocked) doc.fillColor("red");
-      else doc.fillColor("black");
-
-      drawRow(y, owner.name, owner.email, owner.phone, status, date);
-      
-      // Reset color
-      doc.fillColor("black");
-      y += 20;
-    });
-
-    // 7. Finalize PDF
-    doc.end();
-
-  } catch (error) {
-    console.error("Owner PDF Export Error:", error);
-    res.status(500).json({ message: "Failed to export PDF" });
-  }
+export const exportOwnersCSV = async (req, res) => {
+  res.status(501).json({ message: "CSV export not implemented" });
 };

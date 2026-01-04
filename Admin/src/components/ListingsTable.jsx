@@ -9,7 +9,7 @@ const ListingsTable = () => {
       title: "3 BHK Apartment",
       location: "Ahmedabad",
       status: "Active",
-      agent: "John Doe",
+      listedBy: "John Doe",
       price: "₹50L",
       date: "2025-10-30",
     },
@@ -20,7 +20,7 @@ const ListingsTable = () => {
       title: "2 BHK Villa",
       location: "Surat",
       status: "Sold",
-      agent: "Jane Smith",
+      listedBy: "Jane Smith",
       price: "₹75L",
       date: "2025-10-28",
     },
@@ -35,7 +35,7 @@ const ListingsTable = () => {
             <th className="p-3 font-medium">Property</th>
             <th className="p-3 font-medium">Location</th>
             <th className="p-3 font-medium">Status</th>
-            <th className="p-3 font-medium">Agent</th>
+            <th className="p-3 font-medium">Listed By</th>
             <th className="p-3 font-medium">Price</th>
             <th className="p-3 font-medium">Date Listed</th>
           </tr>
@@ -58,16 +58,15 @@ const ListingsTable = () => {
               <td className="p-3">{row.location}</td>
               <td className="p-3">
                 <span
-                  className={`px-2 py-1 rounded-md text-xs font-semibold ${
-                    row.status === "Active"
+                  className={`px-2 py-1 rounded-md text-xs font-semibold ${row.status === "Active"
                       ? "bg-green-100 text-green-800"
                       : "bg-gray-100 text-gray-700"
-                  }`}
+                    }`}
                 >
                   {row.status}
                 </span>
               </td>
-              <td className="p-3">{row.agent}</td>
+              <td className="p-3">{row.listedBy}</td>
               <td className="p-3 font-medium text-gray-900">{row.price}</td>
               <td className="p-3 text-gray-500">{row.date}</td>
             </tr>
