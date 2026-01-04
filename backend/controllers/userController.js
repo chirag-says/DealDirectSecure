@@ -399,7 +399,7 @@ export const loginUser = async (req, res) => {
 
     // Find user with password and security fields
     const user = await User.findOne({ email: normalizedEmail })
-      .select("+password +security.failedLoginAttempts +security.lockoutUntil");
+      .select("+password +security.failedLoginAttempts +security.lockoutUntil +blockReason");
 
     if (!user) {
       return res.status(401).json({ message: "Invalid email or password" });
@@ -421,6 +421,7 @@ export const loginUser = async (req, res) => {
       return res.status(403).json({
         message: "Your account has been blocked. Contact support.",
         code: "ACCOUNT_BLOCKED",
+        blockReason: user.blockReason || "No reason provided",
       });
     }
 
