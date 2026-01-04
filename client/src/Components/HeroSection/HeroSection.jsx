@@ -3,20 +3,10 @@ import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../utils/api";
 import { AiOutlineSearch } from "react-icons/ai";
-import { FaMapMarkerAlt, FaMicrophone, FaHome, FaKey, FaBuilding, FaBed, FaTree, FaHistory } from "react-icons/fa";
-import { tabConfig } from "./filterConfig";
-import PropertyTypeFilter from "./PropertyTypeFilter";
+import { FaMapMarkerAlt, FaMicrophone, FaBuilding, FaHistory } from "react-icons/fa";
 import herokaback from "../../assets/herokaback.png";
 
-const API_BASE = import.meta.env.VITE_API_BASE;
 
-const defaultTabs = [
-  { label: "Buy", intent: "buy", icon: FaHome },
-  { label: "Rental", intent: "rent", icon: FaKey },
-  { label: "Projects", intent: "project", icon: FaBuilding },
-  { label: "PG / Hostels", intent: "pg", icon: FaBed },
-  { label: "Plot & Land", intent: "plot", icon: FaTree },
-];
 
 // Simple in-memory cache for suggestions
 const suggestionsCache = new Map();
@@ -24,7 +14,6 @@ const CACHE_TTL = 60000; // 1 minute cache
 
 const HeroSection = ({ filters, setFilters }) => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("Buy");
   const [openDropdown, setOpenDropdown] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -136,6 +125,20 @@ const HeroSection = ({ filters, setFilters }) => {
 
   // Handle keyboard navigation
   const handleKeyDown = (e) => {
+    // Handle Enter key - either select suggestion or trigger search
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (showSuggestions && selectedIndex >= 0 && suggestions[selectedIndex]) {
+        // If a suggestion is selected, click it
+        handleSuggestionClick(suggestions[selectedIndex]);
+      } else {
+        // Otherwise, trigger normal search
+        handleSearchClick();
+      }
+      return;
+    }
+
+    // Arrow navigation only works when suggestions are visible
     if (!showSuggestions || suggestions.length === 0) return;
 
     if (e.key === 'ArrowDown') {
@@ -144,9 +147,6 @@ const HeroSection = ({ filters, setFilters }) => {
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setSelectedIndex(prev => (prev > 0 ? prev - 1 : -1));
-    } else if (e.key === 'Enter' && selectedIndex >= 0) {
-      e.preventDefault();
-      handleSuggestionClick(suggestions[selectedIndex]);
     } else if (e.key === 'Escape') {
       setShowSuggestions(false);
     }
@@ -175,48 +175,13 @@ const HeroSection = ({ filters, setFilters }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [openDropdown]);
 
-  const tabs = defaultTabs;
-  const configKey = tabConfig[activeTab] ? activeTab : "Buy";
-  const currentConfig = tabConfig[configKey];
-
-  const updateFilter = (field, value) => {
-    setFilters((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const updatePropertyTypes = (updater) => {
-    setFilters((prev) => {
-      const previous = prev.propertyTypes || [];
-      const nextValue = typeof updater === "function" ? updater(previous) : updater;
-      return { ...prev, propertyTypes: nextValue };
-    });
-  };
-
-  const renderFilters = () =>
-    currentConfig.filters.map((filterType) => {
-      if (filterType === "propertyType") {
-        return (
-          <PropertyTypeFilter
-            key="propertyType"
-            selectedPropertyTypes={filters.propertyTypes || []}
-            setSelectedPropertyTypes={updatePropertyTypes}
-            openDropdown={openDropdown}
-            setOpenDropdown={setOpenDropdown}
-            dropdownRef={dropdownRefs.propertyType}
-          />
-        );
-      }
-      return null;
-    });
-
   const handleSuggestionClick = (suggestion) => {
     addToRecentSearches(suggestion);
     setFilters({ ...filters, search: suggestion.value });
     setShowSuggestions(false);
     setSelectedIndex(-1);
-  };
-
-  const handleTabSelect = (tab) => {
-    setActiveTab(tab.label);
+    // Navigate to properties page with the selected suggestion
+    navigate(`/properties?search=${encodeURIComponent(suggestion.value)}&intent=Buy`);
   };
 
   const handleMapClick = () => {
@@ -237,8 +202,8 @@ const HeroSection = ({ filters, setFilters }) => {
       searchParams.set("search", filters.search);
     }
 
-    // Optionally pass tab label as a generic hint (no hard filter)
-    searchParams.set("intent", activeTab);
+    // Default intent since tabs are not shown in this simplified version
+    searchParams.set("intent", "Buy");
 
     navigate(`/properties?${searchParams.toString()}`);
   };

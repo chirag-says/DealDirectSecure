@@ -106,7 +106,7 @@ const Profile = () => {
     confirmPassword: "",
   });
 
-  const { user: authUser, isAuthenticated, loading: authLoading, updateUser } = useAuth();
+  const { isAuthenticated, loading: authLoading, updateUser } = useAuth();
 
   // Check auth and fetch profile
   useEffect(() => {

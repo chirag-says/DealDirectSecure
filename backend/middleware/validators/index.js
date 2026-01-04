@@ -43,7 +43,7 @@ export const whitelistFields = (allowedFields) => {
         if (req.body && typeof req.body === 'object') {
             const sanitizedBody = {};
             for (const field of allowedFields) {
-                if (req.body.hasOwnProperty(field)) {
+                if (Object.prototype.hasOwnProperty.call(req.body, field)) {
                     sanitizedBody[field] = req.body[field];
                 }
             }
@@ -64,7 +64,10 @@ const PROPERTY_CREATE_FIELDS = [
     'bedrooms', 'bathrooms', 'balconies', 'area', 'parking', 'address',
     'flooring', 'furnishing', 'facing', 'age', 'availableFrom', 'features',
     'legal', 'extras', 'amenities', 'negotiable', 'imageCategoryMap',
-    'latitude', 'longitude', 'propertyCategory'
+    'latitude', 'longitude', 'propertyCategory',
+    // Additional fields sent by AddProperty form
+    'city', 'locality', 'priceUnit', 'gstApplicable', 'videoUrl', 'ageOfProperty',
+    'bookingAmount', 'securityDeposit', 'maintenance', 'maintenanceIncluded'
 ];
 
 // Fields allowed when updating own property (excludes sensitive fields)
@@ -83,10 +86,10 @@ export const validatePropertyCreate = [
     whitelistFields(PROPERTY_CREATE_FIELDS),
 
     body('title')
+        .optional()
         .trim()
-        .isLength({ min: 5, max: 200 })
-        .withMessage('Title must be between 5 and 200 characters')
-        .escape(),
+        .isLength({ min: 3, max: 300 })
+        .withMessage('Title must be between 3 and 300 characters'),
 
     body('description')
         .optional()

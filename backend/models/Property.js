@@ -4,7 +4,7 @@ const propertySchema = new mongoose.Schema(
   {
     // Owner reference
     owner: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    
+
     propertyType: { type: mongoose.Schema.Types.ObjectId, ref: "PropertyType" },
     propertyTypeName: { type: String }, // Stores exact property type name like "Apartment / Flat", "Office Space"
     category: { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
@@ -49,14 +49,14 @@ const propertySchema = new mongoose.Schema(
       latitude: Number,
       longitude: Number,
     },
-    
+
     // Convenience fields (duplicated from address for easier access)
     city: String,
     locality: String,
 
     // Regular images array (for backward compatibility)
     images: [String],
-     rejectionReason: { type: String, default: "" },
+    rejectionReason: { type: String, default: "" },
     // Categorized images - stores images by room/area type
     categorizedImages: {
       // Residential categories
@@ -97,15 +97,15 @@ const propertySchema = new mongoose.Schema(
         other: [String]
       }
     },
-    
+
     isApproved: { type: Boolean, default: true },
-    
+
     // Property Status & Analytics
     status: { type: String, enum: ["active", "pending", "sold", "rented", "inactive"], default: "active" },
     views: { type: Number, default: 0 },
     likes: { type: Number, default: 0 },
     inquiries: { type: Number, default: 0 },
-    
+
     // Track users who expressed interest
     interestedUsers: [{
       user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
@@ -113,7 +113,7 @@ const propertySchema = new mongoose.Schema(
     }],
 
     // Listing Details
-    listingType: { type: String, enum: ["Rent", "Sell"], default: "Rent" },
+    listingType: { type: String, enum: ["Rent", "Sell", "Sale", "rent", "sell", "sale"], default: "Rent" },
     availableFrom: Date,
     deposit: mongoose.Schema.Types.Mixed, // Security deposit / booking amount
 

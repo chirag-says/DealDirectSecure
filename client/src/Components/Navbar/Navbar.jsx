@@ -3,15 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { AiOutlineUser, AiOutlineMenu, AiOutlineClose, AiOutlineSearch, AiOutlineHome, AiOutlineInfoCircle, AiOutlinePhone, AiOutlineFileText, AiOutlinePlusCircle, AiOutlineLogin, AiOutlineLogout, AiOutlineSetting, AiOutlineHeart, AiOutlineBell } from "react-icons/ai";
 import { FaMapMarkerAlt, FaMicrophone } from "react-icons/fa";
-import { BsBuilding, BsHouseDoor, BsPersonCircle } from "react-icons/bs";
-import { HiOutlineHome, HiOutlineDocumentText } from "react-icons/hi";
+import { BsBuilding, BsHouseDoor } from "react-icons/bs";
+import { HiOutlineDocumentText } from "react-icons/hi";
 import logo from "../../assets/dealdirect_logo.png";
 import AuthModal from "../AuthModal/AuthModal";
 import EmailVerificationModal from "../EmailVerificationModal/EmailVerificationModal";
 import api from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
-
-const API_BASE = import.meta.env.VITE_API_BASE;
 
 // Omnibox-style relevance scoring (Same as HeroSection)
 const calculateRelevanceScore = (query, text) => {
@@ -38,7 +36,6 @@ const calculateRelevanceScore = (query, text) => {
 function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-  const [selectedCity, setSelectedCity] = useState("Mumbai");
   const [activeMenu, setActiveMenu] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);

@@ -6,18 +6,13 @@ import {
   MapPin,
   Home,
   Building2,
-  Eye,
-  Calendar,
-  IndianRupee,
-  Trash2,
   ExternalLink,
   Search,
-  Filter,
   RefreshCw,
   HeartOff,
   Clock,
-  ChevronDown,
 } from "lucide-react";
+// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from "framer-motion";
 import api from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";

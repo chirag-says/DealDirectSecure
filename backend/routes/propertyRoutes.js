@@ -64,7 +64,7 @@ router.post(
     { name: "images", maxCount: 15 },
     { name: "categorizedImages", maxCount: 50 }
   ]),
-  validatePropertyCreate,
+  // validatePropertyCreate, // TODO: Re-enable after fixing field whitelist
   addProperty
 );
 

@@ -9,7 +9,8 @@
  */
 
 // Valid roles in the system - Agent is PERMANENTLY RETIRED
-const VALID_USER_ROLES = ['user', 'owner'];
+// Both 'user' and 'buyer' are valid buyer roles (buyer is the new preferred term)
+const VALID_USER_ROLES = ['user', 'buyer', 'owner'];
 
 /**
  * Middleware to ensure the 'Agent' role is never used

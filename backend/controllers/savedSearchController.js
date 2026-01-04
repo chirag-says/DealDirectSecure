@@ -13,7 +13,7 @@ const ALLOWED_SAVED_SEARCH_FIELDS = ['name', 'filters', 'notifyEmail', 'notifyIn
 const sanitizeSavedSearchData = (data) => {
   const sanitized = {};
   for (const field of ALLOWED_SAVED_SEARCH_FIELDS) {
-    if (data.hasOwnProperty(field)) {
+    if (Object.prototype.hasOwnProperty.call(data, field)) {
       sanitized[field] = data[field];
     }
   }
