@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { io } from "socket.io-client";
-import axios from "axios";
+import api from "../utils/api";
+import { useAuth } from "./AuthContext";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
@@ -25,25 +26,12 @@ export const ChatProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
-  // Listen for auth changes
-  const [token, setToken] = useState(localStorage.getItem("token"));
-
-  useEffect(() => {
-    const handleAuthChange = () => {
-      setToken(localStorage.getItem("token"));
-    };
-    window.addEventListener("auth-change", handleAuthChange);
-    window.addEventListener("storage", handleAuthChange); // For cross-tab sync
-
-    return () => {
-      window.removeEventListener("auth-change", handleAuthChange);
-      window.removeEventListener("storage", handleAuthChange);
-    };
-  }, []);
+  // Use AuthContext for authentication state
+  const { user, isAuthenticated } = useAuth();
 
   // Initialize socket connection
   useEffect(() => {
-    if (!token) {
+    if (!isAuthenticated || !user) {
       if (socket) {
         socket.disconnect();
         setSocket(null);
@@ -54,21 +42,18 @@ export const ChatProvider = ({ children }) => {
       return;
     }
 
-    // If socket already exists and matches token (not easy to check token on socket obj without custom prop), 
-    // but simplified: if we have a socket, we might want to reconnect if token changed. 
-    // However, usually token change means different user or login/logout.
+    // If socket already exists, disconnect before creating new one
     if (socket) {
       socket.disconnect();
     }
 
     const newSocket = io(API_BASE, {
       transports: ["websocket", "polling"],
-      auth: { token } // Best practice to send token in auth handshake if server supports it, otherwise just connecting is fine if logic depends on REST
+      withCredentials: true, // Important for cookie auth
     });
 
     newSocket.on("connect", () => {
       console.log("Socket connected");
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
       if (user._id) {
         newSocket.emit("user_online", user._id);
       }
@@ -97,49 +82,43 @@ export const ChatProvider = ({ children }) => {
     return () => {
       newSocket.disconnect();
     };
-  }, [token]);
+  }, [isAuthenticated, user?._id]);
 
-  // Fetch conversations
+  // Fetch conversations - uses cookie-based auth via api.js
   const fetchConversations = useCallback(async () => {
-    if (!token) return;
+    if (!isAuthenticated) return;
 
     try {
-      const res = await axios.get(`${API_BASE}/api/chat/conversations`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.get('/chat/conversations');
       if (res.data.success) {
         setConversations(res.data.conversations);
       }
     } catch (error) {
       console.error("Error fetching conversations:", error);
     }
-  }, [token]);
+  }, [isAuthenticated]);
 
   // Fetch unread count
   const fetchUnreadCount = useCallback(async () => {
-    if (!token) return;
+    if (!isAuthenticated) return;
 
     try {
-      const res = await axios.get(`${API_BASE}/api/chat/unread-count`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.get('/chat/unread-count');
       if (res.data.success) {
         setUnreadCount(res.data.unreadCount);
       }
     } catch (error) {
       console.error("Error fetching unread count:", error);
     }
-  }, [token]);
+  }, [isAuthenticated]);
 
   // Fetch messages for a conversation
   const fetchMessages = useCallback(async (conversationId) => {
-    if (!token) return;
+    if (!isAuthenticated) return;
 
     setLoading(true);
     try {
-      const res = await axios.get(`${API_BASE}/api/chat/messages/${conversationId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.get(`/chat/messages/${conversationId}`);
       if (res.data.success) {
         setMessages(res.data.messages);
       }
@@ -148,18 +127,14 @@ export const ChatProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [isAuthenticated]);
 
   // Start or get conversation
   const startConversation = useCallback(async (propertyId, ownerId) => {
-    if (!token) return null;
+    if (!isAuthenticated) return null;
 
     try {
-      const res = await axios.post(
-        `${API_BASE}/api/chat/conversation/start`,
-        { propertyId, ownerId },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await api.post('/chat/conversation/start', { propertyId, ownerId });
       if (res.data.success) {
         fetchConversations();
         return res.data.conversation;
@@ -168,18 +143,14 @@ export const ChatProvider = ({ children }) => {
       console.error("Error starting conversation:", error);
       return null;
     }
-  }, [fetchConversations, token]);
+  }, [fetchConversations, isAuthenticated]);
 
   // Send a standard text message
   const sendMessage = useCallback(async (conversationId, text) => {
-    if (!token) return null;
+    if (!isAuthenticated) return null;
 
     try {
-      const res = await axios.post(
-        `${API_BASE}/api/chat/message/send`,
-        { conversationId, text },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await api.post('/chat/message/send', { conversationId, text });
       if (res.data.success) {
         const newMessage = res.data.message;
         setMessages((prev) => [...prev, newMessage]);
@@ -196,19 +167,15 @@ export const ChatProvider = ({ children }) => {
       console.error("Error sending message:", error);
       return null;
     }
-  }, [socket, fetchConversations, token]);
+  }, [socket, fetchConversations, isAuthenticated]);
 
   // Send a special visit-related message (request or confirmation)
   const sendVisitMessage = useCallback(
     async (conversationId, text, messageType) => {
-      if (!token) return null;
+      if (!isAuthenticated) return null;
 
       try {
-        const res = await axios.post(
-          `${API_BASE}/api/chat/message/send`,
-          { conversationId, text, messageType },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        const res = await api.post('/chat/message/send', { conversationId, text, messageType });
         if (res.data.success) {
           const newMessage = res.data.message;
           setMessages((prev) => [...prev, newMessage]);
@@ -225,7 +192,7 @@ export const ChatProvider = ({ children }) => {
         return null;
       }
     },
-    [socket, fetchConversations, token]
+    [socket, fetchConversations, isAuthenticated]
   );
 
   // Join conversation room
@@ -244,37 +211,30 @@ export const ChatProvider = ({ children }) => {
 
   // Emit typing
   const emitTyping = useCallback((conversationId) => {
-    if (socket) {
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
+    if (socket && user) {
       socket.emit("typing", { conversationId, userId: user._id, userName: user.name });
     }
-  }, [socket]);
+  }, [socket, user]);
 
   // Emit stop typing
   const emitStopTyping = useCallback((conversationId) => {
-    if (socket) {
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
+    if (socket && user) {
       socket.emit("stop_typing", { conversationId, userId: user._id });
     }
-  }, [socket]);
+  }, [socket, user]);
 
   // Report message
   const reportMessage = useCallback(async (messageId, reason) => {
-    const token = localStorage.getItem("token");
-    if (!token) return null;
+    if (!isAuthenticated) return null;
 
     try {
-      const res = await axios.post(
-        `${API_BASE}/api/chat/message/report`,
-        { messageId, reason },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await api.post('/chat/message/report', { messageId, reason });
       return res.data;
     } catch (error) {
       console.error("Error reporting message:", error);
       return { success: false, message: error.response?.data?.message || "Failed to report" };
     }
-  }, []);
+  }, [isAuthenticated]);
 
   // Open chat with a conversation
   const openChat = useCallback((conversation = null) => {
@@ -303,25 +263,25 @@ export const ChatProvider = ({ children }) => {
 
   // Initial fetch
   useEffect(() => {
-    if (token) {
+    if (isAuthenticated) {
       fetchConversations();
       fetchUnreadCount();
     } else {
       setConversations([]);
       setUnreadCount(0);
     }
-  }, [fetchConversations, fetchUnreadCount, token]);
+  }, [fetchConversations, fetchUnreadCount, isAuthenticated]);
 
   // Poll for unread count
   useEffect(() => {
-    if (!token) return;
+    if (!isAuthenticated) return;
 
     const interval = setInterval(() => {
       fetchUnreadCount();
     }, 30000); // Every 30 seconds
 
     return () => clearInterval(interval);
-  }, [fetchUnreadCount, token]);
+  }, [fetchUnreadCount, isAuthenticated]);
 
   const value = {
     socket,

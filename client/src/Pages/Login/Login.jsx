@@ -1,12 +1,13 @@
 // src/pages/Auth/Login.jsx
 import React, { useState } from "react";
-import axios from "axios";
+import api from "../../utils/api";
 import { toast } from "react-toastify";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff, Loader2, X, ArrowLeft, KeyRound, CheckCircle, AlertTriangle, Phone } from "lucide-react";
 import dealDirectLogo from "../../assets/dealdirect_logo.png";
+import { useAuth } from "../../context/AuthContext";
 
-const API_BASE = import.meta.env.VITE_API_BASE;
+
 
 export default function Login() {
   const [formData, setFormData] = useState({ email: "", password: "", phone: "" });
@@ -14,6 +15,7 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { updateUser } = useAuth();
 
   // Get the redirect path and any pending action from state (if user was redirected here)
   const redirectPath = location.state?.from || "/";
@@ -58,30 +60,22 @@ export default function Login() {
       return;
     }
     setIsLoading(true);
-    setBlockedError(null); // Clear any previous blocked error
+    setBlockedError(null);
 
     try {
       const payload = { email: formData.email, password: formData.password };
-      const res = await axios.post(`${API_BASE}/api/users/login`, payload);
-      const { token, user } = res.data;
+      const res = await api.post('/users/login', payload);
+      const { user } = res.data;
 
-      localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(user));
-
-      // Notify other components (like Navbar) that auth state changed
-      window.dispatchEvent(new Event("auth-change"));
-
+      updateUser(user);
       toast.success(`Welcome back, ${user.name || 'User'}!`);
+
       let navigationState = location.state ? { ...location.state } : undefined;
 
-      // If user was trying to express interest before login, complete it automatically
+      // If user was trying to express interest, complete it
       if (pendingAction === "interest" && pendingPropertyId) {
         try {
-          await axios.post(
-            `${API_BASE}/api/properties/interested/${pendingPropertyId}`,
-            {},
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
+          await api.post(`/properties/interested/${pendingPropertyId}`, {});
           toast.success("Interest registered! The owner will be notified.");
           navigationState = { ...navigationState, interestedPropertyId: pendingPropertyId };
         } catch (interestErr) {
@@ -95,16 +89,13 @@ export default function Login() {
         delete navigationState.propertyId;
       }
 
-      // Redirect to the original page user was trying to access, or home
       navigate(redirectPath, { state: navigationState });
     } catch (err) {
       const errorData = err.response?.data;
-
-      // Check if user is blocked
-      if (errorData?.isBlocked) {
+      if (errorData?.isBlocked || errorData?.code === 'ACCOUNT_BLOCKED') {
         setBlockedError({
           message: errorData.message,
-          reason: errorData.blockReason,
+          reason: errorData.blockReason || 'No reason provided',
           blockedAt: errorData.blockedAt
         });
       } else {
@@ -144,7 +135,7 @@ export default function Login() {
 
     setForgotLoading(true);
     try {
-      await axios.post(`${API_BASE}/api/users/forgot-password`, { email: forgotEmail });
+      await api.post('/users/forgot-password', { email: forgotEmail });
       toast.success("OTP sent to your email!");
       setForgotStep(2);
     } catch (err) {
@@ -174,7 +165,7 @@ export default function Login() {
 
     setForgotLoading(true);
     try {
-      await axios.post(`${API_BASE}/api/users/reset-password`, {
+      await api.post('/users/reset-password', {
         email: forgotEmail,
         otp: forgotOtp,
         newPassword: newPassword,
@@ -191,7 +182,7 @@ export default function Login() {
   const handleResendOtp = async () => {
     setForgotLoading(true);
     try {
-      await axios.post(`${API_BASE}/api/users/forgot-password`, { email: forgotEmail });
+      await api.post('/users/forgot-password', { email: forgotEmail });
       toast.success("New OTP sent to your email!");
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to resend OTP");

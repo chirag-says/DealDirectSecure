@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import axios from "axios";
 import { toast } from "react-toastify";
 import ReactCrop, { centerCrop, makeAspectCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
+import api from "../../utils/api";
+import { useAuth } from "../../context/AuthContext";
 import {
   User,
   Mail,
@@ -33,7 +34,7 @@ import {
   Heart,
 } from "lucide-react";
 
-const API_BASE = import.meta.env.VITE_API_BASE;
+// Note: API_BASE is no longer needed - api.js handles this
 
 // Helper function to create centered aspect crop
 function centerAspectCrop(mediaWidth, mediaHeight, aspect) {
@@ -105,30 +106,28 @@ const Profile = () => {
     confirmPassword: "",
   });
 
+  const { user: authUser, isAuthenticated, loading: authLoading, updateUser } = useAuth();
+
   // Check auth and fetch profile
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
-
-    if (!token || !storedUser) {
-      toast.error("Please login to view your profile");
-      navigate("/login");
-      return;
+    if (!authLoading) {
+      if (!isAuthenticated) {
+        toast.error("Please login to view your profile");
+        navigate("/login");
+        return;
+      }
+      fetchProfile();
     }
-
-    fetchProfile();
-  }, [navigate]);
+  }, [navigate, authLoading, isAuthenticated]);
 
   const fetchProfile = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("token");
-      const response = await axios.get(`${API_BASE}/api/users/profile`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await api.get('/users/profile');
 
       const userData = response.data.user;
       setUser(userData);
+      updateUser(userData); // Sync global auth state
       setFormData({
         name: userData.name || "",
         email: userData.email || "",
@@ -153,13 +152,9 @@ const Profile = () => {
       });
       setPreviewImage(userData.profileImage || null);
     } catch (error) {
-      console.error("Error fetching profile:", error);
-      if (error.response?.status === 401) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        toast.error("Session expired. Please login again.");
-        navigate("/login");
-      } else {
+      // 401 errors are handled by api interceptor
+      if (error.response?.status !== 401) {
+        console.error("Error fetching profile:", error);
         toast.error("Failed to load profile");
       }
     } finally {
@@ -311,7 +306,6 @@ const Profile = () => {
   const handleSaveProfile = async () => {
     try {
       setSaving(true);
-      const token = localStorage.getItem("token");
 
       const submitData = new FormData();
       submitData.append("name", formData.name);
@@ -327,21 +321,15 @@ const Profile = () => {
         submitData.append("profileImage", profileImage);
       }
 
-      const response = await axios.put(`${API_BASE}/api/users/profile`, submitData, {
+      const response = await api.put('/users/profile', submitData, {
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",
         },
       });
 
-      // Update local storage
+      // Update in AuthContext and localStorage
       const updatedUser = response.data.user;
-      const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
-      localStorage.setItem(
-        "user",
-        JSON.stringify({ ...storedUser, name: updatedUser.name, profileImage: updatedUser.profileImage })
-      );
-      window.dispatchEvent(new Event("auth-change"));
+      updateUser(updatedUser);
 
       setUser(updatedUser);
       // Update preview image with the Cloudinary URL from server
@@ -372,18 +360,11 @@ const Profile = () => {
 
     try {
       setSaving(true);
-      const token = localStorage.getItem("token");
 
-      await axios.put(
-        `${API_BASE}/api/users/change-password`,
-        {
-          currentPassword: passwordData.currentPassword,
-          newPassword: passwordData.newPassword,
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      await api.put('/users/change-password', {
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword,
+      });
 
       setPasswordData({
         currentPassword: "",

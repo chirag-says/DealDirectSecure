@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import axios from "axios";
 import { toast } from "react-toastify";
 import {
   Heart,
@@ -20,8 +19,8 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-
-const API_BASE = import.meta.env.VITE_API_BASE;
+import api from "../../utils/api";
+import { useAuth } from "../../context/AuthContext";
 
 // Property Card Component
 const PropertyCard = ({ property, onRemove, onViewDetails }) => {
@@ -200,7 +199,7 @@ const PropertyCard = ({ property, onRemove, onViewDetails }) => {
 
 export default function SavedProperties() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -210,19 +209,15 @@ export default function SavedProperties() {
 
   // Auth check & fetch saved properties
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    const token = localStorage.getItem("token");
-
-    if (!storedUser || !token) {
-      toast.error("Please login to view saved properties");
-      navigate("/login");
-      return;
+    if (!authLoading) {
+      if (!isAuthenticated) {
+        toast.error("Please login to view saved properties");
+        navigate("/login");
+        return;
+      }
+      fetchSavedProperties();
     }
-
-    const parsedUser = JSON.parse(storedUser);
-    setUser(parsedUser);
-    fetchSavedProperties();
-  }, [navigate]);
+  }, [authLoading, isAuthenticated, navigate]);
 
   const fetchSavedProperties = async (isRefresh = false) => {
     try {
@@ -232,17 +227,15 @@ export default function SavedProperties() {
         setLoading(true);
       }
 
-      const token = localStorage.getItem("token");
-      const res = await axios.get(`${API_BASE}/api/properties/saved`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.get('/properties/saved');
 
       if (res.data.success) {
         setProperties(res.data.data || []);
       }
     } catch (err) {
       console.error("Error fetching saved properties:", err);
-      if (err.response?.status !== 404) {
+      // 401 errors handled by interceptor
+      if (err.response?.status !== 404 && err.response?.status !== 401) {
         toast.error("Failed to load saved properties");
       }
     } finally {
@@ -253,10 +246,7 @@ export default function SavedProperties() {
 
   const handleRemove = async (propertyId) => {
     try {
-      const token = localStorage.getItem("token");
-      await axios.delete(`${API_BASE}/api/properties/saved/${propertyId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.delete(`/properties/saved/${propertyId}`);
 
       setProperties(prev => prev.filter(p => p._id !== propertyId));
       toast.success("Property removed from saved");
@@ -306,7 +296,7 @@ export default function SavedProperties() {
       }
     });
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="min-h-screen bg-gray-50 pt-24 flex items-center justify-center">
         <div className="text-center">

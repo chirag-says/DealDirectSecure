@@ -1,5 +1,4 @@
 ﻿import React, { useState, useEffect, useRef, useMemo } from "react";
-import axios from "axios";
 import {
     Home, MapPin, IndianRupee, Layers, Image as ImageIcon, Calendar,
     ChevronLeft, Upload, Check, X, Building2, Users, Utensils, Car, Zap,
@@ -13,6 +12,9 @@ import locationData from "../../data/real-estate-locations.json";
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import api from "../../utils/api";
+import { useAuth } from "../../context/AuthContext";
+import axios from "axios"; // Keep for metadata fetching (public endpoints)
 
 // Fix for default marker icon in react-leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -370,36 +372,30 @@ const variants = {
 export default function AddProperty() {
     const navigate = useNavigate();
 
-    // Auth state
+    // Auth state using AuthContext
+    const { user: authUser, isAuthenticated, loading: authLoading } = useAuth();
     const [user, setUser] = useState(null);
     const [showVerificationModal, setShowVerificationModal] = useState(false);
     const [isAuthorized, setIsAuthorized] = useState(false);
 
-    // Check user authorization on mount
+    // Check user authorization on mount using AuthContext
     useEffect(() => {
-        const storedUser = localStorage.getItem("user");
-        const token = localStorage.getItem("token");
+        if (authLoading) return;
 
-        if (!storedUser || !token) {
+        if (!isAuthenticated || !authUser) {
             toast.error("Please login to list your property");
             navigate("/login");
             return;
         }
 
-        try {
-            const parsedUser = JSON.parse(storedUser);
-            setUser(parsedUser);
-            const role = parsedUser.role || "user";
-            if (role === "owner" || role === "agent") {
-                setIsAuthorized(true);
-            } else {
-                setShowVerificationModal(true);
-            }
-        } catch (err) {
-            toast.error("Session expired. Please login again.");
-            navigate("/login");
+        setUser(authUser);
+        const role = authUser.role || "user";
+        if (role === "owner" || role === "agent") {
+            setIsAuthorized(true);
+        } else {
+            setShowVerificationModal(true);
         }
-    }, [navigate]);
+    }, [authLoading, isAuthenticated, authUser, navigate]);
 
     const handleVerificationSuccess = () => {
         const storedUser = localStorage.getItem("user");
@@ -742,9 +738,9 @@ export default function AddProperty() {
             });
             submitData.append("imageCategoryMap", JSON.stringify(imageCategoryMap));
 
-            const token = localStorage.getItem("token");
-            await axios.post(`${API_BASE}/api/properties/add`, submitData, {
-                headers: { "Content-Type": "multipart/form-data", Authorization: token ? `Bearer ${token}` : "" }
+            // Use api.js for authenticated request
+            await api.post('/properties/add', submitData, {
+                headers: { "Content-Type": "multipart/form-data" }
             });
 
             toast.success("Property published successfully!");

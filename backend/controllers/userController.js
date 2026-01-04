@@ -230,6 +230,7 @@ export const registerUser = async (req, res) => {
     }
 
     res.status(200).json({
+      success: true,
       message: "OTP sent to your email. Please verify to complete registration.",
       email: normalizedEmail,
     });
@@ -284,6 +285,7 @@ export const registerUserDirect = async (req, res) => {
     setSessionCookie(res, sessionToken);
 
     res.status(201).json({
+      success: true,
       message: "Registration successful! Welcome to DealDirect.",
       user: sanitizeUserResponse(user),
     });
@@ -329,6 +331,7 @@ export const verifyOtp = async (req, res) => {
     setSessionCookie(res, sessionToken);
 
     res.status(201).json({
+      success: true,
       message: "Email verified and registration successful",
       user: sanitizeUserResponse(user),
     });
@@ -446,6 +449,7 @@ export const loginUser = async (req, res) => {
     setSessionCookie(res, sessionToken);
 
     res.status(200).json({
+      success: true,
       message: "Login successful",
       user: sanitizeUserResponse(user),
     });
@@ -652,22 +656,46 @@ export const resetPassword = async (req, res) => {
 
 /**
  * Get User Profile
+ * Returns user profile with role and permissions info
+ * Handles legacy users gracefully
  */
 export const getProfile = async (req, res) => {
   try {
+    // req.user is already populated by authMiddleware
+    // But fetch fresh data to ensure latest info
     const user = await User.findById(req.user._id);
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Handle legacy users missing fields
+    const userResponse = sanitizeUserResponse(user);
+
+    // Ensure role is always present (default to 'user' for legacy)
+    if (!userResponse.role) {
+      userResponse.role = 'user';
+    }
+
+    // Ensure isVerified is always present
+    if (userResponse.isVerified === undefined) {
+      userResponse.isVerified = true; // Legacy users are considered verified
     }
 
     res.status(200).json({
+      success: true,
       message: "Profile fetched successfully",
-      user: sanitizeUserResponse(user),
+      user: userResponse,
     });
   } catch (err) {
     console.error("Get profile error:", err);
-    res.status(500).json({ message: "Failed to fetch profile" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch profile"
+    });
   }
 };
 

@@ -1,12 +1,13 @@
 // src/pages/Auth/Register.jsx
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import api from "../../utils/api";
 import { toast } from "react-toastify";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { User, Mail, Lock, Eye, EyeOff, Loader2, CheckCircle, ShieldCheck, RefreshCw, Home, Search, Phone } from "lucide-react";
 import dealDirectLogo from "../../assets/dealdirect_logo.png";
+import { useAuth } from "../../context/AuthContext";
 
-const API_BASE = import.meta.env.VITE_API_BASE;
+
 
 export default function Register() {
   const [formData, setFormData] = useState({ name: "", email: "", password: "", phone: "", agree: false });
@@ -19,6 +20,7 @@ export default function Register() {
   const [resendTimer, setResendTimer] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
+  const { updateUser } = useAuth();
   const redirectPath = location.state?.from || "/";
 
   // Countdown timer for resend OTP
@@ -62,7 +64,7 @@ export default function Register() {
     try {
       if (userType === "buyer") {
         // Buyers: Direct registration without OTP
-        const res = await axios.post(`${API_BASE}/api/users/register-direct`, {
+        const res = await api.post('/users/register-direct', {
           name: formData.name,
           email: formData.email,
           password: formData.password,
@@ -70,16 +72,14 @@ export default function Register() {
           phone: formData.phone,
         });
 
-        const { token, user } = res.data;
-        localStorage.setItem("token", token);
-        localStorage.setItem("user", JSON.stringify(user));
-        window.dispatchEvent(new Event("auth-change"));
+        const { user } = res.data;
+        updateUser(user);
 
         toast.success("Registration successful! Welcome to DealDirect.");
         navigate(redirectPath);
       } else {
         // Owners: Require OTP verification
-        await axios.post(`${API_BASE}/api/users/register`, {
+        await api.post('/users/register', {
           name: formData.name,
           email: formData.email,
           password: formData.password,
@@ -103,7 +103,7 @@ export default function Register() {
 
     setResendLoading(true);
     try {
-      await axios.post(`${API_BASE}/api/users/resend-otp`, {
+      await api.post('/users/resend-otp', {
         email: formData.email
       });
       toast.success("New OTP sent to your email!");
@@ -120,15 +120,13 @@ export default function Register() {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const res = await axios.post(`${API_BASE}/api/users/verify-otp`, {
+      const res = await api.post('/users/verify-otp', {
         email: formData.email,
         otp
       });
 
-      const { token, user } = res.data;
-      localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(user));
-      window.dispatchEvent(new Event("auth-change"));
+      const { user } = res.data;
+      updateUser(user);
 
       toast.success("Registration successful! Welcome aboard.");
       navigate(redirectPath);

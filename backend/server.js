@@ -473,7 +473,7 @@ app.use((req, res, next) => {
       ...options,
       httpOnly: options.httpOnly !== false, // Default to true
       secure: isProduction, // Require HTTPS in production
-      sameSite: options.sameSite || 'Strict', // Default to Strict
+      sameSite: options.sameSite || 'Lax', // Default to Lax for better reliability
       path: options.path || '/',
     };
     return originalCookie(name, value, secureOptions);

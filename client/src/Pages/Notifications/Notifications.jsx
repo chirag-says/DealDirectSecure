@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { FaBell, FaCheckCircle } from "react-icons/fa";
 import { toast } from "react-toastify";
-
-const API_BASE = import.meta.env.VITE_API_BASE;
+import api from "../../utils/api";
+import { useAuth } from "../../context/AuthContext";
 
 const Notifications = () => {
   const [notifications, setNotifications] = useState([]);
@@ -12,19 +11,12 @@ const Notifications = () => {
   const [markingAll, setMarkingAll] = useState(false);
   const [markingOneId, setMarkingOneId] = useState(null);
   const navigate = useNavigate();
+  const { isAuthenticated, loading: authLoading } = useAuth();
 
   const fetchNotifications = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      toast.info("Login to view your notifications");
-      navigate("/login", { state: { from: "/notifications" } });
-      return;
-    }
     try {
       setLoading(true);
-      const res = await axios.get(`${API_BASE}/api/notifications`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.get('/notifications');
       if (res.data.success) {
         setNotifications(res.data.notifications || []);
       } else {
@@ -32,24 +24,31 @@ const Notifications = () => {
       }
     } catch (err) {
       console.error("Fetch notifications error", err);
-      toast.error(err.response?.data?.message || "Failed to load notifications");
+      // 401 errors are handled by the api interceptor
+      if (err.response?.status !== 401) {
+        toast.error(err.response?.data?.message || "Failed to load notifications");
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchNotifications();
-  }, []);
+    // Wait for auth check to complete
+    if (!authLoading) {
+      if (isAuthenticated) {
+        fetchNotifications();
+      } else {
+        toast.info("Login to view your notifications");
+        navigate("/login", { state: { from: "/notifications" } });
+      }
+    }
+  }, [authLoading, isAuthenticated, navigate]);
 
   const markOneAsRead = async (id) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
     try {
       setMarkingOneId(id);
-      await axios.patch(`${API_BASE}/api/notifications/${id}/read`, null, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.patch(`/notifications/${id}/read`);
       setNotifications((prev) =>
         prev.map((n) => (n._id === id ? { ...n, isRead: true } : n))
       );
@@ -62,13 +61,9 @@ const Notifications = () => {
   };
 
   const handleMarkAllRead = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
     try {
       setMarkingAll(true);
-      await axios.patch(`${API_BASE}/api/notifications/mark-all/read`, null, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.patch('/notifications/mark-all/read');
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
     } catch (err) {
       console.error("Mark all read error", err);
@@ -92,6 +87,20 @@ const Notifications = () => {
   };
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  // Show loading while auth is checking
+  if (authLoading) {
+    return (
+      <div className="min-h-screen mt-20 sm:mt-24 px-4 sm:px-8 lg:px-20 bg-slate-50 pb-16">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 text-sm text-slate-500 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-red-600 mr-3"></div>
+            Loading...
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen mt-20 sm:mt-24 px-4 sm:px-8 lg:px-20 bg-slate-50 pb-16">
@@ -139,15 +148,13 @@ const Notifications = () => {
               <button
                 key={n._id}
                 onClick={() => handleItemClick(n)}
-                className={`w-full text-left px-5 sm:px-6 py-4 flex gap-3 sm:gap-4 items-start hover:bg-slate-50 transition-colors ${
-                  n.isRead ? "bg-white" : "bg-red-50/60"
-                }`}
+                className={`w-full text-left px-5 sm:px-6 py-4 flex gap-3 sm:gap-4 items-start hover:bg-slate-50 transition-colors ${n.isRead ? "bg-white" : "bg-red-50/60"
+                  }`}
               >
                 <div className="mt-1">
                   <span
-                    className={`inline-block w-2 h-2 rounded-full ${
-                      n.isRead ? "bg-slate-300" : "bg-red-500"
-                    }`}
+                    className={`inline-block w-2 h-2 rounded-full ${n.isRead ? "bg-slate-300" : "bg-red-500"
+                      }`}
                   ></span>
                 </div>
                 <div className="flex-1 min-w-0">
@@ -155,8 +162,8 @@ const Notifications = () => {
                     {n.type === "saved-search-match"
                       ? "Saved search match"
                       : n.type === "saved-search"
-                      ? "Saved search"
-                      : "Notification"}
+                        ? "Saved search"
+                        : "Notification"}
                   </p>
                   <p className="text-sm font-semibold text-slate-900 mb-0.5 truncate">
                     {n.title}

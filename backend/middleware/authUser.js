@@ -55,6 +55,7 @@ export const authMiddleware = async (req, res, next) => {
         return handleJWTAuth(req, res, next, authHeader.split(" ")[1]);
       }
 
+      console.log('[Auth] No session cookie found');
       return res.status(401).json({
         success: false,
         message: "Authentication required. Please login.",
@@ -66,6 +67,7 @@ export const authMiddleware = async (req, res, next) => {
     const session = await UserSession.validateSession(sessionToken, req);
 
     if (!session) {
+      console.log('[Auth] Session validation failed');
       clearSessionCookie(res);
       return res.status(401).json({
         success: false,

@@ -22,6 +22,7 @@ import WhyUs from "./Pages/WhyUs/WhyUs.jsx";
 import Pricing from "./Pages/Pricing/Pricing.jsx";
 import ScrollToTop from "./Components/ScrollToTop/ScrollToTop.jsx";
 import { ChatProvider } from "./context/ChatContext.jsx";
+import { AuthProvider, ProtectedRoute } from "./context/AuthContext.jsx";
 import ChatWidget from "./Components/Chat/ChatWidget.jsx";
 import ChatButton from "./Components/Chat/ChatButton.jsx";
 
@@ -29,33 +30,68 @@ function App() {
   return (
     <div className="w-full min-h-screen overflow-x-hidden bg-white pt-16 lg:pt-20">
       <Router>
-        <ChatProvider>
-          <ScrollToTop />
-          <Navbar />
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/contact" element={<Contact />} />
-            <Route path="/properties" element={<PropertyPage />} />
-            <Route path="/properties/:id" element={<PropertyDetails />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/agreements" element={<AgreementGenerator />} />
-            <Route path="/add-property" element={<AddProperty />} />
-            <Route path="/edit-property/:id" element={<EditProperty />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/my-properties" element={<MyProperties />} />
-            <Route path="/saved-properties" element={<SavedProperties />} />
-            <Route path="/notifications" element={<Notifications />} />
-            <Route path="/privacy" element={<PrivacyPolicy />} />
-            <Route path="/terms" element={<TermsAndConditions />} />
-            <Route path="/why-us" element={<WhyUs />} />
-            <Route path="/pricing" element={<Pricing />} />
-          </Routes>
-          <Footer />
-          <ChatButton />
-          <ChatWidget />
-        </ChatProvider>
+        <AuthProvider>
+          <ChatProvider>
+            <ScrollToTop />
+            <Navbar />
+            <Routes>
+              {/* Public Routes */}
+              <Route path="/" element={<Home />} />
+              <Route path="/contact" element={<Contact />} />
+              <Route path="/properties" element={<PropertyPage />} />
+              <Route path="/properties/:id" element={<PropertyDetails />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/about" element={<About />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/terms" element={<TermsAndConditions />} />
+              <Route path="/why-us" element={<WhyUs />} />
+              <Route path="/pricing" element={<Pricing />} />
+
+              {/* Protected Routes - Any authenticated user */}
+              <Route path="/profile" element={
+                <ProtectedRoute>
+                  <Profile />
+                </ProtectedRoute>
+              } />
+              <Route path="/saved-properties" element={
+                <ProtectedRoute>
+                  <SavedProperties />
+                </ProtectedRoute>
+              } />
+              <Route path="/notifications" element={
+                <ProtectedRoute>
+                  <Notifications />
+                </ProtectedRoute>
+              } />
+              <Route path="/agreements" element={
+                <ProtectedRoute>
+                  <AgreementGenerator />
+                </ProtectedRoute>
+              } />
+
+              {/* Owner-only Routes */}
+              <Route path="/add-property" element={
+                <ProtectedRoute requiredRole="owner" requireVerified>
+                  <AddProperty />
+                </ProtectedRoute>
+              } />
+              <Route path="/edit-property/:id" element={
+                <ProtectedRoute requiredRole="owner">
+                  <EditProperty />
+                </ProtectedRoute>
+              } />
+              <Route path="/my-properties" element={
+                <ProtectedRoute requiredRole="owner">
+                  <MyProperties />
+                </ProtectedRoute>
+              } />
+            </Routes>
+            <Footer />
+            <ChatButton />
+            <ChatWidget />
+          </ChatProvider>
+        </AuthProvider>
       </Router>
     </div>
   );

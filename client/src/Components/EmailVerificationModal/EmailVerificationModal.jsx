@@ -2,10 +2,9 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Mail, ShieldCheck, Loader2, RefreshCw, CheckCircle, Home } from "lucide-react";
-import axios from "axios";
 import { toast } from "react-toastify";
-
-const API_BASE = import.meta.env.VITE_API_BASE;
+import api from "../../utils/api";
+import { useAuth } from "../../context/AuthContext";
 
 export default function EmailVerificationModal({ isOpen, onClose, user, onVerified }) {
   const [step, setStep] = useState(1); // 1: Confirm email, 2: Enter OTP
@@ -13,6 +12,9 @@ export default function EmailVerificationModal({ isOpen, onClose, user, onVerifi
   const [isLoading, setIsLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
+
+  // Use AuthContext to update user after verification
+  const { updateUser } = useAuth();
 
   // Reset state when modal opens
   useEffect(() => {
@@ -37,12 +39,7 @@ export default function EmailVerificationModal({ isOpen, onClose, user, onVerifi
   const handleSendOtp = async () => {
     setIsLoading(true);
     try {
-      const token = localStorage.getItem("token");
-      await axios.post(
-        `${API_BASE}/api/users/send-upgrade-otp`,
-        { email: user?.email },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await api.post('/users/send-upgrade-otp', { email: user?.email });
       toast.success("OTP sent to your email!");
       setStep(2);
       setResendTimer(60);
@@ -58,12 +55,7 @@ export default function EmailVerificationModal({ isOpen, onClose, user, onVerifi
 
     setResendLoading(true);
     try {
-      const token = localStorage.getItem("token");
-      await axios.post(
-        `${API_BASE}/api/users/send-upgrade-otp`,
-        { email: user?.email },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await api.post('/users/send-upgrade-otp', { email: user?.email });
       toast.success("New OTP sent to your email!");
       setResendTimer(60);
       setOtp("");
@@ -82,18 +74,11 @@ export default function EmailVerificationModal({ isOpen, onClose, user, onVerifi
 
     setIsLoading(true);
     try {
-      const token = localStorage.getItem("token");
-      const res = await axios.post(
-        `${API_BASE}/api/users/verify-upgrade-otp`,
-        { email: user?.email, otp },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await api.post('/users/verify-upgrade-otp', { email: user?.email, otp });
 
-      // Update local storage with new user data
-      const { user: updatedUser, token: newToken } = res.data;
-      localStorage.setItem("token", newToken);
-      localStorage.setItem("user", JSON.stringify(updatedUser));
-      window.dispatchEvent(new Event("auth-change"));
+      // Update user in AuthContext (handles localStorage and cookie refresh)
+      const { user: updatedUser } = res.data;
+      updateUser(updatedUser);
 
       toast.success("Email verified! You can now list properties.");
       onVerified && onVerified();
@@ -266,11 +251,10 @@ export default function EmailVerificationModal({ isOpen, onClose, user, onVerifi
                         type="button"
                         onClick={handleResendOtp}
                         disabled={resendTimer > 0 || resendLoading}
-                        className={`inline-flex items-center text-sm font-medium transition-colors ${
-                          resendTimer > 0
+                        className={`inline-flex items-center text-sm font-medium transition-colors ${resendTimer > 0
                             ? "text-gray-400 cursor-not-allowed"
                             : "text-blue-600 hover:text-blue-700 hover:underline cursor-pointer"
-                        }`}
+                          }`}
                       >
                         {resendLoading ? (
                           <>

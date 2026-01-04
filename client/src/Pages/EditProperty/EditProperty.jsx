@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
 import {
     Home, MapPin, IndianRupee, Layers, Image as ImageIcon, Calendar,
     ChevronLeft, Upload, Check, X, Building2, Users, Utensils, Car, Zap,
@@ -11,6 +10,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import api from "../../utils/api";
+import { useAuth } from "../../context/AuthContext";
 
 // Fix for default marker icon in react-leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -218,7 +219,6 @@ export default function EditProperty() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [property, setProperty] = useState(null);
-    const [user, setUser] = useState(null);
 
     // UI state
     const [currentStep, setCurrentStep] = useState(1);
@@ -287,36 +287,33 @@ export default function EditProperty() {
     const searchTimeoutRef = useRef(null);
     const suggestionsRef = useRef(null);
 
+    // Auth using AuthContext
+    const { user: authUser, isAuthenticated, loading: authLoading } = useAuth();
+
     // Auth check and fetch property
     useEffect(() => {
-        const storedUser = localStorage.getItem("user");
-        const token = localStorage.getItem("token");
+        if (authLoading) return;
 
-        if (!storedUser || !token) {
+        if (!isAuthenticated || !authUser) {
             toast.error("Please login to edit your property");
             navigate("/login");
             return;
         }
 
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-
-        if (parsedUser.role !== "owner" && parsedUser.role !== "agent") {
+        if (authUser.role !== "owner" && authUser.role !== "agent") {
             toast.error("Only property owners can edit properties");
             navigate("/");
             return;
         }
 
         fetchProperty();
-    }, [id, navigate]);
+    }, [id, authLoading, isAuthenticated, authUser, navigate]);
 
     const fetchProperty = async () => {
         try {
             setIsLoading(true);
-            const token = localStorage.getItem("token");
-            const res = await axios.get(`${API_BASE}/api/properties/${id}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            // Use api client - it handles auth via cookies
+            const res = await api.get(`/properties/${id}`);
 
             if (res.data) {
                 const prop = res.data;
@@ -619,8 +616,6 @@ export default function EditProperty() {
     const handleSubmit = async () => {
         setIsSaving(true);
         try {
-            const token = localStorage.getItem("token");
-
             const formDataToSend = new FormData();
 
             // Add all form fields
@@ -671,12 +666,12 @@ export default function EditProperty() {
             // Add existing categorized images
             formDataToSend.append('existingCategorizedImages', JSON.stringify(existingCategorizedImages));
 
-            const res = await axios.put(
-                `${API_BASE}/api/properties/my-properties/${id}`,
+            // Use api client - handles auth via cookies
+            const res = await api.put(
+                `/properties/my-properties/${id}`,
                 formDataToSend,
                 {
                     headers: {
-                        Authorization: `Bearer ${token}`,
                         'Content-Type': 'multipart/form-data'
                     }
                 }

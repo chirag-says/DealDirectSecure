@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import axios from "axios";
 import { toast } from "react-toastify";
+import api from "../../utils/api";
+import { useAuth } from "../../context/AuthContext";
 import {
   Home,
   Building2,
@@ -449,28 +450,27 @@ export default function MyProperties() {
   const [isExporting, setIsExporting] = useState(false);
   const [todayLeadsCount, setTodayLeadsCount] = useState(0);
 
+  // Auth using AuthContext
+  const { user: authUser, isAuthenticated, loading: authLoading } = useAuth();
+
   // Auth check
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    const token = localStorage.getItem("token");
+    if (authLoading) return;
 
-    if (!storedUser || !token) {
+    if (!isAuthenticated || !authUser) {
       toast.error("Please login to view your properties");
       navigate("/login");
       return;
     }
 
-    const parsedUser = JSON.parse(storedUser);
-    setUser(parsedUser);
-
-    if (parsedUser.role !== "owner" && parsedUser.role !== "agent") {
+    if (authUser.role !== "owner" && authUser.role !== "agent") {
       toast.error("Only property owners can access this page");
       navigate("/");
       return;
     }
 
     fetchData();
-  }, [navigate]);
+  }, [authLoading, isAuthenticated, authUser, navigate]);
 
   // Memoized fetchData function to handle date filters
   const fetchData = useCallback(async (isRefresh = false, startFilter = startDateFilter, endFilter = endDateFilter) => {
@@ -480,12 +480,9 @@ export default function MyProperties() {
       } else {
         setLoading(true);
       }
-      const token = localStorage.getItem("token");
 
-      // Fetch properties first
-      const propertiesRes = await axios.get(`${API_BASE}/api/properties/my-properties`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // Fetch properties first - using api client with cookies
+      const propertiesRes = await api.get('/properties/my-properties');
 
       if (propertiesRes.data.success) {
         setProperties(propertiesRes.data.data || []);
@@ -499,19 +496,15 @@ export default function MyProperties() {
       // Try to fetch leads and analytics
       try {
         const [leadsRes, analyticsRes] = await Promise.all([
-          axios.get(`${API_BASE}/api/leads?${leadParams.toString()}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          axios.get(`${API_BASE}/api/leads/analytics`, {
-            headers: { Authorization: `Bearer ${token}` },
-          })
+          api.get(`/leads?${leadParams.toString()}`),
+          api.get('/leads/analytics')
         ]);
 
         if (leadsRes.data.success) {
           setLeads(leadsRes.data.data || []);
           // Update today's lead count if available in stats
           if (leadsRes.data.stats && leadsRes.data.stats.today !== undefined) {
-             setTodayLeadsCount(leadsRes.data.stats.today);
+            setTodayLeadsCount(leadsRes.data.stats.today);
           }
         }
 
@@ -528,12 +521,15 @@ export default function MyProperties() {
       setLastUpdated(new Date());
     } catch (err) {
       console.error("Error fetching data:", err);
-      toast.error("Failed to load data");
+      // 401 errors handled by api interceptor
+      if (err.response?.status !== 401) {
+        toast.error("Failed to load data");
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [startDateFilter, endDateFilter]); 
+  }, [startDateFilter, endDateFilter]);
 
   // Initial Fetch (Component Mount)
   useEffect(() => {
@@ -550,7 +546,7 @@ export default function MyProperties() {
 
     const start = new Date(startDateFilter);
     const end = new Date(endDateFilter);
-    
+
     if (start > end) {
       toast.error("Start date cannot be after end date.");
       return;
@@ -559,7 +555,7 @@ export default function MyProperties() {
     // Calculate the difference in days
     const diffTime = Math.abs(end.getTime() - start.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // Difference in days
-    
+
     // 7-day restriction check (allow 0-7 days inclusive)
     if (diffDays > 7) {
       toast.error(
@@ -574,66 +570,64 @@ export default function MyProperties() {
     // Trigger fetchData with the new dates
     fetchData(false, startDateFilter, endDateFilter);
   };
-  
+
   const handleClearDateFilter = () => {
-      setStartDateFilter("");
-      setEndDateFilter("");
-      // Fetch data without filters
-      fetchData(false, "", ""); 
+    setStartDateFilter("");
+    setEndDateFilter("");
+    // Fetch data without filters
+    fetchData(false, "", "");
   };
 
-  
+
   // === CORRECTED EXPORT FUNCTION ===
   const handleExportLeads = async () => {
     setIsExporting(true);
     try {
-        const token = localStorage.getItem("token");
-        
-        const response = await axios.get(`${API_BASE}/api/leads/export`, {
-            headers: { Authorization: `Bearer ${token}` },
-            responseType: 'blob', // Critical: tells axios to handle binary data
-        });
+      // Use api client for blob response
+      const response = await api.get('/leads/export', {
+        responseType: 'blob', // Critical: tells axios to handle binary data
+      });
 
-        // Check if the response is actually JSON error (edge case where server sends JSON despite blob request)
-        if (response.data.type === 'application/json') {
-             const errorData = JSON.parse(await response.data.text());
-             throw new Error(errorData.message || "Export failed");
-        }
+      // Check if the response is actually JSON error (edge case where server sends JSON despite blob request)
+      if (response.data.type === 'application/json') {
+        const errorData = JSON.parse(await response.data.text());
+        throw new Error(errorData.message || "Export failed");
+      }
 
-        // Create a download link for the blob
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        
-        // Name the file
-        const dateStr = new Date().toISOString().split('T')[0];
-        link.setAttribute('download', `MyLeads_History_${dateStr}.xlsx`);
-        
-        document.body.appendChild(link);
-        link.click();
-        
-        // Cleanup
-        link.parentNode.removeChild(link);
-        window.URL.revokeObjectURL(url);
+      // Create a download link for the blob
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
 
-        toast.success("Historical data exported successfully!");
+      // Name the file
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `MyLeads_History_${dateStr}.xlsx`);
+
+      document.body.appendChild(link);
+      link.click();
+
+      // Cleanup
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success("Historical data exported successfully!");
 
     } catch (err) {
-        console.error("Export error:", err);
-        // Better error message extraction for blob responses
-        let errorMsg = "Failed to export data.";
-        if (err.response && err.response.data instanceof Blob) {
-             try {
-                const blobText = await err.response.data.text();
-                const errorObj = JSON.parse(blobText);
-                errorMsg = errorObj.message || errorMsg;
-             } catch (e) { /* ignore json parse error */ }
-        } else if (err.message) {
-            errorMsg = err.message;
-        }
-        toast.error(errorMsg);
+      console.error("Export error:", err);
+      // Better error message extraction for blob responses
+      let errorMsg = "Failed to export data.";
+      if (err.response && err.response.data instanceof Blob) {
+        try {
+          const blobText = await err.response.data.text();
+          const errorObj = JSON.parse(blobText);
+          errorMsg = errorObj.message || errorMsg;
+        } catch (e) { /* ignore json parse error */ }
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
+      toast.error(errorMsg);
     } finally {
-        setIsExporting(false);
+      setIsExporting(false);
     }
   };
 
@@ -655,10 +649,10 @@ export default function MyProperties() {
   };
 
   // Prepare chart data (unchanged)
-  const leadStatusData = leadAnalytics?.statusStats 
+  const leadStatusData = leadAnalytics?.statusStats
     ? Object.entries(leadAnalytics.statusStats)
-        .filter(([name, value]) => value > 0)
-        .map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value }))
+      .filter(([name, value]) => value > 0)
+      .map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value }))
     : [];
 
   const dailyLeadsData = leadAnalytics?.dailyLeads?.map(d => ({
@@ -726,10 +720,7 @@ export default function MyProperties() {
     if (!propertyToDelete) return;
     setDeleting(true);
     try {
-      const token = localStorage.getItem("token");
-      await axios.delete(`${API_BASE}/api/properties/${propertyToDelete._id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.delete(`/properties/${propertyToDelete._id}`);
       toast.success("Property deleted successfully");
       setProperties(properties.filter((p) => p._id !== propertyToDelete._id));
       setShowDeleteModal(false);
@@ -752,12 +743,7 @@ export default function MyProperties() {
 
   const handleUpdateLeadStatus = async (leadId, status) => {
     try {
-      const token = localStorage.getItem("token");
-      await axios.put(
-        `${API_BASE}/api/leads/${leadId}/status`,
-        { status },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await api.put(`/leads/${leadId}/status`, { status });
       toast.success(`Lead status updated to ${status}`);
       // Refresh leads to update UI
       fetchData(false, startDateFilter, endDateFilter);
@@ -823,11 +809,10 @@ export default function MyProperties() {
               <button
                 key={tab.key}
                 onClick={() => { setActiveTab(tab.key); setSelectedPropertyForLeads(null); }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
-                  activeTab === tab.key
-                    ? "bg-white text-blue-600 shadow-sm"
-                    : "text-gray-600 hover:text-gray-900"
-                }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === tab.key
+                  ? "bg-white text-blue-600 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+                  }`}
               >
                 <tab.icon className="w-4 h-4" />
                 {tab.label}
@@ -879,11 +864,10 @@ export default function MyProperties() {
                     <button
                       key={tab.key}
                       onClick={() => setFilter(tab.key)}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
-                        filter === tab.key
-                          ? "bg-blue-600 text-white"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${filter === tab.key
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        }`}
                     >
                       {tab.label}
                     </button>
@@ -951,61 +935,61 @@ export default function MyProperties() {
             {/* Lead Filters and Date Range */}
             <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
               <div className="flex flex-col gap-6">
-                
+
                 {/* Date Filter & Export Row */}
                 <div className="flex flex-col lg:flex-row gap-4 items-end justify-between border-b border-gray-100 pb-4">
-                    <div className="flex gap-3 flex-1 flex-wrap">
-                        <div className="flex flex-col">
-                            <label className="text-xs font-medium text-gray-500 mb-1">From Date (Max 7 days)</label>
-                            <input
-                                type="date"
-                                value={startDateFilter}
-                                onChange={(e) => setStartDateFilter(e.target.value)}
-                                className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none"
-                            />
-                        </div>
-                        <div className="flex flex-col">
-                            <label className="text-xs font-medium text-gray-500 mb-1">To Date</label>
-                            <input
-                                type="date"
-                                value={endDateFilter}
-                                onChange={(e) => setEndDateFilter(e.target.value)}
-                                className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none"
-                            />
-                        </div>
-                        <div className="flex items-end gap-2">
-                            <button
-                                onClick={handleApplyDateFilter}
-                                className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition"
-                                disabled={!startDateFilter || !endDateFilter}
-                            >
-                                <Filter className="w-4 h-4" /> Apply Filter
-                            </button>
-                            {(startDateFilter || endDateFilter) && (
-                                <button
-                                    onClick={handleClearDateFilter}
-                                    className="p-2.5 text-gray-500 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
-                                    title="Clear Date Filter"
-                                >
-                                    <X className="w-5 h-5" />
-                                </button>
-                            )}
-                        </div>
+                  <div className="flex gap-3 flex-1 flex-wrap">
+                    <div className="flex flex-col">
+                      <label className="text-xs font-medium text-gray-500 mb-1">From Date (Max 7 days)</label>
+                      <input
+                        type="date"
+                        value={startDateFilter}
+                        onChange={(e) => setStartDateFilter(e.target.value)}
+                        className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
                     </div>
-
-                    <div className="w-full lg:w-auto text-right">
+                    <div className="flex flex-col">
+                      <label className="text-xs font-medium text-gray-500 mb-1">To Date</label>
+                      <input
+                        type="date"
+                        value={endDateFilter}
+                        onChange={(e) => setEndDateFilter(e.target.value)}
+                        className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <button
+                        onClick={handleApplyDateFilter}
+                        className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+                        disabled={!startDateFilter || !endDateFilter}
+                      >
+                        <Filter className="w-4 h-4" /> Apply Filter
+                      </button>
+                      {(startDateFilter || endDateFilter) && (
                         <button
-                            onClick={handleExportLeads}
-                            disabled={isExporting}
-                            className="w-full lg:w-auto inline-flex items-center justify-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
+                          onClick={handleClearDateFilter}
+                          className="p-2.5 text-gray-500 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+                          title="Clear Date Filter"
                         >
-                            <FileText className={`w-5 h-5 ${isExporting ? 'animate-bounce' : ''}`} />
-                            {isExporting ? 'Generating Excel...' : 'Export 3-Month Data (Excel)'}
+                          <X className="w-5 h-5" />
                         </button>
-                        <p className="text-xs text-gray-500 mt-1">
-                            Max 3 months of historical data.
-                        </p>
+                      )}
                     </div>
+                  </div>
+
+                  <div className="w-full lg:w-auto text-right">
+                    <button
+                      onClick={handleExportLeads}
+                      disabled={isExporting}
+                      className="w-full lg:w-auto inline-flex items-center justify-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-emerald-700 transition disabled:opacity-50"
+                    >
+                      <FileText className={`w-5 h-5 ${isExporting ? 'animate-bounce' : ''}`} />
+                      {isExporting ? 'Generating Excel...' : 'Export 3-Month Data (Excel)'}
+                    </button>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Max 3 months of historical data.
+                    </p>
+                  </div>
                 </div>
 
                 {/* Status and Property Filters */}
@@ -1035,11 +1019,10 @@ export default function MyProperties() {
                       <button
                         key={tab.key}
                         onClick={() => setLeadFilter(tab.key)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
-                          leadFilter === tab.key
-                            ? "bg-blue-600 text-white"
-                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                        }`}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${leadFilter === tab.key
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                          }`}
                       >
                         {tab.label}
                       </button>
@@ -1066,7 +1049,7 @@ export default function MyProperties() {
                   <Users className="w-10 h-10 text-gray-400" />
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                    {startDateFilter && endDateFilter ? "No leads found for this date range" : "No leads yet"}
+                  {startDateFilter && endDateFilter ? "No leads found for this date range" : "No leads yet"}
                 </h3>
                 <p className="text-gray-500">
                   When users express interest in your properties, they'll appear here.
@@ -1089,22 +1072,22 @@ export default function MyProperties() {
                     <AreaChart data={dailyLeadsData}>
                       <defs>
                         <linearGradient id="colorLeads" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                          <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                       <XAxis dataKey="date" tick={{ fontSize: 12 }} stroke="#9CA3AF" />
                       <YAxis tick={{ fontSize: 12 }} stroke="#9CA3AF" />
-                      <Tooltip 
+                      <Tooltip
                         contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB' }}
                       />
-                      <Area 
-                        type="monotone" 
-                        dataKey="leads" 
-                        stroke="#3B82F6" 
-                        fillOpacity={1} 
-                        fill="url(#colorLeads)" 
+                      <Area
+                        type="monotone"
+                        dataKey="leads"
+                        stroke="#3B82F6"
+                        fillOpacity={1}
+                        fill="url(#colorLeads)"
                         strokeWidth={2}
                       />
                     </AreaChart>
@@ -1158,7 +1141,7 @@ export default function MyProperties() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                       <XAxis type="number" tick={{ fontSize: 12 }} stroke="#9CA3AF" />
                       <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} stroke="#9CA3AF" width={120} />
-                      <Tooltip 
+                      <Tooltip
                         contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB' }}
                       />
                       <Bar dataKey="leads" fill="#3B82F6" radius={[0, 4, 4, 0]} />
@@ -1288,150 +1271,150 @@ export default function MyProperties() {
         )}
       </AnimatePresence>
       {/* Owner Upgrade Floating Button */}
-{user?.role === "owner" && properties.length >= 1 && (
-  <div className="fixed bottom-24 right-6 z-40">
-    <button
-      onClick={() => setShowPlans(true)}
-      className="group flex items-center gap-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white px-6 py-3.5 rounded-full shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] relative overflow-hidden"
-    >
-      <span className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-      <span className="text-sm font-semibold relative z-10">
-        Want to list more than 1 property?
-      </span>
-      <span className="bg-white/20 border border-white/30 rounded-full px-3 py-1 text-xs font-bold relative z-10">
-        View Plans
-      </span>
-    </button>
-  </div>
-)}
-
-{/* Owner Plans Modal */}
-<AnimatePresence>
-  {showPlans && (
-    <>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/70 backdrop-blur-md z-50"
-        onClick={() => setShowPlans(false)}
-      />
-
-      <motion.div
-        initial={{ opacity: 0, y: 60, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 60, scale: 0.95 }}
-        transition={{ type: "spring", stiffness: 180, damping: 18 }}
-        className="fixed bottom-6 md:bottom-10 right-4 md:right-10 z-50 w-[94%] max-w-md"
-      >
-        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
-
-          {/* Header */}
-          <div className="px-6 py-5 flex items-start justify-between gap-3 border-b border-gray-100">
-            <div>
-              <p className="text-xs font-bold text-indigo-600 uppercase tracking-[0.18em]">
-                Owner Upgrade
-              </p>
-              <h3 className="text-xl font-extrabold text-gray-900 mt-1">
-                Unlock More Listings
-              </h3>
-              <p className="text-sm text-gray-500 mt-1">
-                Choose your plan & grow your property reach.
-              </p>
-            </div>
-
-            <button
-              onClick={() => setShowPlans(false)}
-              className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Plans */}
-          <div className="px-6 py-5 grid gap-4">
-
-            {/* Starter */}
-            <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4 hover:shadow-sm transition">
-              <div>
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-[0.16em]">
-                  Free
-                </p>
-                <p className="text-base font-semibold text-gray-900">
-                  Starter Owner
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  1 active property • Basic visibility
-                </p>
-              </div>
-              <p className="text-base font-bold text-emerald-600">
-                ₹0/mo
-              </p>
-            </div>
-
-            {/* Growth - Featured */}
-            <div className="relative flex items-center justify-between rounded-2xl border-2 border-indigo-500 bg-indigo-50 px-5 py-4 shadow-md hover:shadow-lg transition">
-              <span className="absolute -top-3 left-4 bg-indigo-600 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow">
-                MOST POPULAR
-              </span>
-
-              <div>
-                <p className="text-xs font-bold text-indigo-600 uppercase tracking-[0.16em]">
-                  Growth
-                </p>
-                <p className="text-base font-semibold text-gray-900">
-                  Growth Plan
-                </p>
-                <p className="text-xs text-gray-600 mt-1">
-                  Up to 3 listings • Priority placement • Lead insights
-                </p>
-              </div>
-              <Link
-                to="/pricing"
-                className="text-xs font-bold text-indigo-700 border border-indigo-300 rounded-full px-3 py-1 hover:bg-indigo-600 hover:text-white transition"
-              >
-                View Plans
-              </Link>
-            </div>
-
-            {/* Premium */}
-            <div className="flex items-center justify-between rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 hover:shadow-md transition">
-              <div>
-                <p className="text-xs font-bold text-amber-600 uppercase tracking-[0.16em]">
-                  Premium
-                </p>
-                <p className="text-base font-semibold text-gray-900">
-                  Builder / Portfolio
-                </p>
-                <p className="text-xs text-gray-600 mt-1">
-                  Featured badge • High limits • Dedicated support
-                </p>
-              </div>
-              <p className="text-xs font-bold text-amber-800 text-right">
-                Talk to<br />Sales Team
-              </p>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between gap-3 text-xs text-gray-500 bg-gray-50">
-            <p>Online payments coming soon.</p>
-
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText("dealdirect@gmail.com");
-                toast.success("Support email copied");
-              }}
-              className="text-indigo-600 font-bold hover:underline whitespace-nowrap"
-            >
-              Copy Support Email
-            </button>
-          </div>
+      {user?.role === "owner" && properties.length >= 1 && (
+        <div className="fixed bottom-24 right-6 z-40">
+          <button
+            onClick={() => setShowPlans(true)}
+            className="group flex items-center gap-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white px-6 py-3.5 rounded-full shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] relative overflow-hidden"
+          >
+            <span className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <span className="text-sm font-semibold relative z-10">
+              Want to list more than 1 property?
+            </span>
+            <span className="bg-white/20 border border-white/30 rounded-full px-3 py-1 text-xs font-bold relative z-10">
+              View Plans
+            </span>
+          </button>
         </div>
-      </motion.div>
-    </>
-  )}
-</AnimatePresence>
+      )}
+
+      {/* Owner Plans Modal */}
+      <AnimatePresence>
+        {showPlans && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/70 backdrop-blur-md z-50"
+              onClick={() => setShowPlans(false)}
+            />
+
+            <motion.div
+              initial={{ opacity: 0, y: 60, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 60, scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 180, damping: 18 }}
+              className="fixed bottom-6 md:bottom-10 right-4 md:right-10 z-50 w-[94%] max-w-md"
+            >
+              <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
+
+                {/* Header */}
+                <div className="px-6 py-5 flex items-start justify-between gap-3 border-b border-gray-100">
+                  <div>
+                    <p className="text-xs font-bold text-indigo-600 uppercase tracking-[0.18em]">
+                      Owner Upgrade
+                    </p>
+                    <h3 className="text-xl font-extrabold text-gray-900 mt-1">
+                      Unlock More Listings
+                    </h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Choose your plan & grow your property reach.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => setShowPlans(false)}
+                    className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Plans */}
+                <div className="px-6 py-5 grid gap-4">
+
+                  {/* Starter */}
+                  <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4 hover:shadow-sm transition">
+                    <div>
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-[0.16em]">
+                        Free
+                      </p>
+                      <p className="text-base font-semibold text-gray-900">
+                        Starter Owner
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        1 active property • Basic visibility
+                      </p>
+                    </div>
+                    <p className="text-base font-bold text-emerald-600">
+                      ₹0/mo
+                    </p>
+                  </div>
+
+                  {/* Growth - Featured */}
+                  <div className="relative flex items-center justify-between rounded-2xl border-2 border-indigo-500 bg-indigo-50 px-5 py-4 shadow-md hover:shadow-lg transition">
+                    <span className="absolute -top-3 left-4 bg-indigo-600 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow">
+                      MOST POPULAR
+                    </span>
+
+                    <div>
+                      <p className="text-xs font-bold text-indigo-600 uppercase tracking-[0.16em]">
+                        Growth
+                      </p>
+                      <p className="text-base font-semibold text-gray-900">
+                        Growth Plan
+                      </p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Up to 3 listings • Priority placement • Lead insights
+                      </p>
+                    </div>
+                    <Link
+                      to="/pricing"
+                      className="text-xs font-bold text-indigo-700 border border-indigo-300 rounded-full px-3 py-1 hover:bg-indigo-600 hover:text-white transition"
+                    >
+                      View Plans
+                    </Link>
+                  </div>
+
+                  {/* Premium */}
+                  <div className="flex items-center justify-between rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 hover:shadow-md transition">
+                    <div>
+                      <p className="text-xs font-bold text-amber-600 uppercase tracking-[0.16em]">
+                        Premium
+                      </p>
+                      <p className="text-base font-semibold text-gray-900">
+                        Builder / Portfolio
+                      </p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Featured badge • High limits • Dedicated support
+                      </p>
+                    </div>
+                    <p className="text-xs font-bold text-amber-800 text-right">
+                      Talk to<br />Sales Team
+                    </p>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between gap-3 text-xs text-gray-500 bg-gray-50">
+                  <p>Online payments coming soon.</p>
+
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText("dealdirect@gmail.com");
+                      toast.success("Support email copied");
+                    }}
+                    className="text-indigo-600 font-bold hover:underline whitespace-nowrap"
+                  >
+                    Copy Support Email
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
     </div>
   );

@@ -1,25 +1,45 @@
 /**
- * Admin API Client
- * Pre-configured axios instance with credentials for cookie-based authentication
+ * Admin API Client - Cookie-Based Authentication
+ * 
+ * Pre-configured axios instance with:
+ * - Automatic cookie handling (withCredentials: true)
+ * - 401/403 error handling with redirect
+ * - Organized API methods for all admin endpoints
  */
 import axios from "axios";
 
-const API_URL = import.meta.env.VITE_API_BASE_URL;
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:9000/api';
 
-// Create axios instance with default config
+// ============================================
+// AXIOS INSTANCE
+// ============================================
+
 const adminApi = axios.create({
     baseURL: API_URL,
     withCredentials: true, // CRITICAL: Send cookies with every request
     headers: {
         "Content-Type": "application/json",
     },
+    timeout: 30000,
 });
 
-// Request interceptor - add token from localStorage as fallback (for legacy compatibility)
+// ============================================
+// AUTH ERROR HANDLER
+// ============================================
+
+let onAuthError = null;
+
+export const setAdminAuthErrorHandler = (handler) => {
+    onAuthError = handler;
+};
+
+// ============================================
+// REQUEST INTERCEPTOR
+// ============================================
+
 adminApi.interceptors.request.use(
     (config) => {
         // Cookies are sent automatically with withCredentials: true
-        // This is just a fallback for any edge cases
         return config;
     },
     (error) => {
@@ -27,16 +47,250 @@ adminApi.interceptors.request.use(
     }
 );
 
-// Response interceptor - log errors but don't auto-redirect
+// ============================================
+// RESPONSE INTERCEPTOR
+// ============================================
+
 adminApi.interceptors.response.use(
     (response) => response,
     (error) => {
-        // Log auth errors for debugging
-        if (error.response?.status === 401) {
-            console.warn("Admin API auth error:", error.response?.data?.message);
+        const { response } = error;
+
+        if (response) {
+            const { status, data } = response;
+
+            if (status === 401) {
+                console.warn("🔒 Admin session expired");
+                localStorage.removeItem("adminUser");
+
+                if (onAuthError) {
+                    onAuthError({
+                        type: 'UNAUTHORIZED',
+                        message: data?.message || 'Session expired. Please log in again.',
+                    });
+                }
+            }
+
+            if (status === 403) {
+                console.warn("🚫 Admin access forbidden");
+
+                if (onAuthError) {
+                    onAuthError({
+                        type: 'FORBIDDEN',
+                        message: data?.message || 'You do not have permission to access this resource.',
+                    });
+                }
+            }
         }
+
         return Promise.reject(error);
     }
 );
+
+// ============================================
+// AUTH API
+// ============================================
+
+export const adminAuthApi = {
+    login: async (email, password) => {
+        const response = await adminApi.post('/admin/login', { email, password });
+        return response.data;
+    },
+
+    logout: async () => {
+        try {
+            await adminApi.post('/admin/logout');
+        } catch (error) {
+            console.warn('Logout error:', error.message);
+        }
+        localStorage.removeItem('adminUser');
+    },
+
+    getProfile: async () => {
+        const response = await adminApi.get('/admin/profile');
+        return response.data;
+    },
+
+    checkAuth: async () => {
+        try {
+            const response = await adminApi.get('/admin/profile');
+            return { authenticated: true, admin: response.data.admin || response.data };
+        } catch (error) {
+            return { authenticated: false, admin: null };
+        }
+    },
+};
+
+// ============================================
+// USER MANAGEMENT API
+// ============================================
+
+export const userManagementApi = {
+    getAll: async (params = {}) => {
+        const response = await adminApi.get('/users/list', { params });
+        return response.data;
+    },
+
+    toggleBlock: async (userId) => {
+        const response = await adminApi.put(`/users/block/${userId}`);
+        return response.data;
+    },
+
+    getOwnersWithProjects: async () => {
+        const response = await adminApi.get('/users/owners-projects');
+        return response.data;
+    },
+
+    exportCSV: async () => {
+        const response = await adminApi.get('/users/export-csv', { responseType: 'blob' });
+        return response.data;
+    },
+
+    exportPDF: async () => {
+        const response = await adminApi.get('/users/export-pdf', { responseType: 'blob' });
+        return response.data;
+    },
+};
+
+// ============================================
+// PROPERTY MANAGEMENT API
+// ============================================
+
+export const propertyManagementApi = {
+    getAll: async (params = {}) => {
+        const response = await adminApi.get('/properties/admin/all', { params });
+        return response.data;
+    },
+
+    approve: async (propertyId) => {
+        const response = await adminApi.put(`/properties/approve/${propertyId}`);
+        return response.data;
+    },
+
+    disapprove: async (propertyId, reason) => {
+        const response = await adminApi.put(`/properties/disapprove/${propertyId}`, { reason });
+        return response.data;
+    },
+
+    update: async (propertyId, formData) => {
+        const response = await adminApi.put(`/properties/edit/${propertyId}`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        return response.data;
+    },
+
+    delete: async (propertyId) => {
+        const response = await adminApi.delete(`/properties/delete/${propertyId}`);
+        return response.data;
+    },
+};
+
+// ============================================
+// LEAD MANAGEMENT API
+// ============================================
+
+export const leadManagementApi = {
+    getAll: async (params = {}) => {
+        const response = await adminApi.get('/admin/leads', { params });
+        return response.data;
+    },
+
+    export: async (format = 'excel') => {
+        const response = await adminApi.get(`/admin/leads/export`, {
+            params: { format },
+            responseType: 'blob'
+        });
+        return response.data;
+    },
+};
+
+// ============================================
+// CATEGORY MANAGEMENT API
+// ============================================
+
+export const categoryApi = {
+    getAll: async () => {
+        const response = await adminApi.get('/categories');
+        return response.data;
+    },
+
+    create: async (data) => {
+        const response = await adminApi.post('/categories', data);
+        return response.data;
+    },
+
+    update: async (id, data) => {
+        const response = await adminApi.put(`/categories/${id}`, data);
+        return response.data;
+    },
+
+    delete: async (id) => {
+        const response = await adminApi.delete(`/categories/${id}`);
+        return response.data;
+    },
+};
+
+// ============================================
+// PROPERTY TYPE API
+// ============================================
+
+export const propertyTypeApi = {
+    getAll: async () => {
+        const response = await adminApi.get('/propertyTypes');
+        return response.data;
+    },
+
+    create: async (data) => {
+        const response = await adminApi.post('/propertyTypes', data);
+        return response.data;
+    },
+
+    update: async (id, data) => {
+        const response = await adminApi.put(`/propertyTypes/${id}`, data);
+        return response.data;
+    },
+
+    delete: async (id) => {
+        const response = await adminApi.delete(`/propertyTypes/${id}`);
+        return response.data;
+    },
+};
+
+// ============================================
+// REPORTS API
+// ============================================
+
+export const reportsApi = {
+    getPropertyReports: async (params = {}) => {
+        const response = await adminApi.get('/admin/reports/properties', { params });
+        return response.data;
+    },
+
+    getMessageReports: async (params = {}) => {
+        const response = await adminApi.get('/admin/reports/messages', { params });
+        return response.data;
+    },
+
+    resolveReport: async (reportId, resolution) => {
+        const response = await adminApi.put(`/admin/reports/${reportId}/resolve`, resolution);
+        return response.data;
+    },
+};
+
+// ============================================
+// DASHBOARD API
+// ============================================
+
+export const dashboardApi = {
+    getStats: async () => {
+        const response = await adminApi.get('/admin/dashboard/stats');
+        return response.data;
+    },
+
+    getRecentActivity: async () => {
+        const response = await adminApi.get('/admin/dashboard/activity');
+        return response.data;
+    },
+};
 
 export default adminApi;

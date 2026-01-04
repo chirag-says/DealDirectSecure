@@ -1,11 +1,10 @@
 import React, { useState } from "react";
-import axios from "axios";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import { FaTimes } from "react-icons/fa";
 import { User, Mail, Lock, Eye, EyeOff, Loader2, CheckCircle, ShieldCheck } from "lucide-react";
-
-const API_BASE = import.meta.env.VITE_API_BASE;
+import api from "../../utils/api";
+import { useAuth } from "../../context/AuthContext";
 import dealDirectLogo from "../../assets/dealdirect_logo.png";
 
 const AuthModal = ({ isOpen, onClose }) => {
@@ -22,6 +21,9 @@ const AuthModal = ({ isOpen, onClose }) => {
     const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
 
+    // Use AuthContext for login/register
+    const { login, register, updateUser } = useAuth();
+
     if (!isOpen) return null;
 
     const handleChange = (e) => {
@@ -36,17 +38,10 @@ const AuthModal = ({ isOpen, onClose }) => {
         e.preventDefault();
         setIsLoading(true);
         try {
-            const res = await axios.post(`${API_BASE}/api/users/login`, {
-                email: formData.email,
-                password: formData.password,
-            });
-            const { token, user } = res.data;
+            // Use AuthContext login method (handles cookies)
+            await login(formData.email, formData.password);
 
-            localStorage.setItem("token", token);
-            localStorage.setItem("user", JSON.stringify(user));
-            window.dispatchEvent(new Event("auth-change"));
-
-            toast.success(`Welcome back, ${user.name || 'User'}!`);
+            toast.success("Welcome back!");
             onClose();
             navigate("/add-property");
         } catch (err) {
@@ -63,7 +58,7 @@ const AuthModal = ({ isOpen, onClose }) => {
         setIsLoading(true);
         try {
             // Seller registration should create an owner-style account (with OTP)
-            await axios.post(`${API_BASE}/api/users/register`, {
+            await api.post('/users/register', {
                 name: formData.name,
                 email: formData.email,
                 password: formData.password,
@@ -82,15 +77,15 @@ const AuthModal = ({ isOpen, onClose }) => {
         e.preventDefault();
         setIsLoading(true);
         try {
-            const res = await axios.post(`${API_BASE}/api/users/verify-otp`, {
+            const res = await api.post('/users/verify-otp', {
                 email: formData.email,
                 otp,
             });
 
-            const { token, user } = res.data;
-            localStorage.setItem("token", token);
-            localStorage.setItem("user", JSON.stringify(user));
-            window.dispatchEvent(new Event("auth-change"));
+            // The server sets HttpOnly cookie, just store user data for UI
+            const { user } = res.data;
+            updateUser(user);
+            // window.dispatchEvent(new Event("auth-change"));
 
             toast.success("Registration successful! Welcome aboard.");
             onClose();
@@ -415,7 +410,7 @@ const AuthModal = ({ isOpen, onClose }) => {
 
                         {/* FOOTER TOGGLE */}
                         <div className="mt-8 text-center text-sm text-slate-500">
-                            {isLogin ? "Don’t have an account? " : "Already have an account? "}
+                            {isLogin ? "Don't have an account? " : "Already have an account? "}
                             <button
                                 onClick={() => {
                                     setIsLogin(!isLogin);

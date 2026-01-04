@@ -94,10 +94,10 @@ userSessionSchema.statics.hashToken = function (token) {
  * Generate session fingerprint from request
  */
 userSessionSchema.statics.generateFingerprint = function (req) {
+    // Only use User-Agent for fingerprinting to improve stability
+    // Removing Accept-Language and Accept-Encoding as they can vary between requests
     const components = [
-        req.headers["user-agent"] || "",
-        req.headers["accept-language"] || "",
-        req.headers["accept-encoding"] || "",
+        req.headers["user-agent"] || "unknown",
     ].join("|");
     return crypto.createHash("sha256").update(components).digest("hex").substring(0, 32);
 };
@@ -163,7 +163,8 @@ userSessionSchema.statics.validateSession = async function (sessionToken, req) {
     // Verify fingerprint integrity
     const currentFingerprint = this.generateFingerprint(req);
     if (session.fingerprint !== currentFingerprint) {
-        // Fingerprint mismatch - potential session hijacking
+        console.warn(`[Auth] Fingerprint mismatch for user ${session.user?._id}. Stored: ${session.fingerprint}, Current: ${currentFingerprint}`);
+        // Fingerprint mismatch - potential session hijacking (or just volatile headers)
         await this.revokeSession(session._id, "fingerprint_mismatch");
         return null;
     }

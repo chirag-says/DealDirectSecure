@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useParams, useNavigate } from "react-router-dom";
-import axios from "axios";
 import {
   HeartIcon,
   ShareIcon,
@@ -18,6 +17,8 @@ import { FlagIcon } from "@heroicons/react/24/outline";
 import { HeartIcon as HeartIconSolid } from "@heroicons/react/24/solid";
 import { toast } from "react-toastify";
 import { useChat } from "../../context/ChatContext";
+import api from "../../utils/api";
+import { useAuth } from "../../context/AuthContext";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
@@ -32,9 +33,8 @@ const BRAND_BG_SOFT = "bg-slate-50"; // subtle neutral background
 
 const Card = ({ title, icon, children, sticky }) => (
   <div
-    className={`bg-white/95 border border-slate-200/80 rounded-3xl shadow-[0_18px_45px_rgba(15,32,70,0.08)] ${
-      sticky ? "sticky top-24" : ""
-    }`}
+    className={`bg-white/95 border border-slate-200/80 rounded-3xl shadow-[0_18px_45px_rgba(15,32,70,0.08)] ${sticky ? "sticky top-24" : ""
+      }`}
   >
     <div className="p-6 sm:p-7 lg:p-8">
       <div className="flex items-center gap-3 mb-6">
@@ -112,9 +112,8 @@ const PrimaryButton = ({
 
 const Row = ({ label, value, highlight }) => (
   <div
-    className={`flex justify-between gap-4 border-b border-slate-100/80 pb-2.5 ${
-      highlight ? "text-emerald-700 font-semibold" : ""
-    }`}
+    className={`flex justify-between gap-4 border-b border-slate-100/80 pb-2.5 ${highlight ? "text-emerald-700 font-semibold" : ""
+      }`}
   >
     <span className="text-sm text-slate-500">{label}</span>
     <span className="text-sm font-semibold text-slate-900 text-right">
@@ -320,9 +319,8 @@ const OverviewSection = ({ property, isResidential, isCommercial, ageOfProperty 
       label="Parking"
       value={
         property.parking?.covered || property.parking?.open
-          ? `${property.parking?.covered ? `${property.parking.covered} Covered` : ""}${
-              property.parking?.covered && property.parking?.open ? ", " : ""
-            }${property.parking?.open ? `${property.parking.open} Open` : ""}`
+          ? `${property.parking?.covered ? `${property.parking.covered} Covered` : ""}${property.parking?.covered && property.parking?.open ? ", " : ""
+          }${property.parking?.open ? `${property.parking.open} Open` : ""}`
           : "N/A"
       }
     />
@@ -377,8 +375,8 @@ const AmenitiesSection = ({ property }) => {
   const list = Array.isArray(property.amenities)
     ? property.amenities
     : Array.isArray(property.selectedAmenities)
-    ? property.selectedAmenities
-    : [];
+      ? property.selectedAmenities
+      : [];
 
   if (list.length === 0) return null;
 
@@ -571,32 +569,32 @@ const PropertyDetails = () => {
     }
   }, [location.state, location.pathname, id, navigate]);
 
+  // Use AuthContext for auth checks
+  const { isAuthenticated } = useAuth();
+
   useEffect(() => {
     const checkUserInterest = async () => {
-      const token = localStorage.getItem("token");
-      if (!token || !id) return;
+      if (!isAuthenticated || !id) return;
 
       try {
-        const res = await axios.get(
-          `${API_BASE}/api/properties/interested/${id}/check`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        const res = await api.get(`/properties/interested/${id}/check`);
         if (res.data.success) {
           setIsInterested(res.data.isInterested);
         }
       } catch (error) {
-        console.error("Error checking interest status:", error);
+        if (error.response?.status !== 401) {
+          console.error("Error checking interest status:", error);
+        }
       }
     };
     checkUserInterest();
-  }, [id]);
+  }, [id, isAuthenticated]);
 
   useEffect(() => {
     const fetchProperty = async () => {
       try {
-        const res = await axios.get(`${API_BASE}/api/properties/${id}`);
+        // Public endpoint - no auth needed, but use api client for consistency
+        const res = await api.get(`/properties/${id}`);
         if (res.data) {
           setProperty(res.data);
         } else {
@@ -1024,11 +1022,10 @@ const PropertyDetails = () => {
                     <button
                       key={i}
                       onClick={() => setActiveImage(i)}
-                      className={`relative flex-shrink-0 rounded-xl overflow-hidden border ${
-                        i === activeImage
-                          ? "border-[#0f4fb5] ring-2 ring-[#0f4fb5]/25"
-                          : "border-slate-200"
-                      }`}
+                      className={`relative flex-shrink-0 rounded-xl overflow-hidden border ${i === activeImage
+                        ? "border-[#0f4fb5] ring-2 ring-[#0f4fb5]/25"
+                        : "border-slate-200"
+                        }`}
                     >
                       <img
                         src={img}
@@ -1135,12 +1132,11 @@ const PropertyDetails = () => {
               <div className="grid grid-cols-2 gap-3 bg-slate-50/70 border border-slate-100 rounded-2xl p-4">
                 <InfoChip
                   label="Area"
-                  value={`${
-                    property.area?.builtUpSqft ||
+                  value={`${property.area?.builtUpSqft ||
                     property.builtUpArea ||
                     property.area?.totalSqft ||
                     "N/A"
-                  } sq.ft`}
+                    } sq.ft`}
                 />
                 {configurationValue && (
                   <InfoChip
@@ -1159,8 +1155,8 @@ const PropertyDetails = () => {
                   value={
                     property.availableFrom
                       ? new Date(
-                          property.availableFrom
-                        ).toLocaleDateString()
+                        property.availableFrom
+                      ).toLocaleDateString()
                       : "Ready to Move"
                   }
                 />
@@ -1230,13 +1226,13 @@ const PropertyDetails = () => {
 
             {(property.amenities?.length > 0 ||
               property.selectedAmenities?.length > 0) && (
-              <Card
-                title="Amenities"
-                icon={<TagIcon className="w-5 h-5 text-[#0f4fb5]" />}
-              >
-                <AmenitiesSection property={property} />
-              </Card>
-            )}
+                <Card
+                  title="Amenities"
+                  icon={<TagIcon className="w-5 h-5 text-[#0f4fb5]" />}
+                >
+                  <AmenitiesSection property={property} />
+                </Card>
+              )}
 
             {isResidential &&
               property.extras &&
@@ -1278,7 +1274,7 @@ const PropertyDetails = () => {
                 icon={<HomeIcon className="w-5 h-5 text-[#0f4fb5]" />}
               >
                 {videoEmbed.startsWith("http") &&
-                videoEmbed.includes("youtube.com/embed") ? (
+                  videoEmbed.includes("youtube.com/embed") ? (
                   <div
                     className="relative w-full overflow-hidden rounded-2xl shadow-[0_16px_45px_rgba(15,32,70,0.18)]"
                     style={{ paddingTop: "56.25%" }}
@@ -1346,8 +1342,8 @@ const PropertyDetails = () => {
                     lat && lng
                       ? `https://www.google.com/maps?q=${lat},${lng}&z=16&output=embed`
                       : `https://www.google.com/maps?q=${encodeURIComponent(
-                          address.line || locality || city || "India"
-                        )}&output=embed`
+                        address.line || locality || city || "India"
+                      )}&output=embed`
                   }
                   title="Map"
                   width="100%"
