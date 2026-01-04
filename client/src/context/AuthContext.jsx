@@ -2,9 +2,12 @@
  * Auth Context - Cookie-Based Session Management
  * 
  * Provides authentication state management with:
- * - Automatic session validation on app load
+ * - Automatic session validation on app load (fetches /api/users/me)
  * - Role-based access control helpers
  * - Graceful logout on 401 errors
+ * - MFA and password change requirement handling
+ * 
+ * NOTE: Uses HttpOnly cookies for authentication - no tokens in localStorage
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
@@ -22,23 +25,27 @@ const AuthContext = createContext(null);
 // ============================================
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(() => {
-        try {
-            const savedUser = localStorage.getItem('user');
-            return savedUser ? JSON.parse(savedUser) : null;
-        } catch (error) {
-            return null;
-        }
-    });
+    // User state - populated from /api/users/me on mount
+    const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+
+    // Special auth states for MFA and password requirements
+    const [requiresMfa, setRequiresMfa] = useState(false);
+    const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
+    const [pendingAuthData, setPendingAuthData] = useState(null);
 
     const navigate = useNavigate();
 
     // ============================================
-    // CHECK AUTH STATUS ON MOUNT
+    // CHECK AUTH STATUS ON MOUNT (Page Refresh)
     // ============================================
 
+    /**
+     * Fetches current user profile from /api/users/me on every page load.
+     * HttpOnly cookies are sent automatically via withCredentials: true.
+     * No localStorage token management needed.
+     */
     const checkAuth = useCallback(async () => {
         try {
             setLoading(true);
@@ -48,22 +55,22 @@ export const AuthProvider = ({ children }) => {
 
             if (result.authenticated && result.user) {
                 setUser(result.user);
-                // Also store user in localStorage for quick access (non-sensitive data only)
-                localStorage.setItem('user', JSON.stringify(result.user));
+                // Check if user needs to change password
+                if (result.user.requiresPasswordChange) {
+                    setRequiresPasswordChange(true);
+                }
             } else {
                 setUser(null);
-                localStorage.removeItem('user');
             }
         } catch (err) {
             console.warn('Auth check failed:', err.message);
             setUser(null);
-            localStorage.removeItem('user');
         } finally {
             setLoading(false);
         }
     }, []);
 
-    // Run auth check on mount
+    // Run auth check on mount (every page refresh)
     useEffect(() => {
         checkAuth();
     }, [checkAuth]);
@@ -77,7 +84,9 @@ export const AuthProvider = ({ children }) => {
             if (errorInfo.type === 'UNAUTHORIZED') {
                 // Session expired - clear state and redirect
                 setUser(null);
-                localStorage.removeItem('user');
+                setRequiresMfa(false);
+                setRequiresPasswordChange(false);
+                setPendingAuthData(null);
 
                 // Redirect to login with message
                 navigate('/login', {
@@ -102,22 +111,104 @@ export const AuthProvider = ({ children }) => {
     // AUTH ACTIONS
     // ============================================
 
+    /**
+     * Login handler with MFA and password change requirement support.
+     * No localStorage token storage - uses HttpOnly cookies.
+     */
     const login = async (email, password) => {
         try {
             setLoading(true);
             setError(null);
+            setRequiresMfa(false);
+            setRequiresPasswordChange(false);
 
             const response = await authApi.login(email, password);
 
+            // Handle MFA requirement
+            if (response.requiresMfa || response.code === 'REQUIRES_MFA') {
+                setRequiresMfa(true);
+                setPendingAuthData({ email, mfaToken: response.mfaToken });
+                return {
+                    success: false,
+                    requiresMfa: true,
+                    message: response.message || 'Please complete MFA verification'
+                };
+            }
+
+            // Handle password change requirement
+            if (response.passwordChangeRequired || response.code === 'PASSWORD_CHANGE_REQUIRED') {
+                setRequiresPasswordChange(true);
+                setPendingAuthData({ email, tempToken: response.tempToken });
+                return {
+                    success: false,
+                    passwordChangeRequired: true,
+                    message: response.message || 'You must change your password before continuing'
+                };
+            }
+
             if (response.success && response.user) {
                 setUser(response.user);
-                localStorage.setItem('user', JSON.stringify(response.user));
                 return { success: true, user: response.user };
             }
 
             return { success: false, message: response.message || 'Login failed' };
         } catch (err) {
-            const message = err.response?.data?.message || 'Login failed. Please try again.';
+            const errorData = err.response?.data;
+
+            // Handle MFA requirement from error response
+            if (errorData?.requiresMfa || errorData?.code === 'REQUIRES_MFA') {
+                setRequiresMfa(true);
+                setPendingAuthData({ email, mfaToken: errorData.mfaToken });
+                return {
+                    success: false,
+                    requiresMfa: true,
+                    message: errorData.message || 'Please complete MFA verification'
+                };
+            }
+
+            // Handle password change requirement from error response
+            if (errorData?.passwordChangeRequired || errorData?.code === 'PASSWORD_CHANGE_REQUIRED') {
+                setRequiresPasswordChange(true);
+                setPendingAuthData({ email, tempToken: errorData.tempToken });
+                return {
+                    success: false,
+                    passwordChangeRequired: true,
+                    message: errorData.message || 'You must change your password before continuing'
+                };
+            }
+
+            const message = errorData?.message || 'Login failed. Please try again.';
+            setError(message);
+            return { success: false, message, errorData };
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    /**
+     * Verify MFA code after login
+     */
+    const verifyMfa = async (code) => {
+        try {
+            setLoading(true);
+            setError(null);
+
+            const response = await api.post('/users/verify-mfa', {
+                email: pendingAuthData?.email,
+                code,
+                mfaToken: pendingAuthData?.mfaToken
+            });
+
+            if (response.data.success && response.data.user) {
+                setUser(response.data.user);
+                setRequiresMfa(false);
+                setPendingAuthData(null);
+                return { success: true, user: response.data.user };
+            }
+
+            return { success: false, message: response.data.message || 'MFA verification failed' };
+        } catch (err) {
+            const message = err.response?.data?.message || 'MFA verification failed. Please try again.';
             setError(message);
             return { success: false, message };
         } finally {
@@ -125,12 +216,77 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    /**
+     * Change password when required before login
+     */
+    const changePasswordOnLogin = async (newPassword) => {
+        try {
+            setLoading(true);
+            setError(null);
+
+            const response = await api.post('/users/change-password-required', {
+                email: pendingAuthData?.email,
+                newPassword,
+                tempToken: pendingAuthData?.tempToken
+            });
+
+            if (response.data.success && response.data.user) {
+                setUser(response.data.user);
+                setRequiresPasswordChange(false);
+                setPendingAuthData(null);
+                return { success: true, user: response.data.user };
+            }
+
+            return { success: false, message: response.data.message || 'Password change failed' };
+        } catch (err) {
+            const message = err.response?.data?.message || 'Password change failed. Please try again.';
+            setError(message);
+            return { success: false, message };
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    /**
+     * Cancel MFA or password change flow
+     */
+    const cancelPendingAuth = () => {
+        setRequiresMfa(false);
+        setRequiresPasswordChange(false);
+        setPendingAuthData(null);
+    };
+
+    /**
+     * Register handler - no localStorage token storage.
+     */
     const register = async (userData) => {
         try {
             setLoading(true);
             setError(null);
 
             const response = await authApi.register(userData);
+
+            // Handle MFA requirement for registration
+            if (response.requiresMfa || response.code === 'REQUIRES_MFA') {
+                setRequiresMfa(true);
+                setPendingAuthData({ email: userData.email, mfaToken: response.mfaToken });
+                return {
+                    success: false,
+                    requiresMfa: true,
+                    message: response.message || 'Please complete MFA verification'
+                };
+            }
+
+            // Handle password change requirement for registration
+            if (response.passwordChangeRequired || response.code === 'PASSWORD_CHANGE_REQUIRED') {
+                setRequiresPasswordChange(true);
+                setPendingAuthData({ email: userData.email, tempToken: response.tempToken });
+                return {
+                    success: false,
+                    passwordChangeRequired: true,
+                    message: response.message || 'You must set a new password'
+                };
+            }
 
             if (response.success) {
                 // Registration successful - may need OTP verification
@@ -139,14 +295,42 @@ export const AuthProvider = ({ children }) => {
 
             return { success: false, message: response.message || 'Registration failed' };
         } catch (err) {
-            const message = err.response?.data?.message || 'Registration failed. Please try again.';
+            const errorData = err.response?.data;
+
+            // Handle MFA requirement from error response
+            if (errorData?.requiresMfa || errorData?.code === 'REQUIRES_MFA') {
+                setRequiresMfa(true);
+                setPendingAuthData({ email: userData.email, mfaToken: errorData.mfaToken });
+                return {
+                    success: false,
+                    requiresMfa: true,
+                    message: errorData.message || 'Please complete MFA verification'
+                };
+            }
+
+            // Handle password change requirement from error response
+            if (errorData?.passwordChangeRequired || errorData?.code === 'PASSWORD_CHANGE_REQUIRED') {
+                setRequiresPasswordChange(true);
+                setPendingAuthData({ email: userData.email, tempToken: errorData.tempToken });
+                return {
+                    success: false,
+                    passwordChangeRequired: true,
+                    message: errorData.message || 'You must set a new password'
+                };
+            }
+
+            const message = errorData?.message || 'Registration failed. Please try again.';
             setError(message);
-            return { success: false, message };
+            return { success: false, message, errorData };
         } finally {
             setLoading(false);
         }
     };
 
+    /**
+     * Logout handler - clears session on server.
+     * No localStorage cleanup needed for tokens - only user cache.
+     */
     const logout = async () => {
         try {
             setLoading(true);
@@ -154,16 +338,22 @@ export const AuthProvider = ({ children }) => {
         } catch (err) {
             console.warn('Logout error:', err.message);
         } finally {
+            // Always clear local state regardless of server response
             setUser(null);
-            localStorage.removeItem('user');
+            setRequiresMfa(false);
+            setRequiresPasswordChange(false);
+            setPendingAuthData(null);
             setLoading(false);
             navigate('/login', { replace: true });
         }
     };
 
+    /**
+     * Update user state - for profile updates etc.
+     * No localStorage storage needed.
+     */
     const updateUser = (updatedUser) => {
         setUser(updatedUser);
-        localStorage.setItem('user', JSON.stringify(updatedUser));
     };
 
     // ============================================
@@ -200,6 +390,11 @@ export const AuthProvider = ({ children }) => {
         loading,
         error,
 
+        // Special auth states
+        requiresMfa,
+        requiresPasswordChange,
+        pendingAuthData,
+
         // Auth status
         isAuthenticated,
         isOwner,
@@ -218,6 +413,11 @@ export const AuthProvider = ({ children }) => {
         checkAuth,
         updateUser,
         clearError: () => setError(null),
+
+        // MFA & Password change handlers
+        verifyMfa,
+        changePasswordOnLogin,
+        cancelPendingAuth,
     };
 
     return (
@@ -244,11 +444,23 @@ export const useAuth = () => {
 // ============================================
 
 export const ProtectedRoute = ({ children, requiredRole = null, requireVerified = false }) => {
-    const { isAuthenticated, loading, hasRole, isVerified } = useAuth();
+    const { isAuthenticated, loading, hasRole, isVerified, requiresMfa, requiresPasswordChange } = useAuth();
     const navigate = useNavigate();
 
     useEffect(() => {
         if (!loading) {
+            // Handle MFA requirement
+            if (requiresMfa) {
+                navigate('/verify-mfa', { replace: true });
+                return;
+            }
+
+            // Handle password change requirement
+            if (requiresPasswordChange) {
+                navigate('/change-password-required', { replace: true });
+                return;
+            }
+
             if (!isAuthenticated) {
                 navigate('/login', {
                     state: { from: window.location.pathname },
@@ -260,7 +472,7 @@ export const ProtectedRoute = ({ children, requiredRole = null, requireVerified 
                 navigate('/verify-email', { replace: true });
             }
         }
-    }, [loading, isAuthenticated, hasRole, isVerified, requiredRole, requireVerified, navigate]);
+    }, [loading, isAuthenticated, hasRole, isVerified, requiredRole, requireVerified, requiresMfa, requiresPasswordChange, navigate]);
 
     if (loading) {
         return (
@@ -270,7 +482,7 @@ export const ProtectedRoute = ({ children, requiredRole = null, requireVerified 
         );
     }
 
-    if (!isAuthenticated) {
+    if (!isAuthenticated || requiresMfa || requiresPasswordChange) {
         return null;
     }
 

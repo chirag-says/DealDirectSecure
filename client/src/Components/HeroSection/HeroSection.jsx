@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import api from "../../utils/api";
 import { AiOutlineSearch } from "react-icons/ai";
 import { FaMapMarkerAlt, FaMicrophone, FaHome, FaKey, FaBuilding, FaBed, FaTree, FaHistory } from "react-icons/fa";
 import { tabConfig } from "./filterConfig";
@@ -93,8 +94,8 @@ const HeroSection = ({ filters, setFilters, propertyTypes = [] }) => {
 
       setIsLoadingSuggestions(true);
       try {
-        const response = await axios.get(
-          `${API_BASE}/api/properties/suggestions`,
+        const response = await api.get(
+          '/properties/suggestions',
           {
             params: { q: searchTerm },
             signal: abortControllerRef.current.signal,

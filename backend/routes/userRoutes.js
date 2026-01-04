@@ -85,6 +85,7 @@ router.delete("/sessions/:sessionId", authMiddleware, revokeSession);
 // ============================================
 
 router.get("/profile", authMiddleware, getProfile);
+router.get("/me", authMiddleware, getProfile); // Alias for /profile - standard REST pattern
 router.put("/profile", authMiddleware, validateProfileUpdate, upload.single("profileImage"), updateProfile);
 router.put("/change-password", authMiddleware, changePassword);
 

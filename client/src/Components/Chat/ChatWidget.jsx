@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useChat } from "../../context/ChatContext";
+import { useAuth } from "../../context/AuthContext";
 import {
   XMarkIcon,
   PaperAirplaneIcon,
@@ -157,6 +158,8 @@ const ChatWidget = () => {
     sendVisitMessage,
   } = useChat();
 
+  const { user: currentUser } = useAuth();
+
   const [messageText, setMessageText] = useState("");
   const [showConversations, setShowConversations] = useState(true);
   const [showActions, setShowActions] = useState(false);
@@ -169,8 +172,6 @@ const ChatWidget = () => {
   const [selectedMessageForReport, setSelectedMessageForReport] = useState(null);
   const [reportReason, setReportReason] = useState("Asking for brokerage/commission");
   const [isReporting, setIsReporting] = useState(false);
-
-  const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
 
   // Keep view (list vs messages) in sync with whether a
   // conversation is selected when the widget is opened.
@@ -462,9 +463,8 @@ const ChatWidget = () => {
               {/* Quick actions menu (buyer side) */}
               {!isOwner && (
                 <div
-                  className={`absolute bottom-16 left-3 z-10 transition-opacity ${
-                    showActions ? "opacity-100" : "opacity-0 pointer-events-none"
-                  }`}
+                  className={`absolute bottom-16 left-3 z-10 transition-opacity ${showActions ? "opacity-100" : "opacity-0 pointer-events-none"
+                    }`}
                 >
                   <div className="bg-white border border-gray-200 rounded-xl shadow-lg py-2 w-48">
                     <button

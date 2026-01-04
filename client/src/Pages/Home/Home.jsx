@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../../utils/api";
 import {
   AiOutlineDollarCircle,
   AiOutlineHeart
@@ -138,7 +138,7 @@ const Home = () => {
   useEffect(() => {
     (async () => {
       try {
-        const response = await axios.get(`${API_BASE}/api/properties/property-list`);
+        const response = await api.get('/properties/property-list');
         setProperties(response.data.data || []);
       } catch (error) {
         console.error("Error loading data:", error);
@@ -149,7 +149,7 @@ const Home = () => {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const res = await axios.get(`${API_BASE}/api/categories/list-category`);
+        const res = await api.get('/categories/list-category');
         setCategories(res.data || []);
       } catch (error) {
         console.error("Error fetching categories:", error);
@@ -161,7 +161,7 @@ const Home = () => {
   useEffect(() => {
     const fetchPropertyTypes = async () => {
       try {
-        const res = await axios.get(`${API_BASE}/api/propertyTypes/list-propertytype`);
+        const res = await api.get('/propertyTypes/list-propertytype');
         setPropertyTypeOptions(Array.isArray(res.data) ? res.data : []);
       } catch (error) {
         console.error("Error fetching property types:", error);
@@ -177,8 +177,8 @@ const Home = () => {
         return;
       }
       try {
-        const res = await axios.get(
-          `${API_BASE}/api/subcategories/byCategory/${filters.category}`
+        const res = await api.get(
+          `/subcategories/byCategory/${filters.category}`
         );
         setSubcategories(res.data || []);
       } catch (error) {

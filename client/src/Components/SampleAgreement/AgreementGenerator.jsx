@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import axios from "axios";
+import api from "../../utils/api";
+import { useAuth } from "../../context/AuthContext";
 import ReactMarkdown from "react-markdown";
 import {
   FaFileContract,
@@ -33,10 +34,7 @@ import {
 } from "react-icons/fa";
 import { HiSparkles } from "react-icons/hi";
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE ||
-  import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:9000";
+
 
 const INDIAN_STATES = [
   "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
@@ -98,18 +96,20 @@ function AgreementGenerator() {
     additionalTerms: "",
   });
 
+  const { isAuthenticated, user } = useAuth();
+
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    const token = localStorage.getItem("token");
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    if (token && user._id) {
+    if (isAuthenticated && user) {
       setIsLoggedIn(true);
       // Pre-fill landlord name if user is the owner
       if (user.name) {
         setFormData((prev) => ({ ...prev, landlordName: user.name }));
       }
+    } else {
+      setIsLoggedIn(false);
     }
-  }, []);
+  }, [isAuthenticated, user]);
 
   // Auto-enable Police Verification clause for Delhi
   useEffect(() => {
@@ -230,11 +230,9 @@ function AgreementGenerator() {
 
     setLoading(true);
     try {
-      const token = localStorage.getItem("token");
-      const response = await axios.post(
-        `${API_BASE}/api/agreements/generate`,
-        formData,
-        { headers: { Authorization: `Bearer ${token}` } }
+      const response = await api.post(
+        `/agreements/generate`,
+        formData
       );
 
       if (response.data.success) {
@@ -301,7 +299,7 @@ function AgreementGenerator() {
 
     // Create a clean HTML document for PDF generation
     const printWindow = window.open("", "_blank");
-    
+
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -383,28 +381,28 @@ function AgreementGenerator() {
         </head>
         <body>
           ${generatedAgreement.agreement
-            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-            .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-            .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-            .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-            .replace(/^---$/gm, '<hr>')
-            .replace(/^- (.+)$/gm, '<li>$1</li>')
-            .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
-            .replace(/\n\n/g, '</p><p>')
-            .replace(/^(?!<[hulo])/gm, '<p>')
-            .replace(/(?<![>])$/gm, '</p>')
-            .replace(/<p><\/p>/g, '')
-            .replace(/<p>(<[hulo])/g, '$1')
-            .replace(/(<\/[hulo][^>]*>)<\/p>/g, '$1')
-          }
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+        .replace(/^---$/gm, '<hr>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/^(?!<[hulo])/gm, '<p>')
+        .replace(/(?<![>])$/gm, '</p>')
+        .replace(/<p><\/p>/g, '')
+        .replace(/<p>(<[hulo])/g, '$1')
+        .replace(/(<\/[hulo][^>]*>)<\/p>/g, '$1')
+      }
         </body>
       </html>
     `;
-    
+
     printWindow.document.write(htmlContent);
     printWindow.document.close();
-    
+
     // Wait for content to load then print as PDF
     printWindow.onload = () => {
       setTimeout(() => {
@@ -454,19 +452,17 @@ function AgreementGenerator() {
       {[1, 2, 3, 4].map((s, idx) => (
         <React.Fragment key={s}>
           <div
-            className={`flex items-center justify-center w-10 h-10 rounded-full font-bold text-sm transition-all duration-300 ${
-              step >= s
+            className={`flex items-center justify-center w-10 h-10 rounded-full font-bold text-sm transition-all duration-300 ${step >= s
                 ? "bg-blue-600 text-white shadow-lg shadow-blue-500/30"
                 : "bg-gray-200 text-gray-500"
-            }`}
+              }`}
           >
             {step > s ? <FaCheckCircle /> : s}
           </div>
           {idx < 3 && (
             <div
-              className={`w-12 sm:w-20 h-1 mx-1 rounded transition-all duration-300 ${
-                step > s ? "bg-blue-600" : "bg-gray-200"
-              }`}
+              className={`w-12 sm:w-20 h-1 mx-1 rounded transition-all duration-300 ${step > s ? "bg-blue-600" : "bg-gray-200"
+                }`}
             />
           )}
         </React.Fragment>
@@ -498,7 +494,7 @@ function AgreementGenerator() {
           Digital Agreement Generator
         </h1>
         <p className="text-gray-600 max-w-2xl mx-auto text-sm sm:text-base">
-          Generate legally compliant rental agreements instantly using AI. 
+          Generate legally compliant rental agreements instantly using AI.
           Customized for each Indian state with proper legal clauses.
         </p>
 
@@ -1043,8 +1039,8 @@ function AgreementGenerator() {
                   <div className="text-sm text-amber-700">
                     <p className="font-medium">Pro Tip</p>
                     <p className="text-amber-600">
-                      11-month agreements are recommended as they don't require mandatory 
-                      registration under the Registration Act, 1908. However, registration 
+                      11-month agreements are recommended as they don't require mandatory
+                      registration under the Registration Act, 1908. However, registration
                       is still advisable for legal protection.
                     </p>
                   </div>
@@ -1273,7 +1269,7 @@ function AgreementGenerator() {
       <div className="max-w-4xl mx-auto mt-8 text-center">
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
           <p className="text-amber-800 text-xs sm:text-sm">
-            <strong>âš–ï¸ Legal Disclaimer:</strong> This is an AI-generated draft for informational purposes only. 
+            <strong>âš–ï¸ Legal Disclaimer:</strong> This is an AI-generated draft for informational purposes only.
             Please verify with a qualified lawyer and ensure proper stamp paper and registration as per the Registration Act, 1908.
           </p>
         </div>

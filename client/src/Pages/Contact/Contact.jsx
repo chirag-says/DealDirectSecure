@@ -1,19 +1,20 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
-import { 
-  FaMapMarkerAlt, 
-  FaPhoneAlt, 
-  FaEnvelope, 
-  FaClock, 
-  FaPaperPlane, 
+import api from "../../utils/api";
+import { useAuth } from "../../context/AuthContext";
+import {
+  FaMapMarkerAlt,
+  FaPhoneAlt,
+  FaEnvelope,
+  FaClock,
+  FaPaperPlane,
   FaBuilding,
   FaHeadset,
   FaLock
 } from "react-icons/fa";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:9000";
+
 
 export default function Contact() {
   const navigate = useNavigate();
@@ -27,22 +28,23 @@ export default function Contact() {
     category: "general"
   });
 
+  const { isAuthenticated, user } = useAuth();
+
   // Check if user is logged in and pre-fill form
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    
-    const token = localStorage.getItem("token");
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    
-    if (token && user._id) {
+
+    if (isAuthenticated && user) {
       setIsLoggedIn(true);
       setFormData(prev => ({
         ...prev,
         name: user.name || "",
         email: user.email || ""
       }));
+    } else {
+      setIsLoggedIn(false);
     }
-  }, []);
+  }, [isAuthenticated, user]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -50,7 +52,7 @@ export default function Contact() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     // Check if logged in
     if (!isLoggedIn) {
       toast.info("Please login to submit your inquiry");
@@ -61,28 +63,22 @@ export default function Contact() {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem("token");
-      const response = await axios.post(
-        `${API_BASE}/api/contact`,
+      const response = await api.post(
+        `/contact`,
         {
           subject: formData.subject,
           message: formData.message,
           category: formData.category
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
         }
       );
 
       if (response.data.success) {
         toast.success("Message sent! Our support team will contact you shortly.");
-        setFormData(prev => ({ 
-          ...prev, 
-          subject: "", 
-          message: "", 
-          category: "general" 
+        setFormData(prev => ({
+          ...prev,
+          subject: "",
+          message: "",
+          category: "general"
         }));
       } else {
         toast.error(response.data.message || "Failed to send message");
@@ -98,7 +94,7 @@ export default function Contact() {
 
   return (
     <div className="bg-slate-50 font-sans text-gray-800">
-      
+
       {/* --- HERO SECTION --- */}
       <section className="relative h-[60vh] flex flex-col items-center justify-center bg-slate-900 text-white overflow-hidden">
         {/* Background Effects */}
@@ -125,7 +121,7 @@ export default function Contact() {
       {/* --- MAIN CONTENT (Overlapping Card) --- */}
       <section className="relative z-20 max-w-7xl mx-auto px-6 pb-20 -mt-24">
         <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col lg:flex-row">
-          
+
           {/* LEFT: Contact Info & Map */}
           <div className="lg:w-2/5 bg-slate-900 text-white p-10 flex flex-col justify-between relative overflow-hidden">
             {/* Decorative Overlay */}

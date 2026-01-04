@@ -1,7 +1,7 @@
 // src/Components/HeroSection/HeroSection.jsx - Omnibox Style
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../../utils/api";
 import { AiOutlineSearch } from "react-icons/ai";
 import { FaMapMarkerAlt, FaMicrophone, FaHome, FaKey, FaBuilding, FaBed, FaTree } from "react-icons/fa";
 import { tabConfig } from "./filterConfig";
@@ -67,7 +67,7 @@ const HeroSection = ({ filters, setFilters, propertyTypes = [] }) => {
 
             setIsLoadingSuggestions(true);
             try {
-                const response = await axios.get(`${API_BASE}/api/properties/property-list`);
+                const response = await api.get('/properties/property-list');
                 const properties = response.data.data || [];
 
                 const searchTerm = filters.search.toLowerCase().trim();
@@ -267,8 +267,8 @@ const HeroSection = ({ filters, setFilters, propertyTypes = [] }) => {
                                 key={`${tab.label}-${i}`}
                                 onClick={() => handleTabSelect(tab)}
                                 className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-sm border-2 transition-all duration-300 ${activeTab === tab.label
-                                        ? "bg-red-600 text-white border-transparent shadow-lg shadow-red-500/50 scale-105"
-                                        : "bg-white/10 backdrop-blur-sm text-white border-white/30 hover:border-white/50 hover:bg-white/20"
+                                    ? "bg-red-600 text-white border-transparent shadow-lg shadow-red-500/50 scale-105"
+                                    : "bg-white/10 backdrop-blur-sm text-white border-white/30 hover:border-white/50 hover:bg-white/20"
                                     }`}
                             >
                                 {Icon && <Icon className="text-base" />}

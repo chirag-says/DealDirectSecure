@@ -105,7 +105,7 @@ function Navbar() {
 
       setIsLoadingSuggestions(true);
       try {
-        const response = await axios.get(`${API_BASE}/api/properties/property-list`);
+        const response = await api.get('/properties/property-list');
         const properties = response.data.data || [];
 
         const searchTerm = searchQuery.toLowerCase().trim();

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
+import api from "../../utils/api";
+import { useAuth } from "../../context/AuthContext";
 import { toast } from "react-toastify";
 import {
   FaMapMarkerAlt,
@@ -400,8 +402,7 @@ const PropertyPage = () => {
   };
 
   const handleSaveSearchClick = () => {
-    const token = localStorage.getItem("token");
-    if (!token) {
+    if (!isAuthenticated) {
       toast.info("Login to save this search and get alerts");
       navigate("/login", { state: { from: "/properties" } });
       return;
@@ -415,8 +416,7 @@ const PropertyPage = () => {
   };
 
   const handleConfirmSaveSearch = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) {
+    if (!isAuthenticated) {
       toast.info("Login required to save searches");
       navigate("/login", { state: { from: "/properties" } });
       return;
@@ -429,15 +429,14 @@ const PropertyPage = () => {
 
     setSavingSearch(true);
     try {
-      await axios.post(
-        `${API_BASE}/api/saved-searches`,
+      await api.post(
+        `/saved-searches`,
         {
           name: savedSearchName.trim(),
           filters,
           notifyEmail: notifyByEmail,
           notifyInApp: true,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       );
       toast.success("Search saved. We'll use this for future alerts.");
       setShowSaveSearch(false);
@@ -522,8 +521,8 @@ const PropertyPage = () => {
       try {
         setLoading(true);
         const [propsRes, ptRes] = await Promise.all([
-          axios.get(`${API_BASE}/api/properties/property-list`),
-          axios.get(`${API_BASE}/api/propertyTypes/list-propertytype`),
+          api.get('/properties/property-list'),
+          api.get('/propertyTypes/list-propertytype'),
         ]);
 
         const propsData = propsRes.data.data || [];
@@ -570,8 +569,8 @@ const PropertyPage = () => {
 
       setIsLoadingSuggestions(true);
       try {
-        const response = await axios.get(
-          `${API_BASE}/api/properties/suggestions`,
+        const response = await api.get(
+          '/properties/suggestions',
           {
             params: { q: searchTerm },
             signal: abortControllerRef.current.signal,
@@ -696,17 +695,17 @@ const PropertyPage = () => {
 
     const matchesSearch = query
       ? [
-          p.title,
-          p.address?.city,
-          p.address?.state,
-          p.address?.area,
-          p.address?.landmark,
-          p.city,
-          p.locality,
-          p.propertyTypeName,
-          p.propertyType?.name,
-          p.bhk,
-        ]
+        p.title,
+        p.address?.city,
+        p.address?.state,
+        p.address?.area,
+        p.address?.landmark,
+        p.city,
+        p.locality,
+        p.propertyTypeName,
+        p.propertyType?.name,
+        p.bhk,
+      ]
         .filter(Boolean).some((f) => f.toLowerCase().includes(query))
       : true;
 
@@ -853,14 +852,14 @@ const PropertyPage = () => {
   const viewDetails = (property) =>
     navigate(`/properties/${property._id}`, { state: { property } });
 
+  // Get auth state from context
+  const { isAuthenticated, user } = useAuth();
+
   const handleInterest = async (event, propertyId) => {
     event.stopPropagation();
     event.preventDefault();
 
-    const token = localStorage.getItem("token");
-    const user = localStorage.getItem("user");
-
-    if (!token || !user) {
+    if (!isAuthenticated || !user) {
       toast.info("Please login to express interest");
       const from = `${location.pathname}${location.search}` || `/properties/${propertyId}`;
       navigate("/login", { state: { from, pendingAction: "interest", propertyId } });
@@ -871,9 +870,8 @@ const PropertyPage = () => {
       // Remove interest
       setInterestLoadingIds((prev) => new Set(prev).add(propertyId));
       try {
-        const res = await axios.delete(
-          `${API_BASE}/api/properties/interested/${propertyId}`,
-          { headers: { Authorization: `Bearer ${token}` } }
+        const res = await api.delete(
+          `/properties/interested/${propertyId}`
         );
         if (res.data.success) {
           setInterestedIds((prev) => {
@@ -902,10 +900,9 @@ const PropertyPage = () => {
     setInterestLoadingIds((prev) => new Set(prev).add(propertyId));
 
     try {
-      const res = await axios.post(
-        `${API_BASE}/api/properties/interested/${propertyId}`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
+      const res = await api.post(
+        `/properties/interested/${propertyId}`,
+        {}
       );
 
       if (res.data.success) {
@@ -1929,16 +1926,16 @@ const PropertyPage = () => {
                     }
 
                     return rows.map((row) => (
-                    <React.Fragment key={row.label}>
-                      <div className="bg-slate-50 border-b border-slate-100 p-3 font-semibold text-slate-700">
-                        {row.label}
-                      </div>
-                      {selectedCompareProperties.map((p) => (
-                        <div key={p._id + row.label} className="border-b border-slate-100 p-3 text-slate-700">
-                          {row.value(p)}
+                      <React.Fragment key={row.label}>
+                        <div className="bg-slate-50 border-b border-slate-100 p-3 font-semibold text-slate-700">
+                          {row.label}
                         </div>
-                      ))}
-                    </React.Fragment>
+                        {selectedCompareProperties.map((p) => (
+                          <div key={p._id + row.label} className="border-b border-slate-100 p-3 text-slate-700">
+                            {row.value(p)}
+                          </div>
+                        ))}
+                      </React.Fragment>
                     ));
                   })()}
                 </div>

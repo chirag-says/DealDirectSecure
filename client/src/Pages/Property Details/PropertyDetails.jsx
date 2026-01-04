@@ -570,7 +570,7 @@ const PropertyDetails = () => {
   }, [location.state, location.pathname, id, navigate]);
 
   // Use AuthContext for auth checks
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   useEffect(() => {
     const checkUserInterest = async () => {
@@ -819,10 +819,7 @@ const PropertyDetails = () => {
     commercialFieldsToShow.length > 0;
 
   const handleInterest = async () => {
-    const token = localStorage.getItem("token");
-    const user = localStorage.getItem("user");
-
-    if (!token || !user) {
+    if (!isAuthenticated || !user) {
       toast.info("Please login to express interest in this property");
       navigate("/login", {
         state: {
@@ -837,9 +834,8 @@ const PropertyDetails = () => {
     if (isInterested) {
       setInterestLoading(true);
       try {
-        const res = await axios.delete(
-          `${API_BASE}/api/properties/interested/${id}`,
-          { headers: { Authorization: `Bearer ${token}` } }
+        const res = await api.delete(
+          `/properties/interested/${id}`
         );
         if (res.data.success) {
           setIsInterested(false);
@@ -860,10 +856,9 @@ const PropertyDetails = () => {
 
     setInterestLoading(true);
     try {
-      const res = await axios.post(
-        `${API_BASE}/api/properties/interested/${id}`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
+      const res = await api.post(
+        `/properties/interested/${id}`,
+        {}
       );
 
       if (res.data.success) {
@@ -883,10 +878,7 @@ const PropertyDetails = () => {
   };
 
   const handleChatWithOwner = async () => {
-    const token = localStorage.getItem("token");
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-
-    if (!token || !user._id) {
+    if (!isAuthenticated || !user?._id) {
       toast.info("Please login to chat with the owner");
       navigate("/login", { state: { from: `/properties/${id}` } });
       return;
@@ -923,10 +915,7 @@ const PropertyDetails = () => {
   };
 
   const handleSubmitReport = async () => {
-    const token = localStorage.getItem("token");
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-
-    if (!token || !user._id) {
+    if (!isAuthenticated || !user?._id) {
       toast.info("Please login to report this property");
       navigate("/login", { state: { from: `/properties/${id}` } });
       return;
@@ -940,10 +929,9 @@ const PropertyDetails = () => {
 
     setReportLoading(true);
     try {
-      const res = await axios.post(
-        `${API_BASE}/api/properties/${id}/report`,
-        { reason: trimmedReason },
-        { headers: { Authorization: `Bearer ${token}` } }
+      const res = await api.post(
+        `/properties/${id}/report`,
+        { reason: trimmedReason }
       );
 
       if (res.data?.success) {

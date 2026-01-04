@@ -66,10 +66,7 @@ api.interceptors.response.use(
             if (status === 401) {
                 console.warn('🔒 Session expired or unauthorized');
 
-                // Clear any local user state
-                localStorage.removeItem('user');
-
-                // Call the auth error handler if set
+                // Call the auth error handler if set (AuthContext handles clearing state)
                 if (onAuthError) {
                     onAuthError({
                         type: 'UNAUTHORIZED',
@@ -107,12 +104,14 @@ api.interceptors.response.use(
 // ============================================
 
 export const authApi = {
-    // Check current authentication status
+    // Check current authentication status by fetching user profile
+    // Uses /users/me endpoint - HttpOnly cookies sent automatically
     checkAuth: async () => {
         try {
-            const response = await api.get('/users/profile');
+            const response = await api.get('/users/me');
             return { authenticated: true, user: response.data.user || response.data };
         } catch (error) {
+            // Session invalid or expired - don't log error, this is expected on first load
             return { authenticated: false, user: null };
         }
     },
@@ -129,15 +128,16 @@ export const authApi = {
         return response.data;
     },
 
-    // Logout
+    // Logout - clears session cookie on server
+    // NOTE: localStorage cleanup should be handled by AuthContext, not here
     logout: async () => {
         try {
             await api.post('/users/logout');
+            return { success: true };
         } catch (error) {
-            // Even if logout fails on server, clear local state
-            console.warn('Logout API call failed, clearing local state');
+            console.warn('Logout API call failed:', error.message);
+            return { success: false, error: error.message };
         }
-        localStorage.removeItem('user');
     },
 
     // Get profile

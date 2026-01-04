@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import api from "../../utils/api";
 import { toast } from "react-toastify";
 import { useNavigate, Link, useLocation } from "react-router-dom";
-import { User, Mail, Lock, Eye, EyeOff, Loader2, CheckCircle, ShieldCheck, RefreshCw, Home, Search, Phone } from "lucide-react";
+import { User, Mail, Lock, Eye, EyeOff, Loader2, CheckCircle, ShieldCheck, RefreshCw, Home, Search, Phone, ArrowLeft, KeyRound } from "lucide-react";
 import dealDirectLogo from "../../assets/dealdirect_logo.png";
 import { useAuth } from "../../context/AuthContext";
 
@@ -20,8 +20,28 @@ export default function Register() {
   const [resendTimer, setResendTimer] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
-  const { updateUser } = useAuth();
+  const {
+    register: authRegister,
+    updateUser,
+    requiresMfa,
+    requiresPasswordChange,
+    verifyMfa,
+    changePasswordOnLogin,
+    cancelPendingAuth,
+    pendingAuthData
+  } = useAuth();
   const redirectPath = location.state?.from || "/";
+
+  // MFA state
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaLoading, setMfaLoading] = useState(false);
+
+  // Password change state
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+  const [passwordChangeLoading, setPasswordChangeLoading] = useState(false);
 
   // Countdown timer for resend OTP
   useEffect(() => {
@@ -33,6 +53,13 @@ export default function Register() {
     }
     return () => clearInterval(interval);
   }, [resendTimer]);
+
+  // Reset MFA/password states when component unmounts
+  useEffect(() => {
+    return () => {
+      cancelPendingAuth?.();
+    };
+  }, []);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -72,6 +99,41 @@ export default function Register() {
           phone: formData.phone,
         });
 
+        // Check for MFA requirement
+        if (res.data.requiresMfa || res.data.code === 'REQUIRES_MFA') {
+          // Let AuthContext handle this
+          const result = await authRegister({
+            name: formData.name,
+            email: formData.email,
+            password: formData.password,
+            role: "user",
+            phone: formData.phone,
+          });
+
+          if (result.requiresMfa) {
+            toast.info(result.message || "Please complete MFA verification");
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        // Check for password change requirement
+        if (res.data.passwordChangeRequired || res.data.code === 'PASSWORD_CHANGE_REQUIRED') {
+          const result = await authRegister({
+            name: formData.name,
+            email: formData.email,
+            password: formData.password,
+            role: "user",
+            phone: formData.phone,
+          });
+
+          if (result.passwordChangeRequired) {
+            toast.warning(result.message || "Please set a new password");
+            setIsLoading(false);
+            return;
+          }
+        }
+
         const { user } = res.data;
         updateUser(user);
 
@@ -92,7 +154,38 @@ export default function Register() {
         setResendTimer(60);
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || "Registration failed. Please try again.");
+      const errorData = err.response?.data;
+
+      // Handle MFA requirement from error response
+      if (errorData?.requiresMfa || errorData?.code === 'REQUIRES_MFA') {
+        // Use AuthContext to handle MFA
+        await authRegister({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          role: userType === "buyer" ? "user" : "owner",
+          phone: formData.phone,
+        });
+        toast.info(errorData.message || "Please complete MFA verification");
+        setIsLoading(false);
+        return;
+      }
+
+      // Handle password change requirement from error response
+      if (errorData?.passwordChangeRequired || errorData?.code === 'PASSWORD_CHANGE_REQUIRED') {
+        await authRegister({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          role: userType === "buyer" ? "user" : "owner",
+          phone: formData.phone,
+        });
+        toast.warning(errorData.message || "Please set a new password");
+        setIsLoading(false);
+        return;
+      }
+
+      toast.error(errorData?.message || "Registration failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -125,6 +218,26 @@ export default function Register() {
         otp
       });
 
+      // Check for MFA requirement after OTP verification
+      if (res.data.requiresMfa || res.data.code === 'REQUIRES_MFA') {
+        await authRegister({
+          email: formData.email,
+        });
+        toast.info(res.data.message || "Please complete MFA verification");
+        setIsLoading(false);
+        return;
+      }
+
+      // Check for password change requirement after OTP verification
+      if (res.data.passwordChangeRequired || res.data.code === 'PASSWORD_CHANGE_REQUIRED') {
+        await authRegister({
+          email: formData.email,
+        });
+        toast.warning(res.data.message || "Please set a new password");
+        setIsLoading(false);
+        return;
+      }
+
       const { user } = res.data;
       updateUser(user);
 
@@ -136,6 +249,230 @@ export default function Register() {
       setIsLoading(false);
     }
   };
+
+  // Handle MFA verification
+  const handleMfaVerify = async (e) => {
+    e.preventDefault();
+    if (!mfaCode || mfaCode.length !== 6) {
+      toast.error("Please enter a valid 6-digit MFA code");
+      return;
+    }
+
+    setMfaLoading(true);
+    try {
+      const result = await verifyMfa(mfaCode);
+
+      if (result.success) {
+        toast.success(`Welcome, ${result.user.name || 'User'}!`);
+        navigate(redirectPath);
+      } else {
+        toast.error(result.message || "MFA verification failed");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "MFA verification failed");
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  // Handle password change on registration
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+
+    if (newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    setPasswordChangeLoading(true);
+    try {
+      const result = await changePasswordOnLogin(newPassword);
+
+      if (result.success) {
+        toast.success("Password set successfully! Welcome aboard.");
+        navigate(redirectPath);
+      } else {
+        toast.error(result.message || "Password change failed");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Password change failed");
+    } finally {
+      setPasswordChangeLoading(false);
+    }
+  };
+
+  // Cancel MFA or password change flow
+  const handleCancelFlow = () => {
+    cancelPendingAuth();
+    setMfaCode("");
+    setNewPassword("");
+    setConfirmNewPassword("");
+    setStep(1);
+  };
+
+  // Render MFA verification form
+  if (requiresMfa) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 font-sans">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden p-8">
+          <div className="text-center mb-8">
+            <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+              <ShieldCheck className="w-8 h-8 text-blue-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800">Two-Factor Authentication</h2>
+            <p className="text-slate-500 mt-2">
+              Enter the 6-digit code from your authenticator app
+            </p>
+            {pendingAuthData?.email && (
+              <p className="text-sm text-slate-400 mt-1">for {pendingAuthData.email}</p>
+            )}
+          </div>
+
+          <form onSubmit={handleMfaVerify} className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700 block text-center">MFA Code</label>
+              <input
+                type="text"
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                placeholder="000000"
+                required
+                autoFocus
+                className="w-full text-center text-2xl tracking-[0.5em] py-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:border-blue-900 transition-colors outline-none text-slate-800 font-mono"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={mfaLoading || mfaCode.length !== 6}
+              className="w-full bg-slate-900 text-white py-3.5 rounded-lg font-semibold hover:bg-slate-800 focus:ring-4 focus:ring-slate-200 transition-all flex items-center justify-center disabled:opacity-50"
+            >
+              {mfaLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                "Verify Code"
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCancelFlow}
+              className="w-full text-slate-500 text-sm hover:text-slate-700 py-2"
+            >
+              <ArrowLeft className="w-4 h-4 inline mr-1" />
+              Back to Register
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Render password change requirement form
+  if (requiresPasswordChange) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 font-sans">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden p-8">
+          <div className="text-center mb-8">
+            <div className="mx-auto w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-4">
+              <KeyRound className="w-8 h-8 text-amber-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800">Set Your Password</h2>
+            <p className="text-slate-500 mt-2">
+              Please set a secure password for your account
+            </p>
+          </div>
+
+          <form onSubmit={handlePasswordChange} className="space-y-5">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700 block">New Password</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Lock className="h-5 w-5 text-slate-400" />
+                </div>
+                <input
+                  type={showNewPassword ? "text" : "password"}
+                  placeholder="Enter new password (min 8 characters)"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  className="w-full pl-10 pr-12 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:border-blue-900 transition-colors outline-none text-slate-800"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                >
+                  {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700 block">Confirm New Password</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Lock className="h-5 w-5 text-slate-400" />
+                </div>
+                <input
+                  type={showConfirmNewPassword ? "text" : "password"}
+                  placeholder="Confirm new password"
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  className="w-full pl-10 pr-12 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:border-blue-900 transition-colors outline-none text-slate-800"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                >
+                  {showConfirmNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+              {confirmNewPassword && newPassword !== confirmNewPassword && (
+                <p className="text-xs text-red-500">Passwords do not match</p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={passwordChangeLoading || newPassword !== confirmNewPassword || newPassword.length < 8}
+              className="w-full bg-slate-900 text-white py-3.5 rounded-lg font-semibold hover:bg-slate-800 focus:ring-4 focus:ring-slate-200 transition-all flex items-center justify-center disabled:opacity-50"
+            >
+              {passwordChangeLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Setting Password...
+                </>
+              ) : (
+                "Set Password & Continue"
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCancelFlow}
+              className="w-full text-slate-500 text-sm hover:text-slate-700 py-2"
+            >
+              <ArrowLeft className="w-4 h-4 inline mr-1" />
+              Back to Register
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 font-sans pb-10 px-4">

@@ -64,7 +64,7 @@ const AllProperty = () => {
                 endDate: endDate || undefined
             };
 
-            console.log("Fetching with params:", params); // Debug log
+
 
             // Using adminApi - cookies are sent automatically
             const res = await adminApi.get(`/api/properties/admin/all`, { params });

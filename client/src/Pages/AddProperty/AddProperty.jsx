@@ -398,8 +398,8 @@ export default function AddProperty() {
     }, [authLoading, isAuthenticated, authUser, navigate]);
 
     const handleVerificationSuccess = () => {
-        const storedUser = localStorage.getItem("user");
-        if (storedUser) setUser(JSON.parse(storedUser));
+        // User state will be automatically updated via AuthContext's checkAuth
+        // which runs after successful verification completes
         setIsAuthorized(true);
         setShowVerificationModal(false);
         toast.success("You can now list your property!");
@@ -458,9 +458,9 @@ export default function AddProperty() {
         const fetchMetadata = async () => {
             try {
                 const [cats, subs, types] = await Promise.all([
-                    axios.get(`${API_BASE}/api/categories/list-category`),
-                    axios.get(`${API_BASE}/api/subcategories/list`),
-                    axios.get(`${API_BASE}/api/propertyTypes/list-propertytype`)
+                    api.get('/categories/list-category'),
+                    api.get('/subcategories/list'),
+                    api.get('/propertyTypes/list-propertytype')
                 ]);
                 setMetadata({
                     categories: Array.isArray(cats.data) ? cats.data : [],
