@@ -7,8 +7,10 @@ import {
   useLocation,
 } from "react-router-dom";
 
+import { AdminProvider } from "./context/AdminContext";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
+import AdminProtectedRoute from "./components/AdminProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import AddProperty from "./pages/AddProperty";
 import AddCategory from "./pages/AddCategory";
@@ -23,27 +25,6 @@ import BuilderProjects from "./pages/BuilderProjects";
 import ContactInquiries from "./pages/ContactInquiries";
 import ReportedMessages from "./pages/ReportedMessages";
 import PropertyReports from "./pages/PropertyReports";
-
-const getStoredAdminInfo = () => {
-  try {
-    const stored = localStorage.getItem("adminInfo");
-    return stored ? JSON.parse(stored) : null;
-  } catch (error) {
-    console.error("Failed to parse adminInfo", error);
-    return null;
-  }
-};
-
-/**
- * Protected Route Component
- * All authenticated admins have full access - no role-based restrictions on frontend
- * (Authorization is handled by backend permissions)
- */
-const ProtectedRoute = ({ children }) => {
-  const token = localStorage.getItem("adminToken");
-  if (!token) return <Navigate to="/admin/login" replace />;
-  return children;
-};
 
 const Layout = ({ isSidebarOpen, toggleSidebar, children }) => {
   const location = useLocation();
@@ -121,7 +102,7 @@ const getInitialSidebarState = () => {
 };
 
 
-function App() {
+function AppContent() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(getInitialSidebarState);
 
   const toggleSidebar = () => setIsSidebarOpen((prev) => !prev);
@@ -141,123 +122,131 @@ function App() {
   }, []);
 
   return (
+    <Layout isSidebarOpen={isSidebarOpen} toggleSidebar={toggleSidebar}>
+      <Routes>
+        {/* Public Route */}
+        <Route path="/admin/login" element={<AdminLogin />} />
+
+        {/* Protected Routes - Cookie-based auth verification */}
+        <Route
+          path="/dashboard"
+          element={
+            <AdminProtectedRoute>
+              <Dashboard />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/add-property"
+          element={
+            <AdminProtectedRoute>
+              <AddProperty />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/lead-monitoring"
+          element={
+            <AdminProtectedRoute>
+              <LeadMonitoring />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/add-category"
+          element={
+            <AdminProtectedRoute>
+              <AddCategory />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/add-subcategory"
+          element={
+            <AdminProtectedRoute>
+              <AddSubCategory />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/all-owners"
+          element={
+            <AdminProtectedRoute>
+              <BuilderVerification />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/owners-projects"
+          element={
+            <AdminProtectedRoute>
+              <BuilderProjects />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/all-clients"
+          element={
+            <AdminProtectedRoute>
+              <AllClients />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/all-properties"
+          element={
+            <AdminProtectedRoute>
+              <AllProperty />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/all-category"
+          element={
+            <AdminProtectedRoute>
+              <AllCategory />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/contact-inquiries"
+          element={
+            <AdminProtectedRoute>
+              <ContactInquiries />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/reported-messages"
+          element={
+            <AdminProtectedRoute>
+              <ReportedMessages />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/property-reports"
+          element={
+            <AdminProtectedRoute>
+              <PropertyReports />
+            </AdminProtectedRoute>
+          }
+        />
+
+
+        {/* Redirect all other routes */}
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </Layout>
+  );
+}
+
+function App() {
+  return (
     <Router>
-      <Layout isSidebarOpen={isSidebarOpen} toggleSidebar={toggleSidebar}>
-        <Routes>
-          {/* Public Route */}
-          <Route path="/admin/login" element={<AdminLogin />} />
-
-          {/* Protected Routes - All admins have access (backend handles permissions) */}
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/add-property"
-            element={
-              <ProtectedRoute>
-                <AddProperty />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/lead-monitoring"
-            element={
-              <ProtectedRoute>
-                <LeadMonitoring />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/add-category"
-            element={
-              <ProtectedRoute>
-                <AddCategory />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/add-subcategory"
-            element={
-              <ProtectedRoute>
-                <AddSubCategory />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/all-owners"
-            element={
-              <ProtectedRoute>
-                <BuilderVerification />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/owners-projects"
-            element={
-              <ProtectedRoute>
-                <BuilderProjects />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/all-clients"
-            element={
-              <ProtectedRoute>
-                <AllClients />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/all-properties"
-            element={
-              <ProtectedRoute>
-                <AllProperty />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/all-category"
-            element={
-              <ProtectedRoute>
-                <AllCategory />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/contact-inquiries"
-            element={
-              <ProtectedRoute>
-                <ContactInquiries />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/reported-messages"
-            element={
-              <ProtectedRoute>
-                <ReportedMessages />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/property-reports"
-            element={
-              <ProtectedRoute>
-                <PropertyReports />
-              </ProtectedRoute>
-            }
-          />
-
-
-          {/* Redirect all other routes */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </Layout>
+      <AdminProvider>
+        <AppContent />
+      </AdminProvider>
     </Router>
   );
 }

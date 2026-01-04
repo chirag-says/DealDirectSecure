@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
-import axios from "axios";
+import adminApi from "../api/adminApi";
 import { toast } from "react-toastify";
 import { Search, RefreshCw, FileText, FileSpreadsheet, Loader2, X } from "lucide-react";
 
@@ -24,15 +24,13 @@ export default function AllClients() {
   const [userToBlock, setUserToBlock] = useState(null);
   const [blockLoading, setBlockLoading] = useState(false);
 
-  const token = localStorage.getItem("adminToken");
+  // Auth handled by adminApi via cookies
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const { data } = await axios.get(
-        `${API_URL}/api/users/list?role=user`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      // Using adminApi - cookies sent automatically
+      const { data } = await adminApi.get(`/api/users/list?role=user`);
 
       setUsers(
         data.users.map((u) => ({
@@ -73,8 +71,7 @@ export default function AllClients() {
       const fileName =
         type === "csv" ? "clients_list.csv" : "clients_list.pdf";
 
-      const res = await axios.get(`${API_URL}${endpoint}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await adminApi.get(endpoint, {
         responseType: "blob",
       });
 
@@ -92,10 +89,9 @@ export default function AllClients() {
   const confirmBlock = async (userId, reason) => {
     setBlockLoading(true);
     try {
-      await axios.put(
-        `${API_URL}/api/users/block/${userId}`,
-        { reason },
-        { headers: { Authorization: `Bearer ${token}` } }
+      await adminApi.put(
+        `/api/users/block/${userId}`,
+        { reason }
       );
       fetchUsers();
       toast.success("Updated");
@@ -231,11 +227,10 @@ export default function AllClients() {
                     <td className="px-4 py-3 text-gray-600">{u.phone || "N/A"}</td>
                     <td className="px-4 py-3 text-center">
                       <span
-                        className={`px-3 py-1 text-xs rounded-full font-medium ${
-                          u.status === "Active"
+                        className={`px-3 py-1 text-xs rounded-full font-medium ${u.status === "Active"
                             ? "bg-green-100 text-green-700"
                             : "bg-red-100 text-red-700"
-                        }`}
+                          }`}
                       >
                         {u.status}
                       </span>
@@ -260,11 +255,10 @@ export default function AllClients() {
                               setUserToBlock(u);
                             }
                           }}
-                          className={`px-3 py-1 text-sm rounded text-white ${
-                            u.status === "Active"
+                          className={`px-3 py-1 text-sm rounded text-white ${u.status === "Active"
                               ? "bg-red-600 hover:bg-red-700"
                               : "bg-green-600 hover:bg-green-700"
-                          }`}
+                            }`}
                         >
                           {u.status === "Active" ? "Block" : "Unblock"}
                         </button>

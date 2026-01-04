@@ -13,18 +13,18 @@ import {
     Home as HomeIcon,
     AlertTriangle
 } from "lucide-react";
-import axios from "axios";
 import { toast } from "react-toastify";
+import adminApi from "../api/adminApi";
 
 const API_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:9000";
 
 const AllProperty = () => {
     const [properties, setProperties] = useState([]);
     const [loading, setLoading] = useState(true);
-    
+
     // --- Filter States ---
     const [searchTerm, setSearchTerm] = useState("");
-    const [statusFilter, setStatusFilter] = useState("all"); 
+    const [statusFilter, setStatusFilter] = useState("all");
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
 
@@ -33,7 +33,6 @@ const AllProperty = () => {
     const [selectedPropertyId, setSelectedPropertyId] = useState(null);
     const [rejectionReason, setRejectionReason] = useState("");
 
-    const adminToken = localStorage.getItem("adminToken");
     const location = useLocation();
 
     // Helper: Extract data safely
@@ -53,7 +52,7 @@ const AllProperty = () => {
         return `${API_URL}/uploads/${img}`;
     };
 
-    // --- Fetch Properties ---
+    // --- Fetch Properties using adminApi (cookie-based auth) ---
     const fetchProperties = async (overrideSearch) => {
         setLoading(true);
         try {
@@ -67,11 +66,9 @@ const AllProperty = () => {
 
             console.log("Fetching with params:", params); // Debug log
 
-            const res = await axios.get(`${API_URL}/api/properties/admin/all`, {
-                headers: { Authorization: `Bearer ${adminToken}` },
-                params: params 
-            });
-            
+            // Using adminApi - cookies are sent automatically
+            const res = await adminApi.get(`/api/properties/admin/all`, { params });
+
             setProperties(extractList(res.data));
         } catch (err) {
             console.error(err);
@@ -84,7 +81,7 @@ const AllProperty = () => {
     // We EXCLUDE searchTerm here so it doesn't search on every keystroke
     useEffect(() => {
         fetchProperties();
-    }, [statusFilter, startDate, endDate]); 
+    }, [statusFilter, startDate, endDate]);
 
     // Initial load from URL query (?search=...)
     useEffect(() => {
@@ -112,13 +109,11 @@ const AllProperty = () => {
         setTimeout(() => window.location.reload(), 100);
     };
 
-    // --- Actions (Approve, Reject, Delete) ---
+    // --- Actions (Approve, Reject, Delete) using adminApi ---
     const handleDelete = async (id) => {
         if (!window.confirm("Permanently delete?")) return;
         try {
-            await axios.delete(`${API_URL}/api/properties/delete/${id}`, {
-                headers: { Authorization: `Bearer ${adminToken}` },
-            });
+            await adminApi.delete(`/api/properties/delete/${id}`);
             toast.success("Deleted");
             setProperties(prev => prev.filter(p => p._id !== id));
         } catch (err) {
@@ -128,9 +123,7 @@ const AllProperty = () => {
 
     const handleApprove = async (id) => {
         try {
-            await axios.put(`${API_URL}/api/properties/approve/${id}`, {}, 
-                { headers: { Authorization: `Bearer ${adminToken}` } }
-            );
+            await adminApi.put(`/api/properties/approve/${id}`, {});
             toast.success("Property Listed");
             fetchProperties();
         } catch (err) { toast.error("Failed"); }
@@ -145,9 +138,8 @@ const AllProperty = () => {
     const submitRejection = async () => {
         if (!rejectionReason.trim()) return toast.error("Reason required");
         try {
-            await axios.put(`${API_URL}/api/properties/disapprove/${selectedPropertyId}`,
-                { rejectionReason },
-                { headers: { Authorization: `Bearer ${adminToken}` } }
+            await adminApi.put(`/api/properties/disapprove/${selectedPropertyId}`,
+                { rejectionReason }
             );
             toast.success("Rejected");
             setIsModalOpen(false);
@@ -164,13 +156,13 @@ const AllProperty = () => {
 
                 {/* --- SEARCH BAR --- */}
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                    
+
                     {/* Search Input */}
                     <div className="md:col-span-4">
                         <label className="block text-xs font-bold text-gray-500 mb-1">SEARCH</label>
                         <div className="relative">
                             <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-                            <input 
+                            <input
                                 type="text"
                                 placeholder="Search Title, City, or State..."
                                 value={searchTerm}
@@ -186,7 +178,7 @@ const AllProperty = () => {
                         <label className="block text-xs font-bold text-gray-500 mb-1">STATUS</label>
                         <div className="relative">
                             <Filter className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-                            <select 
+                            <select
                                 value={statusFilter}
                                 onChange={(e) => setStatusFilter(e.target.value)}
                                 className="w-full pl-9 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
@@ -201,11 +193,11 @@ const AllProperty = () => {
                     {/* Dates */}
                     <div className="md:col-span-2">
                         <label className="block text-xs font-bold text-gray-500 mb-1">FROM</label>
-                        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm text-gray-600"/>
+                        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm text-gray-600" />
                     </div>
                     <div className="md:col-span-2">
                         <label className="block text-xs font-bold text-gray-500 mb-1">TO</label>
-                        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm text-gray-600"/>
+                        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm text-gray-600" />
                     </div>
 
                     {/* Buttons */}
@@ -224,7 +216,7 @@ const AllProperty = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
                 {loading && <div className="col-span-full text-center py-10">Loading...</div>}
                 {!loading && properties.length === 0 && <div className="col-span-full text-center py-20 text-gray-500 bg-white rounded-xl border border-dashed">No properties match your filters.</div>}
-                
+
                 {!loading && properties.map((item) => (
                     <div key={item._id} className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden relative group">
                         <div className={`absolute top-3 right-3 px-3 py-1 text-xs font-bold text-white rounded-full ${item.isApproved ? "bg-green-600" : "bg-red-500"} z-10 shadow-sm`}>
@@ -234,10 +226,10 @@ const AllProperty = () => {
                         <div className="p-5 space-y-3">
                             <h3 className="text-lg font-bold text-gray-900 truncate">{item.title}</h3>
                             <div className="flex justify-between text-sm text-gray-600">
-                                <span className="flex items-center gap-1"><MapPin className="w-3 h-3"/> {item.address?.city || item.city}</span>
-                                <span className="flex items-center gap-1"><Calendar className="w-3 h-3"/> {new Date(item.createdAt).toLocaleDateString()}</span>
+                                <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {item.address?.city || item.city}</span>
+                                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(item.createdAt).toLocaleDateString()}</span>
                             </div>
-                            
+
                             {!item.isApproved && item.rejectionReason && (
                                 <div className="bg-red-50 border border-red-100 p-3 rounded-lg text-xs text-red-700 mt-2">
                                     <span className="font-bold block mb-1">Reason:</span> {item.rejectionReason}

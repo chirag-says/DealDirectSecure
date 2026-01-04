@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
-import axios from "axios";
+import adminApi from "../api/adminApi";
 import { toast } from "react-toastify";
 import {
     Loader2,
@@ -49,7 +49,7 @@ const StatusBadge = ({ isBlocked }) => {
 // --- Main Component: BuilderVerification ---
 
 export default function BuilderVerification() {
-    const [users, setUsers] = useState([]); 
+    const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [downloading, setDownloading] = useState(false); // ✅ State for export loading
 
@@ -66,21 +66,16 @@ export default function BuilderVerification() {
     const [selectedOwner, setSelectedOwner] = useState(null);
     const [drawerOpen, setDrawerOpen] = useState(false);
 
-    const token = localStorage.getItem("adminToken");
+    // Auth handled by adminApi via cookies
 
     /* -----------------------------------------------
       🔥 FETCH OWNERS
     ------------------------------------------------- */
     const fetchOwners = async () => {
-        if (!token) {
-            setLoading(false);
-            return toast.error("Authentication token missing.");
-        }
         try {
             setLoading(true);
-            const { data } = await axios.get(`${API_URL}/api/users/list?role=owner`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            // Using adminApi - cookies sent automatically
+            const { data } = await adminApi.get(`/api/users/list?role=owner`);
             setUsers(data.users.map((u) => ({
                 ...u,
                 joinedAt: formatDate(u.createdAt),
@@ -101,7 +96,6 @@ export default function BuilderVerification() {
       ✅ HANDLE DOWNLOAD (CSV / PDF)
     ------------------------------------------------- */
     const handleDownload = async (type) => {
-        if (!token) return toast.error("Please login first");
         setDownloading(true);
 
         try {
@@ -109,8 +103,7 @@ export default function BuilderVerification() {
             const endpoint = type === 'csv' ? '/api/users/export-owners-csv' : '/api/users/export-owners-pdf';
             const filename = type === 'csv' ? 'owners_list.csv' : 'owners_list.pdf';
 
-            const response = await axios.get(`${API_URL}${endpoint}`, {
-                headers: { Authorization: `Bearer ${token}` },
+            const response = await adminApi.get(endpoint, {
                 responseType: 'blob', // Important for file download
             });
 
@@ -151,10 +144,9 @@ export default function BuilderVerification() {
     };
 
     const confirmBlock = async (ownerId, reason) => {
-        if (!token) return toast.error("Not authenticated for this action.");
         setBlockLoading(true);
         try {
-            const { data } = await axios.put(`${API_URL}/api/users/block/${ownerId}`, { reason }, { headers: { Authorization: `Bearer ${token}` } });
+            const { data } = await adminApi.put(`/api/users/block/${ownerId}`, { reason });
             toast.success(data.message);
             const newIsBlocked = data.isBlocked;
             const newBlockReason = data.blockReason || "";
@@ -469,8 +461,8 @@ export default function BuilderVerification() {
                             <button
                                 onClick={() => handleBlockClick(selectedOwner)}
                                 className={`px-4 py-2 text-white rounded-md text-sm font-semibold transition-colors ${selectedOwner.isBlocked
-                                        ? "bg-green-600 hover:bg-green-700"
-                                        : "bg-red-600 hover:bg-red-700"
+                                    ? "bg-green-600 hover:bg-green-700"
+                                    : "bg-red-600 hover:bg-red-700"
                                     }`}
                             >
                                 {selectedOwner.isBlocked ? "Unblock Owner" : "Block Owner"}

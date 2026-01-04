@@ -9,7 +9,7 @@ import {
     Home as HomeIcon,
     Eye
 } from "lucide-react";
-import axios from "axios";
+import adminApi from "../api/adminApi";
 import { toast } from "react-toastify";
 
 const API_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:9000";
@@ -22,7 +22,7 @@ const PopularProperties = () => {
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState("all"); // 'popular', 'not-popular', 'all'
 
-    const adminToken = localStorage.getItem("adminToken");
+    // Auth handled by adminApi via cookies
 
     // Helper: Extract data safely
     const extractList = (resData) => {
@@ -49,9 +49,8 @@ const PopularProperties = () => {
                 search: searchTerm,
             };
 
-            // Using the admin all properties endpoint
-            const res = await axios.get(`${API_URL}/api/properties/admin/all`, {
-                headers: { Authorization: `Bearer ${adminToken}` },
+            // Using adminApi - cookies sent automatically
+            const res = await adminApi.get(`/api/properties/admin/all`, {
                 params: params
             });
 
@@ -89,9 +88,9 @@ const PopularProperties = () => {
     const togglePopular = async (property) => {
         try {
             const newStatus = !property.isPopular;
-            await axios.put(`${API_URL}/api/properties/popular/${property._id}`,
-                { isPopular: newStatus },
-                { headers: { Authorization: `Bearer ${adminToken}` } }
+            // Using adminApi - cookies sent automatically
+            await adminApi.put(`/api/properties/popular/${property._id}`,
+                { isPopular: newStatus }
             );
 
             toast.success(newStatus ? "Added to Popular Properties" : "Removed from Popular Properties");

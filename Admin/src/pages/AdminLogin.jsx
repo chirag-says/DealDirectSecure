@@ -1,15 +1,25 @@
-import React, { useState } from "react";
-import axios from "axios";
+import React, { useState, useEffect } from "react";
 import { toast } from "react-toastify";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Lock, Mail } from "lucide-react";
-
-const API_URL = import.meta.env.VITE_API_BASE_URL;
+import { adminAuthApi } from "../api/adminApi";
+import { useAdmin } from "../context/AdminContext";
 
 const AdminLogin = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { login, isAuthenticated, isLoading } = useAdmin();
+
   const [form, setForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated && !isLoading) {
+      const from = location.state?.from || "/dashboard";
+      navigate(from, { replace: true });
+    }
+  }, [isAuthenticated, isLoading, navigate, location.state]);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -23,19 +33,14 @@ const AdminLogin = () => {
 
     try {
       setLoading(true);
-      const { data } = await axios.post(`${API_URL}/api/admin/login`, form, {
-        withCredentials: true, // Enable cookies for session management
-      });
+
+      // Use the adminAuthApi for login - cookies are handled automatically
+      const data = await adminAuthApi.login(form.email, form.password);
 
       toast.success("Login successful!");
 
-      // Save admin info to localStorage (for UI display purposes)
-      localStorage.setItem("adminToken", "authenticated"); // Marker for auth state
-      localStorage.setItem("adminName", data.admin.name);
-      if (data.admin?.role) {
-        localStorage.setItem("adminRole", data.admin.role);
-      }
-      localStorage.setItem("adminInfo", JSON.stringify(data.admin));
+      // Update context with admin data (no localStorage needed)
+      await login(data.admin);
 
       // Check for MFA requirement
       if (data.requiresMfa) {
@@ -57,8 +62,9 @@ const AdminLogin = () => {
         return;
       }
 
-      // All admins go to dashboard
-      navigate("/dashboard");
+      // Navigate to intended destination or dashboard
+      const from = location.state?.from || "/dashboard";
+      navigate(from, { replace: true });
     } catch (error) {
       const message = error.response?.data?.message || "Login failed";
       toast.error(message);
@@ -75,6 +81,15 @@ const AdminLogin = () => {
       setLoading(false);
     }
   };
+
+  // Show loading state while checking initial auth
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center ">
@@ -125,8 +140,8 @@ const AdminLogin = () => {
             type="submit"
             disabled={loading}
             className={`w-full py-3 rounded-lg text-white font-semibold transition-all ${loading
-                ? "bg-blue-400 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-700 shadow-md"
+              ? "bg-blue-400 cursor-not-allowed"
+              : "bg-blue-600 hover:bg-blue-700 shadow-md"
               }`}
           >
             {loading ? "Logging in..." : "Login"}

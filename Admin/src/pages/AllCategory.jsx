@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import adminApi from "../api/adminApi";
 import { Edit, Trash2, PlusCircle, X } from "lucide-react";
 import { toast } from "react-toastify";
 
@@ -14,7 +14,7 @@ const AllCategory = () => {
   const [editData, setEditData] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
 
-  const token = localStorage.getItem("adminToken");
+  // Auth handled by adminApi via cookies
 
   // Fetch all types, categories & subcategories
   const fetchAll = async () => {
@@ -54,9 +54,7 @@ const AllCategory = () => {
       } else if (type === "subcategories") {
         endpoint = `${API_URL}/api/subcategories/delete/${id}`;
       }
-      await axios.delete(endpoint, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await adminApi.delete(endpoint);
       toast.success(`${type} deleted`);
       fetchAll();
     } catch (err) {
@@ -84,15 +82,13 @@ const AllCategory = () => {
         payload = { name: editData.name };
       } else if (editData.type === "subcategories") {
         endpoint = `${API_URL}/api/subcategories/edit/${editData._id}`;
-        payload = { 
+        payload = {
           name: editData.name,
-          category: editData.category?._id || editData.category 
+          category: editData.category?._id || editData.category
         };
       }
 
-      await axios.put(endpoint, payload, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await adminApi.put(endpoint, payload);
 
       toast.success("Updated successfully");
       setIsEditing(false);

@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React from "react";
 import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -13,17 +13,10 @@ import {
   Flag
 } from "lucide-react";
 import { CiLogout } from "react-icons/ci";
+import { useAdmin } from "../context/AdminContext";
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
-  const adminInfo = useMemo(() => {
-    try {
-      const stored = localStorage.getItem("adminInfo");
-      return stored ? JSON.parse(stored) : null;
-    } catch (error) {
-      console.error("Failed to parse adminInfo", error);
-      return null;
-    }
-  }, []);
+  const { admin, logout, roleName, roleLevel } = useAdmin();
 
   // All menu items available to all authenticated admins
   // Backend handles permission enforcement
@@ -80,11 +73,15 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
     },
   ];
 
-  const handleLogout = () => {
-    localStorage.removeItem("adminToken");
-    localStorage.removeItem("adminInfo");
-    localStorage.removeItem("adminName");
-    localStorage.removeItem("adminRole");
+  /**
+   * Logout handler - calls the context logout which:
+   * 1. Calls /api/admin/logout to invalidate the session cookie
+   * 2. Clears the admin state
+   * 3. App will redirect to login automatically
+   */
+  const handleLogout = async () => {
+    await logout();
+    // Navigation is handled by AdminProtectedRoute based on auth state
     window.location.href = "/admin/login";
   };
 
@@ -100,6 +97,24 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
             {isOpen ? <X size={25} /> : <Menu size={25} className="mr-5" />}
           </button>
         </div>
+
+        {/* Admin Info (when sidebar is open) */}
+        {isOpen && admin && (
+          <div className="px-4 pb-4 border-b border-gray-100">
+            <div className="text-sm font-medium text-gray-800 truncate">
+              {admin.name}
+            </div>
+            <div className="text-xs text-gray-500 truncate">
+              {admin.email}
+            </div>
+            {roleName && (
+              <span className="inline-block mt-1 px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded-full">
+                {admin.role?.displayName || roleName}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Menu items */}
         <nav className="flex-1 overflow-auto mt-2 px-2">
           <ul className="space-y-1">

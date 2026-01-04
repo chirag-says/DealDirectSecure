@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import adminApi from "../api/adminApi";
 import { toast } from "react-toastify";
 import { Flag } from "lucide-react";
 
@@ -18,12 +18,11 @@ const ReportedMessages = () => {
     const fetchReports = async () => {
         try {
             setLoading(true);
-            const token = localStorage.getItem("adminToken");
 
-            console.log("Fetching reports from:", `${API_URL}/api/admin/reports`);
+            console.log("Fetching reports using adminApi");
 
-            const res = await axios.get(`${API_URL}/api/admin/reports`, {
-                headers: { Authorization: `Bearer ${token}` },
+            // Using adminApi - cookies sent automatically
+            const res = await adminApi.get(`/api/admin/reports`, {
                 params: {
                     page,
                     limit,
@@ -49,10 +48,9 @@ const ReportedMessages = () => {
 
     const handleStatusUpdate = async (reportId, newStatus) => {
         try {
-            const token = localStorage.getItem("adminToken");
-            await axios.put(`${API_URL}/api/admin/reports/${reportId}`,
-                { status: newStatus },
-                { headers: { Authorization: `Bearer ${token}` } }
+            // Using adminApi - cookies sent automatically
+            await adminApi.put(`/api/admin/reports/${reportId}`,
+                { status: newStatus }
             );
             toast.success("Status updated successfully");
             fetchReports();

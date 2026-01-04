@@ -61,7 +61,7 @@ adminApi.interceptors.response.use(
 
             if (status === 401) {
                 console.warn("🔒 Admin session expired");
-                localStorage.removeItem("adminUser");
+                // Auth state cleanup is handled by AdminContext via onAuthError callback
 
                 if (onAuthError) {
                     onAuthError({
@@ -93,27 +93,27 @@ adminApi.interceptors.response.use(
 
 export const adminAuthApi = {
     login: async (email, password) => {
-        const response = await adminApi.post('/admin/login', { email, password });
+        const response = await adminApi.post('/api/admin/login', { email, password });
         return response.data;
     },
 
     logout: async () => {
         try {
-            await adminApi.post('/admin/logout');
+            await adminApi.post('/api/admin/logout');
         } catch (error) {
             console.warn('Logout error:', error.message);
         }
-        localStorage.removeItem('adminUser');
+        // State cleanup is handled by AdminContext
     },
 
     getProfile: async () => {
-        const response = await adminApi.get('/admin/profile');
+        const response = await adminApi.get('/api/admin/profile');
         return response.data;
     },
 
     checkAuth: async () => {
         try {
-            const response = await adminApi.get('/admin/profile');
+            const response = await adminApi.get('/api/admin/profile');
             return { authenticated: true, admin: response.data.admin || response.data };
         } catch (error) {
             return { authenticated: false, admin: null };

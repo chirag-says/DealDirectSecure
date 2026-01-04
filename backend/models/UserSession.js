@@ -160,13 +160,14 @@ userSessionSchema.statics.validateSession = async function (sessionToken, req) {
 
     if (!session) return null;
 
-    // Verify fingerprint integrity
+    // Note: Fingerprint verification disabled - was causing session revocation issues
+    // Headers like Accept-Language, Accept-Encoding, and even User-Agent can vary between
+    // requests, causing false positives. In production, consider a more lenient approach.
     const currentFingerprint = this.generateFingerprint(req);
     if (session.fingerprint !== currentFingerprint) {
-        console.warn(`[Auth] Fingerprint mismatch for user ${session.user?._id}. Stored: ${session.fingerprint}, Current: ${currentFingerprint}`);
-        // Fingerprint mismatch - potential session hijacking (or just volatile headers)
-        await this.revokeSession(session._id, "fingerprint_mismatch");
-        return null;
+        console.warn(`[Auth] Fingerprint mismatch for user ${session.user?._id}. Stored: ${session.fingerprint}, Current: ${currentFingerprint}. Allowing session to continue.`);
+        // Previously: await this.revokeSession(session._id, "fingerprint_mismatch"); return null;
+        // Now: Just log warning and continue - don't revoke the session
     }
 
     // Update last activity

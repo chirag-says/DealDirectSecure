@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import adminApi from "../api/adminApi";
 import { toast } from "react-toastify";
 import {
     User,
@@ -50,24 +50,16 @@ const StatusTag = ({ status }) => {
 const BuilderProjects = () => {
     const [ownersData, setOwnersData] = useState([]);
     const [loading, setLoading] = useState(true);
-    const token = localStorage.getItem("adminToken");
+    // Auth handled by adminApi via cookies
 
     /* -----------------------------------------------
       🔥 FETCH OWNERS WITH PROJECTS (Admin Endpoint)
     ------------------------------------------------- */
     const fetchOwnersWithProjects = async () => {
-        if (!token) {
-            toast.error("Authentication token missing.");
-            setLoading(false);
-            return;
-        }
-
         try {
             setLoading(true);
-            // Using the correct GET endpoint from previous fixes
-            const { data } = await axios.get(`${API_URL}/api/users/owners-projects`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            // Using adminApi - cookies sent automatically
+            const { data } = await adminApi.get(`/api/users/owners-projects`);
 
             // Map data to the structure expected by the UI component
             const mappedData = data.data.map(owner => ({
@@ -100,8 +92,6 @@ const BuilderProjects = () => {
     ------------------------------------------------- */
 
     const handleProjectAction = async (ownerId, projectId, action) => {
-        if (!token) return toast.error("Not authenticated.");
-
         if (!projectId) {
             console.error("Missing Project ID for action:", action);
             return toast.error("Error: Cannot perform action, Project ID is missing.");
@@ -109,10 +99,10 @@ const BuilderProjects = () => {
 
         const endpoint =
             action === 'approve'
-                ? `${API_URL}/api/properties/approve/${projectId}`
+                ? `/api/properties/approve/${projectId}`
                 : action === 'reject'
-                    ? `${API_URL}/api/properties/disapprove/${projectId}`
-                    : `${API_URL}/api/properties/delete/${projectId}`;
+                    ? `/api/properties/disapprove/${projectId}`
+                    : `/api/properties/delete/${projectId}`;
 
         // Confirm dialog for deletion only
         if (action === 'delete') {
@@ -124,9 +114,9 @@ const BuilderProjects = () => {
         try {
             let response;
             if (action === 'delete') {
-                response = await axios.delete(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+                response = await adminApi.delete(endpoint);
             } else {
-                response = await axios.put(endpoint, {}, { headers: { Authorization: `Bearer ${token}` } });
+                response = await adminApi.put(endpoint, {});
             }
 
             toast.success(`Project ${action}d successfully!`);

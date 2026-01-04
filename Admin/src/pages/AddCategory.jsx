@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import adminApi from "../api/adminApi";
 import { toast } from "react-toastify";
 
 const API_URL = import.meta.env.VITE_API_BASE_URL;
@@ -30,12 +30,10 @@ const AddCategory = () => {
 
     try {
       setLoading(true);
-      const token = localStorage.getItem("adminToken");
-
-      const { data } = await axios.post(
-        `${API_URL}/api/categories/add-category`,
-        { name, propertyType: selectedPropertyType },
-        { headers: { Authorization: `Bearer ${token}` } }
+      // Using adminApi - cookies sent automatically
+      const { data } = await adminApi.post(
+        `/api/categories/add-category`,
+        { name, propertyType: selectedPropertyType }
       );
 
       toast.success(data.message || "Category added successfully");
@@ -92,11 +90,10 @@ const AddCategory = () => {
           <button
             type="submit"
             disabled={loading}
-            className={`w-full py-3 rounded-lg text-white font-medium ${
-              loading
+            className={`w-full py-3 rounded-lg text-white font-medium ${loading
                 ? "bg-blue-400 cursor-not-allowed"
                 : "bg-blue-600 hover:bg-blue-700"
-            } transition`}
+              } transition`}
           >
             {loading ? "Adding..." : "Add Category"}
           </button>

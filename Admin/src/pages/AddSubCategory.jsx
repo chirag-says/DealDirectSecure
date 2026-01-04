@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import adminApi from "../api/adminApi";
 import { toast } from "react-toastify";
 
 const API_URL = import.meta.env.VITE_API_BASE_URL;
@@ -62,15 +62,14 @@ const AddSubCategory = () => {
 
     try {
       setLoading(true);
-      const token = localStorage.getItem("adminToken");
-      const { data } = await axios.post(
-        `${API_URL}/api/subcategories/add`,
-        { 
-          name: subName, 
+      // Using adminApi - cookies sent automatically
+      const { data } = await adminApi.post(
+        `/api/subcategories/add`,
+        {
+          name: subName,
           category: selectedCategory,
-          propertyType: selectedPropertyType 
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+          propertyType: selectedPropertyType
+        }
       );
 
       toast.success(data.message || "Subcategory added successfully");
@@ -120,9 +119,8 @@ const AddSubCategory = () => {
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
               disabled={!selectedPropertyType}
-              className={`w-full border border-gray-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                !selectedPropertyType ? "bg-gray-100 cursor-not-allowed" : ""
-              }`}
+              className={`w-full border border-gray-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!selectedPropertyType ? "bg-gray-100 cursor-not-allowed" : ""
+                }`}
             >
               <option value="">-- Select Category --</option>
               {filteredCategories.map((cat) => (
@@ -154,8 +152,8 @@ const AddSubCategory = () => {
             type="submit"
             disabled={loading}
             className={`w-full py-3 rounded-lg text-white font-medium ${loading
-                ? "bg-blue-400 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-700"
+              ? "bg-blue-400 cursor-not-allowed"
+              : "bg-blue-600 hover:bg-blue-700"
               } transition`}
           >
             {loading ? "Adding..." : "Add Subcategory"}

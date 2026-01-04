@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import adminApi from "../api/adminApi";
 import { toast } from "react-toastify";
 import {
   CalendarDays,
@@ -30,21 +30,14 @@ const formatDate = (dateString) => {
 export default function SiteVisitManagement() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
-  const token = localStorage.getItem("adminToken");
+  // Auth handled by adminApi via cookies
 
   // Fetch leads that are interested or negotiating (potential site visits)
   const fetchPotentialVisits = async () => {
-    if (!token) {
-      setLoading(false);
-      toast.error("Authentication token missing. Please log in.");
-      return;
-    }
-
     try {
       setLoading(true);
-      const { data } = await axios.get(`${API_URL}/api/admin/leads`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // Using adminApi - cookies sent automatically
+      const { data } = await adminApi.get(`/api/admin/leads`);
 
       if (data.success) {
         // Filter leads that are in interested or negotiating status (potential visits)
@@ -55,9 +48,8 @@ export default function SiteVisitManagement() {
       }
     } catch (error) {
       console.error("Failed to fetch leads:", error);
-      if (error.response?.status === 401) {
-        toast.error("Session expired. Please log in again.");
-      } else {
+      // 401 errors are handled by adminApi interceptor
+      if (error.response?.status !== 401) {
         toast.error("Failed to fetch potential site visits");
       }
     } finally {
@@ -71,10 +63,10 @@ export default function SiteVisitManagement() {
 
   const updateLeadStatus = async (leadId, newStatus) => {
     try {
-      const { data } = await axios.put(
-        `${API_URL}/api/admin/leads/${leadId}`,
-        { status: newStatus },
-        { headers: { Authorization: `Bearer ${token}` } }
+      // Using adminApi - cookies sent automatically
+      const { data } = await adminApi.put(
+        `/api/admin/leads/${leadId}`,
+        { status: newStatus }
       );
 
       if (data.success) {
@@ -179,7 +171,7 @@ export default function SiteVisitManagement() {
               {/* Actions */}
               <div className="mt-4 flex flex-wrap gap-3">
                 {lead.status === "interested" && (
-                  <button 
+                  <button
                     onClick={() => updateLeadStatus(lead._id, "negotiating")}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
                   >
@@ -188,7 +180,7 @@ export default function SiteVisitManagement() {
                 )}
 
                 {lead.status === "negotiating" && (
-                  <button 
+                  <button
                     onClick={() => updateLeadStatus(lead._id, "converted")}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
                   >
@@ -196,7 +188,7 @@ export default function SiteVisitManagement() {
                   </button>
                 )}
 
-                <button 
+                <button
                   onClick={() => updateLeadStatus(lead._id, "lost")}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"
                 >

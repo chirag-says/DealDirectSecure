@@ -1,6 +1,6 @@
 // src/pages/Admin/AddProperty.jsx
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import adminApi from "../api/adminApi";
 import { toast } from "react-toastify";
 import { Building2, Image as ImageIcon, Plus, XCircle, Loader2 } from "lucide-react";
 
@@ -54,11 +54,9 @@ const AddProperty = () => {
     submit: false,
   });
 
-  // Utility - admin auth header
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem("adminToken");
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
+  // Utility - auth is handled by adminApi via cookies
+  // getAuthHeaders is no longer needed but we keep a placeholder for compatibility
+  const getAuthHeaders = () => ({});
 
   const runWithAction = async (key, task) => {
     setActionLoading((prev) => ({ ...prev, [key]: true }));
@@ -136,10 +134,9 @@ const AddProperty = () => {
     if (!newPropertyType.trim()) return toast.error("Enter a property type name");
     await runWithAction("propertyType", async () => {
       try {
-        const res = await axios.post(
-          `${API_BASE_URL}/api/propertyTypes/add-property-type`,
-          { name: newPropertyType.trim() },
-          { headers: getAuthHeaders() }
+        const res = await adminApi.post(
+          `/api/propertyTypes/add-property-type`,
+          { name: newPropertyType.trim() }
         );
 
         const created = res.data;
@@ -161,10 +158,9 @@ const AddProperty = () => {
     if (!newCategory.trim()) return toast.error("Enter a category name");
     await runWithAction("category", async () => {
       try {
-        const res = await axios.post(
-          `${API_BASE_URL}/api/categories/add-category`,
-          { name: newCategory.trim(), propertyType: propertyTypeId },
-          { headers: getAuthHeaders() }
+        const res = await adminApi.post(
+          `/api/categories/add-category`,
+          { name: newCategory.trim(), propertyType: propertyTypeId }
         );
 
         const created = res.data;
@@ -186,10 +182,9 @@ const AddProperty = () => {
     if (!newSubcategory.trim()) return toast.error("Enter a subcategory name");
     await runWithAction("subcategory", async () => {
       try {
-        const res = await axios.post(
-          `${API_BASE_URL}/api/subcategories/add`,
-          { name: newSubcategory.trim(), category: categoryId, propertyType: propertyTypeId },
-          { headers: getAuthHeaders() }
+        const res = await adminApi.post(
+          `/api/subcategories/add`,
+          { name: newSubcategory.trim(), category: categoryId, propertyType: propertyTypeId }
         );
         const created = res.data;
         toast.success("Subcategory added");
@@ -299,9 +294,8 @@ const AddProperty = () => {
         // Add images as files
         images.forEach((file) => data.append("images", file));
 
-        await axios.post(`${API_BASE_URL}/api/properties/add`, data, {
-          headers: getAuthHeaders(),
-        });
+        // Using adminApi - cookies sent automatically
+        await adminApi.post(`/api/properties/add`, data);
 
         toast.success("Property added successfully");
         resetFormState();
@@ -360,8 +354,8 @@ const AddProperty = () => {
                 onClick={handleAddPropertyType}
                 disabled={!canAddPropertyType || actionLoading.propertyType}
                 className={`flex items-center gap-1 px-4 rounded text-white text-sm font-medium ${!canAddPropertyType || actionLoading.propertyType
-                    ? "bg-blue-300 cursor-not-allowed"
-                    : "bg-blue-600 hover:bg-blue-700"
+                  ? "bg-blue-300 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
                   }`}
               >
                 {actionLoading.propertyType ? (
@@ -415,8 +409,8 @@ const AddProperty = () => {
                 onClick={handleAddCategory}
                 disabled={!canAddCategory || actionLoading.category}
                 className={`flex items-center gap-1 px-4 rounded text-white text-sm font-medium ${!canAddCategory || actionLoading.category
-                    ? "bg-blue-300 cursor-not-allowed"
-                    : "bg-blue-600 hover:bg-blue-700"
+                  ? "bg-blue-300 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
                   }`}
               >
                 {actionLoading.category ? (
@@ -470,8 +464,8 @@ const AddProperty = () => {
                 onClick={handleAddSubcategory}
                 disabled={!canAddSubcategory || actionLoading.subcategory}
                 className={`flex items-center gap-1 px-4 rounded text-white text-sm font-medium ${!canAddSubcategory || actionLoading.subcategory
-                    ? "bg-blue-300 cursor-not-allowed"
-                    : "bg-blue-600 hover:bg-blue-700"
+                  ? "bg-blue-300 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
                   }`}
               >
                 {actionLoading.subcategory ? (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import adminApi from "../api/adminApi";
 import { toast } from "react-toastify";
 import {
   Mail,
@@ -56,7 +56,6 @@ const ContactInquiries = () => {
   const fetchInquiries = async (page = 1) => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("adminToken");
       const params = new URLSearchParams({
         page,
         limit: pagination.limit,
@@ -66,9 +65,8 @@ const ContactInquiries = () => {
         ...(filters.search && { search: filters.search }),
       });
 
-      const response = await axios.get(`${API_BASE}/api/contact/admin/all?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // Using adminApi - cookies sent automatically
+      const response = await adminApi.get(`/api/contact/admin/all?${params}`);
 
       if (response.data.success) {
         setInquiries(response.data.inquiries);
@@ -101,10 +99,8 @@ const ContactInquiries = () => {
   // View inquiry details
   const handleViewInquiry = async (inquiry) => {
     try {
-      const token = localStorage.getItem("adminToken");
-      const response = await axios.get(`${API_BASE}/api/contact/admin/${inquiry._id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // Using adminApi - cookies sent automatically
+      const response = await adminApi.get(`/api/contact/admin/${inquiry._id}`);
 
       if (response.data.success) {
         setSelectedInquiry(response.data.inquiry);
@@ -127,11 +123,10 @@ const ContactInquiries = () => {
   const handleUpdateInquiry = async (updates) => {
     try {
       setUpdating(true);
-      const token = localStorage.getItem("adminToken");
-      const response = await axios.put(
-        `${API_BASE}/api/contact/admin/${selectedInquiry._id}`,
-        updates,
-        { headers: { Authorization: `Bearer ${token}` } }
+      // Using adminApi - cookies sent automatically
+      const response = await adminApi.put(
+        `/api/contact/admin/${selectedInquiry._id}`,
+        updates
       );
 
       if (response.data.success) {
@@ -152,10 +147,8 @@ const ContactInquiries = () => {
     if (!window.confirm("Are you sure you want to delete this inquiry?")) return;
 
     try {
-      const token = localStorage.getItem("adminToken");
-      await axios.delete(`${API_BASE}/api/contact/admin/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // Using adminApi - cookies sent automatically
+      await adminApi.delete(`/api/contact/admin/${id}`);
       toast.success("Inquiry deleted");
       fetchInquiries(pagination.page);
       setShowDetailModal(false);
@@ -168,12 +161,8 @@ const ContactInquiries = () => {
   // Mark all as read
   const handleMarkAllRead = async () => {
     try {
-      const token = localStorage.getItem("adminToken");
-      await axios.patch(
-        `${API_BASE}/api/contact/admin/mark-all-read`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      // Using adminApi - cookies sent automatically
+      await adminApi.patch(`/api/contact/admin/mark-all-read`, {});
       toast.success("All marked as read");
       fetchInquiries(pagination.page);
     } catch (error) {
@@ -402,9 +391,8 @@ const ContactInquiries = () => {
                 {inquiries.map((inquiry) => (
                   <tr
                     key={inquiry._id}
-                    className={`hover:bg-gray-50 transition-colors ${
-                      !inquiry.isRead ? "bg-blue-50/50" : ""
-                    }`}
+                    className={`hover:bg-gray-50 transition-colors ${!inquiry.isRead ? "bg-blue-50/50" : ""
+                      }`}
                   >
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-3">

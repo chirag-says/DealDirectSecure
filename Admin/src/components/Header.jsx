@@ -1,36 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { ChevronDownIcon, Bars3Icon, ArrowLeftStartOnRectangleIcon } from "@heroicons/react/24/outline";
 import logoSrc from "../assets/dd.jpg";
+import { useAdmin } from "../context/AdminContext";
 
 const Header = ({ toggleSidebar }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const dropdownRef = useRef(null);
-
-    const [adminInfo, setAdminInfo] = useState({
-        name: "Admin",
-        email: "admin@example.com",
-        role: "Administrator",
-    });
-
-    useEffect(() => {
-        try {
-            const storedRaw = localStorage.getItem("adminInfo");
-            const storedInfo = storedRaw ? JSON.parse(storedRaw) : null;
-
-            const name = storedInfo?.name || localStorage.getItem("adminName") || "Admin";
-            const email = storedInfo?.email || "N/A";
-            // Display the role from backend (Super Admin, Administrator, Manager, Viewer)
-            const role = storedInfo?.role || localStorage.getItem("adminRole") || "Administrator";
-
-            setAdminInfo({ name, email, role });
-        } catch (error) {
-            console.error("Failed to parse adminInfo", error);
-            setAdminInfo(prev => ({
-                ...prev,
-                name: localStorage.getItem("adminName") || "Admin"
-            }));
-        }
-    }, []);
+    const { admin, logout } = useAdmin();
 
     // Handle clicks outside dropdown
     useEffect(() => {
@@ -45,15 +21,16 @@ const Header = ({ toggleSidebar }) => {
         };
     }, [dropdownRef]);
 
-
-    // Logout Function
-    const handleLogout = () => {
-        localStorage.removeItem("adminToken");
-        localStorage.removeItem("adminName");
-        localStorage.removeItem("adminInfo");
-        localStorage.removeItem("adminRole");
+    // Logout Function - now uses context
+    const handleLogout = async () => {
+        await logout();
         window.location.href = "/admin/login";
     };
+
+    // Get admin info from context
+    const adminName = admin?.name || "Admin";
+    const adminEmail = admin?.email || "N/A";
+    const adminRole = admin?.role?.displayName || admin?.role?.name || "Administrator";
 
     // Get Avatar Text (e.g., 'A' for Admin)
     const getAvatarText = (name) => {
@@ -96,16 +73,16 @@ const Header = ({ toggleSidebar }) => {
                     >
                         {/* Profile Avatar */}
                         <div className="flex-shrink-0 h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-md">
-                            {getAvatarText(adminInfo.name)}
+                            {getAvatarText(adminName)}
                         </div>
 
                         {/* Info and Chevron */}
                         <div className="hidden md:flex flex-col items-start min-w-0">
                             <span className="text-sm font-semibold text-gray-800 truncate max-w-[120px]">
-                                {adminInfo.name}
+                                {adminName}
                             </span>
                             <span className="text-xs text-gray-500 truncate max-w-[120px]">
-                                {adminInfo.role}
+                                {adminRole}
                             </span>
                         </div>
 
@@ -119,10 +96,10 @@ const Header = ({ toggleSidebar }) => {
                             className="absolute right-0 top-full mt-2 w-64 bg-white border border-gray-100 rounded-lg shadow-xl z-50 origin-top-right animate-fade-in-down"
                         >
                             <div className="p-4 border-b border-gray-100">
-                                <p className="font-bold text-gray-800 truncate">{adminInfo.name}</p>
-                                <p className="text-sm text-gray-500 truncate">{adminInfo.email}</p>
-                                <span className={`mt-2 inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${getRoleBadgeColor(adminInfo.role)}`}>
-                                    {adminInfo.role}
+                                <p className="font-bold text-gray-800 truncate">{adminName}</p>
+                                <p className="text-sm text-gray-500 truncate">{adminEmail}</p>
+                                <span className={`mt-2 inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${getRoleBadgeColor(adminRole)}`}>
+                                    {adminRole}
                                 </span>
                             </div>
 
