@@ -10,7 +10,6 @@ import {
     Mail,
     ChevronRight
 } from "lucide-react";
-import { motion } from "framer-motion";
 
 const PrivacyPolicy = () => {
     const [activeSection, setActiveSection] = useState("introduction");

@@ -330,6 +330,9 @@ export const protectAdmin = async (req, res, next) => {
   } catch (error) {
     console.error("Admin auth middleware error:", error);
 
+    // Clear potentially invalid session cookie
+    clearSessionCookie(res);
+
     await AuditLog.log({
       admin: null,
       category: "system",

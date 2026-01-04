@@ -132,6 +132,7 @@ connectDB();
 
 import { globalErrorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { blockRetiredRoles } from "./middleware/roleGuard.js";
+import { setCsrfToken, validateCsrfToken, getCsrfTokenHandler } from "./middleware/csrfProtection.js";
 
 // ============================================
 // ROUTE IMPORTS
@@ -377,7 +378,7 @@ const corsOptions = {
   },
   credentials: true, // Allow cookies - ONLY for whitelisted origins
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Idempotency-Key'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Idempotency-Key', 'X-CSRF-Token'],
   exposedHeaders: ['X-Request-ID'],
   maxAge: 600, // Cache preflight for 10 minutes
   optionsSuccessStatus: 200,
@@ -482,6 +483,13 @@ app.use((req, res, next) => {
 });
 
 // ============================================
+// SECURITY: CSRF Protection
+// Set CSRF token on all requests
+// ============================================
+
+app.use(setCsrfToken);
+
+// ============================================
 // SECURITY: Payload Size Limiting
 // ============================================
 
@@ -536,6 +544,20 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// ============================================
+// CSRF Token Endpoint
+// Frontend should call this on app load to get CSRF token
+// ============================================
+
+app.get('/api/csrf-token', getCsrfTokenHandler);
+
+// ============================================
+// SECURITY: CSRF Validation for State-Changing Requests
+// Applied BEFORE routes but AFTER CSRF token is set
+// ============================================
+
+app.use('/api', validateCsrfToken);
 
 // ============================================
 // STATIC FILES (with security headers)

@@ -1,5 +1,6 @@
 // src/Components/EmailVerificationModal/EmailVerificationModal.jsx
 import React, { useState, useEffect } from "react";
+// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Mail, ShieldCheck, Loader2, RefreshCw, CheckCircle, Home } from "lucide-react";
 import { toast } from "react-toastify";
@@ -252,8 +253,8 @@ export default function EmailVerificationModal({ isOpen, onClose, user, onVerifi
                         onClick={handleResendOtp}
                         disabled={resendTimer > 0 || resendLoading}
                         className={`inline-flex items-center text-sm font-medium transition-colors ${resendTimer > 0
-                            ? "text-gray-400 cursor-not-allowed"
-                            : "text-blue-600 hover:text-blue-700 hover:underline cursor-pointer"
+                          ? "text-gray-400 cursor-not-allowed"
+                          : "text-blue-600 hover:text-blue-700 hover:underline cursor-pointer"
                           }`}
                       >
                         {resendLoading ? (

@@ -24,8 +24,8 @@ import User from '../models/userModel.js';
 // MIGRATION CONFIGURATION
 // ============================================
 
-const DEFAULT_ROLE = 'user'; // Default role for legacy users without a role
-const VALID_ROLES = ['user', 'owner'];
+const DEFAULT_ROLE = 'buyer'; // Default role for legacy users without a role
+const VALID_ROLES = ['user', 'buyer', 'owner']; // 'user' and 'buyer' are equivalent, both accepted
 const RETIRED_ROLES = ['agent', 'Agent', 'AGENT'];
 
 // ============================================

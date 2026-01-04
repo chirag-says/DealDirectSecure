@@ -34,12 +34,55 @@ export const setAdminAuthErrorHandler = (handler) => {
 };
 
 // ============================================
+// CSRF TOKEN HANDLING
+// ============================================
+
+const CSRF_COOKIE_NAME = 'csrf_token';
+const CSRF_HEADER_NAME = 'X-CSRF-Token';
+
+/**
+ * Read a cookie value by name
+ */
+const getCookie = (name) => {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) {
+        return parts.pop().split(';').shift();
+    }
+    return null;
+};
+
+/**
+ * Fetch a fresh CSRF token from the server
+ */
+export const fetchAdminCsrfToken = async () => {
+    try {
+        const response = await adminApi.get('/csrf-token');
+        return response.data.csrfToken;
+    } catch (error) {
+        console.warn('Failed to fetch CSRF token:', error.message);
+        return null;
+    }
+};
+
+// ============================================
 // REQUEST INTERCEPTOR
 // ============================================
 
 adminApi.interceptors.request.use(
     (config) => {
-        // Cookies are sent automatically with withCredentials: true
+        // For state-changing requests (POST, PUT, PATCH, DELETE),
+        // include the CSRF token from the cookie in the header
+        const method = (config.method || '').toUpperCase();
+        const stateChangingMethods = ['POST', 'PUT', 'PATCH', 'DELETE'];
+
+        if (stateChangingMethods.includes(method)) {
+            const csrfToken = getCookie(CSRF_COOKIE_NAME);
+            if (csrfToken) {
+                config.headers[CSRF_HEADER_NAME] = csrfToken;
+            }
+        }
+
         return config;
     },
     (error) => {

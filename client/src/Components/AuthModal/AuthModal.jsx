@@ -22,7 +22,7 @@ const AuthModal = ({ isOpen, onClose }) => {
     const navigate = useNavigate();
 
     // Use AuthContext for login/register
-    const { login, register, updateUser } = useAuth();
+    const { login, updateUser } = useAuth();
 
     if (!isOpen) return null;
 

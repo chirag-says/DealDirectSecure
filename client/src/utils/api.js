@@ -26,13 +26,56 @@ const api = axios.create({
 });
 
 // ============================================
+// CSRF TOKEN HANDLING
+// ============================================
+
+const CSRF_COOKIE_NAME = 'csrf_token';
+const CSRF_HEADER_NAME = 'X-CSRF-Token';
+
+/**
+ * Read a cookie value by name
+ */
+const getCookie = (name) => {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) {
+        return parts.pop().split(';').shift();
+    }
+    return null;
+};
+
+/**
+ * Fetch a fresh CSRF token from the server
+ * Call this on app initialization
+ */
+export const fetchCsrfToken = async () => {
+    try {
+        const response = await api.get('/csrf-token');
+        return response.data.csrfToken;
+    } catch (error) {
+        console.warn('Failed to fetch CSRF token:', error.message);
+        return null;
+    }
+};
+
+// ============================================
 // REQUEST INTERCEPTOR
 // ============================================
 
 api.interceptors.request.use(
     (config) => {
-        // No need to add Authorization header - cookies are sent automatically
-        // Just add any custom headers if needed
+        // For state-changing requests (POST, PUT, PATCH, DELETE),
+        // include the CSRF token from the cookie in the header
+        const method = (config.method || '').toUpperCase();
+        const stateChangingMethods = ['POST', 'PUT', 'PATCH', 'DELETE'];
+
+        if (stateChangingMethods.includes(method)) {
+            const csrfToken = getCookie(CSRF_COOKIE_NAME);
+            if (csrfToken) {
+                config.headers[CSRF_HEADER_NAME] = csrfToken;
+            }
+        }
+
         return config;
     },
     (error) => {
@@ -110,7 +153,7 @@ export const authApi = {
         try {
             const response = await api.get('/users/me');
             return { authenticated: true, user: response.data.user || response.data };
-        } catch (error) {
+        } catch {
             // Session invalid or expired - don't log error, this is expected on first load
             return { authenticated: false, user: null };
         }

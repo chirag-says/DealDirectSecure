@@ -364,14 +364,22 @@ export const AuthProvider = ({ children }) => {
 
     const isOwner = user?.role === 'owner';
 
-    const isBuyer = user?.role === 'user';
+    // 'user' and 'buyer' are equivalent roles (buyers/property seekers)
+    const isBuyer = user?.role === 'user' || user?.role === 'buyer';
 
     const isVerified = user?.isVerified === true;
 
     const hasRole = (role) => {
         if (!user) return false;
         if (Array.isArray(role)) {
-            return role.includes(user.role);
+            // Handle 'buyer' and 'user' as equivalent
+            const normalizedRoles = role.map(r => r === 'buyer' ? 'user' : r);
+            const userRole = user.role === 'buyer' ? 'user' : user.role;
+            return normalizedRoles.includes(userRole) || role.includes(user.role);
+        }
+        // Handle 'buyer' and 'user' as equivalent
+        if (role === 'buyer' || role === 'user') {
+            return user.role === 'buyer' || user.role === 'user';
         }
         return user.role === role;
     };

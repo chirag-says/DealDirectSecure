@@ -28,8 +28,10 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["user", "owner"], // Removed "agent" - users are either buyers (user) or sellers (owner)
-      default: "user",
+      // 'user' and 'buyer' are equivalent - buyers/seekers. 'owner' = sellers
+      // Both values accepted for backward compatibility
+      enum: ["user", "buyer", "owner"],
+      default: "buyer", // New users default to buyer role
     },
 
     // Profile fields

@@ -149,11 +149,7 @@ const ChatWidget = () => {
     emitTyping,
     emitStopTyping,
     isUserOnline,
-    fetchConversations,
-    fetchMessages,
-    joinConversation,
     leaveConversation,
-    unreadCount,
     reportMessage,
     sendVisitMessage,
   } = useChat();

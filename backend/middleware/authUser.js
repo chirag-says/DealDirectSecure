@@ -137,6 +137,7 @@ const handleJWTAuth = async (req, res, next, token) => {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
     } catch (err) {
       if (err.name === "TokenExpiredError") {
+        clearSessionCookie(res);
         return res.status(401).json({
           success: false,
           message: "Session expired. Please login again.",
@@ -144,6 +145,7 @@ const handleJWTAuth = async (req, res, next, token) => {
         });
       }
       if (err.name === "JsonWebTokenError") {
+        clearSessionCookie(res);
         return res.status(401).json({
           success: false,
           message: "Invalid token. Please login again.",
@@ -207,9 +209,17 @@ const handleJWTAuth = async (req, res, next, token) => {
 
 /**
  * Sanitize user object - remove all sensitive fields
+ * Also handles legacy users by defaulting role to 'buyer' if missing
  */
 const sanitizeUser = (user) => {
   const userObj = user.toObject ? user.toObject() : { ...user };
+
+  // Handle legacy users: default role to 'buyer' if missing
+  // This ensures users created before role system aren't locked out
+  if (!userObj.role) {
+    console.log(`[Auth] Legacy user detected (${userObj.email || userObj._id}) - defaulting role to 'buyer'`);
+    userObj.role = 'buyer';
+  }
 
   // Remove sensitive fields
   const sensitiveFields = [

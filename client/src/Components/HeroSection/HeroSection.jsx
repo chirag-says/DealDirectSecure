@@ -1,7 +1,6 @@
 // src/Components/HeroSection/HeroSection.jsx - Omnibox Style
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
 import api from "../../utils/api";
 import { AiOutlineSearch } from "react-icons/ai";
 import { FaMapMarkerAlt, FaMicrophone, FaHome, FaKey, FaBuilding, FaBed, FaTree, FaHistory } from "react-icons/fa";
@@ -23,7 +22,7 @@ const defaultTabs = [
 const suggestionsCache = new Map();
 const CACHE_TTL = 60000; // 1 minute cache
 
-const HeroSection = ({ filters, setFilters, propertyTypes = [] }) => {
+const HeroSection = ({ filters, setFilters }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("Buy");
   const [openDropdown, setOpenDropdown] = useState(null);
@@ -45,7 +44,7 @@ const HeroSection = ({ filters, setFilters, propertyTypes = [] }) => {
     if (saved) {
       try {
         setRecentSearches(JSON.parse(saved));
-      } catch (e) {
+      } catch {
         console.error("Failed to parse recent searches");
       }
     }
@@ -115,7 +114,8 @@ const HeroSection = ({ filters, setFilters, propertyTypes = [] }) => {
         setShowSuggestions(data.length > 0);
         setSelectedIndex(-1);
       } catch (error) {
-        if (!axios.isCancel(error)) {
+        // Only log error if not an abort (user typing too fast)
+        if (error?.name !== 'AbortError' && error?.name !== 'CanceledError') {
           console.error('Error fetching suggestions:', error);
           setSuggestions([]);
         }
