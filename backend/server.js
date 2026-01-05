@@ -373,6 +373,25 @@ const webhookLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// ============================================
+// SECURITY FIX: Search Rate Limiter
+// Search endpoints are expensive - stricter limits
+// ============================================
+const searchLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20, // 20 search requests per minute
+  message: {
+    success: false,
+    message: 'Too many search requests. Please slow down.',
+    code: 'SEARCH_RATE_LIMITED',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    return req.ip || 'unknown';
+  },
+});
+
 // Apply global rate limiter
 app.use(globalLimiter);
 
@@ -592,6 +611,13 @@ app.use("/api/admin/login", authLimiter);
 app.use("/api/users/forgot-password", authLimiter);
 app.use("/api/agreements/generate", transactionalLimiter);
 app.use("/api/agreements/webhook", webhookLimiter);
+
+// ============================================
+// SECURITY FIX: Rate limit expensive search endpoints
+// ============================================
+app.use("/api/properties/search", searchLimiter);
+app.use("/api/properties/suggestions", searchLimiter);
+app.use("/api/properties/filter", searchLimiter);
 
 // ============================================
 // SECURITY: Block retired 'Agent' role globally

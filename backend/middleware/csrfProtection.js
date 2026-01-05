@@ -130,11 +130,22 @@ export const validateCsrfToken = (req, res, next) => {
         return next();
     }
 
-    // Skip for multipart/form-data requests (file uploads) - they use other protections
-    const contentType = req.headers['content-type'] || '';
-    if (contentType.includes('multipart/form-data')) {
-        return next();
-    }
+    // ============================================
+    // SECURITY FIX: Removed multipart/form-data exemption
+    // 
+    // VULNERABILITY FIXED: Previously, CSRF validation was skipped for all
+    // multipart/form-data requests. This allowed attackers to craft malicious
+    // forms that bypass CSRF protection on file upload endpoints.
+    //
+    // The frontend MUST include the CSRF token in the X-CSRF-Token header
+    // for ALL state-changing requests, including file uploads.
+    //
+    // REMOVED CODE:
+    // const contentType = req.headers['content-type'] || '';
+    // if (contentType.includes('multipart/form-data')) {
+    //     return next();
+    // }
+    // ============================================
 
     // Get token from cookie
     const cookieToken = req.cookies?.[CSRF_COOKIE_NAME];

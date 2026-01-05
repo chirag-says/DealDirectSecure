@@ -102,8 +102,55 @@ api.interceptors.response.use(
     (error) => {
         const { response } = error;
 
+        // ============================================
+        // SECURITY FIX: Sanitize error responses
+        // Never expose stack traces, internal paths, or DB details to the UI
+        // ============================================
+        const sanitizeErrorMessage = (message) => {
+            if (!message || typeof message !== 'string') return 'An error occurred';
+
+            // Patterns that indicate internal/sensitive information
+            const sensitivePatterns = [
+                /at\s+\w+\s+\([^)]+\:\d+:\d+\)/gi, // Stack trace: "at function (file:line:col)"
+                /at\s+[^\n]+\n/gi, // Stack trace continuation
+                /Error:\s*$/gi, // Empty error prefix
+                /\/[a-z]:\//gi, // Windows paths
+                /\/home\/|\/var\/|\/usr\//gi, // Linux paths
+                /node_modules/gi, // Node modules path
+                /__dirname|__filename/gi, // Node internals
+                /MongoError|MongoServerError/gi, // MongoDB
+                /CastError|ValidationError/gi, // Mongoose
+                /ECONNREFUSED|ETIMEDOUT/gi, // Network errors
+                /errno|syscall|code:\s*'[A-Z_]+'/gi, // System errors
+            ];
+
+            let sanitized = message;
+            for (const pattern of sensitivePatterns) {
+                sanitized = sanitized.replace(pattern, '');
+            }
+
+            // Trim and clean up
+            sanitized = sanitized.replace(/\s+/g, ' ').trim();
+            return sanitized || 'An error occurred';
+        };
+
         if (response) {
             const { status, data } = response;
+
+            // Sanitize error message before exposing
+            if (data?.message) {
+                data.message = sanitizeErrorMessage(data.message);
+            }
+
+            // Remove any stack traces
+            if (data?.stack) {
+                delete data.stack;
+            }
+
+            // Remove internal error details
+            if (data?.error?.stack) {
+                delete data.error.stack;
+            }
 
             // Handle authentication errors
             if (status === 401) {

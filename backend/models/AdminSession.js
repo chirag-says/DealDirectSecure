@@ -316,19 +316,21 @@ adminSessionSchema.methods.validateFingerprintLenient = function (req) {
 };
 
 /**
- * SECURITY FIX: Strict session binding validation
+ * SECURITY FIX: Production-Ready Session Binding Validation
  * 
- * This method implements STRICT session validation that:
- * 1. REJECTS any User-Agent change (no tolerance for browser updates)
- * 2. REJECTS any IP address change (exact match required, not truncated)
- * 3. Does NOT refresh fingerprints - any mismatch = session revoked
+ * This method implements BALANCED session validation that:
+ * 1. ALLOWS IP changes within the same subnet (first 3 octets for IPv4)
+ *    - Rationale: Mobile networks, DHCP, and corporate proxies often change last octet
+ * 2. REJECTS User-Agent changes strictly (browser fingerprint must match)
+ *    - Rationale: UA changes mid-session indicate potential session hijacking
+ * 3. REJECTS OS or device type changes (major anomaly detection)
  * 
- * Use this for high-security admin sessions to prevent session hijacking.
+ * This balances security against usability for admins on dynamic networks.
  * 
  * Returns: { valid: boolean, reason?: string }
  */
 adminSessionSchema.methods.validateFingerprintStrict = function (req) {
-    // Get current exact IP address (not truncated)
+    // Get current IP address
     const currentIp = req.ip ||
         req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
         req.headers["x-real-ip"] ||
@@ -343,27 +345,67 @@ adminSessionSchema.methods.validateFingerprintStrict = function (req) {
     const storedUserAgent = this.userAgent || "";
 
     // ============================================
-    // STRICT CHECK 1: Exact IP address match
-    // Any IP change = immediate session revocation
-    // ============================================
-    if (storedIp && currentIp !== storedIp) {
-        console.warn(`[AUTH] STRICT: IP address changed from ${storedIp} to ${currentIp}`);
-        return {
-            valid: false,
-            reason: "Session verification failed: IP address changed",
-        };
-    }
-
-    // ============================================
-    // STRICT CHECK 2: Exact User-Agent match
-    // Any User-Agent change = immediate session revocation
+    // CHECK 1: User-Agent MUST match exactly
+    // This is the primary defense against session hijacking
     // ============================================
     if (storedUserAgent && currentUserAgent !== storedUserAgent) {
-        console.warn(`[AUTH] STRICT: User-Agent changed`);
+        console.warn(`[AUTH] STRICT: User-Agent changed - potential session hijacking`);
         return {
             valid: false,
             reason: "Session verification failed: Browser fingerprint changed",
         };
+    }
+
+    // ============================================
+    // CHECK 2: IP Subnet Validation (Relaxed for usability)
+    // Allow same-subnet changes (last octet can differ)
+    // This handles DHCP lease changes, mobile network hopping
+    // ============================================
+    if (storedIp && currentIp) {
+        const storedPrefix = getTruncatedIpPrefix(storedIp);
+        const currentPrefix = getTruncatedIpPrefix(currentIp);
+
+        if (storedPrefix && currentPrefix && storedPrefix !== currentPrefix) {
+            // Different subnet = suspicious
+            console.warn(`[AUTH] STRICT: IP subnet changed from ${storedPrefix}.x to ${currentPrefix}.x`);
+            return {
+                valid: false,
+                reason: "Session verification failed: Network location changed significantly",
+            };
+        }
+        // Same subnet with different last octet = OK (log but allow)
+        if (storedIp !== currentIp) {
+            console.log(`[AUTH] INFO: IP changed within same subnet (${storedIp} -> ${currentIp}) - allowed`);
+        }
+    }
+
+    // ============================================
+    // CHECK 3: OS and Device Type (from fingerprintData)
+    // Major anomaly = immediate revocation
+    // ============================================
+    if (this.fingerprintData) {
+        const currentOs = extractOsFamily(currentUserAgent);
+        const currentDevice = extractDeviceType(currentUserAgent);
+
+        // OS change = definite hijack attempt
+        if (this.fingerprintData.os && currentOs !== this.fingerprintData.os &&
+            this.fingerprintData.os !== "Unknown" && currentOs !== "Unknown") {
+            console.warn(`[AUTH] STRICT: OS changed from ${this.fingerprintData.os} to ${currentOs}`);
+            return {
+                valid: false,
+                reason: "Session verification failed: Operating system changed",
+            };
+        }
+
+        // Device type change (Desktop ↔ Mobile) = suspicious
+        if (this.fingerprintData.device && currentDevice !== this.fingerprintData.device &&
+            this.fingerprintData.device !== "Unknown" && currentDevice !== "Unknown") {
+            console.warn(`[AUTH] STRICT: Device type changed from ${this.fingerprintData.device} to ${currentDevice}`);
+            return {
+                valid: false,
+                reason: "Session verification failed: Device type changed",
+            };
+        }
     }
 
     return { valid: true };

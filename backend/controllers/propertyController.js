@@ -5,6 +5,23 @@ import Lead from "../models/Lead.js";
 import User from "../models/userModel.js";
 import Report from "../models/Report.js";
 import SavedSearch from "../models/SavedSearch.js";
+
+// ============================================
+// SECURITY FIX: ReDoS Prevention
+// Escape special regex characters in user input before creating RegExp
+// This prevents Regular Expression Denial of Service attacks
+// ============================================
+
+/**
+ * Escape special regex characters in a string to prevent ReDoS attacks
+ * @param {string} string - Raw user input
+ * @returns {string} - Escaped string safe for use in RegExp
+ */
+const escapeRegExp = (string) => {
+  if (!string || typeof string !== 'string') return '';
+  // Escape all regex special characters: \ ^ $ . * + ? ( ) [ ] { } |
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
 import Notification from "../models/Notification.js";
 
 // ============================================
@@ -1434,7 +1451,9 @@ export const searchProperties = async (req, res) => {
 
     // Search in multiple fields (excluding ObjectId fields from regex search)
     if (search) {
-      const regex = new RegExp(search, "i");
+      // SECURITY FIX: Escape regex special characters to prevent ReDoS
+      const escapedSearch = escapeRegExp(search);
+      const regex = new RegExp(escapedSearch, "i");
       filter.$or = [
         { title: regex },
         { description: regex },
@@ -1484,7 +1503,9 @@ export const getSuggestions = async (req, res) => {
     }
 
     const searchTerm = q.trim();
-    const regex = new RegExp(searchTerm, "i");
+    // SECURITY FIX: Escape regex special characters to prevent ReDoS
+    const escapedSearchTerm = escapeRegExp(searchTerm);
+    const regex = new RegExp(escapedSearchTerm, "i");
 
     // Use aggregation for better performance - only fetch needed fields including first image
     const suggestions = await Property.aggregate([
@@ -1579,7 +1600,9 @@ export const filterProperties = async (req, res) => {
 
     // Search in title or city
     if (search.trim()) {
-      const regex = new RegExp(search.trim(), "i");
+      // SECURITY FIX: Escape regex special characters to prevent ReDoS
+      const escapedSearch = escapeRegExp(search.trim());
+      const regex = new RegExp(escapedSearch, "i");
       filter.$or = [{ title: regex }, { "address.city": regex }];
     }
 
@@ -1686,7 +1709,9 @@ export const getAdminProperties = async (req, res) => {
 
     // 2. Search Filter (Checks Title, City (root & nested), State, Area, and optionally ID)
     if (search) {
-      const regex = new RegExp(search, 'i'); // Case insensitive
+      // SECURITY FIX: Escape regex special characters to prevent ReDoS
+      const escapedSearch = escapeRegExp(search);
+      const regex = new RegExp(escapedSearch, 'i'); // Case insensitive
       const orConditions = [
         { title: regex },
         { city: regex },             // Check root level city

@@ -199,15 +199,22 @@ const secureFileFilter = (req, file, cb) => {
 /**
  * Memory storage for initial buffer capture
  * This allows us to validate magic bytes before uploading to Cloudinary
+ * 
+ * SECURITY FIX: Reduced limits to prevent memory exhaustion attacks
+ * Max theoretical memory: 10 files × 10MB = 100MB (down from 500MB)
  */
 export const memoryUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB per file
-    files: 50,
+    files: 10, // SECURITY FIX: Reduced from 50 to 10 files max
+    parts: 20, // Limit total multipart fields
   },
   fileFilter: secureFileFilter,
 });
+
+// SECURITY FIX: Track total upload size per request
+const MAX_TOTAL_UPLOAD_SIZE = 50 * 1024 * 1024; // 50MB total per request
 
 /**
  * SECURITY: Middleware to validate uploaded file buffers
@@ -243,6 +250,20 @@ export const validateAndUploadToCloudinary = async (req, res, next) => {
 
     if (allFiles.length === 0) {
       return next();
+    }
+
+    // ============================================
+    // SECURITY FIX: Check total upload size FIRST
+    // This prevents memory exhaustion from combined large files
+    // ============================================
+    const totalSize = allFiles.reduce((sum, { file }) => sum + (file.buffer?.length || 0), 0);
+    if (totalSize > MAX_TOTAL_UPLOAD_SIZE) {
+      console.warn(`⚠️ SECURITY: Total upload size ${totalSize} exceeds limit ${MAX_TOTAL_UPLOAD_SIZE}`);
+      return res.status(413).json({
+        success: false,
+        message: `Total upload size (${Math.round(totalSize / 1024 / 1024)}MB) exceeds maximum allowed (${MAX_TOTAL_UPLOAD_SIZE / 1024 / 1024}MB)`,
+        code: 'TOTAL_SIZE_EXCEEDED'
+      });
     }
 
     // ============================================
