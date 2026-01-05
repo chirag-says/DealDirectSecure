@@ -42,16 +42,28 @@ export const clearSessionCookie = (res) => {
 /**
  * Extract and validate session from HttpOnly cookie
  * Primary authentication method - uses server-side session storage
+ * 
+ * SECURITY: Cookie authentication is ALWAYS prioritized.
+ * If a valid cookie exists, Bearer tokens are IGNORED to prevent
+ * token injection attacks.
  */
 export const authMiddleware = async (req, res, next) => {
   try {
-    // 1. Get session token from HttpOnly cookie
+    // 1. Get session token from HttpOnly cookie (PRIORITY)
     const sessionToken = req.cookies?.[COOKIE_CONFIG.name];
 
+    // ============================================
+    // SECURITY FIX: Cookie Priority Over Bearer Token
+    // If no cookie exists, fall back to Authorization header
+    // This prevents token injection attacks where an attacker
+    // forces a browser to use a stolen bearer token while
+    // a valid cookie session exists
+    // ============================================
     if (!sessionToken) {
-      // Fallback to Authorization header for API clients/mobile apps
+      // Only use Authorization header when NO cookie is present
       const authHeader = req.headers.authorization;
       if (authHeader?.startsWith("Bearer ")) {
+        console.log('[Auth] No cookie, using Bearer token fallback');
         return handleJWTAuth(req, res, next, authHeader.split(" ")[1]);
       }
 
@@ -62,6 +74,9 @@ export const authMiddleware = async (req, res, next) => {
         code: "NO_SESSION",
       });
     }
+
+    // SECURITY: If cookie exists, we NEVER check Authorization header
+    // This prevents attackers from injecting a malicious Bearer token
 
     // 2. Validate session against database
     const session = await UserSession.validateSession(sessionToken, req);
