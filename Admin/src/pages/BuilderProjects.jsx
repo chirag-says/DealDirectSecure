@@ -8,6 +8,7 @@ import {
     Home,
     CheckCircle,
     XCircle,
+    X,
     Eye,
     Trash2,
     Building2,
@@ -50,6 +51,11 @@ const StatusTag = ({ status }) => {
 const BuilderProjects = () => {
     const [ownersData, setOwnersData] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    // Rejection Modal State
+    const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+    const [rejectingProject, setRejectingProject] = useState(null); // { ownerId, projectId }
+    const [rejectionReason, setRejectionReason] = useState("");
     // Auth handled by adminApi via cookies
 
     /* -----------------------------------------------
@@ -91,18 +97,70 @@ const BuilderProjects = () => {
       🔥 PROPERTY ACTION HANDLERS
     ------------------------------------------------- */
 
+    // Open rejection modal
+    const openRejectModal = (ownerId, projectId) => {
+        setRejectingProject({ ownerId, projectId });
+        setRejectionReason("");
+        setIsRejectModalOpen(true);
+    };
+
+    // Submit rejection with reason
+    const submitRejection = async () => {
+        if (!rejectionReason.trim()) {
+            return toast.error("Rejection reason is required");
+        }
+
+        const { ownerId, projectId } = rejectingProject;
+
+        try {
+            await adminApi.put(`/api/properties/disapprove/${projectId}`, {
+                rejectionReason: rejectionReason.trim()
+            });
+
+            toast.success("Project rejected successfully!");
+            setIsRejectModalOpen(false);
+            setRejectingProject(null);
+
+            // Update local state
+            setOwnersData(prevOwners => prevOwners.map(owner => {
+                if (owner.id === ownerId) {
+                    return {
+                        ...owner,
+                        projects: owner.projects.map(p => {
+                            if (p.id === projectId) {
+                                return {
+                                    ...p,
+                                    status: 'rejected',
+                                    isApproved: false,
+                                };
+                            }
+                            return p;
+                        })
+                    };
+                }
+                return owner;
+            }));
+        } catch (err) {
+            toast.error(err.response?.data?.message || "Failed to reject project.");
+        }
+    };
+
     const handleProjectAction = async (ownerId, projectId, action) => {
         if (!projectId) {
             console.error("Missing Project ID for action:", action);
             return toast.error("Error: Cannot perform action, Project ID is missing.");
         }
 
+        // For reject action, open modal instead of direct API call
+        if (action === 'reject') {
+            openRejectModal(ownerId, projectId);
+            return;
+        }
+
         const endpoint =
             action === 'approve'
                 ? `/api/properties/approve/${projectId}`
-                : action === 'reject'
-                    ? `/api/properties/disapprove/${projectId}`
-                    : `/api/properties/delete/${projectId}`;
+                : `/api/properties/delete/${projectId}`;
 
         // Confirm dialog for deletion only
         if (action === 'delete') {
@@ -289,6 +347,47 @@ const BuilderProjects = () => {
 
                 </div>
             ))}
+
+            {/* Rejection Reason Modal */}
+            {isRejectModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+                        <div className="bg-red-50 px-6 py-4 flex justify-between items-center border-b border-red-100">
+                            <h3 className="text-lg font-bold text-red-800">Reject Project</h3>
+                            <button onClick={() => setIsRejectModalOpen(false)}>
+                                <X className="w-6 h-6 text-gray-500 hover:text-gray-700" />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Rejection Reason <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                                className="w-full border border-gray-300 rounded-lg p-3 h-32 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none"
+                                placeholder="Provide a reason for rejection..."
+                                value={rejectionReason}
+                                onChange={(e) => setRejectionReason(e.target.value)}
+                                maxLength={500}
+                            />
+                            <p className="text-xs text-gray-400 mt-1">{rejectionReason.length}/500 characters</p>
+                        </div>
+                        <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3">
+                            <button
+                                onClick={() => setIsRejectModalOpen(false)}
+                                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={submitRejection}
+                                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700"
+                            >
+                                Confirm Rejection
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

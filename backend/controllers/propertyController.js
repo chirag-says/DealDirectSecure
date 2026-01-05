@@ -567,48 +567,111 @@ export const deleteProperty = async (req, res) => {
 };
 
 
-// export const approveProperty = async (req, res) => {
-//   try {
-//     // When approving, set isApproved to true AND clear the rejectionReason
-//     const updated = await Property.findByIdAndUpdate(
-//       req.params.id,
-//       { 
-//         isApproved: true, 
-//         rejectionReason: "" // Clear the reason on approval
-//       },
-//       { new: true }
-//     );
-//     if (!updated) return res.status(404).json({ message: "Property not found" });
-//     res.json(updated);
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// };
+/**
+ * 🔒 Admin: Approve Property
+ * - Sets isApproved to true
+ * - Clears any previous rejection reason
+ * - Protected by protectAdmin middleware
+ */
+export const approveProperty = async (req, res) => {
+  try {
+    const propertyId = req.params.id;
 
-// // --- MODIFIED Disapprove Controller ---
-// export const disapproveProperty = async (req, res) => {
-//   try {
-//     const { rejectionReason } = req.body; // Expecting the reason in the request body
+    // Find and update the property
+    const updated = await Property.findByIdAndUpdate(
+      propertyId,
+      {
+        isApproved: true,
+        rejectionReason: "", // Clear the reason on approval
+        approvedAt: new Date(),
+        approvedBy: req.admin?._id // Track which admin approved (if available)
+      },
+      { new: true, runValidators: true }
+    );
 
-//     if (!rejectionReason) {
-//         return res.status(400).json({ message: "Rejection reason is required for unlisting." });
-//     }
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found"
+      });
+    }
 
-//     // When disapproving, set isApproved to false AND save the rejectionReason
-//     const updated = await Property.findByIdAndUpdate(
-//       req.params.id,
-//       { 
-//         isApproved: false, 
-//         rejectionReason: rejectionReason 
-//       },
-//       { new: true }
-//     );
-//     if (!updated) return res.status(404).json({ message: "Property not found" });
-//     res.json(updated);
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// };
+    // Log the action (for audit trail)
+    console.log(`[ADMIN] Property ${propertyId} approved by admin ${req.admin?.email || 'unknown'}`);
+
+    res.json({
+      success: true,
+      message: "Property approved successfully",
+      property: updated
+    });
+  } catch (err) {
+    console.error("Approve Property Error:", err);
+    res.status(500).json({
+      success: false,
+      message: "An error occurred while approving the property"
+    });
+  }
+};
+
+/**
+ * 🔒 Admin: Disapprove/Unlist Property
+ * - Sets isApproved to false
+ * - Requires a rejection reason
+ * - Protected by protectAdmin middleware
+ */
+export const disapproveProperty = async (req, res) => {
+  try {
+    const propertyId = req.params.id;
+
+    // Get rejection reason from body - support both 'rejectionReason' and 'reason' field names
+    const rejectionReason = req.body.rejectionReason || req.body.reason;
+
+    // Validate rejection reason
+    if (!rejectionReason || typeof rejectionReason !== 'string' || rejectionReason.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Rejection reason is required for unlisting a property."
+      });
+    }
+
+    // Sanitize the rejection reason (basic XSS prevention)
+    const sanitizedReason = rejectionReason.trim().substring(0, 500);
+
+    // Find and update the property
+    const updated = await Property.findByIdAndUpdate(
+      propertyId,
+      {
+        isApproved: false,
+        rejectionReason: sanitizedReason,
+        disapprovedAt: new Date(),
+        disapprovedBy: req.admin?._id // Track which admin disapproved
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found"
+      });
+    }
+
+    // Log the action (for audit trail)
+    console.log(`[ADMIN] Property ${propertyId} disapproved by admin ${req.admin?.email || 'unknown'}. Reason: ${sanitizedReason.substring(0, 100)}...`);
+
+    res.json({
+      success: true,
+      message: "Property has been unlisted",
+      property: updated
+    });
+  } catch (err) {
+    console.error("Disapprove Property Error:", err);
+    res.status(500).json({
+      success: false,
+      message: "An error occurred while unlisting the property"
+    });
+  }
+};
 
 // 🌐 Public: Get All Approved Properties (Home Page)
 export const getAllPropertiesList = async (req, res) => {
@@ -1532,48 +1595,3 @@ export const getAdminProperties = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
-
-// ... keep approveProperty, disapproveProperty etc.
-// --- UPDATED: Approve Property (Remove Rejection Reason) ---
-export const approveProperty = async (req, res) => {
-  try {
-    const updated = await Property.findByIdAndUpdate(
-      req.params.id,
-      {
-        isApproved: true,
-        rejectionReason: "" // ✅ Clear the rejection reason when re-listing
-      },
-      { new: true }
-    );
-    if (!updated) return res.status(404).json({ message: "Property not found" });
-    res.json(updated);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// --- UPDATED: Disapprove Property (Require Reason) ---
-export const disapproveProperty = async (req, res) => {
-  try {
-    const { rejectionReason } = req.body;
-
-    if (!rejectionReason || rejectionReason.trim() === "") {
-      return res.status(400).json({ message: "A reason is required to reject a property." });
-    }
-
-    const updated = await Property.findByIdAndUpdate(
-      req.params.id,
-      {
-        isApproved: false,
-        rejectionReason: rejectionReason // ✅ Save the reason
-      },
-      { new: true }
-    );
-    if (!updated) return res.status(404).json({ message: "Property not found" });
-    res.json(updated);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// ... (Keep the rest of your controllers like addProperty, deleteProperty, etc.)

@@ -8,7 +8,8 @@
  */
 import axios from "axios";
 
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:9000/api';
+// Base URL should NOT include /api - endpoints add their own prefixes
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:9000';
 
 // ============================================
 // AXIOS INSTANCE
@@ -170,27 +171,27 @@ export const adminAuthApi = {
 
 export const userManagementApi = {
     getAll: async (params = {}) => {
-        const response = await adminApi.get('/users/list', { params });
+        const response = await adminApi.get('/api/users/list', { params });
         return response.data;
     },
 
     toggleBlock: async (userId) => {
-        const response = await adminApi.put(`/users/block/${userId}`);
+        const response = await adminApi.put(`/api/users/block/${userId}`);
         return response.data;
     },
 
     getOwnersWithProjects: async () => {
-        const response = await adminApi.get('/users/owners-projects');
+        const response = await adminApi.get('/api/users/owners-projects');
         return response.data;
     },
 
     exportCSV: async () => {
-        const response = await adminApi.get('/users/export-csv', { responseType: 'blob' });
+        const response = await adminApi.get('/api/users/export-csv', { responseType: 'blob' });
         return response.data;
     },
 
     exportPDF: async () => {
-        const response = await adminApi.get('/users/export-pdf', { responseType: 'blob' });
+        const response = await adminApi.get('/api/users/export-pdf', { responseType: 'blob' });
         return response.data;
     },
 };
@@ -201,29 +202,29 @@ export const userManagementApi = {
 
 export const propertyManagementApi = {
     getAll: async (params = {}) => {
-        const response = await adminApi.get('/properties/admin/all', { params });
+        const response = await adminApi.get('/api/properties/admin/all', { params });
         return response.data;
     },
 
     approve: async (propertyId) => {
-        const response = await adminApi.put(`/properties/approve/${propertyId}`);
+        const response = await adminApi.put(`/api/properties/approve/${propertyId}`);
         return response.data;
     },
 
     disapprove: async (propertyId, reason) => {
-        const response = await adminApi.put(`/properties/disapprove/${propertyId}`, { reason });
+        const response = await adminApi.put(`/api/properties/disapprove/${propertyId}`, { reason });
         return response.data;
     },
 
     update: async (propertyId, formData) => {
-        const response = await adminApi.put(`/properties/edit/${propertyId}`, formData, {
+        const response = await adminApi.put(`/api/properties/edit/${propertyId}`, formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
         });
         return response.data;
     },
 
     delete: async (propertyId) => {
-        const response = await adminApi.delete(`/properties/delete/${propertyId}`);
+        const response = await adminApi.delete(`/api/properties/delete/${propertyId}`);
         return response.data;
     },
 };
@@ -234,12 +235,12 @@ export const propertyManagementApi = {
 
 export const leadManagementApi = {
     getAll: async (params = {}) => {
-        const response = await adminApi.get('/admin/leads', { params });
+        const response = await adminApi.get('/api/admin/leads', { params });
         return response.data;
     },
 
     export: async (format = 'excel') => {
-        const response = await adminApi.get(`/admin/leads/export`, {
+        const response = await adminApi.get(`/api/admin/leads/export`, {
             params: { format },
             responseType: 'blob'
         });
@@ -253,22 +254,22 @@ export const leadManagementApi = {
 
 export const categoryApi = {
     getAll: async () => {
-        const response = await adminApi.get('/categories');
+        const response = await adminApi.get('/api/categories');
         return response.data;
     },
 
     create: async (data) => {
-        const response = await adminApi.post('/categories', data);
+        const response = await adminApi.post('/api/categories', data);
         return response.data;
     },
 
     update: async (id, data) => {
-        const response = await adminApi.put(`/categories/${id}`, data);
+        const response = await adminApi.put(`/api/categories/${id}`, data);
         return response.data;
     },
 
     delete: async (id) => {
-        const response = await adminApi.delete(`/categories/${id}`);
+        const response = await adminApi.delete(`/api/categories/${id}`);
         return response.data;
     },
 };
@@ -279,22 +280,22 @@ export const categoryApi = {
 
 export const propertyTypeApi = {
     getAll: async () => {
-        const response = await adminApi.get('/propertyTypes');
+        const response = await adminApi.get('/api/propertyTypes');
         return response.data;
     },
 
     create: async (data) => {
-        const response = await adminApi.post('/propertyTypes', data);
+        const response = await adminApi.post('/api/propertyTypes', data);
         return response.data;
     },
 
     update: async (id, data) => {
-        const response = await adminApi.put(`/propertyTypes/${id}`, data);
+        const response = await adminApi.put(`/api/propertyTypes/${id}`, data);
         return response.data;
     },
 
     delete: async (id) => {
-        const response = await adminApi.delete(`/propertyTypes/${id}`);
+        const response = await adminApi.delete(`/api/propertyTypes/${id}`);
         return response.data;
     },
 };
@@ -305,17 +306,17 @@ export const propertyTypeApi = {
 
 export const reportsApi = {
     getPropertyReports: async (params = {}) => {
-        const response = await adminApi.get('/admin/reports/properties', { params });
+        const response = await adminApi.get('/api/admin/reports/properties', { params });
         return response.data;
     },
 
     getMessageReports: async (params = {}) => {
-        const response = await adminApi.get('/admin/reports/messages', { params });
+        const response = await adminApi.get('/api/admin/reports/messages', { params });
         return response.data;
     },
 
     resolveReport: async (reportId, resolution) => {
-        const response = await adminApi.put(`/admin/reports/${reportId}/resolve`, resolution);
+        const response = await adminApi.put(`/api/admin/reports/${reportId}/resolve`, resolution);
         return response.data;
     },
 };
@@ -326,12 +327,12 @@ export const reportsApi = {
 
 export const dashboardApi = {
     getStats: async () => {
-        const response = await adminApi.get('/admin/dashboard/stats');
+        const response = await adminApi.get('/api/admin/dashboard/stats');
         return response.data;
     },
 
     getRecentActivity: async () => {
-        const response = await adminApi.get('/admin/dashboard/activity');
+        const response = await adminApi.get('/api/admin/dashboard/activity');
         return response.data;
     },
 };
