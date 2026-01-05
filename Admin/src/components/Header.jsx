@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { ChevronDownIcon, Bars3Icon, ArrowLeftStartOnRectangleIcon } from "@heroicons/react/24/outline";
+import { Link } from "react-router-dom";
+import { ChevronDownIcon, Bars3Icon, ArrowLeftStartOnRectangleIcon, KeyIcon } from "@heroicons/react/24/outline";
 import logoSrc from "../assets/dd.jpg";
 import { useAdmin } from "../context/AdminContext";
 
@@ -104,11 +105,25 @@ const Header = ({ toggleSidebar }) => {
                             </div>
 
                             <ul className="py-2">
+                                {/* Change Password */}
+                                <li>
+                                    <Link
+                                        to="/admin/change-password"
+                                        onClick={() => setMenuOpen(false)}
+                                        className="w-full flex items-center space-x-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
+                                    >
+                                        <KeyIcon className="h-5 w-5 text-gray-400" />
+                                        <span>Change Password</span>
+                                    </Link>
+                                </li>
+
+                                <div className="border-t border-gray-100 my-1"></div>
+
                                 {/* Logout Button */}
                                 <li>
                                     <button
                                         onClick={handleLogout}
-                                        className="w-full flex items-center space-x-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition mt-1 pt-2"
+                                        className="w-full flex items-center space-x-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition"
                                     >
                                         <ArrowLeftStartOnRectangleIcon className="h-5 w-5" />
                                         <span>Logout</span>

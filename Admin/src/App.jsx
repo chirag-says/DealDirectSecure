@@ -12,13 +12,16 @@ import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import AdminProtectedRoute from "./components/AdminProtectedRoute";
 import Dashboard from "./pages/Dashboard";
-import AddProperty from "./pages/AddProperty";
+
 import AddCategory from "./pages/AddCategory";
 import AddSubCategory from "./pages/AddSubCategory";
 import AllClients from "./pages/AllClients";
 import AllProperty from "./pages/AllProperty";
 import AllCategory from "./pages/AllCategory";
 import AdminLogin from "./pages/AdminLogin";
+import MfaSetup from "./pages/MfaSetup";
+import ChangePassword from "./pages/ChangePassword";
+import MfaVerify from "./pages/MfaVerify";
 import LeadMonitoring from "./pages/LeadMonitoring";
 import BuilderVerification from "./pages/BuilderVerification";
 import BuilderProjects from "./pages/BuilderProjects";
@@ -126,6 +129,12 @@ function AppContent() {
       <Routes>
         {/* Public Route */}
         <Route path="/admin/login" element={<AdminLogin />} />
+        {/* MFA Setup - Public route (protected by partial session on backend) */}
+        <Route path="/admin/mfa-setup" element={<MfaSetup />} />
+        {/* Change Password - Public route (backend enforces access) */}
+        <Route path="/admin/change-password" element={<ChangePassword />} />
+        {/* MFA Verify - Public route (protected by partial session on backend) */}
+        <Route path="/admin/mfa-verify" element={<MfaVerify />} />
 
         {/* Protected Routes - Cookie-based auth verification */}
         <Route
@@ -136,14 +145,7 @@ function AppContent() {
             </AdminProtectedRoute>
           }
         />
-        <Route
-          path="/add-property"
-          element={
-            <AdminProtectedRoute>
-              <AddProperty />
-            </AdminProtectedRoute>
-          }
-        />
+
         <Route
           path="/lead-monitoring"
           element={

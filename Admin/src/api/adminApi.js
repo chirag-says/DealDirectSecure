@@ -141,6 +141,11 @@ export const adminAuthApi = {
         return response.data;
     },
 
+    changePassword: async (currentPassword, newPassword) => {
+        const response = await adminApi.post('/api/admin/change-password', { currentPassword, newPassword });
+        return response.data;
+    },
+
     logout: async () => {
         try {
             await adminApi.post('/api/admin/logout');
@@ -317,6 +322,32 @@ export const reportsApi = {
 
     resolveReport: async (reportId, resolution) => {
         const response = await adminApi.put(`/api/admin/reports/${reportId}/resolve`, resolution);
+        return response.data;
+    },
+};
+
+// ============================================
+// MFA API
+// ============================================
+
+export const mfaApi = {
+    setup: async () => {
+        const response = await adminApi.post('/api/admin/mfa/setup');
+        return response.data;
+    },
+
+    confirm: async (code) => {
+        const response = await adminApi.post('/api/admin/mfa/confirm', { code });
+        return response.data;
+    },
+
+    disable: async (password, code) => {
+        const response = await adminApi.post('/api/admin/mfa/disable', { password, code });
+        return response.data;
+    },
+
+    verify: async (code) => {
+        const response = await adminApi.post('/api/admin/mfa/verify', { code });
         return response.data;
     },
 };

@@ -46,11 +46,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       name: "All Properties",
       icon: <BarChart3 className="h-5 w-5" />,
     },
-    {
-      path: "/add-property",
-      name: "Add Property",
-      icon: <Home className="h-5 w-5" />,
-    },
+
     {
       path: "/lead-monitoring",
       name: "Lead Monitoring",

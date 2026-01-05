@@ -64,8 +64,9 @@ secrets/
 # Seeding Scripts with Secrets (CRITICAL)
 seedAdmin.js
 backend/seedAdmin.js
-backend/seedRbac.js
+backend/scripts/seedRbac.js
 seedRbac.js
+scripts/seedRbac.js
 
 # Credentials and tokens
 .npmrc

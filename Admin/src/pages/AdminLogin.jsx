@@ -39,26 +39,26 @@ const AdminLogin = () => {
 
       toast.success("Login successful!");
 
-      // Update context with admin data (no localStorage needed)
-      await login(data.admin);
-
       // Check for MFA requirement
       if (data.requiresMfa) {
         navigate("/admin/mfa-verify");
         return;
       }
 
+      // Check for MFA setup requirement (FIRST LOGIN)
+      if (data.requiresMfaSetup) {
+        toast.info("Please setup multi-factor authentication.");
+        navigate("/admin/mfa-setup");
+        return; // CRITICAL: Return here so we DON'T update context 'isAuthenticated' yet
+      }
+
+      // Update context with admin data ONLY if fully authenticated
+      await login(data.admin);
+
       // Check for password change requirement
       if (data.mustChangePassword) {
         toast.info("You must change your password before continuing.");
         navigate("/admin/change-password");
-        return;
-      }
-
-      // Check for MFA setup requirement
-      if (data.requiresMfaSetup) {
-        toast.info("Please setup multi-factor authentication.");
-        navigate("/admin/mfa-setup");
         return;
       }
 
