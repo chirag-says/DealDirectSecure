@@ -61,6 +61,12 @@ secrets/
 *.bak
 *.backup
 
+# Seeding Scripts with Secrets (CRITICAL)
+seedAdmin.js
+backend/seedAdmin.js
+backend/seedRbac.js
+seedRbac.js
+
 # Credentials and tokens
 .npmrc
 .yarnrc

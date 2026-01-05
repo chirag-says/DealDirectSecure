@@ -67,8 +67,24 @@
 
 ---
 
+---
+
 ### ~~4. Property Moderation Queue~~ (NOT IMPLEMENTED - Client Requirement)
 **Note:** Property auto-approval (`isApproved: true`) is an intentional client requirement. Properties go live immediately upon listing. The `status`, `isBanned`, `isActive` fields were added to `ADMIN_ONLY_FIELDS` to prevent users from tampering with these values.
+
+---
+
+### 5. Admin Registration Hardening (SECURITY PLUS)
+**Files:** `backend/routes/adminRoutes.js`, `backend/seedAdmin.js`
+
+**Problem:** Exposing an API endpoint for admin registration (`/api/admin/register`) creates a permanent attack surface for privilege escalation, even if protected by middleware.
+
+**Solution:**
+- **REMOVED** the registration endpoint entirely.
+- Created `backend/seedAdmin.js` for secure, internal admin creation.
+- Admins can now *only* be created via direct database access using the localized script.
+
+**Impact:** Eliminates the risk of remote admin creation vulnerability.
 
 ---
 
@@ -78,6 +94,8 @@
 |------|---------|
 | `backend/controllers/userController.js` | OTP hashing, password validation |
 | `backend/controllers/adminController.js` | Admin password validation |
+| `backend/routes/adminRoutes.js` | Removed registration endpoint |
+| `backend/seedAdmin.js` | New admin seeding script |
 | `backend/controllers/propertyController.js` | Admin-only fields protection |
 | `backend/server.js` | Socket.io JWT authentication |
 | `backend/routes/chatRoutes.js` | Socket token endpoint |

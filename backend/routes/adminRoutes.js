@@ -1,6 +1,6 @@
 import express from "express";
 import {
-  registerAdmin,
+  // registerAdmin - REMOVED: Admins are now created via database seeding only (security hardening)
   loginAdmin,
   logoutAdmin,
   logoutAllSessions,
@@ -22,7 +22,7 @@ import {
 import {
   protectAdmin,
   requirePermission,
-  requireRoleLevel,
+  // requireRoleLevel - REMOVED: No longer needed (admin registration removed)
   requireSuperAdmin,
   authRateLimit,
 } from "../middleware/authAdmin.js";
@@ -74,8 +74,10 @@ router.put("/reports/:id", protectAdmin, requirePermission("reports:update"), up
 // ADMIN MANAGEMENT ROUTES (High privilege)
 // ============================================
 
-// Create new admin (requires admin management permission)
-router.post("/register", protectAdmin, requireRoleLevel(80), registerAdmin);
+// SECURITY: Admin registration endpoint REMOVED
+// Admins are now created via database seeding only
+// Run: node seedAdmin.js (from backend directory)
+// This eliminates the registration attack surface entirely
 
 // Audit Logs (Super Admin only)
 router.get("/audit-logs", protectAdmin, requireSuperAdmin, getAuditLogs);
