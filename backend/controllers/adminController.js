@@ -50,6 +50,19 @@ export const registerAdmin = async (req, res) => {
       });
     }
 
+    // ============================================
+    // SECURITY FIX: Strong password validation for admins
+    // Admins require stronger passwords (12+ chars) than regular users
+    // ============================================
+    const ADMIN_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()\-_=+])[A-Za-z\d@$!%*?&#^()\-_=+]{12,}$/;
+
+    if (!ADMIN_PASSWORD_REGEX.test(password)) {
+      return res.status(400).json({
+        success: false,
+        message: "Admin password must be at least 12 characters and include uppercase, lowercase, number, and special character (@$!%*?&#^()-_=+)",
+      });
+    }
+
     // Check if admin already exists
     // SECURITY FIX: Don't reveal if email exists (prevents enumeration attacks)
     const existingAdmin = await Admin.findOne({ email: email.toLowerCase() });
@@ -893,6 +906,18 @@ export const changePassword = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Current and new password are required",
+      });
+    }
+
+    // ============================================
+    // SECURITY FIX: Strong password validation for admins
+    // ============================================
+    const ADMIN_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()\-_=+])[A-Za-z\d@$!%*?&#^()\-_=+]{12,}$/;
+
+    if (!ADMIN_PASSWORD_REGEX.test(newPassword)) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 12 characters and include uppercase, lowercase, number, and special character",
       });
     }
 

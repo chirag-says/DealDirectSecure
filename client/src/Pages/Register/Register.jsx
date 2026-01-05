@@ -641,6 +641,7 @@ export default function Register() {
                         value={formData.password}
                         onChange={handleChange}
                         required
+                        minLength={8}
                         className="w-full pl-10 pr-12 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:border-blue-900 transition-colors outline-none text-slate-800"
                       />
                       <button
@@ -651,6 +652,9 @@ export default function Register() {
                         {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                       </button>
                     </div>
+                    <p className="text-xs text-slate-500">
+                      Min 8 characters with uppercase, lowercase, number & special character (@$!%*?&#^()-_=+)
+                    </p>
                   </div>
 
                   {/* Terms Checkbox */}

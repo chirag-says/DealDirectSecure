@@ -23,6 +23,7 @@ import hpp from "hpp";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import crypto from "crypto";
+import jwt from "jsonwebtoken"; // SECURITY FIX: Import for socket auth
 
 // ============================================
 // ENVIRONMENT VALIDATION - PRE-FLIGHT CHECKS
@@ -470,14 +471,59 @@ io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
   // ============================================
-  // SECURITY: Track user identity on connection
+  // SECURITY FIX: JWT-Based Authentication for Socket.io
+  // User must authenticate with their session token before any actions
+  // This prevents identity spoofing attacks
+  // ============================================
+  socket.on("authenticate", async (data) => {
+    try {
+      // Validate input
+      if (!data || typeof data.token !== 'string') {
+        socket.emit('auth_error', { code: 'INVALID_TOKEN', message: 'Authentication token required' });
+        return;
+      }
+
+      // Verify JWT token
+      let decoded;
+      try {
+        decoded = jwt.verify(data.token, process.env.JWT_SECRET);
+      } catch (jwtError) {
+        console.warn(`[Socket.io] Invalid JWT from socket ${socket.id}: ${jwtError.message}`);
+        socket.emit('auth_error', { code: 'INVALID_TOKEN', message: 'Invalid or expired token' });
+        return;
+      }
+
+      // Validate decoded token has user ID
+      const userId = decoded.id || decoded.userId || decoded._id;
+      if (!userId) {
+        socket.emit('auth_error', { code: 'INVALID_TOKEN', message: 'Token missing user identifier' });
+        return;
+      }
+
+      // Store authenticated user
+      socketUserMap.set(socket.id, userId.toString());
+      onlineUsers.set(userId.toString(), socket.id);
+
+      console.log(`[Socket.io] User ${userId} authenticated on socket ${socket.id}`);
+      socket.emit('authenticated', { userId: userId.toString() });
+      io.emit("users_online", Array.from(onlineUsers.keys()));
+    } catch (error) {
+      console.error('[Socket.io] Authentication error:', error);
+      socket.emit('auth_error', { code: 'AUTH_ERROR', message: 'Authentication failed' });
+    }
+  });
+
+  // ============================================
+  // DEPRECATED: Legacy user_online handler
+  // Still accepts connections but logs warning - will be removed
   // ============================================
   socket.on("user_online", (userId) => {
-    if (userId && typeof userId === 'string' && userId.length < 100) {
-      onlineUsers.set(userId, socket.id);
-      socketUserMap.set(socket.id, userId); // Track this socket's user
-      io.emit("users_online", Array.from(onlineUsers.keys()));
-    }
+    console.warn(`[Socket.io] SECURITY WARNING: Legacy user_online called by socket ${socket.id}. Use 'authenticate' event instead.`);
+    // Do NOT authenticate - require proper JWT authentication
+    socket.emit('auth_required', {
+      code: 'AUTH_REQUIRED',
+      message: 'Please use the authenticate event with a valid JWT token'
+    });
   });
 
   // ============================================

@@ -263,39 +263,18 @@ adminSchema.methods.changedPasswordAfter = function (tokenIssuedAt) {
  * For legacy admins with string roles, they get full admin permissions
  */
 adminSchema.methods.getPermissions = async function () {
-  // Handle legacy admins with string roles (e.g., "admin")
-  if (typeof this.role === "string") {
-    // Legacy admin with string role - grant ALL admin permissions
-    if (this.role === "admin" || this.role === "superadmin") {
-      return [
-        // Dashboard
-        "dashboard:view", "dashboard:read",
-        // Users
-        "users:read", "users:write", "users:delete", "users:update",
-        // Properties
-        "properties:read", "properties:write", "properties:delete", "properties:approve", "properties:update",
-        // Leads
-        "leads:read", "leads:write", "leads:delete", "leads:update",
-        // Categories
-        "categories:read", "categories:write", "categories:update", "categories:delete",
-        // Reports
-        "reports:read", "reports:write", "reports:update",
-        // Settings
-        "settings:read", "settings:write",
-        // Admins
-        "admins:read", "admins:write", "admins:update", "admins:delete",
-      ];
-    }
-    // Unknown legacy role - minimal permissions
-    return ["dashboard:view", "dashboard:read"];
-  }
-
   // New admin with ObjectId role reference - populate and get permissions
   try {
     await this.populate([
       { path: "role", populate: { path: "permissions" } },
       { path: "additionalPermissions" },
     ]);
+
+    // Handle case where role might be missing or invalid
+    if (!this.role || typeof this.role !== 'object') {
+      console.warn(`Admin ${this._id} has incomplete role configuration`);
+      return ["dashboard:view"]; // Fallback to minimal permissions
+    }
 
     const rolePermissions = this.role?.permissions || [];
     const additionalPerms = this.additionalPermissions || [];

@@ -52,11 +52,41 @@ export const ChatProvider = ({ children }) => {
       withCredentials: true, // Important for cookie auth
     });
 
-    newSocket.on("connect", () => {
+    newSocket.on("connect", async () => {
       console.log("Socket connected");
-      if (user._id) {
-        newSocket.emit("user_online", user._id);
+
+      // ============================================
+      // SECURITY FIX: Use JWT authentication instead of raw userId
+      // Request a socket token from the server and authenticate
+      // ============================================
+      try {
+        const res = await api.get('/chat/socket-token');
+        if (res.data.success && res.data.token) {
+          newSocket.emit("authenticate", { token: res.data.token });
+        }
+      } catch (error) {
+        console.warn("Failed to get socket auth token:", error.message);
+        // Fallback: Try with user ID for backward compatibility
+        // This will trigger a warning on the server but won't authenticate
+        if (user._id) {
+          newSocket.emit("user_online", user._id);
+        }
       }
+    });
+
+    // Handle authentication success
+    newSocket.on("authenticated", ({ userId }) => {
+      console.log("Socket authenticated for user:", userId);
+    });
+
+    // Handle authentication errors
+    newSocket.on("auth_error", ({ code, message }) => {
+      console.error("Socket authentication error:", code, message);
+    });
+
+    // Handle auth required (old method deprecated)
+    newSocket.on("auth_required", ({ message }) => {
+      console.warn("Socket auth required:", message);
     });
 
     newSocket.on("users_online", (users) => {

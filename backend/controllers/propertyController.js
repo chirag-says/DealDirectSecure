@@ -72,7 +72,7 @@ const PROPERTY_ALLOWED_FIELDS = [
 const ADMIN_ONLY_FIELDS = [
   'isApproved', 'rejectionReason', 'approvedAt', 'approvedBy',
   'disapprovedAt', 'disapprovedBy', 'views', 'likes', 'interestedUsers',
-  'owner', '_id', 'createdAt', 'updatedAt', '__v'
+  'owner', '_id', 'createdAt', 'updatedAt', '__v', 'status', 'isBanned', 'isActive'
 ];
 
 /**
@@ -281,11 +281,11 @@ export const addProperty = async (req, res) => {
     }
 
     // ============================================
-    // SECURITY: Set admin-only fields via internal function
-    // These fields are NOT sanitized from request body
+    // Set admin-only fields via internal function
+    // Properties are auto-approved per client requirements
     // ============================================
     data = setAdminOnlyFields(data, {
-      isApproved: true,  // Auto-publish for new properties
+      isApproved: true,  // Auto-publish for new properties (client requirement)
       owner: req.user?._id || null,
     });
 

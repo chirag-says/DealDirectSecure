@@ -275,7 +275,7 @@ const getSafeResponse = (err, requestId, isProduction) => {
     const statusCode = err.statusCode || 500;
 
     // ============================================
-    // SECURITY FIX: ALWAYS return only generic messages
+    // SECURITY FIX: ALWAYS return generic messages
     // Never expose internal error details or stack traces
     // This protects against NODE_ENV misconfiguration
     // ============================================

@@ -48,6 +48,51 @@ const generateSecureOTP = () => {
   return crypto.randomInt(100000, 999999).toString();
 };
 
+// ============================================
+// SECURITY FIX: Hash OTP before storage
+// Prevents OTP exposure in case of database breach
+// ============================================
+const hashOTP = (otp) => {
+  const secret = process.env.OTP_SECRET || process.env.JWT_SECRET;
+  return crypto.createHash('sha256').update(otp + secret).digest('hex');
+};
+
+// Verify OTP by comparing hash
+const verifyOTPHash = (providedOtp, storedHash) => {
+  const providedHash = hashOTP(providedOtp);
+  // Constant-time comparison to prevent timing attacks
+  try {
+    return crypto.timingSafeEqual(Buffer.from(providedHash), Buffer.from(storedHash));
+  } catch {
+    return false;
+  }
+};
+
+// ============================================
+// SECURITY FIX: Strong password validation
+// Minimum 8 chars, requires uppercase, lowercase, number, special char
+// ============================================
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()\-_=+])[A-Za-z\d@$!%*?&#^()\-_=+]{8,}$/;
+
+const validatePasswordStrength = (password) => {
+  if (!password || password.length < 8) {
+    return { valid: false, message: 'Password must be at least 8 characters long' };
+  }
+  if (!/[a-z]/.test(password)) {
+    return { valid: false, message: 'Password must contain at least one lowercase letter' };
+  }
+  if (!/[A-Z]/.test(password)) {
+    return { valid: false, message: 'Password must contain at least one uppercase letter' };
+  }
+  if (!/\d/.test(password)) {
+    return { valid: false, message: 'Password must contain at least one number' };
+  }
+  if (!/[@$!%*?&#^()\-_=+]/.test(password)) {
+    return { valid: false, message: 'Password must contain at least one special character (@$!%*?&#^()-_=+)' };
+  }
+  return { valid: true };
+};
+
 // Phone validation (Indian 10-digit mobile numbers)
 const isValidPhoneNumber = (phone) => {
   const cleaned = (phone || "").toString().trim();
@@ -182,8 +227,10 @@ export const registerUser = async (req, res) => {
       return res.status(400).json({ message: "Please enter a valid 10-digit phone number" });
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    // SECURITY FIX: Strong password validation
+    const passwordValidation = validatePasswordStrength(password);
+    if (!passwordValidation.valid) {
+      return res.status(400).json({ message: passwordValidation.message });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -194,6 +241,7 @@ export const registerUser = async (req, res) => {
     }
 
     const otp = generateSecureOTP();
+    const hashedOtp = hashOTP(otp); // SECURITY FIX: Hash OTP before storage
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
     const hashedPassword = await bcrypt.hash(password, 12); // Increased salt rounds
     const normalizedRole = role === "owner" ? "owner" : "user";
@@ -205,7 +253,7 @@ export const registerUser = async (req, res) => {
         password: hashedPassword,
         role: normalizedRole,
         phone: phone?.trim(),
-        otp,
+        otp: hashedOtp, // SECURITY: Store hashed OTP
         otpExpires,
         isVerified: false,
       });
@@ -214,7 +262,7 @@ export const registerUser = async (req, res) => {
       user.password = hashedPassword;
       user.role = normalizedRole;
       if (phone) user.phone = phone.trim();
-      user.otp = otp;
+      user.otp = hashedOtp; // SECURITY: Store hashed OTP
       user.otpExpires = otpExpires;
       await user.save();
     }
@@ -255,8 +303,10 @@ export const registerUserDirect = async (req, res) => {
       return res.status(400).json({ message: "Please enter a valid 10-digit phone number" });
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    // SECURITY FIX: Strong password validation
+    const passwordValidation = validatePasswordStrength(password);
+    if (!passwordValidation.valid) {
+      return res.status(400).json({ message: passwordValidation.message });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -316,7 +366,12 @@ export const verifyOtp = async (req, res) => {
       return res.status(400).json({ message: "User already verified. Please login." });
     }
 
-    if (!user.otp || user.otp !== otp || user.otpExpires < Date.now()) {
+    // SECURITY FIX: Verify hashed OTP
+    if (!user.otp || user.otpExpires < Date.now()) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    if (!verifyOTPHash(otp, user.otp)) {
       return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
@@ -363,7 +418,7 @@ export const resendOtp = async (req, res) => {
     }
 
     const otp = generateSecureOTP();
-    user.otp = otp;
+    user.otp = hashOTP(otp); // SECURITY FIX: Store hashed OTP
     user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
@@ -610,10 +665,10 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({
-        message: "Password must be at least 6 characters long",
-      });
+    // SECURITY FIX: Strong password validation
+    const passwordValidation = validatePasswordStrength(newPassword);
+    if (!passwordValidation.valid) {
+      return res.status(400).json({ message: passwordValidation.message });
     }
 
     // Validate token
@@ -767,8 +822,10 @@ export const changePassword = async (req, res) => {
       return res.status(400).json({ message: "Current and new passwords are required" });
     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({ message: "New password must be at least 6 characters" });
+    // SECURITY FIX: Strong password validation
+    const passwordValidation = validatePasswordStrength(newPassword);
+    if (!passwordValidation.valid) {
+      return res.status(400).json({ message: passwordValidation.message });
     }
 
     const user = await User.findById(req.user._id).select("+password");
@@ -881,7 +938,7 @@ export const sendUpgradeOtp = async (req, res) => {
     }
 
     const otp = generateSecureOTP();
-    user.otp = otp;
+    user.otp = hashOTP(otp); // SECURITY FIX: Store hashed OTP
     user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
@@ -919,7 +976,12 @@ export const verifyUpgradeOtp = async (req, res) => {
       return res.status(400).json({ message: "You are already a property owner" });
     }
 
-    if (!user.otp || user.otp !== otp || user.otpExpires < Date.now()) {
+    // SECURITY FIX: Verify hashed OTP
+    if (!user.otp || user.otpExpires < Date.now()) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    if (!verifyOTPHash(otp, user.otp)) {
       return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
