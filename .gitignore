@@ -65,8 +65,12 @@ secrets/
 seedAdmin.js
 backend/seedAdmin.js
 backend/scripts/seedRbac.js
+backend/scripts/fixAdminRole.js
+backend/scripts/debugRbac.js
 seedRbac.js
 scripts/seedRbac.js
+scripts/fixAdminRole.js
+scripts/debugRbac.js
 
 # Credentials and tokens
 .npmrc

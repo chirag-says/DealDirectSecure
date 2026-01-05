@@ -14,6 +14,8 @@ yarn-error.log
 seedAdmin.js
 seedRbac.js
 scripts/seedRbac.js
+scripts/fixAdminRole.js
+scripts/debugRbac.js
 
 # Logs
 logs

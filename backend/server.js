@@ -514,17 +514,9 @@ io.on("connection", (socket) => {
   });
 
   // ============================================
-  // DEPRECATED: Legacy user_online handler
-  // Still accepts connections but logs warning - will be removed
+  // SECURITY: Legacy user_online handler REMOVED
+  // All clients MUST use 'authenticate' event with JWT token
   // ============================================
-  socket.on("user_online", (userId) => {
-    console.warn(`[Socket.io] SECURITY WARNING: Legacy user_online called by socket ${socket.id}. Use 'authenticate' event instead.`);
-    // Do NOT authenticate - require proper JWT authentication
-    socket.emit('auth_required', {
-      code: 'AUTH_REQUIRED',
-      message: 'Please use the authenticate event with a valid JWT token'
-    });
-  });
 
   // ============================================
   // SECURITY FIX: Authorization check before joining conversation

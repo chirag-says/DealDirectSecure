@@ -33,14 +33,16 @@ export const MFA_COOKIE_CONFIG = {
 
 /**
  * Extract client IP address from request
+ * SECURITY: Prioritize req.ip (verified by Express trust proxy setting)
+ * over raw x-forwarded-for to prevent IP spoofing for rate limit bypass
  */
 const getClientIp = (req) => {
+  // req.ip is verified against trust proxy configuration in server.js
+  // This prevents attackers from spoofing IPs via x-forwarded-for
   return (
-    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
-    req.headers["x-real-ip"] ||
+    req.ip ||
     req.connection?.remoteAddress ||
     req.socket?.remoteAddress ||
-    req.ip ||
     "unknown"
   );
 };

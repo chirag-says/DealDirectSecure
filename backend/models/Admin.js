@@ -257,60 +257,58 @@ adminSchema.methods.changedPasswordAfter = function (tokenIssuedAt) {
   }
   return false;
 };
-
 /**
  * Get all permissions (from role + additional)
- * For legacy admins with string roles, they get full admin permissions
+ * NOTE: Role field is Mixed type, so populate() doesn't work - we fetch manually
  */
 adminSchema.methods.getPermissions = async function () {
-  // New admin with ObjectId role reference - populate and get permissions
   try {
-    await this.populate([
-      { path: "role", populate: { path: "permissions" } },
-      { path: "additionalPermissions" },
-    ]);
+    // Import models dynamically to avoid circular dependency
+    const Role = mongoose.model('Role');
+    const Permission = mongoose.model('Permission');
 
-    // Handle case where role might be missing or invalid
-    if (!this.role || typeof this.role !== 'object') {
-      // If role is a legacy string like "admin" or "superadmin", grant comprehensive permissions
-      if (typeof this.role === 'string' && ['admin', 'superadmin', 'owner'].includes(this.role.toLowerCase())) {
-        // Return a set of default "Super Admin" permissions to avoid lockout
-        return [
-          "dashboard:read", "dashboard:view",
-          "users:read", "users:write", "users:update", "users:delete",
-          "properties:read", "properties:write", "properties:update", "properties:delete", "properties:approve",
-          "leads:read", "leads:update",
-          "reports:read", "reports:update",
-          "categories:read", "categories:write", "categories:update", "categories:delete",
-          "audit:read"
-        ];
-      }
-
-      console.warn(`Admin ${this._id} has incomplete role configuration`);
-      // Fallback to basic read permissions
+    // Handle string roles (legacy)
+    if (typeof this.role === 'string') {
+      console.warn(`[SECURITY] Admin ${this._id} has legacy string role "${this.role}" - migration required`);
+      // Return read-only permissions - admin must be migrated to proper Role
       return ["dashboard:read", "dashboard:view", "properties:read"];
     }
 
-    const rolePermissions = this.role?.permissions || [];
-    const additionalPerms = this.additionalPermissions || [];
+    // Handle missing role
+    if (!this.role) {
+      console.error(`[SECURITY] Admin ${this._id} has no role configured - access restricted`);
+      return [];
+    }
 
-    // Combine and deduplicate
+    // Fetch the Role document with permissions populated
+    const roleDoc = await Role.findById(this.role).populate('permissions');
+
+    if (!roleDoc) {
+      console.error(`[SECURITY] Admin ${this._id} role ${this.role} not found in database`);
+      return [];
+    }
+
+    // Get permission codes from role
+    const rolePermissions = roleDoc.permissions || [];
+
+    // Fetch additional permissions if any
+    let additionalPerms = [];
+    if (this.additionalPermissions && this.additionalPermissions.length > 0) {
+      additionalPerms = await Permission.find({ _id: { $in: this.additionalPermissions } });
+    }
+
+    // Combine and deduplicate permission codes
     const allPermissions = [...rolePermissions, ...additionalPerms];
     const uniqueCodes = [...new Set(allPermissions.map((p) => p?.code).filter(Boolean))];
 
-    // FALLBACK: If user has no permissions (likely due to broken Role link), 
-    // grant Super Admin access to prevent lockout during development/refactor.
+    // ============================================
+    // SECURITY FIX: Do NOT grant permissions on empty result
+    // This prevents privilege escalation via corrupted Role references
+    // ============================================
     if (uniqueCodes.length === 0) {
-      console.warn(`Admin ${this._id} has 0 permissions. Applying Super Admin fallback.`);
-      return [
-        "dashboard:read", "dashboard:view",
-        "users:read", "users:write", "users:update", "users:delete",
-        "properties:read", "properties:write", "properties:update", "properties:delete", "properties:approve",
-        "leads:read", "leads:update",
-        "reports:read", "reports:update",
-        "categories:read", "categories:write", "categories:update", "categories:delete",
-        "audit:read", "audit:logs"
-      ];
+      console.error(`[SECURITY] Admin ${this._id} has 0 permissions from Role - verify role configuration`);
+      // Return empty - admin will be denied access until role is fixed
+      return [];
     }
 
     return uniqueCodes;
