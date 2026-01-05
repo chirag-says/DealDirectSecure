@@ -584,6 +584,14 @@ export const confirmMfaSetup = async (req, res) => {
     admin.mfa.lastVerified = new Date();
     await admin.save();
 
+    // SECURITY FIX: Update current session to reflect verified status
+    // otherwise the user remains stuck in "pending setup" loop for this session
+    if (req.adminSession) {
+      req.adminSession.mfaVerified = true;
+      req.adminSession.mfaSetupPending = false;
+      await req.adminSession.save();
+    }
+
     await AuditLog.log({
       admin: admin._id,
       category: "security",

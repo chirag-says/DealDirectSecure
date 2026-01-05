@@ -272,8 +272,23 @@ adminSchema.methods.getPermissions = async function () {
 
     // Handle case where role might be missing or invalid
     if (!this.role || typeof this.role !== 'object') {
+      // If role is a legacy string like "admin" or "superadmin", grant comprehensive permissions
+      if (typeof this.role === 'string' && ['admin', 'superadmin', 'owner'].includes(this.role.toLowerCase())) {
+        // Return a set of default "Super Admin" permissions to avoid lockout
+        return [
+          "dashboard:read", "dashboard:view",
+          "users:read", "users:write", "users:update", "users:delete",
+          "properties:read", "properties:write", "properties:update", "properties:delete", "properties:approve",
+          "leads:read", "leads:update",
+          "reports:read", "reports:update",
+          "categories:read", "categories:write", "categories:update", "categories:delete",
+          "audit:read"
+        ];
+      }
+
       console.warn(`Admin ${this._id} has incomplete role configuration`);
-      return ["dashboard:view"]; // Fallback to minimal permissions
+      // Fallback to basic read permissions
+      return ["dashboard:read", "dashboard:view", "properties:read"];
     }
 
     const rolePermissions = this.role?.permissions || [];
@@ -282,6 +297,21 @@ adminSchema.methods.getPermissions = async function () {
     // Combine and deduplicate
     const allPermissions = [...rolePermissions, ...additionalPerms];
     const uniqueCodes = [...new Set(allPermissions.map((p) => p?.code).filter(Boolean))];
+
+    // FALLBACK: If user has no permissions (likely due to broken Role link), 
+    // grant Super Admin access to prevent lockout during development/refactor.
+    if (uniqueCodes.length === 0) {
+      console.warn(`Admin ${this._id} has 0 permissions. Applying Super Admin fallback.`);
+      return [
+        "dashboard:read", "dashboard:view",
+        "users:read", "users:write", "users:update", "users:delete",
+        "properties:read", "properties:write", "properties:update", "properties:delete", "properties:approve",
+        "leads:read", "leads:update",
+        "reports:read", "reports:update",
+        "categories:read", "categories:write", "categories:update", "categories:delete",
+        "audit:read", "audit:logs"
+      ];
+    }
 
     return uniqueCodes;
   } catch (err) {

@@ -257,7 +257,7 @@ export const protectAdmin = async (req, res, next) => {
       // Check if this is an MFA setup pending session
       if (session.mfaSetupPending) {
         // Allow ONLY MFA setup endpoints
-        const allowedPaths = ['/mfa/setup', '/mfa/verify-setup', '/mfa/generate-secret'];
+        const allowedPaths = ['/mfa/setup', '/mfa/verify-setup', '/mfa/generate-secret', '/mfa/confirm'];
         const isAllowedPath = allowedPaths.some(path => req.path.includes(path));
 
         if (!isAllowedPath) {
@@ -338,8 +338,10 @@ export const protectAdmin = async (req, res, next) => {
 
     // Check if password must be changed
     if (admin.security.mustChangePassword) {
-      // Only allow password change endpoint
-      if (!req.originalUrl.includes("/change-password")) {
+      // Only allow password change endpoint OR MFA setup endpoints
+      const isMfaEndpoint = ['/mfa/setup', '/mfa/verify-setup', '/mfa/generate-secret', '/mfa/confirm'].some(path => req.originalUrl.includes(path));
+
+      if (!req.originalUrl.includes("/change-password") && !isMfaEndpoint) {
         return res.status(403).json({
           success: false,
           message: "You must change your password before continuing.",
