@@ -152,12 +152,24 @@ import savedSearchRoutes from './routes/savedSearchRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 
 // ============================================
+// SECURITY: Model import for Socket.io authorization
+// ============================================
+import Conversation from './models/Conversation.js';
+
+// ============================================
 // EXPRESS APP INITIALIZATION
 // ============================================
 
 const app = express();
 const httpServer = createServer(app);
 const isProduction = process.env.NODE_ENV === 'production';
+
+// ============================================
+// SECURITY FIX: Trust Proxy Configuration
+// Configure Express to trust only the first proxy hop
+// This ensures req.ip contains the verified client IP
+// ============================================
+app.set('trust proxy', 1); // Trust only 1 proxy hop (e.g., Nginx, Cloudflare)
 
 // ============================================
 // DOMAIN WHITELIST - Environment Aware
@@ -293,8 +305,13 @@ const globalLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // ============================================
+  // SECURITY FIX: Use verified req.ip (from trust proxy)
+  // instead of blindly trusting x-forwarded-for header
+  // ============================================
   keyGenerator: (req) => {
-    return req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    // req.ip is now verified by Express's trust proxy setting
+    return req.ip || 'unknown';
   },
   skip: (req) => {
     // Skip rate limiting for health checks
@@ -314,8 +331,11 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true, // Don't count successful logins
+  // ============================================
+  // SECURITY FIX: Use verified req.ip
+  // ============================================
   keyGenerator: (req) => {
-    // Rate limit by IP + email combination for more precision
+    // Rate limit by verified IP + email combination for more precision
     const email = req.body?.email || '';
     return `${req.ip}:${email}`;
   },
@@ -332,6 +352,9 @@ const transactionalLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // ============================================
+  // SECURITY FIX: Use verified req.ip as fallback
+  // ============================================
   keyGenerator: (req) => {
     return req.user?._id?.toString() || req.ip;
   },
@@ -400,22 +423,65 @@ const io = new Server(httpServer, {
   pingInterval: 25000,
 });
 
-// Store online users
+// Store online users with their user IDs
 const onlineUsers = new Map();
+// Store socket-to-userId mapping for authorization
+const socketUserMap = new Map();
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
+  // ============================================
+  // SECURITY: Track user identity on connection
+  // ============================================
   socket.on("user_online", (userId) => {
     if (userId && typeof userId === 'string' && userId.length < 100) {
       onlineUsers.set(userId, socket.id);
+      socketUserMap.set(socket.id, userId); // Track this socket's user
       io.emit("users_online", Array.from(onlineUsers.keys()));
     }
   });
 
-  socket.on("join_conversation", (conversationId) => {
-    if (conversationId && typeof conversationId === 'string' && conversationId.length < 100) {
+  // ============================================
+  // SECURITY FIX: Authorization check before joining conversation
+  // Verify that the requesting user is a participant in the conversation
+  // ============================================
+  socket.on("join_conversation", async (conversationId) => {
+    try {
+      // Validate input
+      if (!conversationId || typeof conversationId !== 'string' || conversationId.length > 100) {
+        console.warn(`[Socket.io] Invalid conversationId from socket ${socket.id}`);
+        socket.emit('error', { code: 'INVALID_CONVERSATION_ID', message: 'Invalid conversation ID' });
+        return;
+      }
+
+      // Get the user ID associated with this socket
+      const userId = socketUserMap.get(socket.id);
+      if (!userId) {
+        console.warn(`[Socket.io] Unauthenticated socket ${socket.id} attempting to join conversation`);
+        socket.emit('error', { code: 'NOT_AUTHENTICATED', message: 'Please authenticate first' });
+        return;
+      }
+
+      // SECURITY: Verify the user is a participant in this conversation
+      const conversation = await Conversation.findOne({
+        _id: conversationId,
+        participants: userId,
+        isActive: true,
+      }).lean();
+
+      if (!conversation) {
+        console.warn(`[Socket.io] SECURITY: User ${userId} denied access to conversation ${conversationId}`);
+        socket.emit('error', { code: 'ACCESS_DENIED', message: 'You are not a participant in this conversation' });
+        return;
+      }
+
+      // Authorization passed - allow joining
       socket.join(conversationId);
+      console.log(`[Socket.io] User ${userId} joined conversation ${conversationId}`);
+    } catch (error) {
+      console.error('[Socket.io] Error in join_conversation:', error);
+      socket.emit('error', { code: 'SERVER_ERROR', message: 'Failed to join conversation' });
     }
   });
 
@@ -423,8 +489,17 @@ io.on("connection", (socket) => {
     if (conversationId) socket.leave(conversationId);
   });
 
+  // ============================================
+  // SECURITY: Validate sender identity before relaying messages
+  // ============================================
   socket.on("send_message", (data) => {
+    const userId = socketUserMap.get(socket.id);
+    if (!userId) {
+      socket.emit('error', { code: 'NOT_AUTHENTICATED', message: 'Please authenticate first' });
+      return;
+    }
     if (data?.conversationId && data?.message) {
+      // Only relay to the conversation room (verified users only)
       socket.to(data.conversationId).emit("receive_message", data.message);
     }
   });
@@ -445,11 +520,11 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    for (const [userId, socketId] of onlineUsers.entries()) {
-      if (socketId === socket.id) {
-        onlineUsers.delete(userId);
-        break;
-      }
+    // Clean up user tracking
+    const userId = socketUserMap.get(socket.id);
+    if (userId) {
+      onlineUsers.delete(userId);
+      socketUserMap.delete(socket.id);
     }
     io.emit("users_online", Array.from(onlineUsers.keys()));
   });

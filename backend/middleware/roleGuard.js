@@ -151,4 +151,114 @@ export const logRoleAccess = (action) => {
     };
 };
 
+/**
+ * SECURITY FIX: Require ownership of a resource
+ * 
+ * Validates that the authenticated user owns the resource identified by
+ * the request parameter. Uses constant-time comparison and validates
+ * ObjectId format before querying.
+ * 
+ * @param {Function} getResourceByIdFn - Async function that takes resourceId and returns the resource document
+ * @param {string} paramName - Name of the request param containing the resource ID (default: 'id')
+ * @param {string} ownerField - Field name on the resource that contains the owner ID (default: 'owner')
+ * 
+ * Usage: requireOwnership(Property.findById.bind(Property), 'id', 'owner')
+ */
+export const requireOwnership = (getResourceByIdFn, paramName = 'id', ownerField = 'owner') => {
+    // Validate ObjectId format pattern
+    const objectIdPattern = /^[a-fA-F0-9]{24}$/;
+
+    return async (req, res, next) => {
+        try {
+            // 1. Ensure user is authenticated
+            if (!req.user) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Authentication required',
+                    code: 'NOT_AUTHENTICATED'
+                });
+            }
+
+            // 2. Get resource ID from params
+            const resourceId = req.params[paramName];
+            if (!resourceId) {
+                console.warn(`[RBAC] Missing resource ID in param '${paramName}'`);
+                return res.status(400).json({
+                    success: false,
+                    message: 'Resource identifier required',
+                    code: 'MISSING_RESOURCE_ID'
+                });
+            }
+
+            // 3. SECURITY: Validate ObjectId format before querying
+            if (!objectIdPattern.test(resourceId)) {
+                console.warn(`[RBAC] Invalid ObjectId format: ${resourceId}`);
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid resource identifier',
+                    code: 'INVALID_RESOURCE_ID'
+                });
+            }
+
+            // 4. Fetch the resource
+            const resource = await getResourceByIdFn(resourceId);
+            if (!resource) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Resource not found',
+                    code: 'NOT_FOUND'
+                });
+            }
+
+            // 5. Get the owner ID from the resource
+            const resourceOwnerId = resource[ownerField];
+            if (!resourceOwnerId) {
+                console.error(`[RBAC] Resource ${resourceId} has no owner field '${ownerField}'`);
+                return res.status(500).json({
+                    success: false,
+                    message: 'Resource ownership cannot be determined',
+                    code: 'OWNERSHIP_UNDEFINED'
+                });
+            }
+
+            // 6. SECURITY: Constant-time comparison to prevent timing attacks
+            const userIdStr = req.user._id.toString();
+            const ownerIdStr = resourceOwnerId.toString();
+
+            // Pad to same length for constant-time comparison
+            const maxLen = Math.max(userIdStr.length, ownerIdStr.length);
+            const paddedUserId = userIdStr.padEnd(maxLen, '\0');
+            const paddedOwnerId = ownerIdStr.padEnd(maxLen, '\0');
+
+            let isOwner = true;
+            for (let i = 0; i < maxLen; i++) {
+                if (paddedUserId.charCodeAt(i) !== paddedOwnerId.charCodeAt(i)) {
+                    isOwner = false;
+                }
+            }
+
+            if (!isOwner) {
+                console.warn(`[RBAC] SECURITY: User ${userIdStr} attempted to access resource ${resourceId} owned by ${ownerIdStr}`);
+                return res.status(403).json({
+                    success: false,
+                    message: 'You do not have permission to access this resource',
+                    code: 'NOT_OWNER'
+                });
+            }
+
+            // 7. Attach resource to request for use in controller
+            req.resource = resource;
+
+            next();
+        } catch (err) {
+            console.error('[RBAC] Ownership check error:', err);
+            return res.status(500).json({
+                success: false,
+                message: 'Authorization check failed',
+                code: 'OWNERSHIP_CHECK_ERROR'
+            });
+        }
+    };
+};
+
 export { VALID_USER_ROLES };

@@ -217,23 +217,24 @@ export const protectAdmin = async (req, res, next) => {
     }
 
     // ============================================
-    // SECURITY: Lenient session fingerprint validation
-    // Validates User-Agent + truncated IP range for session integrity
+    // SECURITY FIX: STRICT session fingerprint validation
+    // Rejects ANY User-Agent or IP address change immediately
+    // This prevents session hijacking via stolen tokens
     // ============================================
-    const fingerprintValidation = session.validateFingerprintLenient(req);
+    const fingerprintValidation = session.validateFingerprintStrict(req);
     if (!fingerprintValidation.valid) {
-      // Major anomaly detected - revoke session
-      await session.revoke(`fingerprint_anomaly: ${fingerprintValidation.reason}`);
+      // Session hijacking attempt detected - revoke immediately
+      await session.revoke(`strict_fingerprint_mismatch: ${fingerprintValidation.reason}`);
       clearSessionCookie(res);
 
       await AuditLog.log({
         admin: session.admin,
         category: "authentication",
-        action: "session_revoked_fingerprint",
-        description: `Session revoked due to major fingerprint anomaly: ${fingerprintValidation.reason}`,
+        action: "session_revoked_strict_fingerprint",
+        description: `Session revoked: ${fingerprintValidation.reason}`,
         req,
         result: "denied",
-        severity: "high",
+        severity: "critical",
         isSecurityEvent: true,
       });
 
@@ -242,11 +243,6 @@ export const protectAdmin = async (req, res, next) => {
         message: "Session verification failed. Please log in again.",
         code: "SESSION_FINGERPRINT_MISMATCH",
       });
-    }
-
-    // Refresh fingerprint on minor changes (browser version updates, etc.)
-    if (fingerprintValidation.refreshed) {
-      console.log("[AUTH] Session fingerprint refreshed due to minor changes");
     }
 
     // ============================================

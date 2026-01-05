@@ -316,6 +316,60 @@ adminSessionSchema.methods.validateFingerprintLenient = function (req) {
 };
 
 /**
+ * SECURITY FIX: Strict session binding validation
+ * 
+ * This method implements STRICT session validation that:
+ * 1. REJECTS any User-Agent change (no tolerance for browser updates)
+ * 2. REJECTS any IP address change (exact match required, not truncated)
+ * 3. Does NOT refresh fingerprints - any mismatch = session revoked
+ * 
+ * Use this for high-security admin sessions to prevent session hijacking.
+ * 
+ * Returns: { valid: boolean, reason?: string }
+ */
+adminSessionSchema.methods.validateFingerprintStrict = function (req) {
+    // Get current exact IP address (not truncated)
+    const currentIp = req.ip ||
+        req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+        req.headers["x-real-ip"] ||
+        req.connection?.remoteAddress ||
+        "unknown";
+
+    // Get current User-Agent
+    const currentUserAgent = req.headers["user-agent"] || "";
+
+    // Stored values
+    const storedIp = this.ipAddress || "";
+    const storedUserAgent = this.userAgent || "";
+
+    // ============================================
+    // STRICT CHECK 1: Exact IP address match
+    // Any IP change = immediate session revocation
+    // ============================================
+    if (storedIp && currentIp !== storedIp) {
+        console.warn(`[AUTH] STRICT: IP address changed from ${storedIp} to ${currentIp}`);
+        return {
+            valid: false,
+            reason: "Session verification failed: IP address changed",
+        };
+    }
+
+    // ============================================
+    // STRICT CHECK 2: Exact User-Agent match
+    // Any User-Agent change = immediate session revocation
+    // ============================================
+    if (storedUserAgent && currentUserAgent !== storedUserAgent) {
+        console.warn(`[AUTH] STRICT: User-Agent changed`);
+        return {
+            valid: false,
+            reason: "Session verification failed: Browser fingerprint changed",
+        };
+    }
+
+    return { valid: true };
+};
+
+/**
  * Extend session activity
  */
 adminSessionSchema.methods.touch = async function () {

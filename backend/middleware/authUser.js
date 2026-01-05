@@ -118,6 +118,17 @@ export const authMiddleware = async (req, res, next) => {
     next();
   } catch (err) {
     console.error("User auth error:", err);
+
+    // Handle specific security errors
+    if (err.message === 'INVALID_USER_ROLE') {
+      clearSessionCookie(res);
+      return res.status(403).json({
+        success: false,
+        message: "Your account configuration is invalid. Please contact support.",
+        code: "INVALID_ROLE",
+      });
+    }
+
     return res.status(401).json({
       success: false,
       message: "Authentication failed. Please login again.",
@@ -209,16 +220,22 @@ const handleJWTAuth = async (req, res, next, token) => {
 
 /**
  * Sanitize user object - remove all sensitive fields
- * Also handles legacy users by defaulting role to 'buyer' if missing
+ * 
+ * SECURITY FIX: No longer defaults missing roles to 'buyer'.
+ * If a user lacks a valid role, this function throws an error.
+ * This prevents implicit privilege grants via malformed user records.
  */
 const sanitizeUser = (user) => {
   const userObj = user.toObject ? user.toObject() : { ...user };
 
-  // Handle legacy users: default role to 'buyer' if missing
-  // This ensures users created before role system aren't locked out
-  if (!userObj.role) {
-    console.log(`[Auth] Legacy user detected (${userObj.email || userObj._id}) - defaulting role to 'buyer'`);
-    userObj.role = 'buyer';
+  // ============================================
+  // SECURITY FIX: Reject users without valid roles
+  // Do NOT default to 'buyer' - this could grant unintended access
+  // ============================================
+  const VALID_ROLES = ['user', 'buyer', 'owner'];
+  if (!userObj.role || !VALID_ROLES.includes(userObj.role)) {
+    console.error(`[Auth] SECURITY: User ${userObj.email || userObj._id} has invalid/missing role: ${userObj.role || 'undefined'}`);
+    throw new Error('INVALID_USER_ROLE');
   }
 
   // Remove sensitive fields

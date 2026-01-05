@@ -61,6 +61,67 @@ const PRODUCTION_MESSAGES = {
 };
 
 // ============================================
+// SECURITY: Sensitive keys to redact from query/headers
+// ============================================
+
+const SENSITIVE_QUERY_KEYS = [
+    'token', 'access_token', 'refresh_token', 'session', 'sessionToken',
+    'auth', 'authorization', 'api_key', 'apiKey', 'key',
+    'password', 'secret', 'signature', 'sig',
+    'otp', 'code', 'verificationCode',
+    'email', 'phone', 'mobile',
+];
+
+const SENSITIVE_HEADER_KEYS = [
+    'authorization', 'cookie', 'set-cookie',
+    'x-api-key', 'x-auth-token', 'x-session-id', 'x-csrf-token',
+    'x-forwarded-for', // Contains IP addresses
+];
+
+/**
+ * SECURITY FIX: Sanitize query parameters for logging
+ * Redacts sensitive keys that may contain PII or session identifiers
+ */
+const sanitizeQueryForLogging = (query) => {
+    if (!query || typeof query !== 'object') return query;
+
+    const sanitized = {};
+    for (const [key, value] of Object.entries(query)) {
+        const keyLower = key.toLowerCase();
+        // Check if key is sensitive
+        const isSensitive = SENSITIVE_QUERY_KEYS.some(sensitive =>
+            keyLower.includes(sensitive.toLowerCase())
+        );
+        sanitized[key] = isSensitive ? '[REDACTED]' : value;
+    }
+    return sanitized;
+};
+
+/**
+ * SECURITY FIX: Sanitize headers for logging
+ * Redacts sensitive headers that may contain auth tokens or session data
+ */
+const sanitizeHeadersForLogging = (headers) => {
+    if (!headers || typeof headers !== 'object') return {};
+
+    const sanitized = {};
+    for (const [key, value] of Object.entries(headers)) {
+        const keyLower = key.toLowerCase();
+        // Check if header is sensitive
+        const isSensitive = SENSITIVE_HEADER_KEYS.some(sensitive =>
+            keyLower === sensitive.toLowerCase()
+        );
+        // For sensitive headers, only indicate presence, not value
+        if (isSensitive) {
+            sanitized[key] = value ? '[PRESENT - REDACTED]' : '[NOT PRESENT]';
+        } else {
+            sanitized[key] = value;
+        }
+    }
+    return sanitized;
+};
+
+// ============================================
 // ERROR LOGGING - Full Details Server-Side
 // ============================================
 
@@ -68,19 +129,24 @@ const logError = (err, req) => {
     const timestamp = new Date().toISOString();
     const requestId = req.requestId || crypto.randomBytes(8).toString('hex');
 
-    // Collect request context (safe to log server-side)
+    // ============================================
+    // SECURITY FIX: Sanitize query and headers before logging
+    // Prevents PII and session identifiers from being logged
+    // ============================================
     const context = {
         requestId,
         timestamp,
         method: req.method,
         path: req.path,
         originalUrl: req.originalUrl,
-        query: req.query,
+        // SECURITY: Sanitize query parameters
+        query: sanitizeQueryForLogging(req.query),
         // Sanitize body for logging (remove sensitive fields)
         body: sanitizeBodyForLogging(req.body),
         userId: req.user?._id?.toString() || 'anonymous',
         userRole: req.user?.role || 'none',
         ip: getClientIP(req),
+        // SECURITY: Only log User-Agent, not full headers
         userAgent: req.get('User-Agent')?.substring(0, 200),
     };
 
@@ -151,9 +217,7 @@ const sanitizeBodyForLogging = (body) => {
  * Get real client IP (handles proxies)
  */
 const getClientIP = (req) => {
-    return req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-        req.headers['x-real-ip'] ||
-        req.ip ||
+    return req.ip ||
         req.connection?.remoteAddress ||
         'unknown';
 };
