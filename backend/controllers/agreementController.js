@@ -1136,6 +1136,39 @@ export const validatePaymentWebhook = async (req, res) => {
       });
       await agreement.save();
 
+      // ============================================
+      // SECURITY FIX: Active Fraud Alerting
+      // Log to AuditLog with critical severity for monitoring
+      // TODO: In production, add email/SMS/Slack notification here
+      // ============================================
+      try {
+        // Import AuditLog if not already available
+        const AuditLog = (await import('../models/AuditLog.js')).default;
+        await AuditLog.log({
+          admin: null,
+          category: 'security',
+          action: 'payment_fraud_suspected',
+          resourceType: 'agreement',
+          resourceId: agreement._id,
+          description: `FRAUD ALERT: Payment amount mismatch detected. Received ${parsedAmount}, expected ${storedAmount} or ${storedDeposit}. Transaction: ${transactionId}`,
+          req,
+          result: 'failure',
+          severity: 'critical',
+          isSecurityEvent: true,
+          metadata: {
+            agreementId,
+            transactionId,
+            receivedAmount: parsedAmount,
+            expectedRent: storedAmount,
+            expectedDeposit: storedDeposit,
+            payerId,
+          }
+        });
+        console.log('🚨 FRAUD ALERT logged to AuditLog');
+      } catch (alertError) {
+        console.error('Failed to log fraud alert:', alertError.message);
+      }
+
       return res.status(400).json({
         success: false,
         message: 'Payment amount does not match agreement terms',

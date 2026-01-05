@@ -196,27 +196,91 @@ const secureFileFilter = (req, file, cb) => {
 // ============================================
 // SECURITY FIX: In-Memory Upload with Magic Byte Validation
 // Files are validated BEFORE being sent to Cloudinary
+// 
+// ADDITIONAL SECURITY: Concurrent upload limiting + memory pressure detection
 // ============================================
+
+// Track concurrent uploads to prevent DoS
+let activeUploads = 0;
+const MAX_CONCURRENT_UPLOADS = 10; // Max simultaneous upload requests
+const MAX_MEMORY_USAGE_PERCENT = 80; // Reject uploads if heap is > 80% used
+
+/**
+ * Check if server has memory capacity for more uploads
+ */
+const checkMemoryPressure = () => {
+  const memUsage = process.memoryUsage();
+  const heapUsedPercent = (memUsage.heapUsed / memUsage.heapTotal) * 100;
+  return heapUsedPercent < MAX_MEMORY_USAGE_PERCENT;
+};
+
+/**
+ * Middleware to limit concurrent uploads
+ */
+export const uploadConcurrencyGuard = (req, res, next) => {
+  // Check concurrent upload limit
+  if (activeUploads >= MAX_CONCURRENT_UPLOADS) {
+    console.warn(`⚠️ SECURITY: Concurrent upload limit reached (${activeUploads}/${MAX_CONCURRENT_UPLOADS})`);
+    return res.status(503).json({
+      success: false,
+      message: 'Server is busy processing other uploads. Please try again shortly.',
+      code: 'UPLOAD_QUEUE_FULL',
+      retryAfter: 5
+    });
+  }
+
+  // Check memory pressure
+  if (!checkMemoryPressure()) {
+    console.warn(`⚠️ SECURITY: Memory pressure detected, rejecting upload`);
+    return res.status(503).json({
+      success: false,
+      message: 'Server is under heavy load. Please try again shortly.',
+      code: 'MEMORY_PRESSURE',
+      retryAfter: 10
+    });
+  }
+
+  // Track this upload
+  activeUploads++;
+  console.log(`📤 Upload started (active: ${activeUploads}/${MAX_CONCURRENT_UPLOADS})`);
+
+  // Ensure counter decrements when request finishes
+  res.on('finish', () => {
+    activeUploads = Math.max(0, activeUploads - 1);
+    console.log(`📤 Upload finished (active: ${activeUploads}/${MAX_CONCURRENT_UPLOADS})`);
+  });
+
+  res.on('close', () => {
+    // Handle aborted requests
+    if (!res.writableEnded) {
+      activeUploads = Math.max(0, activeUploads - 1);
+      console.log(`📤 Upload aborted (active: ${activeUploads}/${MAX_CONCURRENT_UPLOADS})`);
+    }
+  });
+
+  next();
+};
 
 /**
  * Memory storage for initial buffer capture
  * This allows us to validate magic bytes before uploading to Cloudinary
  * 
  * SECURITY FIX: Reduced limits to prevent memory exhaustion attacks
- * Max theoretical memory: 10 files × 10MB = 100MB (down from 500MB)
+ * Max theoretical memory: 5 files × 5MB = 25MB per request
+ * With 10 concurrent uploads = 250MB max (safe for 2GB heap)
  */
 export const memoryUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB per file
-    files: 10, // SECURITY FIX: Reduced from 50 to 10 files max
-    parts: 20, // Limit total multipart fields
+    fileSize: 5 * 1024 * 1024, // REDUCED: 5MB per file (down from 10MB)
+    files: 5, // REDUCED: 5 files max (down from 10)
+    parts: 15, // Limit total multipart fields
   },
   fileFilter: secureFileFilter,
 });
 
 // SECURITY FIX: Track total upload size per request
-const MAX_TOTAL_UPLOAD_SIZE = 50 * 1024 * 1024; // 50MB total per request
+const MAX_TOTAL_UPLOAD_SIZE = 20 * 1024 * 1024; // REDUCED: 20MB total per request
 
 /**
  * SECURITY: Middleware to validate uploaded file buffers

@@ -51,11 +51,25 @@ export const registerAdmin = async (req, res) => {
     }
 
     // Check if admin already exists
+    // SECURITY FIX: Don't reveal if email exists (prevents enumeration attacks)
     const existingAdmin = await Admin.findOne({ email: email.toLowerCase() });
     if (existingAdmin) {
+      // Log the attempt for security monitoring
+      await AuditLog.log({
+        admin: req.admin?._id || null,
+        category: "security",
+        action: "admin_registration_duplicate_attempt",
+        description: `Registration attempted with existing email`,
+        req,
+        result: "denied",
+        severity: "medium",
+        isSecurityEvent: true,
+      });
+
+      // Return generic message to prevent email enumeration
       return res.status(400).json({
         success: false,
-        message: "An admin with this email already exists",
+        message: "Unable to complete registration. Please contact a super admin.",
       });
     }
 

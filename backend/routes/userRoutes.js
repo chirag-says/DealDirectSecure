@@ -37,7 +37,7 @@ import {
   requireVerified,
   authRateLimit
 } from "../middleware/authUser.js";
-import { upload } from "../middleware/upload.js";
+import { upload, uploadConcurrencyGuard } from "../middleware/upload.js";
 import { protectAdmin } from "../middleware/authAdmin.js";
 import { validateProfileUpdate } from "../middleware/validators/index.js";
 
@@ -86,7 +86,7 @@ router.delete("/sessions/:sessionId", authMiddleware, revokeSession);
 
 router.get("/profile", authMiddleware, getProfile);
 router.get("/me", authMiddleware, getProfile); // Alias for /profile - standard REST pattern
-router.put("/profile", authMiddleware, validateProfileUpdate, upload.single("profileImage"), updateProfile);
+router.put("/profile", authMiddleware, validateProfileUpdate, uploadConcurrencyGuard, upload.single("profileImage"), updateProfile);
 router.put("/change-password", authMiddleware, changePassword);
 
 // ============================================
@@ -105,6 +105,7 @@ router.post(
   authMiddleware,
   requireVerified,
   requireRole("owner"),
+  uploadConcurrencyGuard,
   localUpload.array("images", 10),
   addProperty
 );

@@ -24,7 +24,7 @@ import {
 } from "../controllers/propertyController.js";
 import { protectAdmin } from "../middleware/authAdmin.js";
 import { authMiddleware } from "../middleware/authUser.js";
-import { upload, validateUploadedFiles } from "../middleware/upload.js";
+import { upload, validateUploadedFiles, uploadConcurrencyGuard } from "../middleware/upload.js";
 import { ownerOnlyListingAccess } from "../middleware/roleGuard.js";
 import {
   validatePropertyCreate,
@@ -60,6 +60,7 @@ router.post(
   "/add",
   authMiddleware,
   ownerOnlyListingAccess, // Role enforcement: only Owners can add
+  uploadConcurrencyGuard, // SECURITY: Prevent DoS via concurrent uploads
   upload.fields([
     { name: "images", maxCount: 15 },
     { name: "categorizedImages", maxCount: 50 }
@@ -74,6 +75,7 @@ router.put(
   authMiddleware,
   ownerOnlyListingAccess,
   validateMongoId('id'),
+  uploadConcurrencyGuard, // SECURITY: Prevent DoS via concurrent uploads
   upload.fields([
     { name: "images", maxCount: 15 },
     { name: "categorizedImages", maxCount: 50 }
@@ -105,6 +107,7 @@ router.put(
   "/edit/:id",
   protectAdmin,
   validateMongoId('id'),
+  uploadConcurrencyGuard, // SECURITY: Prevent DoS via concurrent uploads
   upload.fields([
     { name: "images", maxCount: 15 },
     { name: "categorizedImages", maxCount: 50 }
