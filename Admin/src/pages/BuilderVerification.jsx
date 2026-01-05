@@ -148,8 +148,9 @@ export default function BuilderVerification() {
         try {
             const { data } = await adminApi.put(`/api/users/block/${ownerId}`, { reason });
             toast.success(data.message);
-            const newIsBlocked = data.isBlocked;
-            const newBlockReason = data.blockReason || "";
+            // API returns { message, user: { isBlocked, blockReason, ... } }
+            const newIsBlocked = data.user?.isBlocked ?? data.isBlocked;
+            const newBlockReason = data.user?.blockReason || data.blockReason || "";
             setUsers(prevUsers => prevUsers.map(u => u.id === ownerId ? { ...u, isBlocked: newIsBlocked, blockReason: newBlockReason } : u));
             if (selectedOwner?.id === ownerId) {
                 setSelectedOwner(prev => ({ ...prev, isBlocked: newIsBlocked, blockReason: newBlockReason }));

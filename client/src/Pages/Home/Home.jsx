@@ -150,7 +150,7 @@ const Home = () => {
     const fetchCategories = async () => {
       try {
         const res = await api.get('/categories/list-category');
-        setCategories(res.data || []);
+        setCategories(res.data.data || res.data || []);
       } catch (error) {
         console.error("Error fetching categories:", error);
       }
@@ -162,7 +162,7 @@ const Home = () => {
     const fetchPropertyTypes = async () => {
       try {
         const res = await api.get('/propertyTypes/list-propertytype');
-        setPropertyTypeOptions(Array.isArray(res.data) ? res.data : []);
+        setPropertyTypeOptions(res.data.data || res.data || []);
       } catch (error) {
         console.error("Error fetching property types:", error);
       }
@@ -180,7 +180,7 @@ const Home = () => {
         const res = await api.get(
           `/subcategories/byCategory/${filters.category}`
         );
-        setSubcategories(res.data || []);
+        setSubcategories(res.data.data || res.data || []);
       } catch (error) {
         console.error("Error fetching subcategories:", error);
       }

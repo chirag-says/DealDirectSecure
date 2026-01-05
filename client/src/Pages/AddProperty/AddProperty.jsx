@@ -463,9 +463,9 @@ export default function AddProperty() {
                     api.get('/propertyTypes/list-propertytype')
                 ]);
                 setMetadata({
-                    categories: Array.isArray(cats.data) ? cats.data : [],
-                    subcategories: Array.isArray(subs.data) ? subs.data : [],
-                    propertyTypes: Array.isArray(types.data) ? types.data : []
+                    categories: cats.data.data || cats.data || [],
+                    subcategories: subs.data.data || subs.data || [],
+                    propertyTypes: types.data.data || types.data || []
                 });
             } catch (error) {
                 console.error("Failed to fetch metadata", error);

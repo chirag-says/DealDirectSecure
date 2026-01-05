@@ -10,6 +10,8 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { setSessionCookie, clearSessionCookie } from "../middleware/authUser.js";
+import { Parser } from "json2csv";
+import PDFDocument from "pdfkit";
 
 // ============================================
 // EMAIL CONFIGURATION
@@ -119,6 +121,8 @@ const sanitizeUserResponse = (user) => {
     bio: safeUser.bio,
     role: safeUser.role,
     isVerified: safeUser.isVerified,
+    isBlocked: safeUser.isBlocked,
+    blockReason: safeUser.blockReason,
     preferences: safeUser.preferences,
     createdAt: safeUser.createdAt,
     updatedAt: safeUser.updatedAt,
@@ -1071,18 +1075,155 @@ export const toggleBlockUser = async (req, res) => {
 };
 
 // Export functions that may already exist (placeholders for unchanged exports)
-export const exportUsersPDF = async (req, res) => {
-  res.status(501).json({ message: "PDF export not implemented" });
-};
+
 
 export const exportUsersCSV = async (req, res) => {
-  res.status(501).json({ message: "CSV export not implemented" });
+  try {
+    const users = await User.find({ role: "user" }).sort({ createdAt: -1 });
+
+    const fields = [
+      { label: "Name", value: "name" },
+      { label: "Email", value: "email" },
+      { label: "Phone", value: "phone" },
+      { label: "Role", value: "role" },
+      { label: "Status", value: (row) => (row.isBlocked ? "Blocked" : "Active") },
+      { label: "Joined Date", value: (row) => new Date(row.createdAt).toLocaleDateString() },
+    ];
+
+    const json2csvParser = new Parser({ fields });
+    const csv = json2csvParser.parse(users);
+
+    res.header("Content-Type", "text/csv");
+    res.attachment("clients_list.csv");
+    return res.send(csv);
+  } catch (error) {
+    console.error("Export CSV Error:", error);
+    res.status(500).json({ message: "Failed to export CSV" });
+  }
 };
 
-export const exportOwnersPDF = async (req, res) => {
-  res.status(501).json({ message: "PDF export not implemented" });
+export const exportUsersPDF = async (req, res) => {
+  try {
+    const users = await User.find({ role: "user" }).sort({ createdAt: -1 });
+
+    const doc = new PDFDocument({ margin: 30, size: "A4" });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", 'attachment; filename="clients_list.pdf"');
+
+    doc.pipe(res);
+
+    // Header
+    doc.fontSize(20).text("Clients List", { align: "center" });
+    doc.moveDown();
+
+    // Table Header
+    const tableTop = 100;
+    const itemHeight = 20;
+    let yPosition = tableTop;
+
+    doc.fontSize(10).font("Helvetica-Bold");
+    doc.text("Name", 50, yPosition);
+    doc.text("Email", 150, yPosition);
+    doc.text("Phone", 350, yPosition);
+    doc.text("Status", 450, yPosition);
+
+    // Table Rows
+    doc.font("Helvetica");
+    yPosition += itemHeight;
+
+    users.forEach((user) => {
+      if (yPosition > 750) {
+        doc.addPage();
+        yPosition = 50;
+      }
+
+      doc.text(user.name || "N/A", 50, yPosition);
+      doc.text(user.email || "N/A", 150, yPosition);
+      doc.text(user.phone || "N/A", 350, yPosition);
+      doc.text(user.isBlocked ? "Blocked" : "Active", 450, yPosition);
+
+      yPosition += itemHeight;
+    });
+
+    doc.end();
+  } catch (error) {
+    console.error("Export PDF Error:", error);
+    res.status(500).json({ message: "Failed to export PDF" });
+  }
 };
 
 export const exportOwnersCSV = async (req, res) => {
-  res.status(501).json({ message: "CSV export not implemented" });
+  try {
+    const owners = await User.find({ role: "owner" }).sort({ createdAt: -1 });
+
+    const fields = [
+      { label: "Name", value: "name" },
+      { label: "Email", value: "email" },
+      { label: "Phone", value: "phone" },
+      { label: "Role", value: "role" },
+      { label: "Company", value: "company" },
+      { label: "Status", value: (row) => (row.isBlocked ? "Blocked" : "Active") },
+      { label: "Joined Date", value: (row) => new Date(row.createdAt).toLocaleDateString() },
+    ];
+
+    const json2csvParser = new Parser({ fields });
+    const csv = json2csvParser.parse(owners);
+
+    res.header("Content-Type", "text/csv");
+    res.attachment("owners_list.csv");
+    return res.send(csv);
+  } catch (error) {
+    console.error("Export Owners CSV Error:", error);
+    res.status(500).json({ message: "Failed to export CSV" });
+  }
+};
+
+export const exportOwnersPDF = async (req, res) => {
+  try {
+    const owners = await User.find({ role: "owner" }).sort({ createdAt: -1 });
+
+    const doc = new PDFDocument({ margin: 30, size: "A4" });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", 'attachment; filename="owners_list.pdf"');
+
+    doc.pipe(res);
+
+    // Header
+    doc.fontSize(20).text("Property Owners List", { align: "center" });
+    doc.moveDown();
+
+    // Table Header
+    const tableTop = 100;
+    const itemHeight = 20;
+    let yPosition = tableTop;
+
+    doc.fontSize(10).font("Helvetica-Bold");
+    doc.text("Name", 50, yPosition);
+    doc.text("Email", 150, yPosition);
+    doc.text("Phone", 350, yPosition);
+    doc.text("Status", 450, yPosition);
+
+    // Table Rows
+    doc.font("Helvetica");
+    yPosition += itemHeight;
+
+    owners.forEach((user) => {
+      if (yPosition > 750) {
+        doc.addPage();
+        yPosition = 50;
+      }
+
+      doc.text(user.name || "N/A", 50, yPosition);
+      doc.text(user.email || "N/A", 150, yPosition);
+      doc.text(user.phone || "N/A", 350, yPosition);
+      doc.text(user.isBlocked ? "Blocked" : "Active", 450, yPosition);
+
+      yPosition += itemHeight;
+    });
+
+    doc.end();
+  } catch (error) {
+    console.error("Export Owners PDF Error:", error);
+    res.status(500).json({ message: "Failed to export PDF" });
+  }
 };

@@ -527,7 +527,7 @@ const PropertyPage = () => {
 
         const propsData = propsRes.data.data || [];
         setProperties(propsData);
-        setPropertyTypes(ptRes.data || []);
+        setPropertyTypes(ptRes.data.data || ptRes.data || []);
         const uniqueCities = [...new Set(propsData.map(p => p.address?.city).filter(Boolean))];
         setCities(uniqueCities);
 
