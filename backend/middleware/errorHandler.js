@@ -198,36 +198,65 @@ const handlePayloadTooLargeError = () => {
 // GET SAFE RESPONSE FOR CLIENT
 // ============================================
 
+/**
+ * SECURITY HARDENED: Get safe response for client
+ * 
+ * This function ALWAYS returns production-safe messages, regardless of NODE_ENV.
+ * Stack traces and internal error details are NEVER sent to clients.
+ * 
+ * SECURITY FIX: Even if NODE_ENV is accidentally misconfigured or set to 'development'
+ * in production, no sensitive information will leak to clients.
+ */
 const getSafeResponse = (err, requestId, isProduction) => {
     const statusCode = err.statusCode || 500;
 
-    // PRODUCTION MODE: Return ONLY generic messages
-    if (isProduction) {
-        return {
-            success: false,
-            message: PRODUCTION_MESSAGES[statusCode] || 'An error occurred',
-            requestId, // Allow client to reference for support
-        };
+    // ============================================
+    // SECURITY FIX: ALWAYS return only generic messages
+    // Never expose internal error details or stack traces
+    // This protects against NODE_ENV misconfiguration
+    // ============================================
+
+    // For operational errors with safe messages, we can use them
+    // But we still sanitize to ensure nothing sensitive slips through
+    if (err.isOperational && err.message) {
+        // List of patterns that might indicate internal information
+        const dangerousPatterns = [
+            /at .+\(.+:\d+:\d+\)/, // Stack trace lines
+            /\/[a-zA-Z]:?\/.+\.js/,  // File paths
+            /node_modules/,          // Node internals
+            /Error:/,                // Raw error messages
+            /ENOENT|EACCES|ENOMEM/,  // System errors
+            /MongoServerError/,      // Database errors
+            /Cast to ObjectId/,      // Mongoose errors
+            /duplicate key/i,        // DB constraint errors
+            /validation failed/i,    // Mongoose validation
+        ];
+
+        // Check if message contains any dangerous patterns
+        const isSafe = !dangerousPatterns.some(pattern => pattern.test(err.message));
+
+        if (isSafe && err.message.length < 200) {
+            return {
+                success: false,
+                message: err.message,
+                code: err.code || 'ERROR',
+                requestId,
+            };
+        }
     }
 
-    // DEVELOPMENT MODE: Return more details (but still safe)
-    if (err.isOperational) {
-        return {
-            success: false,
-            message: err.message,
-            code: err.code,
-            requestId,
-        };
-    }
-
-    // Programming errors in development
+    // PRODUCTION SAFE: Return only generic message based on status code
     return {
         success: false,
-        message: err.message,
-        code: 'SERVER_ERROR',
-        requestId,
-        // Only in development, include stack
-        stack: err.stack?.split('\n').slice(0, 5),
+        message: PRODUCTION_MESSAGES[statusCode] || 'An error occurred',
+        requestId, // Allow client to reference for support
+        // ============================================
+        // SECURITY: Never include any of the following in client responses:
+        // - Stack traces
+        // - Internal error codes beyond safe ones
+        // - File paths
+        // - Database error details
+        // ============================================
     };
 };
 

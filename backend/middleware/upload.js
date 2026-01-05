@@ -2,6 +2,10 @@
  * Secure File Upload Middleware
  * Implements magic-byte verification to prevent malicious file uploads
  * Validates files by their actual content signature, not just extension
+ * 
+ * SECURITY FIX: Now validates magic bytes IN-MEMORY using memoryStorage()
+ * BEFORE files are streamed to Cloudinary. Invalid files are rejected
+ * at the buffer stage and never touch external storage.
  */
 import dotenv from "dotenv";
 dotenv.config();
@@ -9,6 +13,7 @@ dotenv.config();
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
+import { Readable } from "stream";
 
 // ============================================
 // MAGIC BYTE SIGNATURES FOR FILE VALIDATION
@@ -162,7 +167,8 @@ if (cloudinaryUrl) {
 // ============================================
 
 /**
- * Custom file filter with magic-byte validation
+ * Custom file filter with basic MIME type check
+ * (Deep magic-byte validation happens after buffer is available)
  */
 const secureFileFilter = (req, file, cb) => {
   // Check MIME type first (quick rejection for obvious bad types)
@@ -185,40 +191,84 @@ const secureFileFilter = (req, file, cb) => {
   cb(null, true);
 };
 
-/**
- * Post-processing middleware to validate magic bytes
- * This runs AFTER multer has processed the file buffer
- */
-export const validateUploadedFiles = (req, res, next) => {
-  const files = [];
+// ============================================
+// SECURITY FIX: In-Memory Upload with Magic Byte Validation
+// Files are validated BEFORE being sent to Cloudinary
+// ============================================
 
-  // Collect all uploaded files
-  if (req.file) files.push(req.file);
-  if (req.files) {
-    if (Array.isArray(req.files)) {
-      files.push(...req.files);
-    } else {
-      // files is an object with field names as keys
-      for (const fieldFiles of Object.values(req.files)) {
-        if (Array.isArray(fieldFiles)) {
-          files.push(...fieldFiles);
+/**
+ * Memory storage for initial buffer capture
+ * This allows us to validate magic bytes before uploading to Cloudinary
+ */
+export const memoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB per file
+    files: 50,
+  },
+  fileFilter: secureFileFilter,
+});
+
+/**
+ * SECURITY: Middleware to validate uploaded file buffers
+ * and stream valid files to Cloudinary
+ * 
+ * This is the SECURE upload flow:
+ * 1. Multer stores files in memory (memoryStorage)
+ * 2. This middleware validates magic bytes
+ * 3. Valid files are streamed to Cloudinary
+ * 4. Invalid files are rejected WITHOUT touching external storage
+ */
+export const validateAndUploadToCloudinary = async (req, res, next) => {
+  try {
+    // Collect all files from request
+    const allFiles = [];
+
+    if (req.file) {
+      allFiles.push({ file: req.file, fieldname: req.file.fieldname });
+    }
+
+    if (req.files) {
+      if (Array.isArray(req.files)) {
+        allFiles.push(...req.files.map(f => ({ file: f, fieldname: f.fieldname })));
+      } else {
+        // files is an object with field names as keys
+        for (const [fieldname, files] of Object.entries(req.files)) {
+          if (Array.isArray(files)) {
+            allFiles.push(...files.map(f => ({ file: f, fieldname })));
+          }
         }
       }
     }
-  }
 
-  // Validate each file's magic bytes
-  for (const file of files) {
-    // For Cloudinary uploads, the file is already uploaded
-    // We validate based on the buffer if available, or trust Cloudinary's processing
-    if (file.buffer) {
+    if (allFiles.length === 0) {
+      return next();
+    }
+
+    // ============================================
+    // SECURITY: Validate each file's magic bytes IN-MEMORY
+    // before streaming to Cloudinary
+    // ============================================
+    const validatedFiles = [];
+
+    for (const { file, fieldname } of allFiles) {
+      if (!file.buffer) {
+        console.error(`⚠️ SECURITY: File ${file.originalname} has no buffer`);
+        return res.status(400).json({
+          success: false,
+          message: 'File upload error: buffer not available',
+          code: 'UPLOAD_ERROR'
+        });
+      }
+
+      // Validate magic bytes
       const validation = validateMagicBytes(file.buffer);
 
       if (!validation.valid) {
-        console.error(`⚠️ SECURITY: Invalid file upload blocked - ${file.originalname}: ${validation.reason}`);
+        console.error(`⚠️ SECURITY: Invalid file blocked at buffer stage - ${file.originalname}: ${validation.reason}`);
         return res.status(400).json({
           success: false,
-          message: 'Invalid file detected: ' + validation.reason,
+          message: `Invalid file "${file.originalname}": ${validation.reason}`,
           code: 'INVALID_FILE'
         });
       }
@@ -228,17 +278,98 @@ export const validateUploadedFiles = (req, res, next) => {
         console.error(`⚠️ SECURITY: Extension mismatch - ${file.originalname} detected as ${validation.type}`);
         return res.status(400).json({
           success: false,
-          message: 'File extension does not match file content',
+          message: `File "${file.originalname}": extension does not match file content`,
           code: 'EXTENSION_MISMATCH'
         });
       }
-    }
-  }
 
-  next();
+      validatedFiles.push({ file, fieldname, validation });
+    }
+
+    // ============================================
+    // SECURITY: Now upload validated files to Cloudinary
+    // Only files that passed magic byte validation reach this point
+    // ============================================
+    const uploadPromises = validatedFiles.map(async ({ file, fieldname }) => {
+      const isProfileImage = fieldname === 'profileImage';
+      const folder = isProfileImage ? "dealdirect/profiles" : "dealdirect/properties";
+
+      return new Promise((resolve, reject) => {
+        const uploadOptions = {
+          folder,
+          resource_type: "image",
+          transformation: isProfileImage
+            ? [{ width: 400, height: 400, crop: "fill", gravity: "face", quality: "auto" }]
+            : [{ width: 1200, height: 800, crop: "limit", quality: "auto" }],
+        };
+
+        // Create upload stream
+        const uploadStream = cloudinary.uploader.upload_stream(
+          uploadOptions,
+          (error, result) => {
+            if (error) {
+              console.error('Cloudinary upload error:', error);
+              reject(error);
+            } else {
+              resolve({
+                fieldname,
+                originalname: file.originalname,
+                path: result.secure_url,
+                secure_url: result.secure_url,
+                public_id: result.public_id,
+                format: result.format,
+              });
+            }
+          }
+        );
+
+        // Stream the validated buffer to Cloudinary
+        const readableStream = Readable.from(file.buffer);
+        readableStream.pipe(uploadStream);
+      });
+    });
+
+    try {
+      const uploadedFiles = await Promise.all(uploadPromises);
+
+      // Group uploaded files by fieldname to match multer's structure
+      const filesGrouped = {};
+      for (const uploaded of uploadedFiles) {
+        if (!filesGrouped[uploaded.fieldname]) {
+          filesGrouped[uploaded.fieldname] = [];
+        }
+        filesGrouped[uploaded.fieldname].push(uploaded);
+      }
+
+      // Replace req.files with Cloudinary results
+      req.files = filesGrouped;
+
+      console.log(`✅ SECURITY: ${uploadedFiles.length} files validated and uploaded to Cloudinary`);
+      next();
+    } catch (uploadError) {
+      console.error('Cloudinary upload failed:', uploadError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to upload files to storage',
+        code: 'UPLOAD_FAILED'
+      });
+    }
+  } catch (error) {
+    console.error('File validation error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'File processing error',
+      code: 'PROCESSING_ERROR'
+    });
+  }
 };
 
-// Cloudinary storage configuration
+// ============================================
+// LEGACY: Direct Cloudinary storage (kept for backward compatibility)
+// NOTE: New code should use memoryUpload + validateAndUploadToCloudinary
+// ============================================
+
+// Cloudinary storage configuration (legacy)
 const cloudinaryStorage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => {
@@ -257,7 +388,7 @@ const cloudinaryStorage = new CloudinaryStorage({
   },
 });
 
-// Create multer instance with security settings
+// Legacy multer instance (direct to Cloudinary, less secure)
 export const upload = multer({
   storage: cloudinaryStorage,
   limits: {
@@ -267,15 +398,19 @@ export const upload = multer({
   fileFilter: secureFileFilter,
 });
 
-// Memory storage for when we need to validate magic bytes before upload
-export const memoryUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 10 * 1024 * 1024,
-    files: 50,
-  },
-  fileFilter: secureFileFilter,
-});
+/**
+ * DEPRECATED: Post-processing middleware for legacy flow
+ * This runs AFTER multer has processed the file
+ * 
+ * NOTE: For new implementations, use validateAndUploadToCloudinary instead
+ * which validates BEFORE upload
+ */
+export const validateUploadedFiles = (req, res, next) => {
+  console.warn('⚠️ validateUploadedFiles is deprecated. Use validateAndUploadToCloudinary for in-memory validation.');
+  // For legacy Cloudinary uploads, files are already uploaded
+  // We can only log a warning here
+  next();
+};
 
 // Export cloudinary instance for direct uploads
 export { cloudinary, validateMagicBytes };

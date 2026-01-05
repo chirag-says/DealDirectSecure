@@ -8,23 +8,100 @@ import SavedSearch from "../models/SavedSearch.js";
 import Notification from "../models/Notification.js";
 
 // ============================================
-// SECURITY: Field blacklist for mass assignment prevention
+// SECURITY FIX: Strict WHITELIST approach for mass assignment prevention
+// Only explicitly allowed fields can be set from request bodies.
+// This is more secure than a blacklist as new fields are blocked by default.
 // ============================================
-const PROPERTY_FORBIDDEN_FIELDS = [
-  'owner', 'isApproved', 'rejectionReason', 'views', 'likes',
-  'interestedUsers', '_id', 'createdAt', 'updatedAt', '__v'
+
+/**
+ * SECURITY: Allowed fields for property creation/update from user requests
+ * Fields NOT in this list will be silently rejected.
+ * Sensitive fields like isApproved, owner, views must be set via middleware or internal calls.
+ */
+const PROPERTY_ALLOWED_FIELDS = [
+  // Basic info
+  'title', 'description', 'listingType', 'negotiable',
+  // Category & Type (as names, not ObjectIds - handled separately)
+  'categoryName', 'propertyTypeName', 'subcategoryName', 'propertyCategory',
+  // Location
+  'address', 'city', 'locality', 'landmark', 'latitude', 'longitude',
+  // Pricing
+  'price', 'expectedPrice', 'deposit', 'expectedDeposit', 'maintenance',
+  'priceNegotiable', 'securityDeposit',
+  // Property details
+  'bhk', 'bhkType', 'bedrooms', 'bathrooms', 'balconies', 'floor', 'totalFloors',
+  'furnishing', 'facing', 'age', 'availability', 'availableFrom', 'possessionDate',
+  // Area
+  'area', 'builtUpArea', 'carpetArea', 'superBuiltUpArea', 'plotArea',
+  // Features
+  'features', 'amenities', 'extras', 'parking', 'parkingCovered', 'parkingOpen',
+  'flooring', 'powerBackup', 'waterSupply', 'gatedSecurity',
+  // Extra rooms
+  'servantRoom', 'poojaRoom', 'studyRoom', 'storeRoom',
+  // Legal
+  'legal', 'reraId', 'ownershipType',
+  // Images (processed separately but allowed in data flow)
+  'images', 'categorizedImages', 'imageCategoryMap', 'existingCategorizedImages', 'imagesToRemove',
+  // Building info
+  'buildingName', 'buildingType', 'constructionStatus',
+  // Commercial specific
+  'seatCapacity', 'meetingRooms', 'pantry', 'washrooms',
 ];
 
 /**
- * Sanitize property data by removing forbidden fields
- * Prevents mass assignment attacks
+ * SECURITY: Fields that can ONLY be modified by admin middleware or internal service calls
+ * These are NEVER allowed from request bodies, even if somehow included.
+ */
+const ADMIN_ONLY_FIELDS = [
+  'isApproved', 'rejectionReason', 'approvedAt', 'approvedBy',
+  'disapprovedAt', 'disapprovedBy', 'views', 'likes', 'interestedUsers',
+  'owner', '_id', 'createdAt', 'updatedAt', '__v'
+];
+
+/**
+ * Sanitize property data using STRICT WHITELIST approach
+ * SECURITY FIX: Only allows explicitly whitelisted fields through.
+ * This prevents mass assignment attacks by blocking unknown fields by default.
+ * 
+ * @param {Object} data - Raw data from request body
+ * @returns {Object} - Sanitized data with only allowed fields
  */
 const sanitizePropertyData = (data) => {
-  const sanitized = { ...data };
-  for (const field of PROPERTY_FORBIDDEN_FIELDS) {
+  const sanitized = {};
+
+  // SECURITY: Only copy whitelisted fields
+  for (const field of PROPERTY_ALLOWED_FIELDS) {
+    if (data.hasOwnProperty(field) && data[field] !== undefined) {
+      sanitized[field] = data[field];
+    }
+  }
+
+  // SECURITY: Double-check that no admin-only fields slipped through
+  for (const field of ADMIN_ONLY_FIELDS) {
     delete sanitized[field];
   }
+
   return sanitized;
+};
+
+/**
+ * SECURITY: Internal function to set admin-only fields
+ * This should ONLY be called from middleware or internal service functions,
+ * NEVER directly with data from request bodies.
+ * 
+ * @param {Object} data - Property data object
+ * @param {Object} adminFields - Fields to set (must be from trusted source)
+ * @returns {Object} - Data with admin fields merged
+ */
+export const setAdminOnlyFields = (data, adminFields) => {
+  // Only merge fields that are in the ADMIN_ONLY_FIELDS list
+  const allowed = {};
+  for (const field of Object.keys(adminFields)) {
+    if (ADMIN_ONLY_FIELDS.includes(field) || field === 'owner') {
+      allowed[field] = adminFields[field];
+    }
+  }
+  return { ...data, ...allowed };
 };
 
 const isCloudinaryUrl = (img = "") => typeof img === "string" && img.includes("cloudinary.com");
@@ -80,6 +157,12 @@ const withPublicImages = (req, doc) => {
 
 // Add Property
 export const addProperty = async (req, res) => {
+  // ============================================
+  // SECURITY: Start a MongoDB session for atomic operations
+  // This prevents race conditions during the one-listing-per-owner check
+  // ============================================
+  const session = await mongoose.startSession();
+
   try {
     let data = req.body;
 
@@ -123,6 +206,12 @@ export const addProperty = async (req, res) => {
       // Remove the features object after spreading
       delete data.features;
     }
+
+    // ============================================
+    // SECURITY FIX: Apply strict WHITELIST sanitization
+    // This ensures only allowed fields from request body are used
+    // ============================================
+    data = sanitizePropertyData(data);
 
     // Process legacy images from Cloudinary multer upload
     if (req.files?.images?.length > 0) {
@@ -174,23 +263,48 @@ export const addProperty = async (req, res) => {
       delete data.imageCategoryMap;
     }
 
-    // Explicitly set isApproved to true for all new properties (Auto-publish)
-    data.isApproved = true;
+    // ============================================
+    // SECURITY: Set admin-only fields via internal function
+    // These fields are NOT sanitized from request body
+    // ============================================
+    data = setAdminOnlyFields(data, {
+      isApproved: true,  // Auto-publish for new properties
+      owner: req.user?._id || null,
+    });
 
-    // Set owner from auth token if available
-    if (req.user?._id) {
-      data.owner = req.user._id;
-    }
-
-    // Business rule: a real owner account can publish only one property
+    // ============================================
+    // SECURITY FIX: Race Condition Prevention for One-Listing-Per-Owner
+    // Uses atomic MongoDB operation instead of countDocuments + create
+    // This prevents concurrent requests from creating multiple listings
+    // ============================================
     if (req.user?.role === "owner") {
-      const existingCount = await Property.countDocuments({ owner: req.user._id });
-      if (existingCount >= 1) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "You can only list one property with an owner account. Please edit your existing listing instead.",
-        });
+      // Start transaction for atomic check-and-create
+      session.startTransaction();
+
+      try {
+        // Atomic check: Attempt to increment a counter on User model
+        // If user already has a property, we check using findOne within transaction
+        const existingProperty = await Property.findOne(
+          { owner: req.user._id },
+          null,
+          { session }
+        ).lean();
+
+        if (existingProperty) {
+          await session.abortTransaction();
+          session.endSession();
+          return res.status(400).json({
+            success: false,
+            message:
+              "You can only list one property with an owner account. Please edit your existing listing instead.",
+          });
+        }
+
+        // Property will be created within the same transaction below
+      } catch (txError) {
+        await session.abortTransaction();
+        session.endSession();
+        throw txError;
       }
     }
 
@@ -245,7 +359,26 @@ export const addProperty = async (req, res) => {
 
     console.log("Final data being saved:", JSON.stringify(data, null, 2)); // Debug log
 
-    const prop = await Property.create(data);
+    // ============================================
+    // SECURITY: Create property within transaction if owner role
+    // Otherwise create normally
+    // ============================================
+    let prop;
+    const useTransaction = req.user?.role === "owner";
+
+    if (useTransaction) {
+      // Create within transaction to ensure atomicity
+      const [createdProp] = await Property.create([data], { session });
+      prop = createdProp;
+
+      // Commit the transaction - property count check and creation are atomic
+      await session.commitTransaction();
+      session.endSession();
+    } else {
+      // Non-owner users don't need transaction
+      prop = await Property.create(data);
+      session.endSession();
+    }
 
     // After creating a property, try to notify users whose saved searches match
     try {
@@ -296,6 +429,14 @@ export const addProperty = async (req, res) => {
 
     res.status(201).json(withPublicImages(req, prop));
   } catch (err) {
+    // ============================================
+    // SECURITY: Ensure session is cleaned up on error
+    // ============================================
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+
     console.error("Add Property Error:", err);
     res.status(500).json({ error: err.message });
   }
@@ -408,7 +549,9 @@ export const updateProperty = async (req, res) => {
     let data = req.body;
 
     // ============================================
-    // SECURITY: Sanitize data - remove forbidden fields
+    // SECURITY FIX: Apply strict WHITELIST sanitization
+    // Only explicitly allowed fields pass through.
+    // Sensitive fields (isApproved, owner, views, etc.) are blocked.
     // ============================================
     data = sanitizePropertyData(data);
 

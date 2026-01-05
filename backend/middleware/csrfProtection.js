@@ -79,20 +79,34 @@ export const setCsrfToken = (req, res, next) => {
 /**
  * Endpoint handler to get a fresh CSRF token
  * GET /api/csrf-token
+ * 
+ * SECURITY FIX: Token is NO LONGER returned in the JSON response body.
+ * The token is ONLY sent via the non-HttpOnly cookie.
+ * 
+ * This properly implements the Double Submit Cookie pattern:
+ * 1. Backend sets token in non-HttpOnly cookie (accessible to JavaScript)
+ * 2. Frontend reads cookie and sends token in X-CSRF-Token header
+ * 3. Backend validates that header matches cookie
+ * 
+ * Returning the token in the response body defeats the purpose of the pattern
+ * as it could be captured by malicious scripts in certain attack scenarios.
  */
 export const getCsrfTokenHandler = (req, res) => {
     // Generate fresh token
     const token = generateToken();
 
-    // Set the cookie
+    // Set the cookie (non-HttpOnly so JavaScript can read it)
     res.cookie(CSRF_COOKIE_NAME, token, getCookieOptions());
 
+    // ============================================
+    // SECURITY FIX: Do NOT return token in response body
+    // The frontend must read it from the cookie instead
+    // ============================================
     res.status(200).json({
         success: true,
-        message: 'CSRF token generated',
-        // Token is in the cookie, but we also return it in the response
-        // for clients that have trouble reading cookies
-        csrfToken: token,
+        message: 'CSRF token refreshed. Read the token from the csrf_token cookie.',
+        // SECURITY: Token intentionally omitted from response body
+        // csrfToken: token,  // <-- REMOVED for security
     });
 };
 

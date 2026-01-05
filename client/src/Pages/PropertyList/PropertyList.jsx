@@ -834,15 +834,40 @@ const PropertyPage = () => {
   };
 
   // Component to fit map bounds to markers
+  // FIX: Use a ref to track if bounds have been set to prevent re-centering on hover
+  const boundsSetRef = useRef(false);
+  const lastPropertiesLengthRef = useRef(0);
+  const lastDroppedPinRef = useRef(null);
+
   const MapBoundsUpdater = ({ properties }) => {
     const map = useMap();
 
     useEffect(() => {
-      if (droppedPin) {
+      // Only update bounds if:
+      // 1. droppedPin has changed, OR
+      // 2. Properties array length has changed significantly, OR
+      // 3. Bounds haven't been set yet
+      const droppedPinChanged = JSON.stringify(droppedPin) !== JSON.stringify(lastDroppedPinRef.current);
+      const propertiesLengthChanged = properties.length !== lastPropertiesLengthRef.current;
+
+      if (droppedPin && droppedPinChanged) {
         map.setView([droppedPin.lat, droppedPin.lng], 14);
-      } else if (properties.length > 0) {
+        lastDroppedPinRef.current = droppedPin;
+        boundsSetRef.current = true;
+      } else if (properties.length > 0 && (!boundsSetRef.current || propertiesLengthChanged)) {
         const bounds = L.latLngBounds(properties.map(p => [p.lat, p.lng]));
         map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+        lastPropertiesLengthRef.current = properties.length;
+        boundsSetRef.current = true;
+      }
+
+      // Reset when droppedPin is cleared
+      if (!droppedPin && lastDroppedPinRef.current) {
+        lastDroppedPinRef.current = null;
+        if (properties.length > 0) {
+          const bounds = L.latLngBounds(properties.map(p => [p.lat, p.lng]));
+          map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+        }
       }
     }, [properties, map, droppedPin]);
 

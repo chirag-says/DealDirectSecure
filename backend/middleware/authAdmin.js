@@ -76,6 +76,9 @@ const parseUserAgent = (userAgent = "") => {
 
 /**
  * Create a new admin session
+ * 
+ * SECURITY FIX: mfaVerified is NEVER auto-set to true.
+ * All admin sessions must complete MFA verification explicitly.
  */
 export const createSession = async (admin, req) => {
   const sessionToken = AdminSession.generateToken();
@@ -84,9 +87,11 @@ export const createSession = async (admin, req) => {
   const userAgent = req.headers["user-agent"] || "";
   const deviceInfo = parseUserAgent(userAgent);
 
-  // Handle legacy admins that don't have MFA field
-  const mfaEnabled = admin.mfa?.enabled ?? false;
-
+  // ============================================
+  // SECURITY FIX: mfaVerified is ALWAYS false at session creation.
+  // Every admin MUST complete MFA verification regardless of role type.
+  // This prevents bypass attacks via legacy admin detection.
+  // ============================================
   const session = await AdminSession.create({
     admin: admin._id,
     sessionToken,
@@ -95,7 +100,7 @@ export const createSession = async (admin, req) => {
     userAgent,
     deviceInfo,
     expiresAt: new Date(Date.now() + COOKIE_CONFIG.options.maxAge),
-    mfaVerified: !mfaEnabled, // If MFA not enabled, consider it verified
+    mfaVerified: false, // SECURITY: Always false - MFA must be verified explicitly
   });
 
   return { session, sessionToken };
@@ -143,6 +148,11 @@ export const clearMfaPendingCookie = (res) => {
  * Main admin protection middleware
  * Strictly verifies session integrity against the database
  * Supports both HttpOnly cookies (preferred) and Bearer tokens (fallback for migration)
+ * 
+ * SECURITY FIXES:
+ * - Removed all legacy admin bypass logic
+ * - MFA is now required for ALL admin sessions
+ * - No auto-setting of mfaVerified to true
  */
 export const protectAdmin = async (req, res, next) => {
   const startTime = Date.now();
@@ -206,32 +216,52 @@ export const protectAdmin = async (req, res, next) => {
       });
     }
 
-    // Note: Fingerprint verification disabled - was causing issues across tabs/requests
-    // In production, consider implementing a more lenient fingerprint check
+    // ============================================
+    // SECURITY: Lenient session fingerprint validation
+    // Validates User-Agent + truncated IP range for session integrity
+    // ============================================
+    const fingerprintValidation = session.validateFingerprintLenient(req);
+    if (!fingerprintValidation.valid) {
+      // Major anomaly detected - revoke session
+      await session.revoke(`fingerprint_anomaly: ${fingerprintValidation.reason}`);
+      clearSessionCookie(res);
 
-    // Check MFA verification status
-    // Skip for legacy admins (those with string roles didn't have MFA)
+      await AuditLog.log({
+        admin: session.admin,
+        category: "authentication",
+        action: "session_revoked_fingerprint",
+        description: `Session revoked due to major fingerprint anomaly: ${fingerprintValidation.reason}`,
+        req,
+        result: "denied",
+        severity: "high",
+        isSecurityEvent: true,
+      });
+
+      return res.status(401).json({
+        success: false,
+        message: "Session verification failed. Please log in again.",
+        code: "SESSION_FINGERPRINT_MISMATCH",
+      });
+    }
+
+    // Refresh fingerprint on minor changes (browser version updates, etc.)
+    if (fingerprintValidation.refreshed) {
+      console.log("[AUTH] Session fingerprint refreshed due to minor changes");
+    }
+
+    // ============================================
+    // SECURITY FIX: MFA is ALWAYS required for ALL admin sessions
+    // Removed legacy admin bypass logic completely
+    // ============================================
     console.log("[AUTH] Session mfaVerified:", session.mfaVerified);
     if (!session.mfaVerified) {
-      // Check if admin is a legacy admin with string role
-      const adminCheck = await Admin.findById(session.admin);
-      console.log("[AUTH] Admin role type:", typeof adminCheck?.role, "value:", adminCheck?.role);
-      const isLegacyAdmin = typeof adminCheck?.role === "string";
-
-      if (!isLegacyAdmin) {
-        console.log("[AUTH] Not a legacy admin - requiring MFA");
-        return res.status(403).json({
-          success: false,
-          message: "Multi-factor authentication required.",
-          code: "MFA_REQUIRED",
-          requiresMfa: true,
-        });
-      }
-
-      // For legacy admins, auto-set mfaVerified to true
-      console.log("[AUTH] Legacy admin detected - setting mfaVerified to true");
-      session.mfaVerified = true;
-      await session.save();
+      console.log("[AUTH] MFA not verified - requiring MFA for all admin sessions");
+      return res.status(403).json({
+        success: false,
+        message: "Multi-factor authentication required.",
+        code: "MFA_REQUIRED",
+        requiresMfa: true,
+      });
     }
 
     // Get admin from database
