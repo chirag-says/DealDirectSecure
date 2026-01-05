@@ -154,6 +154,9 @@ export const authMiddleware = async (req, res, next) => {
 
 /**
  * Handle JWT-based authentication (fallback for API clients)
+ * 
+ * SECURITY FIX: Now validates tokens against UserSession store
+ * to ensure revoked sessions (logout/ban) are rejected
  */
 const handleJWTAuth = async (req, res, next, token) => {
   try {
@@ -180,6 +183,75 @@ const handleJWTAuth = async (req, res, next, token) => {
       }
       throw err;
     }
+
+    // ============================================
+    // SECURITY FIX: Validate token against UserSession store
+    // This ensures:
+    // 1. Logged out tokens are rejected
+    // 2. Banned users' tokens are rejected
+    // 3. Password-changed tokens are rejected
+    // ============================================
+
+    // Check if there's an active session for this token
+    // The sessionId should be embedded in the JWT payload
+    if (decoded.sessionId) {
+      const session = await UserSession.findOne({
+        _id: decoded.sessionId,
+        isRevoked: { $ne: true },
+        expiresAt: { $gt: new Date() }
+      }).populate('user');
+
+      if (!session) {
+        console.warn('[Auth] JWT references revoked/expired session');
+        return res.status(401).json({
+          success: false,
+          message: "Session has been revoked. Please login again.",
+          code: "SESSION_REVOKED",
+        });
+      }
+
+      // Use user from session
+      const user = session.user;
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: "User not found. Account may have been deleted.",
+          code: "USER_NOT_FOUND",
+        });
+      }
+
+      // Check if user is blocked
+      if (user.isBlocked) {
+        // Revoke the session
+        await UserSession.revokeSession(session._id, "user_blocked");
+        return res.status(403).json({
+          success: false,
+          message: "Your account has been blocked. Contact support.",
+          code: "ACCOUNT_BLOCKED",
+        });
+      }
+
+      // Check if user is active
+      if (user.isActive === false) {
+        await UserSession.revokeSession(session._id, "user_deactivated");
+        return res.status(403).json({
+          success: false,
+          message: "Your account has been deactivated. Contact support.",
+          code: "ACCOUNT_DEACTIVATED",
+        });
+      }
+
+      // Attach user to request (sanitized)
+      req.user = sanitizeUser(user);
+      req.userSession = session;
+      return next();
+    }
+
+    // ============================================
+    // LEGACY FALLBACK: For older tokens without sessionId
+    // Still validate user status but log warning
+    // ============================================
+    console.warn('[Auth] Legacy JWT without sessionId detected - consider re-login');
 
     // Get user from database with security fields
     const user = await User.findById(decoded.id).select(User.getSafeFields());

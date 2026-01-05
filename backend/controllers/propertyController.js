@@ -454,15 +454,34 @@ export const addProperty = async (req, res) => {
     }
     session.endSession();
 
-    console.error("Add Property Error:", err);
-    res.status(500).json({ error: err.message });
+    console.error("[Property] Add error:", err.message);
+    res.status(500).json({ success: false, message: 'Failed to add property' });
   }
 };
 
-// Get All
+// Get All (PUBLIC ENDPOINT)
+// ============================================
+// SECURITY FIX: Critical Data Leak Prevention
+// Previously returned ALL properties including drafts, rejected, banned
+// Now strictly filters to only approved + active properties
+// ============================================
 export const getProperties = async (req, res) => {
   try {
-    const list = await Property.find()
+    // SECURITY: Only return properties that are:
+    // 1. Approved by admin (isApproved: true)
+    // 2. Not soft-deleted (isActive: true or not set)
+    // 3. Not banned/suspended
+    const securityFilter = {
+      isApproved: true,
+      $or: [
+        { isActive: { $ne: false } },
+        { isActive: { $exists: false } }
+      ],
+      isBanned: { $ne: true },
+      status: { $nin: ['rejected', 'suspended', 'draft', 'pending'] }
+    };
+
+    const list = await Property.find(securityFilter)
       .populate("category")
       .populate("subcategory")
       .populate("propertyType")
@@ -470,29 +489,60 @@ export const getProperties = async (req, res) => {
 
     res.json(list.map((item) => withPublicImages(req, item)));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Properties] Get all error:', err.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch properties'
+    });
   }
 };
 
-// Get by ID
+// Get by ID (PUBLIC ENDPOINT)
+// ============================================
+// SECURITY FIX: Prevent viewing unapproved/banned properties
+// ============================================
 export const getPropertyById = async (req, res) => {
   try {
-    // Increment view count
-    const prop = await Property.findByIdAndUpdate(
-      req.params.id,
-      { $inc: { views: 1 } },
-      { new: true }
-    )
+    // First, fetch the property to check its status
+    const prop = await Property.findById(req.params.id)
       .populate("category")
       .populate("subcategory")
       .populate("propertyType")
       .populate("owner", "name email phone profileImage");
 
-    if (!prop) return res.status(404).json({ message: "Not found" });
+    if (!prop) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found"
+      });
+    }
+
+    // SECURITY: Check if property is publicly viewable
+    // Allow viewing if: approved AND not banned AND active
+    const isPubliclyViewable =
+      prop.isApproved === true &&
+      prop.isBanned !== true &&
+      prop.isActive !== false &&
+      !['rejected', 'suspended', 'draft', 'pending'].includes(prop.status);
+
+    if (!isPubliclyViewable) {
+      // Don't reveal that the property exists but is hidden
+      return res.status(404).json({
+        success: false,
+        message: "Property not found"
+      });
+    }
+
+    // Increment view count only for valid public views
+    await Property.findByIdAndUpdate(req.params.id, { $inc: { views: 1 } });
 
     res.json(withPublicImages(req, prop));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Property] Get by ID error:', err.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch property'
+    });
   }
 };
 
@@ -844,7 +894,7 @@ export const getAllPropertiesList = async (req, res) => {
 
     res.status(200).json({ success: true, data: properties.map((item) => withPublicImages(req, item)) });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -876,7 +926,7 @@ export const getMyProperties = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in getMyProperties:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -917,7 +967,7 @@ export const deleteMyProperty = async (req, res) => {
 
     res.status(200).json({ success: true, message: "Property deleted successfully" });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -1157,7 +1207,7 @@ export const updateMyProperty = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in updateMyProperty:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -1261,7 +1311,7 @@ export const markInterested = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in markInterested:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -1301,7 +1351,7 @@ export const removeInterest = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in removeInterest:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -1327,7 +1377,7 @@ export const checkInterested = async (req, res) => {
 
     res.status(200).json({ success: true, isInterested });
   } catch (error) {
-    res.status(500).json({ success: false, isInterested: false, message: error.message });
+    res.status(500).json({ success: false, isInterested: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -1374,7 +1424,7 @@ export const getSavedProperties = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in getSavedProperties:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -1412,7 +1462,7 @@ export const removeSavedProperty = async (req, res) => {
     res.status(200).json({ success: true, message: "Property removed from saved" });
   } catch (error) {
     console.error("Error in removeSavedProperty:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -1489,7 +1539,8 @@ export const searchProperties = async (req, res) => {
       pages: Math.ceil(total / limit),
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Property] Search error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to search properties' });
   }
 };
 
@@ -1586,8 +1637,8 @@ export const getSuggestions = async (req, res) => {
 
     res.json({ suggestions: result.slice(0, 8) });
   } catch (err) {
-    console.error("Error in getSuggestions:", err);
-    res.status(500).json({ suggestions: [], error: err.message });
+    console.error("[Property] Suggestions error:", err.message);
+    res.status(500).json({ success: false, suggestions: [] });
   }
 };
 
@@ -1632,8 +1683,8 @@ export const filterProperties = async (req, res) => {
 
     res.json({ success: true, data: properties.map((item) => withPublicImages(req, item)) });
   } catch (err) {
-    console.error("Error in filterProperties:", err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error("[Property] Filter error:", err.message);
+    res.status(500).json({ success: false, message: 'Failed to filter properties' });
   }
 };
 
@@ -1678,7 +1729,7 @@ export const getOwnersWithProjects = async (req, res) => {
 
   } catch (error) {
     console.error("Error fetching owners with projects:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -1759,7 +1810,7 @@ export const getAdminProperties = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Admin Filter Error:", err);
-    res.status(500).json({ error: err.message });
+    console.error("[Property] Admin filter error:", err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch properties' });
   }
 };

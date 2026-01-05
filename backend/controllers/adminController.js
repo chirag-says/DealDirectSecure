@@ -146,7 +146,7 @@ export const registerAdmin = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message || "Failed to register admin",
+      message: 'An unexpected error occurred' || "Failed to register admin",
     });
   }
 };
@@ -772,7 +772,7 @@ export const getAdminProfile = async (req, res) => {
     console.error("Get profile error:", error);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: 'An unexpected error occurred',
     });
   }
 };
@@ -923,7 +923,7 @@ export const changePassword = async (req, res) => {
     console.error("Change password error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "Failed to change password",
+      message: 'An unexpected error occurred' || "Failed to change password",
     });
   }
 };
@@ -1095,7 +1095,7 @@ export const getDashboardStats = async (req, res) => {
     });
   } catch (error) {
     console.error("Dashboard stats error:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -1169,7 +1169,7 @@ export const getAdminLeads = async (req, res) => {
     });
   } catch (error) {
     console.error("Admin leads error:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -1210,7 +1210,7 @@ export const updateAdminLeadStatus = async (req, res) => {
       data: lead,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -1259,7 +1259,7 @@ export const getAdminReports = async (req, res) => {
     });
   } catch (error) {
     console.error("Admin reports error:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -1306,7 +1306,7 @@ export const updateReportStatus = async (req, res) => {
     });
   } catch (error) {
     console.error("Update report error:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -1330,7 +1330,16 @@ export const getAuditLogs = async (req, res) => {
     const filter = {};
 
     if (category) filter.category = category;
-    if (action) filter.action = { $regex: action, $options: "i" };
+    // ============================================
+    // SECURITY FIX: ReDoS/Injection Prevention
+    // Previously: action was passed directly to $regex
+    // Now: Escape special regex characters before creating pattern
+    // ============================================
+    if (action) {
+      // Escape special regex characters to prevent ReDoS
+      const escapedAction = action.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.action = { $regex: escapedAction, $options: "i" };
+    }
     if (adminId) filter.admin = adminId;
     if (severity) filter.severity = severity;
     if (securityOnly === "true") filter.isSecurityEvent = true;
@@ -1361,7 +1370,7 @@ export const getAuditLogs = async (req, res) => {
     });
   } catch (error) {
     console.error("Get audit logs error:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 

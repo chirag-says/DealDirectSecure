@@ -12,7 +12,9 @@ dotenv.config();
 
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
+// SECURITY FIX: Updated import for multer-storage-cloudinary v2.x
+// CloudinaryStorage is exported as default in v2.x
+import CloudinaryStorage from "multer-storage-cloudinary";
 import { Readable } from "stream";
 
 // ============================================

@@ -164,7 +164,7 @@ export const createLead = async (userId, propertyId, userDetails) => {
 //     });
 //   } catch (error) {
 //     console.error("Error fetching leads:", error);
-//     res.status(500).json({ success: false, message: error.message });
+//     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
 //   }
 // };
 
@@ -186,7 +186,7 @@ export const getPropertyLeads = async (req, res) => {
 
     res.status(200).json({ success: true, data: leads });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -429,7 +429,7 @@ export const getLeadAnalytics = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching analytics:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -515,7 +515,7 @@ export const getOwnerLeads = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching leads:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
 
@@ -727,7 +727,7 @@ export const exportLeadsToExcel = async (req, res) => {
     console.error('Error exporting leads to Excel:', error);
     // Important: If headers are already sent, don't try to send JSON
     if (!res.headersSent) {
-      res.status(500).json({ success: false, message: error.message || 'Server error during export.' });
+      res.status(500).json({ success: false, message: 'An unexpected error occurred' || 'Server error during export.' });
     }
   }
 };

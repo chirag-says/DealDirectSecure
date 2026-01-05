@@ -166,10 +166,29 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 // ============================================
 // SECURITY FIX: Trust Proxy Configuration
-// Configure Express to trust only the first proxy hop
-// This ensures req.ip contains the verified client IP
+// 
+// WARNING: 'trust proxy' = 1 blindly trusts the last hop.
+// This can cause issues with multiple proxy layers (CDN + LB)
+// where rate limiting applies to LB IP instead of client.
+//
+// Options:
+// - 'loopback' = Trust only localhost (safest for single-proxy setups)
+// - Specific IPs = Trust only known proxy IPs (recommended for production)
+// - Number N = Trust N hops (risky if miscounted)
 // ============================================
-app.set('trust proxy', 1); // Trust only 1 proxy hop (e.g., Nginx, Cloudflare)
+if (isProduction) {
+  // Production: Only trust proxies from specific IPs/subnets
+  // Configure TRUSTED_PROXIES env var with comma-separated IPs
+  const trustedProxies = process.env.TRUSTED_PROXIES
+    ? process.env.TRUSTED_PROXIES.split(',').map(ip => ip.trim())
+    : 'loopback'; // Default: only trust localhost reverse proxy
+
+  app.set('trust proxy', trustedProxies);
+  console.log(`✅ Trust proxy configured:`, trustedProxies);
+} else {
+  // Development: Trust first hop (local nginx/docker)
+  app.set('trust proxy', 1);
+}
 
 // ============================================
 // DOMAIN WHITELIST - Environment Aware
