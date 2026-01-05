@@ -266,21 +266,34 @@ export const loginAdmin = async (req, res) => {
       });
     }
 
-    // Check if MFA setup is required (for new admins or policy enforcement)
+    // ============================================
+    // SECURITY FIX: MFA Setup Race Condition Prevention
+    // When MFA is required but not enabled (new admin first login),
+    // DO NOT set mfaVerified = true. Instead, issue a special
+    // session that can ONLY be used to set up MFA.
+    // The protectAdmin middleware will block all other routes.
+    // ============================================
     if (mfaRequired && !mfaEnabled) {
-      // Allow login but flag that MFA setup is needed
-      session.mfaVerified = true;
+      // Session is created with mfaVerified = false (default)
+      // Admin can ONLY access: /admin/mfa/setup endpoint
+      // All other protected routes will return 403 MFA_REQUIRED
+
+      // Set a special flag to indicate MFA setup is pending
+      session.mfaSetupPending = true;
+      session.mfaVerified = false; // SECURITY: Explicitly false until setup complete
       await session.save();
 
+      // Set the session cookie (limited access)
       setSessionCookie(res, sessionToken);
       await admin.resetLoginAttempts(clientIp);
 
-      await AuditLog.logAuth(admin._id, "login_success_mfa_setup_required", req, "success");
+      await AuditLog.logAuth(admin._id, "login_success_mfa_setup_required", req, "partial");
 
       return res.status(200).json({
         success: true,
-        message: "Login successful. MFA setup is required.",
+        message: "Login successful. MFA setup is required before accessing admin features.",
         requiresMfaSetup: true,
+        mfaSetupPending: true, // Client should redirect to MFA setup
         mustChangePassword,
         admin: {
           _id: admin._id,

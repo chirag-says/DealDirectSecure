@@ -69,6 +69,12 @@ const adminSessionSchema = new mongoose.Schema(
             type: Boolean,
             default: false,
         },
+        // SECURITY FIX: Track if MFA setup is pending
+        // When true, admin can only access MFA setup endpoints
+        mfaSetupPending: {
+            type: Boolean,
+            default: false,
+        },
         // Session status
         isActive: {
             type: Boolean,

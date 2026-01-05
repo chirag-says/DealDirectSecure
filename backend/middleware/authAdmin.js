@@ -247,17 +247,42 @@ export const protectAdmin = async (req, res, next) => {
 
     // ============================================
     // SECURITY FIX: MFA is ALWAYS required for ALL admin sessions
-    // Removed legacy admin bypass logic completely
+    // 
+    // Special case: mfaSetupPending = true means admin needs to set up MFA
+    // In this case, ONLY allow access to MFA setup endpoints (/mfa/setup, /mfa/verify-setup)
     // ============================================
-    console.log("[AUTH] Session mfaVerified:", session.mfaVerified);
+    console.log("[AUTH] Session mfaVerified:", session.mfaVerified, "mfaSetupPending:", session.mfaSetupPending);
+
     if (!session.mfaVerified) {
-      console.log("[AUTH] MFA not verified - requiring MFA for all admin sessions");
-      return res.status(403).json({
-        success: false,
-        message: "Multi-factor authentication required.",
-        code: "MFA_REQUIRED",
-        requiresMfa: true,
-      });
+      // Check if this is an MFA setup pending session
+      if (session.mfaSetupPending) {
+        // Allow ONLY MFA setup endpoints
+        const allowedPaths = ['/mfa/setup', '/mfa/verify-setup', '/mfa/generate-secret'];
+        const isAllowedPath = allowedPaths.some(path => req.path.includes(path));
+
+        if (!isAllowedPath) {
+          console.log("[AUTH] MFA setup pending - blocking access to:", req.path);
+          return res.status(403).json({
+            success: false,
+            message: "MFA setup is required before accessing admin features.",
+            code: "MFA_SETUP_REQUIRED",
+            requiresMfaSetup: true,
+            mfaSetupPending: true,
+          });
+        }
+
+        // Allow access to MFA setup endpoints
+        console.log("[AUTH] MFA setup pending - allowing access to:", req.path);
+      } else {
+        // Regular MFA verification required
+        console.log("[AUTH] MFA not verified - requiring MFA for all admin sessions");
+        return res.status(403).json({
+          success: false,
+          message: "Multi-factor authentication required.",
+          code: "MFA_REQUIRED",
+          requiresMfa: true,
+        });
+      }
     }
 
     // Get admin from database
