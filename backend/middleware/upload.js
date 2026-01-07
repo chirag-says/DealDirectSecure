@@ -203,7 +203,7 @@ const secureFileFilter = (req, file, cb) => {
 // Track concurrent uploads to prevent DoS
 let activeUploads = 0;
 const MAX_CONCURRENT_UPLOADS = 10; // Max simultaneous upload requests
-const MAX_MEMORY_USAGE_PERCENT = 80; // Reject uploads if heap is > 80% used
+const MAX_MEMORY_USAGE_PERCENT = 95; // Reject uploads if heap is > 95% used
 
 /**
  * Check if server has memory capacity for more uploads
@@ -229,8 +229,9 @@ export const uploadConcurrencyGuard = (req, res, next) => {
     });
   }
 
-  // Check memory pressure
-  if (!checkMemoryPressure()) {
+  // Check memory pressure (SKIP in development mode - only enforce in production)
+  const isDev = process.env.NODE_ENV !== 'production';
+  if (!isDev && !checkMemoryPressure()) {
     console.warn(`⚠️ SECURITY: Memory pressure detected, rejecting upload`);
     return res.status(503).json({
       success: false,
@@ -272,15 +273,15 @@ export const uploadConcurrencyGuard = (req, res, next) => {
 export const memoryUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 5 * 1024 * 1024, // REDUCED: 5MB per file (down from 10MB)
-    files: 5, // REDUCED: 5 files max (down from 10)
-    parts: 15, // Limit total multipart fields
+    fileSize: 10 * 1024 * 1024, // 10MB per file
+    files: 50, // Max 50 files (for categorized images)
+    parts: 100, // Max 100 multipart fields (form data + files)
   },
   fileFilter: secureFileFilter,
 });
 
 // SECURITY FIX: Track total upload size per request
-const MAX_TOTAL_UPLOAD_SIZE = 20 * 1024 * 1024; // REDUCED: 20MB total per request
+const MAX_TOTAL_UPLOAD_SIZE = 100 * 1024 * 1024; // 100MB total per request
 
 /**
  * SECURITY: Middleware to validate uploaded file buffers
@@ -382,22 +383,30 @@ export const validateAndUploadToCloudinary = async (req, res, next) => {
       const folder = isProfileImage ? "dealdirect/profiles" : "dealdirect/properties";
 
       return new Promise((resolve, reject) => {
+        // Add timeout for Cloudinary upload (60 seconds per file)
+        const uploadTimeout = setTimeout(() => {
+          reject(new Error(`Upload timeout for ${file.originalname} - Cloudinary is not responding`));
+        }, 60000);
+
         const uploadOptions = {
           folder,
           resource_type: "image",
           transformation: isProfileImage
             ? [{ width: 400, height: 400, crop: "fill", gravity: "face", quality: "auto" }]
             : [{ width: 1200, height: 800, crop: "limit", quality: "auto" }],
+          timeout: 60000, // Cloudinary SDK timeout
         };
 
         // Create upload stream
         const uploadStream = cloudinary.uploader.upload_stream(
           uploadOptions,
           (error, result) => {
+            clearTimeout(uploadTimeout);
             if (error) {
               console.error('Cloudinary upload error:', error);
               reject(error);
             } else {
+              console.log(`✅ Uploaded: ${file.originalname} -> ${result.secure_url}`);
               resolve({
                 fieldname,
                 originalname: file.originalname,

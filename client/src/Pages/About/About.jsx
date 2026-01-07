@@ -1,6 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "react-toastify";
 import {
   FaBuilding,
   FaHandshake,
@@ -17,91 +16,26 @@ import {
 } from "react-icons/fa";
 import { BsGraphUpArrow, BsHouseDoor } from "react-icons/bs";
 import { useAuth } from "../../context/AuthContext";
-import AuthModal from "../../Components/AuthModal/AuthModal";
-import EmailVerificationModal from "../../Components/EmailVerificationModal/EmailVerificationModal";
-import api from "../../utils/api";
 
 export default function About() {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
 
-  // Same logic as Navbar's handleRegisterProperty
-  const handleRegisterProperty = async () => {
+  // Navigate to login if not authenticated, otherwise to add-property
+  const handleListProperty = () => {
     if (!isAuthenticated) {
-      setIsAuthModalOpen(true);
-      return;
+      navigate('/login', { state: { from: '/add-property' } });
+    } else {
+      navigate('/add-property');
     }
-
-    // Check if user is a buyer (user role) - needs email verification to list property
-    const userRole = (user.role || "user").toLowerCase();
-
-    if (userRole === "user") {
-      // Buyer needs to verify email first
-      setIsVerificationModalOpen(true);
-      return;
-    }
-
-    // For agents, navigate directly
-    if (userRole === "agent") {
-      navigate("/add-property");
-      return;
-    }
-
-    // For owners, enforce: only one property can be listed
-    if (userRole === "owner") {
-      try {
-        const res = await api.get('/properties/my-properties');
-
-        const count =
-          typeof res.data?.count === "number"
-            ? res.data.count
-            : Array.isArray(res.data?.data)
-              ? res.data.data.length
-              : 0;
-
-        if (count >= 1) {
-          toast.info(
-            "You can list only one property as an owner. Please edit your existing listing from My Properties.",
-          );
-          navigate("/my-properties");
-          return;
-        }
-      } catch (error) {
-        console.error("Error checking existing properties:", error);
-        // If the check fails, fall back to allowing navigation so user isn't blocked unexpectedly
-      }
-
-      navigate("/add-property");
-    }
-  };
-
-  const handleVerificationSuccess = () => {
-    // After successful verification, navigate to add property
-    navigate("/add-property");
   };
 
   return (
     <div className="font-sans text-gray-900 bg-white min-h-screen">
-
-      {/* Auth Modal */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-      />
-
-      {/* Email Verification Modal */}
-      <EmailVerificationModal
-        isOpen={isVerificationModalOpen}
-        onClose={() => setIsVerificationModalOpen(false)}
-        user={user}
-        onVerified={handleVerificationSuccess}
-      />
 
       {/* --- HERO SECTION --- */}
       <section className="relative py-16 md:py-24 bg-white overflow-hidden">
@@ -328,7 +262,7 @@ export default function About() {
               Browse Properties <FaArrowRight className="text-sm" />
             </button>
             <button
-              onClick={handleRegisterProperty}
+              onClick={handleListProperty}
               className="bg-white text-gray-900 px-8 py-4 rounded-full font-bold border border-gray-200 hover:border-red-300 hover:text-red-600 transition-all duration-300 shadow-md hover:shadow-lg"
             >
               List Your Property

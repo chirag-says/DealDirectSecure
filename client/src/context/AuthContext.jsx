@@ -82,20 +82,29 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         setAuthErrorHandler((errorInfo) => {
             if (errorInfo.type === 'UNAUTHORIZED') {
-                // Session expired - clear state and redirect
-                setUser(null);
-                setRequiresMfa(false);
-                setRequiresPasswordChange(false);
-                setPendingAuthData(null);
+                // Only redirect to login if user was previously authenticated (session expired)
+                // Do NOT redirect if user was never logged in (e.g., visiting public pages)
+                if (user) {
+                    // Session expired - clear state and redirect
+                    setUser(null);
+                    setRequiresMfa(false);
+                    setRequiresPasswordChange(false);
+                    setPendingAuthData(null);
 
-                // Redirect to login with message
-                navigate('/login', {
-                    state: {
-                        message: errorInfo.message,
-                        from: window.location.pathname,
-                    },
-                    replace: true
-                });
+                    // Redirect to login with message
+                    navigate('/login', {
+                        state: {
+                            message: errorInfo.message || 'Your session has expired. Please log in again.',
+                            from: window.location.pathname,
+                        },
+                        replace: true
+                    });
+                } else {
+                    // User was never logged in - just clear any stale state, don't redirect
+                    setRequiresMfa(false);
+                    setRequiresPasswordChange(false);
+                    setPendingAuthData(null);
+                }
             } else if (errorInfo.type === 'FORBIDDEN') {
                 // User doesn't have permission
                 setError(errorInfo.message);
@@ -105,7 +114,7 @@ export const AuthProvider = ({ children }) => {
         return () => {
             setAuthErrorHandler(null);
         };
-    }, [navigate]);
+    }, [navigate, user]);
 
     // ============================================
     // AUTH ACTIONS

@@ -280,7 +280,7 @@ function Navbar() {
 
   const handleRegisterProperty = async () => {
     if (!isAuthenticated) {
-      setIsAuthModalOpen(true);
+      navigate('/login', { state: { from: '/add-property' } });
       return;
     }
 

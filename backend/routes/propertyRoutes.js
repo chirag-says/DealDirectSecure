@@ -24,7 +24,7 @@ import {
 } from "../controllers/propertyController.js";
 import { protectAdmin } from "../middleware/authAdmin.js";
 import { authMiddleware } from "../middleware/authUser.js";
-import { upload, validateUploadedFiles, uploadConcurrencyGuard } from "../middleware/upload.js";
+import { memoryUpload, validateAndUploadToCloudinary, uploadConcurrencyGuard } from "../middleware/upload.js";
 import { ownerOnlyListingAccess } from "../middleware/roleGuard.js";
 import {
   validatePropertyCreate,
@@ -61,10 +61,11 @@ router.post(
   authMiddleware,
   ownerOnlyListingAccess, // Role enforcement: only Owners can add
   uploadConcurrencyGuard, // SECURITY: Prevent DoS via concurrent uploads
-  upload.fields([
+  memoryUpload.fields([
     { name: "images", maxCount: 15 },
     { name: "categorizedImages", maxCount: 50 }
   ]),
+  validateAndUploadToCloudinary, // SECURITY: Validate magic bytes then upload
   // validatePropertyCreate, // TODO: Re-enable after fixing field whitelist
   addProperty
 );
@@ -76,10 +77,11 @@ router.put(
   ownerOnlyListingAccess,
   validateMongoId('id'),
   uploadConcurrencyGuard, // SECURITY: Prevent DoS via concurrent uploads
-  upload.fields([
+  memoryUpload.fields([
     { name: "images", maxCount: 15 },
     { name: "categorizedImages", maxCount: 50 }
   ]),
+  validateAndUploadToCloudinary, // SECURITY: Validate magic bytes then upload
   updateMyProperty
 );
 
@@ -108,10 +110,11 @@ router.put(
   protectAdmin,
   validateMongoId('id'),
   uploadConcurrencyGuard, // SECURITY: Prevent DoS via concurrent uploads
-  upload.fields([
+  memoryUpload.fields([
     { name: "images", maxCount: 15 },
     { name: "categorizedImages", maxCount: 50 }
   ]),
+  validateAndUploadToCloudinary, // SECURITY: Validate magic bytes then upload
   updateProperty
 );
 
