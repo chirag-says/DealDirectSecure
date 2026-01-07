@@ -389,10 +389,40 @@ export default function AddProperty() {
         }
 
         setUser(authUser);
-        const role = authUser.role || "user";
-        if (role === "owner" || role === "agent") {
+        const role = (authUser.role || "user").toLowerCase();
+
+        if (role === "agent") {
+            // Agents can list unlimited properties
             setIsAuthorized(true);
+        } else if (role === "owner") {
+            // Owners can only list ONE property - check if they already have one
+            const checkOwnerLimit = async () => {
+                try {
+                    const res = await api.get('/properties/my-properties');
+                    const count =
+                        typeof res.data?.count === "number"
+                            ? res.data.count
+                            : Array.isArray(res.data?.data)
+                                ? res.data.data.length
+                                : 0;
+
+                    if (count >= 1) {
+                        toast.info(
+                            "You can list only one property as an owner. Please edit your existing listing.",
+                        );
+                        navigate("/my-properties");
+                        return;
+                    }
+                    setIsAuthorized(true);
+                } catch (error) {
+                    console.error("Error checking existing properties:", error);
+                    // If check fails, allow access to not block the user
+                    setIsAuthorized(true);
+                }
+            };
+            checkOwnerLimit();
         } else {
+            // Buyer/User needs to verify email to become owner
             setShowVerificationModal(true);
         }
     }, [authLoading, isAuthenticated, authUser, navigate]);

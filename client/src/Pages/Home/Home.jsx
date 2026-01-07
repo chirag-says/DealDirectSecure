@@ -21,7 +21,7 @@ import {
 } from "react-icons/fa";
 import HeroSection from "../../Components/HeroSection/HeroSection";
 import TopLocalities from "../../Components/TopLocalities/TopLocalities";
-import AuthModal from "../../Components/AuthModal/AuthModal";
+
 import { FaRupeeSign } from "react-icons/fa";
 
 // Asset Imports
@@ -90,7 +90,6 @@ const Home = () => {
   const [categories, setCategories] = useState([]);
   const [subcategories, setSubcategories] = useState([]);
   const [propertyTypeOptions, setPropertyTypeOptions] = useState([]);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [filters, setFilters] = useState({
     search: "",
     category: "",
@@ -195,7 +194,7 @@ const Home = () => {
   return (
     // Changed main background to white and text to dark
     <div className="font-sans text-gray-900 bg-white min-h-screen">
-      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+
 
       <HeroSection
         filters={filters}

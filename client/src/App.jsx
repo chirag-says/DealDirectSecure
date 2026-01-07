@@ -70,12 +70,14 @@ function App() {
                 </ProtectedRoute>
               } />
 
-              {/* Owner-only Routes */}
+              {/* Add Property - Allows any authenticated user, role check happens in AddProperty page */}
               <Route path="/add-property" element={
-                <ProtectedRoute requiredRole="owner" requireVerified>
+                <ProtectedRoute>
                   <AddProperty />
                 </ProtectedRoute>
               } />
+
+              {/* Owner-only Routes */}
               <Route path="/edit-property/:id" element={
                 <ProtectedRoute requiredRole="owner">
                   <EditProperty />

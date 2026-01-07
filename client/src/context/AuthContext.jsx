@@ -11,7 +11,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api, { authApi, setAuthErrorHandler } from '../utils/api';
 
 // ============================================
@@ -36,6 +36,7 @@ export const AuthProvider = ({ children }) => {
     const [pendingAuthData, setPendingAuthData] = useState(null);
 
     const navigate = useNavigate();
+    const location = useLocation();
 
     // ============================================
     // CHECK AUTH STATUS ON MOUNT (Page Refresh)
@@ -353,7 +354,26 @@ export const AuthProvider = ({ children }) => {
             setRequiresPasswordChange(false);
             setPendingAuthData(null);
             setLoading(false);
-            navigate('/login', { replace: true });
+
+            // Redirect logic: 
+            // If on a protected route, go to Home.
+            // If on a public route, stay there.
+            const protectedRoutes = [
+                '/profile',
+                '/saved-properties',
+                '/notifications',
+                '/agreements',
+                '/add-property',
+                '/edit-property',
+                '/my-properties'
+            ];
+
+            const isProtected = protectedRoutes.some(route => location.pathname.startsWith(route));
+
+            if (isProtected) {
+                navigate('/', { replace: true });
+            }
+            // Else stay on the same page
         }
     };
 

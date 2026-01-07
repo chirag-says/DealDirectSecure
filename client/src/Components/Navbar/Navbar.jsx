@@ -6,7 +6,7 @@ import { FaMapMarkerAlt, FaMicrophone } from "react-icons/fa";
 import { BsBuilding, BsHouseDoor } from "react-icons/bs";
 import { HiOutlineDocumentText } from "react-icons/hi";
 import logo from "../../assets/dealdirect_logo.png";
-import AuthModal from "../AuthModal/AuthModal";
+
 import EmailVerificationModal from "../EmailVerificationModal/EmailVerificationModal";
 import api from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
@@ -38,7 +38,7 @@ function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeMenu, setActiveMenu] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -342,10 +342,7 @@ function Navbar() {
 
   return (
     <>
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-      />
+
       <EmailVerificationModal
         isOpen={isVerificationModalOpen}
         onClose={() => setIsVerificationModalOpen(false)}
