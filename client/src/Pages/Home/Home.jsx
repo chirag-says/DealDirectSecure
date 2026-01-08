@@ -105,8 +105,8 @@ const Home = () => {
   const propertiesSectionRef = useRef(null);
 
   const handleCityClick = (cityName) => {
-    setFilters((prev) => ({ ...prev, city: cityName }));
-    propertiesSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Navigate to property list page with city filter applied
+    navigate(`/properties?city=${encodeURIComponent(cityName)}`);
   };
 
   const scroll = (direction) => {
