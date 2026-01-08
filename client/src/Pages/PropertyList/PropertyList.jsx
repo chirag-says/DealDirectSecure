@@ -323,6 +323,7 @@ const PropertyPage = () => {
   const searchInputRef = useRef(null);
   const suggestionsRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const isFromUrlParamsRef = useRef(false); // Track if search was populated from URL params
 
   const resolveImageSrc = (img) => {
     if (!img) return "";
@@ -550,6 +551,15 @@ const PropertyPage = () => {
       return;
     }
 
+    // Skip showing suggestions if search was populated from URL params (navbar navigation)
+    // This prevents the dropdown from appearing automatically when user clicks navbar Buy/Rent options
+    if (isFromUrlParamsRef.current) {
+      isFromUrlParamsRef.current = false; // Reset flag so future typing will show suggestions
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
     // Check cache first
     const cacheKey = searchTerm.toLowerCase();
     const cached = suggestionsCache.get(cacheKey);
@@ -675,6 +685,12 @@ const PropertyPage = () => {
     const viewParam = params.get("view");
     if (viewParam === "map" || viewParam === "list") {
       setViewMode(viewParam);
+    }
+
+    // Set flag if search is being populated from URL params (e.g., navbar navigation)
+    // This prevents showing the autocomplete dropdown automatically
+    if (updates.search) {
+      isFromUrlParamsRef.current = true;
     }
 
     if (Object.keys(updates).length) setFilters((prev) => ({ ...prev, ...updates }));
