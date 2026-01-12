@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
-import api from "../../utils/api";
-import { useAuth } from "../../context/AuthContext";
 import { toast } from "react-toastify";
 import {
   FaMapMarkerAlt,
@@ -323,7 +321,6 @@ const PropertyPage = () => {
   const searchInputRef = useRef(null);
   const suggestionsRef = useRef(null);
   const abortControllerRef = useRef(null);
-  const isFromUrlParamsRef = useRef(false); // Track if search was populated from URL params
 
   const resolveImageSrc = (img) => {
     if (!img) return "";
@@ -403,7 +400,8 @@ const PropertyPage = () => {
   };
 
   const handleSaveSearchClick = () => {
-    if (!isAuthenticated) {
+    const token = localStorage.getItem("token");
+    if (!token) {
       toast.info("Login to save this search and get alerts");
       navigate("/login", { state: { from: "/properties" } });
       return;
@@ -417,7 +415,8 @@ const PropertyPage = () => {
   };
 
   const handleConfirmSaveSearch = async () => {
-    if (!isAuthenticated) {
+    const token = localStorage.getItem("token");
+    if (!token) {
       toast.info("Login required to save searches");
       navigate("/login", { state: { from: "/properties" } });
       return;
@@ -430,14 +429,15 @@ const PropertyPage = () => {
 
     setSavingSearch(true);
     try {
-      await api.post(
-        `/saved-searches`,
+      await axios.post(
+        `${API_BASE}/api/saved-searches`,
         {
           name: savedSearchName.trim(),
           filters,
           notifyEmail: notifyByEmail,
           notifyInApp: true,
-        }
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       toast.success("Search saved. We'll use this for future alerts.");
       setShowSaveSearch(false);
@@ -522,13 +522,13 @@ const PropertyPage = () => {
       try {
         setLoading(true);
         const [propsRes, ptRes] = await Promise.all([
-          api.get('/properties/property-list'),
-          api.get('/propertyTypes/list-propertytype'),
+          axios.get(`${API_BASE}/api/properties/property-list`),
+          axios.get(`${API_BASE}/api/propertyTypes/list-propertytype`),
         ]);
 
         const propsData = propsRes.data.data || [];
         setProperties(propsData);
-        setPropertyTypes(ptRes.data.data || ptRes.data || []);
+        setPropertyTypes(ptRes.data || []);
         const uniqueCities = [...new Set(propsData.map(p => p.address?.city).filter(Boolean))];
         setCities(uniqueCities);
 
@@ -546,15 +546,6 @@ const PropertyPage = () => {
     const searchTerm = filters.search?.trim() || '';
 
     if (searchTerm.length < 2) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-
-    // Skip showing suggestions if search was populated from URL params (navbar navigation)
-    // This prevents the dropdown from appearing automatically when user clicks navbar Buy/Rent options
-    if (isFromUrlParamsRef.current) {
-      isFromUrlParamsRef.current = false; // Reset flag so future typing will show suggestions
       setSuggestions([]);
       setShowSuggestions(false);
       return;
@@ -579,8 +570,8 @@ const PropertyPage = () => {
 
       setIsLoadingSuggestions(true);
       try {
-        const response = await api.get(
-          '/properties/suggestions',
+        const response = await axios.get(
+          `${API_BASE}/api/properties/suggestions`,
           {
             params: { q: searchTerm },
             signal: abortControllerRef.current.signal,
@@ -687,12 +678,6 @@ const PropertyPage = () => {
       setViewMode(viewParam);
     }
 
-    // Set flag if search is being populated from URL params (e.g., navbar navigation)
-    // This prevents showing the autocomplete dropdown automatically
-    if (updates.search) {
-      isFromUrlParamsRef.current = true;
-    }
-
     if (Object.keys(updates).length) setFilters((prev) => ({ ...prev, ...updates }));
   }, [location.search]);
 
@@ -711,17 +696,17 @@ const PropertyPage = () => {
 
     const matchesSearch = query
       ? [
-        p.title,
-        p.address?.city,
-        p.address?.state,
-        p.address?.area,
-        p.address?.landmark,
-        p.city,
-        p.locality,
-        p.propertyTypeName,
-        p.propertyType?.name,
-        p.bhk,
-      ]
+          p.title,
+          p.address?.city,
+          p.address?.state,
+          p.address?.area,
+          p.address?.landmark,
+          p.city,
+          p.locality,
+          p.propertyTypeName,
+          p.propertyType?.name,
+          p.bhk,
+        ]
         .filter(Boolean).some((f) => f.toLowerCase().includes(query))
       : true;
 
@@ -850,40 +835,15 @@ const PropertyPage = () => {
   };
 
   // Component to fit map bounds to markers
-  // FIX: Use a ref to track if bounds have been set to prevent re-centering on hover
-  const boundsSetRef = useRef(false);
-  const lastPropertiesLengthRef = useRef(0);
-  const lastDroppedPinRef = useRef(null);
-
   const MapBoundsUpdater = ({ properties }) => {
     const map = useMap();
 
     useEffect(() => {
-      // Only update bounds if:
-      // 1. droppedPin has changed, OR
-      // 2. Properties array length has changed significantly, OR
-      // 3. Bounds haven't been set yet
-      const droppedPinChanged = JSON.stringify(droppedPin) !== JSON.stringify(lastDroppedPinRef.current);
-      const propertiesLengthChanged = properties.length !== lastPropertiesLengthRef.current;
-
-      if (droppedPin && droppedPinChanged) {
+      if (droppedPin) {
         map.setView([droppedPin.lat, droppedPin.lng], 14);
-        lastDroppedPinRef.current = droppedPin;
-        boundsSetRef.current = true;
-      } else if (properties.length > 0 && (!boundsSetRef.current || propertiesLengthChanged)) {
+      } else if (properties.length > 0) {
         const bounds = L.latLngBounds(properties.map(p => [p.lat, p.lng]));
         map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
-        lastPropertiesLengthRef.current = properties.length;
-        boundsSetRef.current = true;
-      }
-
-      // Reset when droppedPin is cleared
-      if (!droppedPin && lastDroppedPinRef.current) {
-        lastDroppedPinRef.current = null;
-        if (properties.length > 0) {
-          const bounds = L.latLngBounds(properties.map(p => [p.lat, p.lng]));
-          map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
-        }
       }
     }, [properties, map, droppedPin]);
 
@@ -893,14 +853,14 @@ const PropertyPage = () => {
   const viewDetails = (property) =>
     navigate(`/properties/${property._id}`, { state: { property } });
 
-  // Get auth state from context
-  const { isAuthenticated, user } = useAuth();
-
   const handleInterest = async (event, propertyId) => {
     event.stopPropagation();
     event.preventDefault();
 
-    if (!isAuthenticated || !user) {
+    const token = localStorage.getItem("token");
+    const user = localStorage.getItem("user");
+
+    if (!token || !user) {
       toast.info("Please login to express interest");
       const from = `${location.pathname}${location.search}` || `/properties/${propertyId}`;
       navigate("/login", { state: { from, pendingAction: "interest", propertyId } });
@@ -911,8 +871,9 @@ const PropertyPage = () => {
       // Remove interest
       setInterestLoadingIds((prev) => new Set(prev).add(propertyId));
       try {
-        const res = await api.delete(
-          `/properties/interested/${propertyId}`
+        const res = await axios.delete(
+          `${API_BASE}/api/properties/interested/${propertyId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
         );
         if (res.data.success) {
           setInterestedIds((prev) => {
@@ -941,9 +902,10 @@ const PropertyPage = () => {
     setInterestLoadingIds((prev) => new Set(prev).add(propertyId));
 
     try {
-      const res = await api.post(
-        `/properties/interested/${propertyId}`,
-        {}
+      const res = await axios.post(
+        `${API_BASE}/api/properties/interested/${propertyId}`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       if (res.data.success) {
@@ -1967,16 +1929,16 @@ const PropertyPage = () => {
                     }
 
                     return rows.map((row) => (
-                      <React.Fragment key={row.label}>
-                        <div className="bg-slate-50 border-b border-slate-100 p-3 font-semibold text-slate-700">
-                          {row.label}
+                    <React.Fragment key={row.label}>
+                      <div className="bg-slate-50 border-b border-slate-100 p-3 font-semibold text-slate-700">
+                        {row.label}
+                      </div>
+                      {selectedCompareProperties.map((p) => (
+                        <div key={p._id + row.label} className="border-b border-slate-100 p-3 text-slate-700">
+                          {row.value(p)}
                         </div>
-                        {selectedCompareProperties.map((p) => (
-                          <div key={p._id + row.label} className="border-b border-slate-100 p-3 text-slate-700">
-                            {row.value(p)}
-                          </div>
-                        ))}
-                      </React.Fragment>
+                      ))}
+                    </React.Fragment>
                     ));
                   })()}
                 </div>

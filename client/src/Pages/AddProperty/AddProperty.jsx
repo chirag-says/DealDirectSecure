@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect, useRef, useMemo } from "react";
+import axios from "axios";
 import {
     Home, MapPin, IndianRupee, Layers, Image as ImageIcon, Calendar,
     ChevronLeft, Upload, Check, X, Building2, Users, Utensils, Car, Zap,
@@ -12,9 +13,6 @@ import locationData from "../../data/real-estate-locations.json";
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import api from "../../utils/api";
-import { useAuth } from "../../context/AuthContext";
-import axios from "axios"; // Keep for metadata fetching (public endpoints)
 
 // Fix for default marker icon in react-leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -372,64 +370,40 @@ const variants = {
 export default function AddProperty() {
     const navigate = useNavigate();
 
-    // Auth state using AuthContext
-    const { user: authUser, isAuthenticated, loading: authLoading } = useAuth();
+    // Auth state
     const [user, setUser] = useState(null);
     const [showVerificationModal, setShowVerificationModal] = useState(false);
     const [isAuthorized, setIsAuthorized] = useState(false);
 
-    // Check user authorization on mount using AuthContext
+    // Check user authorization on mount
     useEffect(() => {
-        if (authLoading) return;
+        const storedUser = localStorage.getItem("user");
+        const token = localStorage.getItem("token");
 
-        if (!isAuthenticated || !authUser) {
+        if (!storedUser || !token) {
             toast.error("Please login to list your property");
             navigate("/login");
             return;
         }
 
-        setUser(authUser);
-        const role = (authUser.role || "user").toLowerCase();
-
-        if (role === "agent") {
-            // Agents can list unlimited properties
-            setIsAuthorized(true);
-        } else if (role === "owner") {
-            // Owners can only list ONE property - check if they already have one
-            const checkOwnerLimit = async () => {
-                try {
-                    const res = await api.get('/properties/my-properties');
-                    const count =
-                        typeof res.data?.count === "number"
-                            ? res.data.count
-                            : Array.isArray(res.data?.data)
-                                ? res.data.data.length
-                                : 0;
-
-                    if (count >= 1) {
-                        toast.info(
-                            "You can list only one property as an owner. Please edit your existing listing.",
-                        );
-                        navigate("/my-properties");
-                        return;
-                    }
-                    setIsAuthorized(true);
-                } catch (error) {
-                    console.error("Error checking existing properties:", error);
-                    // If check fails, allow access to not block the user
-                    setIsAuthorized(true);
-                }
-            };
-            checkOwnerLimit();
-        } else {
-            // Buyer/User needs to verify email to become owner
-            setShowVerificationModal(true);
+        try {
+            const parsedUser = JSON.parse(storedUser);
+            setUser(parsedUser);
+            const role = parsedUser.role || "user";
+            if (role === "owner" || role === "agent") {
+                setIsAuthorized(true);
+            } else {
+                setShowVerificationModal(true);
+            }
+        } catch (err) {
+            toast.error("Session expired. Please login again.");
+            navigate("/login");
         }
-    }, [authLoading, isAuthenticated, authUser, navigate]);
+    }, [navigate]);
 
     const handleVerificationSuccess = () => {
-        // User state will be automatically updated via AuthContext's checkAuth
-        // which runs after successful verification completes
+        const storedUser = localStorage.getItem("user");
+        if (storedUser) setUser(JSON.parse(storedUser));
         setIsAuthorized(true);
         setShowVerificationModal(false);
         toast.success("You can now list your property!");
@@ -488,14 +462,14 @@ export default function AddProperty() {
         const fetchMetadata = async () => {
             try {
                 const [cats, subs, types] = await Promise.all([
-                    api.get('/categories/list-category'),
-                    api.get('/subcategories/list'),
-                    api.get('/propertyTypes/list-propertytype')
+                    axios.get(`${API_BASE}/api/categories/list-category`),
+                    axios.get(`${API_BASE}/api/subcategories/list`),
+                    axios.get(`${API_BASE}/api/propertyTypes/list-propertytype`)
                 ]);
                 setMetadata({
-                    categories: cats.data.data || cats.data || [],
-                    subcategories: subs.data.data || subs.data || [],
-                    propertyTypes: types.data.data || types.data || []
+                    categories: Array.isArray(cats.data) ? cats.data : [],
+                    subcategories: Array.isArray(subs.data) ? subs.data : [],
+                    propertyTypes: Array.isArray(types.data) ? types.data : []
                 });
             } catch (error) {
                 console.error("Failed to fetch metadata", error);
@@ -768,9 +742,9 @@ export default function AddProperty() {
             });
             submitData.append("imageCategoryMap", JSON.stringify(imageCategoryMap));
 
-            // Use api.js for authenticated request
-            await api.post('/properties/add', submitData, {
-                headers: { "Content-Type": "multipart/form-data" }
+            const token = localStorage.getItem("token");
+            await axios.post(`${API_BASE}/api/properties/add`, submitData, {
+                headers: { "Content-Type": "multipart/form-data", Authorization: token ? `Bearer ${token}` : "" }
             });
 
             toast.success("Property published successfully!");
