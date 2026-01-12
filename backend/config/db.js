@@ -15,7 +15,8 @@ const connectDB = async () => {
     console.error(`   Message: ${error.message}`);
     console.error(`   Code: ${error.code || 'N/A'}`);
     console.error(`   Name: ${error.name || 'N/A'}`);
-    process.exit(1);
+    // process.exit(1); // Don't crash the server, just log error
+    console.log("⚠️ Continuing server startup without database connection...");
   }
 };
 
