@@ -124,7 +124,8 @@ app.get('/api/health-db', (req, res) => {
     res.json({
       status: 'ok',
       mongo_uri_configured: !!process.env.MONGO_URI,
-      // mongo_uri_prefix: process.env.MONGO_URI ? process.env.MONGO_URI.substring(0, 15) + '...' : 'MISSING', // Hidden for security in logs
+      // Debug: Show which variables exist (KEYS ONLY)
+      env_keys_test: Object.keys(process.env).sort(),
       dbState: statusMap[state] || 'unknown',
       dbName: mongoose.connection ? mongoose.connection.name : 'unknown',
       host: mongoose.connection ? mongoose.connection.host : 'unknown'
