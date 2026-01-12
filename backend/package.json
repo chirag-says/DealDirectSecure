@@ -2,12 +2,12 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "server.js",
+  "main": "index.js",
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "echo Build complete",
-    "start": "node server-minimal.js",
+    "build": "npm install",
+    "start": "node index.js",
     "dev": "nodemon server.js",
     "normalize-categories": "node scripts/normalizeCategoryName.js"
   },
