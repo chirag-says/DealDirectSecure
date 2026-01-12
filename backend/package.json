@@ -53,6 +53,7 @@
     "inflight": "npm:inflight-lru@^1.0.0",
     "q": "npm:promise-polyfill@^8.3.0",
     "lodash.isequal": "npm:deep-equal@^2.2.0",
-    "fstream": "npm:tar-fs@^3.0.0"
+    "fstream": "npm:tar-fs@^3.0.0",
+    "jpeg-exif": "npm:exif-parser@^0.1.12"
   }
 }
