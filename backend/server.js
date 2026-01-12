@@ -76,27 +76,64 @@ connectDB().catch(err => {
 });
 
 // ============================================
-// ROUTES - ALL COMMENTED OUT
-// The crash is likely inside one of these files!
+// ROUTE IMPORTS
 // ============================================
 
-/*
 import userRoutes from "./routes/userRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
 import subcategoryRoutes from "./routes/subcategoryRoutes.js";
 import propertyRoutes from "./routes/propertyRoutes.js";
-// ...
-// app.use("/api/users", userRoutes);
-*/
+import propertyTypeRoutes from './routes/propertyTypeRoutes.js';
+import leadRoutes from './routes/leadRoutes.js';
+import chatRoutes from './routes/chatRoutes.js';
+import contactRoutes from './routes/contactRoutes.js';
+import agreementRoutes from './routes/agreementRoutes.js';
+import savedSearchRoutes from './routes/savedSearchRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
+import { globalErrorHandler, notFoundHandler } from "./middleware/errorHandler.js";
+import { blockRetiredRoles } from "./middleware/roleGuard.js";
+import { setCsrfToken, validateCsrfToken, getCsrfTokenHandler } from "./middleware/csrfProtection.js";
 
-app.get('/', (req, res) => {
-  res.send('DealDirect Middleware Test - Server is UP!');
-});
+// ============================================
+// APP SETUP & MIDDLEWARE
+// ============================================
+// (Already configured in previous step)
+
+
+// ============================================
+// API ROUTES
+// ============================================
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', step: 'middleware_test' });
+  res.status(200).json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV
+  });
 });
+
+app.get('/api/csrf-token', getCsrfTokenHandler);
+
+// Public Routes
+app.use("/api/users", userRoutes);
+app.use("/api/admin", adminRoutes);
+
+app.use("/api/propertyTypes", propertyTypeRoutes);
+app.use("/api/categories", categoryRoutes);
+app.use("/api/subcategories", subcategoryRoutes);
+app.use("/api/properties", propertyRoutes);
+app.use("/api/leads", leadRoutes);
+// app.use("/api/chat", chatRoutes); // Disabled until Socket.io is back
+app.use("/api/contact", contactRoutes);
+app.use("/api/agreements", agreementRoutes);
+app.use("/api/saved-searches", savedSearchRoutes);
+app.use("/api/notifications", notificationRoutes);
+
+// Error Handling
+app.use(notFoundHandler);
+app.use(globalErrorHandler);
+
 
 // ============================================
 // STARTUP
