@@ -8,7 +8,14 @@ console.log(" Server starting...");
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
-dotenv.config();
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Explicitly load .env from the current folder
+dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 import express from "express";
 import cors from "cors";
@@ -123,6 +130,8 @@ app.get('/api/health-db', (req, res) => {
 
     res.json({
       status: 'ok',
+      cwd: process.cwd(), // Log Current Working Directory
+      dirname: __dirname, // Log File Directory
       mongo_uri_configured: !!process.env.MONGO_URI,
       // Debug: Show which variables exist (KEYS ONLY)
       env_keys_test: Object.keys(process.env).sort(),
