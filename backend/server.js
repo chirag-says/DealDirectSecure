@@ -113,6 +113,17 @@ app.get('/health', (req, res) => {
   });
 });
 
+// DB Diagnostic Endpoint
+app.get('/api/health-db', (req, res) => {
+  const mongoose = require('mongoose');
+  res.json({
+    status: 'ok',
+    dbState: mongoose.connection.readyState, // 0: disconnected, 1: connected, 2: connecting
+    dbName: mongoose.connection.name,
+    host: mongoose.connection.host
+  });
+});
+
 app.get('/api/csrf-token', getCsrfTokenHandler);
 
 // Root Route (Must be before error handlers)
