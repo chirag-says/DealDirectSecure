@@ -10,7 +10,7 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { setSessionCookie, clearSessionCookie } from "../middleware/authUser.js";
-import { Parser } from "json2csv";
+import { Parser } from "@json2csv/plainjs";
 import PDFDocument from "pdfkit";
 
 // ============================================

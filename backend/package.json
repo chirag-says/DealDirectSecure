@@ -15,6 +15,7 @@
   "license": "ISC",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@json2csv/plainjs": "^7.0.6",
     "bcryptjs": "^3.0.2",
     "body-parser": "^2.2.0",
     "cloudinary": "^2.8.0",
@@ -28,7 +29,6 @@
     "file-type": "^21.3.0",
     "helmet": "^8.1.0",
     "hpp": "^0.2.3",
-    "json2csv": "^6.0.0-alpha.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.19.2",
     "morgan": "^1.10.1",
@@ -42,5 +42,13 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
+  },
+  "overrides": {
+    "glob": "^10.0.0",
+    "rimraf": "^5.0.0",
+    "inflight": "npm:inflight-lru@^1.0.0",
+    "q": "npm:promise-polyfill@^8.3.0",
+    "lodash.isequal": "npm:deep-equal@^2.2.0",
+    "fstream": "npm:tar-fs@^3.0.0"
   }
 }
