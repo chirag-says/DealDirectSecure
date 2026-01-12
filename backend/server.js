@@ -19,9 +19,11 @@ const envCurrent = path.resolve(__dirname, '.env');
 const envParent = path.resolve(__dirname, '../.env');
 
 dotenv.config({ path: envCurrent });
+
+// If MONGO_URI is missing, it means we are on Hostinger (Clean Build).
+// Try loading from the PARENT directory (which doesn't get wiped).
 if (!process.env.MONGO_URI) {
-  // If not found, try parent folder (Hostinger Clean Deployment workaround)
-  console.log("⚠️ .env not found in current dir, trying parent...");
+  console.log(`⚠️ Locals missing. Trying parent config: ${envParent}`);
   dotenv.config({ path: envParent });
 }
 

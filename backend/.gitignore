@@ -1,7 +1,9 @@
 # Dependencies
-node_modules/
-npm-debug.log
-yarn-error.log
+node_modules
+.env
+# .env.production (Allowed for Deployment Reliability)
+.DS_Store
+coveragerror.log
 
 # Environment Variables (CRITICAL)
 .env
