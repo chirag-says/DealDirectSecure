@@ -3,8 +3,10 @@
  * Verifying if middleware or route imports are the cause of the crash.
  */
 
-console.log("� Server starting...");
+console.log(" Server starting...");
 
+import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -116,20 +118,19 @@ app.get('/health', (req, res) => {
 // DB Diagnostic Endpoint
 app.get('/api/health-db', (req, res) => {
   try {
-    const mongoose = require('mongoose');
     const statusMap = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
     const state = mongoose.connection ? mongoose.connection.readyState : 99;
-    
+
     res.json({
       status: 'ok',
-      mongo_uri_configured: !!process.env.MONGO_URI, // True/False (Safe)
-      mongo_uri_prefix: process.env.MONGO_URI ? process.env.MONGO_URI.substring(0, 15) + '...' : 'MISSING',
+      mongo_uri_configured: !!process.env.MONGO_URI,
+      // mongo_uri_prefix: process.env.MONGO_URI ? process.env.MONGO_URI.substring(0, 15) + '...' : 'MISSING', // Hidden for security in logs
       dbState: statusMap[state] || 'unknown',
       dbName: mongoose.connection ? mongoose.connection.name : 'unknown',
       host: mongoose.connection ? mongoose.connection.host : 'unknown'
     });
   } catch (error) {
-    res.status(500).json({ error: error.message, stack: error.stack });
+    res.status(500).json({ error: error.message });
   }
 });
 
