@@ -9,6 +9,7 @@ import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -137,17 +138,27 @@ app.get('/api/health-db', (req, res) => {
   try {
     const statusMap = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
     const state = mongoose.connection ? mongoose.connection.readyState : 99;
-
+    
+    // Check file existence
+    const envCurrent = path.resolve(__dirname, '.env');
+    const envParent = path.resolve(__dirname, '../.env');
+    
     res.json({
       status: 'ok',
-      cwd: process.cwd(), // Log Current Working Directory
-      dirname: __dirname, // Log File Directory
-      mongo_uri_configured: !!process.env.MONGO_URI,
-      // Debug: Show which variables exist (KEYS ONLY)
-      env_keys_test: Object.keys(process.env).sort(),
-      dbState: statusMap[state] || 'unknown',
-      dbName: mongoose.connection ? mongoose.connection.name : 'unknown',
-      host: mongoose.connection ? mongoose.connection.host : 'unknown'
+      checks: {
+        file_current_exists: fs.existsSync(envCurrent),
+        file_parent_exists: fs.existsSync(envParent), // Did the parent file persist?
+        parent_path_checked: envParent
+      },
+      env_vars: {
+        mongo_uri_found: !!process.env.MONGO_URI,
+        all_keys: Object.keys(process.env).sort() // Show EVERYTHING the server sees
+      },
+      db: {
+        state: statusMap[state] || 'unknown',
+        name: mongoose.connection ? mongoose.connection.name : 'unknown',
+        host: mongoose.connection ? mongoose.connection.host : 'unknown'
+      }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
