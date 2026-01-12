@@ -11,6 +11,10 @@
  * - Production error boundary
  */
 
+console.log("🚀 Server starting...");
+console.log("📍 Node version:", process.version);
+console.log("📍 Environment:", process.env.NODE_ENV || 'development');
+
 import dotenv from "dotenv";
 dotenv.config(); // Load env vars BEFORE other imports
 
