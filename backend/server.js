@@ -115,13 +115,22 @@ app.get('/health', (req, res) => {
 
 // DB Diagnostic Endpoint
 app.get('/api/health-db', (req, res) => {
-  const mongoose = require('mongoose');
-  res.json({
-    status: 'ok',
-    dbState: mongoose.connection.readyState, // 0: disconnected, 1: connected, 2: connecting
-    dbName: mongoose.connection.name,
-    host: mongoose.connection.host
-  });
+  try {
+    const mongoose = require('mongoose');
+    const statusMap = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
+    const state = mongoose.connection ? mongoose.connection.readyState : 99;
+    
+    res.json({
+      status: 'ok',
+      mongo_uri_configured: !!process.env.MONGO_URI, // True/False (Safe)
+      mongo_uri_prefix: process.env.MONGO_URI ? process.env.MONGO_URI.substring(0, 15) + '...' : 'MISSING',
+      dbState: statusMap[state] || 'unknown',
+      dbName: mongoose.connection ? mongoose.connection.name : 'unknown',
+      host: mongoose.connection ? mongoose.connection.host : 'unknown'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
 });
 
 app.get('/api/csrf-token', getCsrfTokenHandler);
