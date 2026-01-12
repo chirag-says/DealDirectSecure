@@ -44,10 +44,30 @@ app.use(cors({
 console.log("✅ Middleware configured");
 
 // ============================================
-// DATABASE - Commented out to isolate
+// ENVIRONMENT VALIDATION - PRE-FLIGHT CHECKS
 // ============================================
-// import connectDB from "./config/db.js";
-// connectDB();
+
+const validateEnvironment = () => {
+  const REQUIRED_ENV_VARS = ['JWT_SECRET', 'MONGO_URI'];
+  const errors = [];
+  for (const varName of REQUIRED_ENV_VARS) {
+    if (!process.env[varName]) errors.push(`❌ Missing: ${varName}`);
+  }
+  if (errors.length > 0) {
+    console.error('🚨 Validation Failed:', errors);
+    // process.exit(1); // DISABLED
+    console.error('⚠️ IGNORING ERRORS FOR DEBUGGING');
+  } else {
+    console.log('✅ Env validation passed');
+  }
+};
+validateEnvironment();
+
+// ============================================
+// DATABASE
+// ============================================
+import connectDB from "./config/db.js";
+connectDB();
 
 // ============================================
 // ROUTES - ALL COMMENTED OUT
