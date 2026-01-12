@@ -14,8 +14,16 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Explicitly load .env from the current folder
-dotenv.config({ path: path.resolve(__dirname, '.env') });
+// Explicitly load .env from current or parent folder (for persistence)
+const envCurrent = path.resolve(__dirname, '.env');
+const envParent = path.resolve(__dirname, '../.env');
+
+dotenv.config({ path: envCurrent });
+if (!process.env.MONGO_URI) {
+  // If not found, try parent folder (Hostinger Clean Deployment workaround)
+  console.log("⚠️ .env not found in current dir, trying parent...");
+  dotenv.config({ path: envParent });
+}
 
 import express from "express";
 import cors from "cors";
