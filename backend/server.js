@@ -140,5 +140,8 @@ app.use(globalErrorHandler);
 // ============================================
 const PORT = process.env.PORT || 9000;
 httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Middleware Test Server running on port ${PORT}`);
+  console.log('═'.repeat(60));
+  console.log(`🚀 DealDirect Backend v2.0 - LIVE & HEALTHY`);
+  console.log(`👉 Health: http://0.0.0.0:${PORT}/health`);
+  console.log('═'.repeat(60));
 });
