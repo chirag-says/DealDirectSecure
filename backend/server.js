@@ -67,7 +67,13 @@ validateEnvironment();
 // DATABASE
 // ============================================
 import connectDB from "./config/db.js";
-connectDB();
+
+// SAFELY connect to database without crashing server
+// If connection fails, server stays UP but DB features won't work
+connectDB().catch(err => {
+  console.error("❌ CRITICAL DATABASE ERROR:", err);
+  console.error("⚠️ Server running in 'Offline Mode' (No Database)");
+});
 
 // ============================================
 // ROUTES - ALL COMMENTED OUT
