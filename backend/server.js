@@ -115,6 +115,11 @@ app.get('/health', (req, res) => {
 
 app.get('/api/csrf-token', getCsrfTokenHandler);
 
+// Root Route (Must be before error handlers)
+app.get('/', (req, res) => {
+  res.send(`DealDirect Backend v3.0 - FULL SYSTEM ACTIVE (${new Date().toISOString()})`);
+});
+
 // Public Routes
 app.use("/api/users", userRoutes);
 app.use("/api/admin", adminRoutes);
@@ -138,9 +143,6 @@ app.use(globalErrorHandler);
 // ============================================
 // STARTUP
 // ============================================
-app.get('/', (req, res) => {
-  res.send(`DealDirect Backend v3.0 - FULL SYSTEM ACTIVE (${new Date().toISOString()})`);
-});
 
 const PORT = process.env.PORT || 9000;
 httpServer.listen(PORT, '0.0.0.0', () => {
