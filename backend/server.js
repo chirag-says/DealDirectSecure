@@ -6,30 +6,44 @@
  * The .env file is NOT loaded in production.
  */
 
-// IMMEDIATE DEBUG - First thing that runs
-console.log("=== SERVER BOOT ===");
-console.log("NODE_ENV:", process.env.NODE_ENV);
-console.log("MONGO_URI exists:", !!process.env.MONGO_URI);
-console.log("===================");
 // ============================================
-// HOSTINGER CLOUD FIX: Load dotenv FIRST, ONLY in non-production
-// Using synchronous import to avoid top-level await issues
+// IMPORTS FIRST (ES Modules hoists these anyway)
 // ============================================
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
+import fs from "fs";
+import express from "express";
+import cors from "cors";
+
+// ============================================
+// DEBUG LOGGING - Runs after imports
+// ============================================
+console.log("========================================");
+console.log("🚀 DEALDIRECT SERVER STARTING");
+console.log("========================================");
+console.log("Node.js version:", process.version);
+console.log("NODE_ENV:", process.env.NODE_ENV || "NOT SET");
+console.log("PORT:", process.env.PORT || "NOT SET");
+console.log("MONGO_URI:", process.env.MONGO_URI ? "SET (" + process.env.MONGO_URI.substring(0, 25) + "...)" : "NOT SET");
+console.log("JWT_SECRET:", process.env.JWT_SECRET ? "SET (length: " + process.env.JWT_SECRET.length + ")" : "NOT SET");
+console.log("CLIENT_URL:", process.env.CLIENT_URL || "NOT SET");
+console.log("========================================");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ============================================
+// HOSTINGER CLOUD FIX: Only load .env in non-production
+// ============================================
 if (process.env.NODE_ENV !== "production") {
-  // Development mode - load from .env file
   const envCurrent = path.resolve(__dirname, '.env');
   const envParent = path.resolve(__dirname, '../.env');
 
   dotenv.config({ path: envCurrent });
 
-  // Try parent directory as fallback for local dev
   if (!process.env.MONGO_URI) {
     console.log(`⚠️ .env not found in current dir. Trying parent: ${envParent}`);
     dotenv.config({ path: envParent });
@@ -39,15 +53,6 @@ if (process.env.NODE_ENV !== "production") {
 } else {
   console.log("☁️ Production mode: Using Hostinger hPanel environment variables");
 }
-
-console.log("🚀 Server starting...");
-
-import jwt from "jsonwebtoken";
-import mongoose from "mongoose";
-import fs from "fs";
-
-import express from "express";
-import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
