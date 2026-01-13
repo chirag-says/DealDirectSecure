@@ -217,7 +217,27 @@ app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    env: process.env.NODE_ENV
+    env: process.env.NODE_ENV || 'NOT SET',
+    mongo_uri_exists: !!process.env.MONGO_URI,
+    jwt_secret_exists: !!process.env.JWT_SECRET,
+  });
+});
+
+// TEMPORARY DEBUG ENDPOINT - Remove after fixing
+app.get('/debug-env', (req, res) => {
+  res.json({
+    message: 'Environment Debug Info',
+    NODE_ENV: process.env.NODE_ENV || 'NOT SET',
+    env_vars_detected: {
+      MONGO_URI: process.env.MONGO_URI ? 'SET (first 20 chars): ' + process.env.MONGO_URI.substring(0, 20) + '...' : 'NOT SET',
+      JWT_SECRET: process.env.JWT_SECRET ? 'SET (length: ' + process.env.JWT_SECRET.length + ')' : 'NOT SET',
+      CLIENT_URL: process.env.CLIENT_URL || 'NOT SET',
+      ADMIN_URL: process.env.ADMIN_URL || 'NOT SET',
+      CLOUDINARY_URL: process.env.CLOUDINARY_URL ? 'SET' : 'NOT SET',
+      SMTP_USER: process.env.SMTP_USER || 'NOT SET',
+      PORT: process.env.PORT || 'NOT SET',
+    },
+    all_env_keys: Object.keys(process.env).sort(),
   });
 });
 
