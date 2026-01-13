@@ -6,6 +6,11 @@
  * The .env file is NOT loaded in production.
  */
 
+// IMMEDIATE DEBUG - First thing that runs
+console.log("=== SERVER BOOT ===");
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("MONGO_URI exists:", !!process.env.MONGO_URI);
+console.log("===================");
 // ============================================
 // HOSTINGER CLOUD FIX: Load dotenv FIRST, ONLY in non-production
 // Using synchronous import to avoid top-level await issues
