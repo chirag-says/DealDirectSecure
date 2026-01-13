@@ -8,14 +8,17 @@
  */
 
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Load environment variables
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+
+// HOSTINGER CLOUD FIX: Only load dotenv in non-production
+if (process.env.NODE_ENV !== "production") {
+    const dotenv = await import('dotenv');
+    dotenv.default.config({ path: path.join(__dirname, '..', '.env') });
+}
 
 // Import User model
 import User from '../models/userModel.js';

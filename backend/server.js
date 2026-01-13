@@ -1,13 +1,15 @@
 /**
- * DealDirect Server - MIDDLEWARE TEST MODE
- * Verifying if middleware or route imports are the cause of the crash.
+ * DealDirect Server - Production-Ready for Hostinger Cloud
+ * 
+ * IMPORTANT: In production (Hostinger Cloud), environment variables are
+ * injected via hPanel → Node.js → Environment Variables.
+ * The .env file is NOT loaded in production.
  */
 
-console.log(" Server starting...");
+console.log("🚀 Server starting...");
 
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
-import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -15,17 +17,28 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Explicitly load .env from current or parent folder (for persistence)
-const envCurrent = path.resolve(__dirname, '.env');
-const envParent = path.resolve(__dirname, '../.env');
+// ============================================
+// HOSTINGER CLOUD FIX: Conditional dotenv loading
+// Only load .env file in NON-PRODUCTION environments
+// In production, Hostinger injects env vars via hPanel
+// ============================================
+if (process.env.NODE_ENV !== "production") {
+  // Development mode - load from .env file
+  const dotenv = await import("dotenv");
+  const envCurrent = path.resolve(__dirname, '.env');
+  const envParent = path.resolve(__dirname, '../.env');
 
-dotenv.config({ path: envCurrent });
+  dotenv.default.config({ path: envCurrent });
 
-// If MONGO_URI is missing, it means we are on Hostinger (Clean Build).
-// Try loading from the PARENT directory (which doesn't get wiped).
-if (!process.env.MONGO_URI) {
-  console.log(`⚠️ Locals missing. Trying parent config: ${envParent}`);
-  dotenv.config({ path: envParent });
+  // Try parent directory as fallback for local dev
+  if (!process.env.MONGO_URI) {
+    console.log(`⚠️ .env not found in current dir. Trying parent: ${envParent}`);
+    dotenv.default.config({ path: envParent });
+  }
+
+  console.log("📄 Development mode: Loaded .env file");
+} else {
+  console.log("☁️ Production mode: Using Hostinger hPanel environment variables");
 }
 
 import express from "express";
@@ -64,23 +77,96 @@ app.use(cors({
 console.log("✅ Middleware configured");
 
 // ============================================
-// ENVIRONMENT VALIDATION - PRE-FLIGHT CHECKS
+// ENVIRONMENT VALIDATION - FAIL FAST IN PRODUCTION
 // ============================================
 
 const validateEnvironment = () => {
-  const REQUIRED_ENV_VARS = ['JWT_SECRET', 'MONGO_URI'];
+  const isProduction = process.env.NODE_ENV === "production";
+
+  // CRITICAL: These MUST exist for the server to function
+  const CRITICAL_ENV_VARS = [
+    'MONGO_URI',
+    'JWT_SECRET',
+  ];
+
+  // IMPORTANT: These are needed for full functionality
+  const IMPORTANT_ENV_VARS = [
+    'CLIENT_URL',
+    'ADMIN_URL',
+    'CLOUDINARY_URL',
+  ];
+
+  // OPTIONAL: These have reasonable defaults or are feature-specific
+  const OPTIONAL_ENV_VARS = [
+    { name: 'SMTP_USER', description: 'Email notifications' },
+    { name: 'SMTP_PASS', description: 'Email notifications' },
+    { name: 'GEMINI_API_KEY', description: 'AI agreement generation' },
+    { name: 'COOKIE_DOMAIN', description: 'Cross-domain cookies' },
+  ];
+
   const errors = [];
-  for (const varName of REQUIRED_ENV_VARS) {
-    if (!process.env[varName]) errors.push(`❌ Missing: ${varName}`);
+  const warnings = [];
+
+  // Check critical vars
+  for (const varName of CRITICAL_ENV_VARS) {
+    if (!process.env[varName]) {
+      errors.push(`❌ CRITICAL: Missing ${varName}`);
+    }
   }
+
+  // Check important vars
+  for (const varName of IMPORTANT_ENV_VARS) {
+    if (!process.env[varName]) {
+      warnings.push(`⚠️ WARNING: Missing ${varName}`);
+    }
+  }
+
+  // Check optional vars (just info)
+  for (const { name, description } of OPTIONAL_ENV_VARS) {
+    if (!process.env[name]) {
+      console.log(`ℹ️ Optional: ${name} not set (${description})`);
+    }
+  }
+
+  // Log validation results
+  console.log('═'.repeat(50));
+  console.log('🔐 ENVIRONMENT VALIDATION');
+  console.log('═'.repeat(50));
+  console.log(`   Environment: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+  console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'not set'}`);
+
+  if (warnings.length > 0) {
+    console.log('');
+    warnings.forEach(w => console.warn(w));
+  }
+
   if (errors.length > 0) {
-    console.error('🚨 Validation Failed:', errors);
-    // process.exit(1); // DISABLED
-    console.error('⚠️ IGNORING ERRORS FOR DEBUGGING');
+    console.log('');
+    errors.forEach(e => console.error(e));
+    console.log('');
+    console.error('🚨 CRITICAL: Server cannot start without required environment variables!');
+    console.error('');
+    console.error('📋 For Hostinger Cloud:');
+    console.error('   1. Go to hPanel → Websites → Your Site');
+    console.error('   2. Click "Manage" → "Node.js" section');
+    console.error('   3. Add each missing variable in "Environment Variables"');
+    console.error('   4. Restart the application');
+    console.error('');
+
+    // FAIL FAST in production
+    if (isProduction) {
+      console.error('💀 Exiting process due to missing critical environment variables.');
+      process.exit(1);
+    } else {
+      console.warn('⚠️ Development mode: Continuing despite missing vars (NOT SAFE FOR PRODUCTION)');
+    }
   } else {
-    console.log('✅ Env validation passed');
+    console.log('');
+    console.log('✅ All critical environment variables are present');
   }
+  console.log('═'.repeat(50));
 };
+
 validateEnvironment();
 
 // ============================================
@@ -133,35 +219,49 @@ app.get('/health', (req, res) => {
   });
 });
 
-// DB Diagnostic Endpoint
+// DB Diagnostic Endpoint - SECURED for production
 app.get('/api/health-db', (req, res) => {
   try {
+    const isProduction = process.env.NODE_ENV === 'production';
     const statusMap = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
     const state = mongoose.connection ? mongoose.connection.readyState : 99;
-    
-    // Check file existence
-    const envCurrent = path.resolve(__dirname, '.env');
-    const envParent = path.resolve(__dirname, '../.env');
-    
-    res.json({
+
+    // SECURITY: Don't expose sensitive info in production
+    const response = {
       status: 'ok',
-      checks: {
-        file_current_exists: fs.existsSync(envCurrent),
-        file_parent_exists: fs.existsSync(envParent), // Did the parent file persist?
-        parent_path_checked: envParent
-      },
-      env_vars: {
-        mongo_uri_found: !!process.env.MONGO_URI,
-        all_keys: Object.keys(process.env).sort() // Show EVERYTHING the server sees
-      },
+      environment: isProduction ? 'production' : 'development',
       db: {
         state: statusMap[state] || 'unknown',
-        name: mongoose.connection ? mongoose.connection.name : 'unknown',
-        host: mongoose.connection ? mongoose.connection.host : 'unknown'
+        connected: state === 1,
+      },
+      env_status: {
+        mongo_uri: !!process.env.MONGO_URI ? 'configured' : 'missing',
+        jwt_secret: !!process.env.JWT_SECRET ? 'configured' : 'missing',
+        client_url: !!process.env.CLIENT_URL ? 'configured' : 'missing',
+        cloudinary: !!process.env.CLOUDINARY_URL ? 'configured' : 'missing',
+        smtp: !!(process.env.SMTP_USER && process.env.SMTP_PASS) ? 'configured' : 'missing',
       }
-    });
+    };
+
+    // Only show detailed debug info in development
+    if (!isProduction) {
+      const envCurrent = path.resolve(__dirname, '.env');
+      const envParent = path.resolve(__dirname, '../.env');
+
+      response.debug = {
+        file_current_exists: fs.existsSync(envCurrent),
+        file_parent_exists: fs.existsSync(envParent),
+        parent_path: envParent,
+        db_name: mongoose.connection ? mongoose.connection.name : 'unknown',
+        db_host: mongoose.connection ? mongoose.connection.host : 'unknown',
+        // Only show env key names in development, never values
+        env_keys: Object.keys(process.env).filter(k => !k.includes('SECRET') && !k.includes('PASS') && !k.includes('KEY')).sort()
+      };
+    }
+
+    res.json(response);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Health check failed' });
   }
 });
 
@@ -196,10 +296,15 @@ app.use(globalErrorHandler);
 // STARTUP
 // ============================================
 
+// PORT: In production (Hostinger), PORT is always injected via hPanel
+// The fallback 9000 is ONLY for local development
 const PORT = process.env.PORT || 9000;
+
 httpServer.listen(PORT, '0.0.0.0', () => {
+  const isProduction = process.env.NODE_ENV === "production";
   console.log('═'.repeat(60));
-  console.log(`🚀 DealDirect Backend v2.0 - LIVE & HEALTHY`);
+  console.log(`🚀 DealDirect Backend v3.0 - ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+  console.log(`📡 Listening on port: ${PORT}`);
   console.log(`👉 Health: http://0.0.0.0:${PORT}/health`);
   console.log('═'.repeat(60));
 });

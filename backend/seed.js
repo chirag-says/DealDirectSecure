@@ -1,10 +1,13 @@
 import mongoose from "mongoose";
-import dotenv from "dotenv";
 import PropertyType from "./models/PropertyType.js";
 import Category from "./models/Category.js";
 import SubCategory from "./models/SubCategory.js";
 
-dotenv.config();
+// HOSTINGER CLOUD FIX: Only load dotenv in non-production
+if (process.env.NODE_ENV !== "production") {
+    const dotenv = await import("dotenv");
+    dotenv.default.config();
+}
 
 const PROPERTY_CATEGORIES = {
     Residential: {

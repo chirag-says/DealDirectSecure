@@ -1,9 +1,12 @@
-import dotenv from "dotenv";
 import mongoose from "mongoose";
 import connectDB from "../config/db.js";
 import Property from "../models/Property.js";
 
-dotenv.config();
+// HOSTINGER CLOUD FIX: Only load dotenv in non-production
+if (process.env.NODE_ENV !== "production") {
+  const dotenv = await import("dotenv");
+  dotenv.default.config();
+}
 
 const inferCategoryName = (categoryName, propertyTypeName) => {
   const raw = (categoryName || "").toString();
@@ -37,7 +40,7 @@ const run = async () => {
       if (current !== normalized) {
         console.log(
           `Updating property ${prop._id}: categoryName "${current}" -> "${normalized}" (type: "${prop.propertyTypeName ||
-            prop.propertyType}")`
+          prop.propertyType}")`
         );
         prop.categoryName = normalized;
         await prop.save();

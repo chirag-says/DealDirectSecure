@@ -6,9 +6,11 @@
  * SECURITY FIX: Now validates magic bytes IN-MEMORY using memoryStorage()
  * BEFORE files are streamed to Cloudinary. Invalid files are rejected
  * at the buffer stage and never touch external storage.
+ * 
+ * HOSTINGER CLOUD COMPATIBILITY:
+ * - dotenv is NOT loaded here (handled centrally in server.js)
+ * - CLOUDINARY_URL comes from process.env (injected by hPanel in production)
  */
-import dotenv from "dotenv";
-dotenv.config();
 
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";

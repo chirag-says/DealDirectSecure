@@ -2,8 +2,12 @@
  * Simple Diagnostic Script
  */
 import mongoose from "mongoose";
-import dotenv from "dotenv";
-dotenv.config();
+
+// HOSTINGER CLOUD FIX: Only load dotenv in non-production
+if (process.env.NODE_ENV !== "production") {
+    const dotenv = await import("dotenv");
+    dotenv.default.config();
+}
 
 async function run() {
     try {
