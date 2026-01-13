@@ -6,40 +6,40 @@
  * The .env file is NOT loaded in production.
  */
 
-console.log("🚀 Server starting...");
-
-import jwt from "jsonwebtoken";
-import mongoose from "mongoose";
+// ============================================
+// HOSTINGER CLOUD FIX: Load dotenv FIRST, ONLY in non-production
+// Using synchronous import to avoid top-level await issues
+// ============================================
+import dotenv from "dotenv";
 import path from "path";
-import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ============================================
-// HOSTINGER CLOUD FIX: Conditional dotenv loading
-// Only load .env file in NON-PRODUCTION environments
-// In production, Hostinger injects env vars via hPanel
-// ============================================
 if (process.env.NODE_ENV !== "production") {
   // Development mode - load from .env file
-  const dotenv = await import("dotenv");
   const envCurrent = path.resolve(__dirname, '.env');
   const envParent = path.resolve(__dirname, '../.env');
 
-  dotenv.default.config({ path: envCurrent });
+  dotenv.config({ path: envCurrent });
 
   // Try parent directory as fallback for local dev
   if (!process.env.MONGO_URI) {
     console.log(`⚠️ .env not found in current dir. Trying parent: ${envParent}`);
-    dotenv.default.config({ path: envParent });
+    dotenv.config({ path: envParent });
   }
 
   console.log("📄 Development mode: Loaded .env file");
 } else {
   console.log("☁️ Production mode: Using Hostinger hPanel environment variables");
 }
+
+console.log("🚀 Server starting...");
+
+import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
+import fs from "fs";
 
 import express from "express";
 import cors from "cors";
