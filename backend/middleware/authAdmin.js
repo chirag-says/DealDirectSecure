@@ -10,7 +10,8 @@ export const COOKIE_CONFIG = {
   options: {
     httpOnly: true, // Prevents XSS attacks - cookie not accessible via JavaScript
     secure: process.env.NODE_ENV === "production", // HTTPS only in production
-    sameSite: "strict", // Prevents CSRF attacks
+    // For cross-origin deployments, 'none' is required (with secure:true)
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
     path: "/",
     domain: process.env.COOKIE_DOMAIN || undefined,
@@ -25,7 +26,7 @@ export const MFA_COOKIE_CONFIG = {
   options: {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     maxAge: 10 * 60 * 1000, // 10 minutes to complete MFA
     path: "/",
   },

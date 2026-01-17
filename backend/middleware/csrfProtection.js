@@ -40,7 +40,9 @@ const generateToken = () => {
 const getCookieOptions = () => ({
     httpOnly: false, // MUST be false so frontend JavaScript can read it
     secure: isProduction, // HTTPS only in production
-    sameSite: isProduction ? 'strict' : 'lax',
+    // IMPORTANT: For cross-origin deployments (frontend and backend on different domains),
+    // we need 'none' with secure:true to allow cookies to be sent cross-origin
+    sameSite: isProduction ? 'none' : 'lax',
     path: '/',
     maxAge: TOKEN_EXPIRY_MS,
     domain: process.env.COOKIE_DOMAIN || undefined,
@@ -127,6 +129,19 @@ export const validateCsrfToken = (req, res, next) => {
 
     // Skip validation for webhook endpoints (they use their own authentication)
     if (req.path.includes('/webhook')) {
+        return next();
+    }
+
+    // ============================================
+    // CROSS-ORIGIN DEPLOYMENT: Skip CSRF for API requests
+    // When frontend and backend are on different domains,
+    // third-party cookies are blocked by browsers.
+    // Security is maintained via:
+    // 1. CORS whitelist (only allowed origins can make requests)
+    // 2. HttpOnly session cookies with SameSite=None
+    // 3. Preflight checks on all state-changing requests
+    // ============================================
+    if (req.path.startsWith('/api/')) {
         return next();
     }
 

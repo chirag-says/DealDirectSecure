@@ -1,0 +1,15 @@
+# Protect sensitive files from web access
+<Files .env>
+    Order allow,deny
+    Deny from all
+</Files>
+
+<Files .env.production>
+    Order allow,deny
+    Deny from all
+</Files>
+
+<Files .htaccess>
+    Order allow,deny
+    Deny from all
+</Files>

@@ -3,7 +3,16 @@ import { io } from "socket.io-client";
 import api from "../utils/api";
 import { useAuth } from "./AuthContext";
 
-const API_BASE = import.meta.env.VITE_API_BASE;
+// Get Socket.io base URL (without /api suffix)
+const getSocketBaseUrl = () => {
+  if (import.meta.env.VITE_API_BASE) {
+    return import.meta.env.VITE_API_BASE;
+  }
+  // Fallback for development
+  return `${window.location.protocol}//${window.location.hostname}:9000`;
+};
+
+const API_BASE = getSocketBaseUrl();
 
 const ChatContext = createContext();
 

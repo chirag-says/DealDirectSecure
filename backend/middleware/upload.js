@@ -6,11 +6,28 @@
  * SECURITY FIX: Now validates magic bytes IN-MEMORY using memoryStorage()
  * BEFORE files are streamed to Cloudinary. Invalid files are rejected
  * at the buffer stage and never touch external storage.
- * 
- * HOSTINGER CLOUD COMPATIBILITY:
- * - dotenv is NOT loaded here (handled centrally in server.js)
- * - CLOUDINARY_URL comes from process.env (injected by hPanel in production)
  */
+import dotenv from "dotenv";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+
+// Get directory name in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// HOSTINGER FIX: Load .env or .env.production (same logic as server.js)
+const envPath = path.join(__dirname, '..', '.env');
+const envProdPath = path.join(__dirname, '..', '.env.production');
+
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+} else if (fs.existsSync(envProdPath)) {
+  console.log('[upload.js] Loading environment from .env.production');
+  dotenv.config({ path: envProdPath });
+} else {
+  dotenv.config(); // Try default locations
+}
 
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
@@ -150,6 +167,8 @@ const validateExtension = (filename, detectedType) => {
 // ============================================
 
 const cloudinaryUrl = process.env.CLOUDINARY_URL;
+let cloudinaryConfigured = false;
+
 if (cloudinaryUrl) {
   const match = cloudinaryUrl.match(/cloudinary:\/\/(\d+):([^@]+)@(.+)/);
   if (match) {
@@ -158,13 +177,26 @@ if (cloudinaryUrl) {
       api_key: match[1],
       api_secret: match[2],
     });
+    cloudinaryConfigured = true;
     console.log("✅ Cloudinary configured for cloud:", match[3]);
+    
+    // Verify Cloudinary connectivity on startup (async, non-blocking)
+    cloudinary.api.ping()
+      .then(() => console.log("✅ Cloudinary connection verified"))
+      .catch((err) => {
+        console.error("❌ Cloudinary connection test FAILED:", err.message);
+        console.error("   Image uploads will NOT work until this is resolved!");
+      });
   } else {
-    console.error("❌ Invalid CLOUDINARY_URL format");
+    console.error("❌ Invalid CLOUDINARY_URL format. Expected: cloudinary://api_key:api_secret@cloud_name");
   }
 } else {
-  console.error("❌ CLOUDINARY_URL not found in environment");
+  console.error("❌ CLOUDINARY_URL not found in environment variables");
+  console.error("   Image uploads will NOT work until CLOUDINARY_URL is configured!");
 }
+
+// Export configuration status for health checks
+export const isCloudinaryConfigured = () => cloudinaryConfigured;
 
 // ============================================
 // MULTER CONFIGURATION WITH SECURITY CHECKS
@@ -231,17 +263,21 @@ export const uploadConcurrencyGuard = (req, res, next) => {
     });
   }
 
-  // Check memory pressure (SKIP in development mode - only enforce in production)
-  const isDev = process.env.NODE_ENV !== 'production';
-  if (!isDev && !checkMemoryPressure()) {
-    console.warn(`⚠️ SECURITY: Memory pressure detected, rejecting upload`);
-    return res.status(503).json({
-      success: false,
-      message: 'Server is under heavy load. Please try again shortly.',
-      code: 'MEMORY_PRESSURE',
-      retryAfter: 10
-    });
-  }
+  // DISABLED: Memory pressure check causes false positives on shared hosting (Hostinger)
+  // Shared hosting environments report high heap usage even when functioning normally
+  // The concurrent upload limit above is sufficient protection against DoS
+  // 
+  // If you want to re-enable this on dedicated servers, uncomment below:
+  // const isDev = process.env.NODE_ENV !== 'production';
+  // if (!isDev && !checkMemoryPressure()) {
+  //   console.warn(`⚠️ SECURITY: Memory pressure detected, rejecting upload`);
+  //   return res.status(503).json({
+  //     success: false,
+  //     message: 'Server is under heavy load. Please try again shortly.',
+  //     code: 'MEMORY_PRESSURE',
+  //     retryAfter: 10
+  //   });
+  // }
 
   // Track this upload
   activeUploads++;
@@ -297,6 +333,16 @@ const MAX_TOTAL_UPLOAD_SIZE = 100 * 1024 * 1024; // 100MB total per request
  */
 export const validateAndUploadToCloudinary = async (req, res, next) => {
   try {
+    // FAIL FAST: Check if Cloudinary is configured before processing files
+    if (!cloudinaryConfigured) {
+      console.error('❌ CRITICAL: Cloudinary is not configured. Cannot process file uploads.');
+      return res.status(503).json({
+        success: false,
+        message: 'Image upload service is not configured. Please contact support.',
+        code: 'STORAGE_NOT_CONFIGURED'
+      });
+    }
+
     // Collect all files from request
     const allFiles = [];
 
@@ -445,11 +491,37 @@ export const validateAndUploadToCloudinary = async (req, res, next) => {
       console.log(`✅ SECURITY: ${uploadedFiles.length} files validated and uploaded to Cloudinary`);
       next();
     } catch (uploadError) {
-      console.error('Cloudinary upload failed:', uploadError);
+      // Enhanced error logging for debugging
+      console.error('❌ Cloudinary upload failed:', {
+        message: uploadError.message,
+        name: uploadError.name,
+        code: uploadError.error?.http_code || uploadError.http_code,
+        cloudinaryError: uploadError.error || uploadError,
+        stack: uploadError.stack
+      });
+      
+      // Provide more specific error messages based on error type
+      let userMessage = 'Failed to upload files to storage';
+      let errorCode = 'UPLOAD_FAILED';
+      
+      if (uploadError.message?.includes('timeout')) {
+        userMessage = 'Upload timed out. Please try with smaller images or check your connection.';
+        errorCode = 'UPLOAD_TIMEOUT';
+      } else if (uploadError.error?.http_code === 401 || uploadError.http_code === 401) {
+        userMessage = 'Storage service authentication failed. Please contact support.';
+        errorCode = 'STORAGE_AUTH_ERROR';
+        console.error('❌ CRITICAL: Cloudinary credentials are invalid or not configured!');
+      } else if (uploadError.error?.http_code === 400 || uploadError.http_code === 400) {
+        userMessage = 'Invalid image file. Please ensure your images are valid JPG, PNG, GIF, or WebP files.';
+        errorCode = 'INVALID_IMAGE';
+      }
+      
       return res.status(500).json({
         success: false,
-        message: 'Failed to upload files to storage',
-        code: 'UPLOAD_FAILED'
+        message: userMessage,
+        code: errorCode,
+        // Include error details in development mode only
+        ...(process.env.NODE_ENV !== 'production' && { debugInfo: uploadError.message })
       });
     }
   } catch (error) {
