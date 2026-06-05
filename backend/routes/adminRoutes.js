@@ -79,6 +79,17 @@ router.put("/reports/:id", protectAdmin, requirePermission("reports:update"), up
 // Run: node seedAdmin.js (from backend directory)
 // This eliminates the registration attack surface entirely
 
+import {
+  getDealVerifications,
+  approveDealVerification,
+  rejectDealVerification,
+} from "../controllers/adminController.js";
+
+// Deal Verifications
+router.get("/verifications", protectAdmin, getDealVerifications);
+router.post("/verifications/:id/approve", protectAdmin, approveDealVerification);
+router.post("/verifications/:id/reject", protectAdmin, rejectDealVerification);
+
 // Audit Logs (Super Admin only)
 router.get("/audit-logs", protectAdmin, requireSuperAdmin, getAuditLogs);
 

@@ -6,22 +6,33 @@ package-lock.json
 
 # Environment Variables (CRITICAL - NEVER COMMIT)
 .env
-.env.local
-.env.development
-.env.development.local
-.env.test
-.env.test.local
-# NOTE: .env.production IS committed for Hostinger workaround
-# .env.production  <- REMOVED from gitignore
-.env.production.local
+.env.*
 !.env.example
 
 # Seeding Scripts with Secrets
+seed.js
 seedAdmin.js
 seedRbac.js
 scripts/seedRbac.js
+scripts/seedBlogs.js
 scripts/fixAdminRole.js
 scripts/debugRbac.js
+scripts/testAdminLogin.js
+
+# RSA / PEM keys (Hubble SSO, JWT signing — NEVER COMMIT)
+*.pem
+*.key
+private_key*
+public_key*
+
+# Generated reports & data exports
+*.xlsx
+*.csv
+generate_report.js
+
+# Internal docs (not for public repo)
+HOSTINGER_SETUP.md
+SECURITY_REFACTOR.md
 
 # Logs
 logs/
@@ -110,3 +121,6 @@ temp/
 
 # Debug
 .debug/
+
+# AI assistant
+.gemini/

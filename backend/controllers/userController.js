@@ -6,12 +6,26 @@
 import User from "../models/userModel.js";
 import UserSession from "../models/UserSession.js";
 import PasswordResetToken from "../models/PasswordResetToken.js";
+import Property from "../models/Property.js";
+import ContactInquiry from "../models/ContactInquiry.js";
+import SavedSearch from "../models/SavedSearch.js";
+import Conversation from "../models/Conversation.js";
+import Message from "../models/Message.js";
+import Reward from "../models/Reward.js";
+import Referral from "../models/Referral.js";
+import Report from "../models/Report.js";
+import LoginTracker from "../models/LoginTracker.js";
+import Notification from "../models/Notification.js";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { setSessionCookie, clearSessionCookie } from "../middleware/authUser.js";
 import { Parser } from "@json2csv/plainjs";
 import PDFDocument from "pdfkit";
+import { sendOtpSms, sendPasswordResetSms, isSmsConfigured } from "../services/smsService.js";
+import { getOrCreateWallet, createReferralFromCode, trackDailyLogin } from "../services/rewardService.js";
+import { sendNewUserWhatsApp } from "../services/whatsappService.js";
+import { sendWelcomeEmail } from "../utils/emailService.js";
 
 // ============================================
 // EMAIL CONFIGURATION
@@ -124,6 +138,7 @@ const sanitizeUserResponse = (user) => {
     isBlocked: safeUser.isBlocked,
     blockReason: safeUser.blockReason,
     preferences: safeUser.preferences,
+    referralCode: safeUser.referralCode,
     createdAt: safeUser.createdAt,
     updatedAt: safeUser.updatedAt,
   };
@@ -167,14 +182,11 @@ const sendOTPEmail = async (email, otp, name = "User") => {
   return getTransporter().sendMail(mailOptions);
 };
 
-const sendPasswordResetEmail = async (email, resetToken, name = "User") => {
-  // Create a reset link with the token
-  const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${resetToken}`;
-
+const sendPasswordResetEmail = async (email, otp, name = "User") => {
   const mailOptions = {
     from: `"DealDirect" <${process.env.SENDER_EMAIL || process.env.SMTP_USER}>`,
     to: email,
-    subject: "🔑 DealDirect - Reset Your Password",
+    subject: "🔑 DealDirect - Password Reset OTP",
     html: `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
@@ -184,29 +196,26 @@ const sendPasswordResetEmail = async (email, resetToken, name = "User") => {
         <div style="background: #ffffff; padding: 40px 30px; border: 1px solid #e5e7eb; border-top: none;">
           <h2 style="color: #1f2937; margin: 0 0 20px;">Hello ${name}! 🔐</h2>
           <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin: 0 0 25px;">
-            We received a request to reset your password. Click the button below to create a new password:
+            We received a request to reset your password. Use the following OTP to reset your password:
           </p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${resetUrl}" style="background: #dc2626; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">
-              Reset Password
-            </a>
+          <div style="background: #f3f4f6; border-radius: 12px; padding: 25px; text-align: center; margin: 25px 0;">
+            <p style="color: #6b7280; font-size: 14px; margin: 0 0 10px;">Your Password Reset OTP</p>
+            <div style="font-size: 36px; font-weight: bold; color: #dc2626; letter-spacing: 8px; font-family: 'Courier New', monospace;">
+              ${otp}
+            </div>
           </div>
-          <p style="color: #6b7280; font-size: 14px; text-align: center;">
-            Or copy this link: <br/>
-            <code style="background: #f3f4f6; padding: 4px 8px; border-radius: 4px; word-break: break-all;">${resetUrl}</code>
-          </p>
           <div style="background: #fef3c7; border-radius: 8px; padding: 15px; margin: 25px 0;">
             <p style="color: #92400e; font-size: 14px; margin: 0;">
               <strong>⚠️ Security Notice:</strong><br/>
-              • This link is valid for 15 minutes<br/>
+              • This OTP is valid for 10 minutes<br/>
               • If you didn't request this, ignore this email<br/>
-              • Never share this link with anyone
+              • Never share this OTP with anyone
             </p>
           </div>
         </div>
       </div>
     `,
-    text: `Hello ${name}!\n\nClick this link to reset your password: ${resetUrl}\n\nThis link is valid for 15 minutes.`,
+    text: `Hello ${name}!\n\nYour OTP for password reset is: ${otp}\n\nThis OTP is valid for 10 minutes. Do not share this with anyone.`,
   };
 
   return getTransporter().sendMail(mailOptions);
@@ -221,10 +230,10 @@ const sendPasswordResetEmail = async (email, resetToken, name = "User") => {
  */
 export const registerUser = async (req, res) => {
   try {
-    const { name, email, password, role, phone } = req.body;
+    const { name, email, password, role, phone, referralCode } = req.body;
 
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: "Name, email, and password are required" });
+    if (!name || !email || !password || !phone) {
+      return res.status(400).json({ message: "Name, email, password, and phone number are required" });
     }
 
     if (!isValidPhoneNumber(phone)) {
@@ -238,11 +247,27 @@ export const registerUser = async (req, res) => {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    let user = await User.findOne({ email: normalizedEmail });
+    const cleanPhone = phone?.trim();
 
-    if (user && user.isVerified) {
-      return res.status(400).json({ message: "User already exists. Please login." });
+    // Check if verified user exists by either email or phone
+    const existingVerifiedUser = await User.findOne({
+      $or: [{ email: normalizedEmail }, { phone: cleanPhone }],
+      isVerified: true,
+    });
+
+    if (existingVerifiedUser) {
+      if (existingVerifiedUser.email === normalizedEmail) {
+        return res.status(400).json({ message: "Email is already registered. Please login." });
+      } else {
+        return res.status(400).json({ message: "Phone number is already registered. Please login." });
+      }
     }
+
+    // Reuse existing unverified user by email OR phone
+    let user = await User.findOne({
+      $or: [{ email: normalizedEmail }, { phone: cleanPhone }],
+      isVerified: false
+    });
 
     const otp = generateSecureOTP();
     const hashedOtp = hashOTP(otp); // SECURITY FIX: Hash OTP before storage
@@ -263,6 +288,7 @@ export const registerUser = async (req, res) => {
       });
     } else {
       user.name = name.trim();
+      user.email = normalizedEmail;
       user.password = hashedPassword;
       user.role = normalizedRole;
       if (phone) user.phone = phone.trim();
@@ -271,19 +297,27 @@ export const registerUser = async (req, res) => {
       await user.save();
     }
 
-    try {
-      await sendOTPEmail(normalizedEmail, otp, name);
-    } catch (emailError) {
-      console.error("❌ Error sending OTP email:", emailError.message);
-      return res.status(200).json({
-        message: "Registration initiated. Check console for OTP (email service issue).",
-        email: normalizedEmail,
-      });
+    // Send OTP via SMS using Equence
+    if (isSmsConfigured()) {
+      try {
+        const smsResult = await sendOtpSms(phone, otp, name);
+        console.log('[REGISTER] SMS Result:', JSON.stringify(smsResult));
+        if (!smsResult.success) {
+          console.error("❌ SMS sending failed:", smsResult.error, smsResult.data);
+          return res.status(500).json({ message: "Failed to send OTP via SMS. Error: " + (smsResult.error || 'Unknown') });
+        }
+      } catch (smsErr) {
+        console.error("❌ Error sending OTP SMS:", smsErr.message);
+        return res.status(500).json({ message: "Failed to send OTP. Please try again." });
+      }
+    } else {
+      console.error("❌ SMS service is not configured");
+      return res.status(500).json({ message: "SMS service is not configured. Contact support." });
     }
 
     res.status(200).json({
       success: true,
-      message: "OTP sent to your email. Please verify to complete registration.",
+      message: "OTP sent to your phone number. Please verify to complete registration.",
       email: normalizedEmail,
     });
   } catch (err) {
@@ -338,6 +372,30 @@ export const registerUserDirect = async (req, res) => {
     const { session, sessionToken } = await UserSession.createSession(user, req);
     setSessionCookie(res, sessionToken);
 
+    // --- DealDirect Rewards: post-registration hooks ---
+    try {
+      await getOrCreateWallet(user._id);
+
+      // Handle referral code if provided
+      if (req.body.referralCode) {
+        await createReferralFromCode(req.body.referralCode, user._id);
+      }
+    } catch (rewardErr) {
+      console.error("[Rewards] Post-registration reward error (non-blocking):", rewardErr.message);
+    }
+    // --- End Rewards hooks ---
+
+    // --- WhatsApp: Notify admin about new user registration ---
+    sendNewUserWhatsApp({
+      name: user.name,
+      email: user.email,
+      phone: user.phone || '',
+      role: 'Buyer',
+    }).catch(err => console.error('[WhatsApp] New user notification error:', err.message));
+
+    // --- Send Welcome Email ---
+    sendWelcomeEmail(user.email, user.name).catch(err => console.error('[Email] Welcome email error:', err.message));
+
     res.status(201).json({
       success: true,
       message: "Registration successful! Welcome to DealDirect.",
@@ -389,6 +447,30 @@ export const verifyOtp = async (req, res) => {
     const { session, sessionToken } = await UserSession.createSession(user, req);
     setSessionCookie(res, sessionToken);
 
+    // --- DealDirect Rewards: post-registration hooks ---
+    try {
+      await getOrCreateWallet(user._id);
+
+      // Handle referral code if provided during registration
+      if (req.body.referralCode) {
+        await createReferralFromCode(req.body.referralCode, user._id);
+      }
+    } catch (rewardErr) {
+      console.error("[Rewards] Post-registration reward error (non-blocking):", rewardErr.message);
+    }
+    // --- End Rewards hooks ---
+
+    // --- WhatsApp: Notify admin about new user registration ---
+    sendNewUserWhatsApp({
+      name: user.name,
+      email: user.email,
+      phone: user.phone || '',
+      role: user.role === 'owner' ? 'Owner' : 'Buyer',
+    }).catch(err => console.error('[WhatsApp] New user notification error:', err.message));
+
+    // --- Send Welcome Email ---
+    sendWelcomeEmail(user.email, user.name).catch(err => console.error('[Email] Welcome email error:', err.message));
+
     res.status(201).json({
       success: true,
       message: "Email verified and registration successful",
@@ -426,15 +508,21 @@ export const resendOtp = async (req, res) => {
     user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
-    try {
-      await sendOTPEmail(email, otp, user.name);
-    } catch (emailError) {
-      console.error("❌ Error resending OTP:", emailError.message);
-      return res.status(500).json({ message: "Failed to send OTP. Please try again." });
+    // Send OTP via SMS using Equence
+    if (user.phone && isSmsConfigured()) {
+      try {
+        await sendOtpSms(user.phone, otp, user.name);
+      } catch (smsErr) {
+        console.error("❌ Error resending OTP SMS:", smsErr.message);
+        return res.status(500).json({ message: "Failed to send OTP. Please try again." });
+      }
+    } else {
+      console.error("❌ SMS service not configured or phone number missing");
+      return res.status(500).json({ message: "Unable to send OTP. Contact support." });
     }
 
     res.status(200).json({
-      message: "New OTP sent to your email.",
+      message: "New OTP sent to your phone number.",
       email: email,
     });
   } catch (err) {
@@ -508,6 +596,13 @@ export const loginUser = async (req, res) => {
     const { session, sessionToken } = await UserSession.createSession(user, req);
     setSessionCookie(res, sessionToken);
 
+    // --- DealDirect Rewards: track daily login ---
+    try {
+      await trackDailyLogin(user._id);
+    } catch (rewardErr) {
+      console.error("[Rewards] Login tracking error (non-blocking):", rewardErr.message);
+    }
+
     res.status(200).json({
       success: true,
       message: "Login successful",
@@ -573,48 +668,72 @@ export const logoutAllDevices = async (req, res) => {
  */
 export const forgotPassword = async (req, res) => {
   try {
-    const { email } = req.body;
+    const { phone, email } = req.body;
 
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
+    // Accept phone (primary) or email (fallback)
+    if (!phone && !email) {
+      return res.status(400).json({ message: "Phone number is required" });
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ email: normalizedEmail });
+    // Find user by phone (primary) or email (fallback)
+    let user;
+    if (phone) {
+      const cleanPhone = phone.toString().trim();
+      user = await User.findOne({ phone: cleanPhone });
+    } else {
+      const normalizedEmail = email.toLowerCase().trim();
+      user = await User.findOne({ email: normalizedEmail });
+    }
 
-    // Always return success to prevent email enumeration
-    if (!user || !user.isVerified) {
-      return res.status(200).json({
-        message: "If an account exists with this email, you will receive a password reset link.",
+    // Return error if user not found
+    if (!user) {
+      return res.status(404).json({
+        message: "No account found with this phone number. Please register first.",
       });
     }
 
-    // Check rate limiting
-    const canRequest = await PasswordResetToken.checkRateLimit(user._id);
-    if (!canRequest) {
-      return res.status(429).json({
-        message: "Too many password reset requests. Please try again later.",
-        code: "RATE_LIMITED",
-      });
+    // Check if user recently requested OTP (rate limiting - 1 minute cooldown)
+    const userWithOtp = await User.findById(user._id).select('+resetPasswordOtpExpires');
+    if (userWithOtp.resetPasswordOtpExpires) {
+      const timeSinceLastRequest = Date.now() - (userWithOtp.resetPasswordOtpExpires.getTime() - 10 * 60 * 1000);
+      if (timeSinceLastRequest < 60 * 1000) {
+        return res.status(429).json({
+          message: "Please wait before requesting another OTP.",
+          code: "RATE_LIMITED",
+        });
+      }
     }
 
-    // Generate secure reset token
-    const resetToken = await PasswordResetToken.createResetToken(
-      user._id,
-      req.ip || "unknown"
-    );
+    // Generate secure 6-digit OTP
+    const otp = generateSecureOTP();
+    const hashedOtp = hashOTP(otp);
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    try {
-      await sendPasswordResetEmail(normalizedEmail, resetToken, user.name);
-    } catch (emailError) {
-      console.error("❌ Error sending password reset email:", emailError.message);
-      return res.status(500).json({
-        message: "Failed to send reset email. Please try again later.",
-      });
+    // Store hashed OTP in user document
+    await User.findByIdAndUpdate(user._id, {
+      resetPasswordOtp: hashedOtp,
+      resetPasswordOtpExpires: otpExpires,
+    });
+
+    // Send password reset OTP via SMS
+    if (user.phone && isSmsConfigured()) {
+      try {
+        const smsResult = await sendPasswordResetSms(user.phone, otp, user.name);
+        if (!smsResult.success) {
+          console.error("❌ Password reset SMS sending failed:", smsResult.error, smsResult.data);
+          return res.status(500).json({ message: "Failed to send OTP via SMS. Please try again later." });
+        }
+      } catch (smsErr) {
+        console.error("❌ Error sending password reset SMS:", smsErr.message);
+        return res.status(500).json({ message: "Failed to send OTP. Please try again." });
+      }
+    } else {
+      console.error("❌ SMS not sent for password reset: phone=" + (user.phone || 'missing') + ", smsConfigured=" + isSmsConfigured());
+      return res.status(500).json({ message: "SMS service is not available. Contact support." });
     }
 
     res.status(200).json({
-      message: "If an account exists with this email, you will receive a password reset link.",
+      message: "Password reset OTP has been sent to your phone via SMS.",
     });
   } catch (err) {
     console.error("Forgot password error:", err);
@@ -661,11 +780,11 @@ export const validateResetToken = async (req, res) => {
  */
 export const resetPassword = async (req, res) => {
   try {
-    const { token, newPassword } = req.body;
+    const { phone, email, otp, newPassword } = req.body;
 
-    if (!token || !newPassword) {
+    if ((!phone && !email) || !otp || !newPassword) {
       return res.status(400).json({
-        message: "Reset token and new password are required",
+        message: "Phone number, OTP, and new password are required",
       });
     }
 
@@ -675,28 +794,65 @@ export const resetPassword = async (req, res) => {
       return res.status(400).json({ message: passwordValidation.message });
     }
 
-    // Validate token
-    const resetToken = await PasswordResetToken.validateToken(token, req.ip);
+    // Find user by phone (primary) or email (fallback)
+    let user;
+    if (phone) {
+      const cleanPhone = phone.toString().trim();
+      user = await User.findOne({ phone: cleanPhone })
+        .select('+resetPasswordOtp +resetPasswordOtpExpires +password');
+    } else {
+      const normalizedEmail = email.toLowerCase().trim();
+      user = await User.findOne({ email: normalizedEmail })
+        .select('+resetPasswordOtp +resetPasswordOtpExpires +password');
+    }
 
-    if (!resetToken) {
+    if (!user) {
       return res.status(400).json({
-        message: "Invalid or expired reset link. Please request a new one.",
+        message: "Invalid phone number or OTP. Please try again.",
       });
     }
 
-    const user = resetToken.user;
+    // Check if OTP exists and is not expired
+    if (!user.resetPasswordOtp || !user.resetPasswordOtpExpires) {
+      return res.status(400).json({
+        message: "No password reset request found. Please request a new OTP.",
+      });
+    }
+
+    if (user.resetPasswordOtpExpires < new Date()) {
+      // Clear expired OTP
+      await User.findByIdAndUpdate(user._id, {
+        $unset: { resetPasswordOtp: 1, resetPasswordOtpExpires: 1 }
+      });
+      return res.status(400).json({
+        message: "OTP has expired. Please request a new one.",
+      });
+    }
+
+    // Verify OTP using constant-time comparison
+    const isValidOtp = verifyOTPHash(otp, user.resetPasswordOtp);
+    if (!isValidOtp) {
+      return res.status(400).json({
+        message: "Invalid OTP. Please check and try again.",
+      });
+    }
 
     // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 12);
 
-    // Update password and security fields
-    user.password = hashedPassword;
-    user.security = user.security || {};
-    user.security.passwordChangedAt = new Date();
-    await user.save();
-
-    // Mark token as used
-    await PasswordResetToken.useToken(PasswordResetToken.hashToken(token), req.ip);
+    // Update password and clear OTP fields using atomic update
+    // (user.save() can be unreliable with select: false fields)
+    await User.findByIdAndUpdate(user._id, {
+      $set: {
+        password: hashedPassword,
+        isVerified: true,
+        'security.passwordChangedAt': new Date(),
+      },
+      $unset: {
+        resetPasswordOtp: 1,
+        resetPasswordOtpExpires: 1,
+      },
+    });
 
     // Invalidate all existing sessions (security measure)
     await UserSession.revokeAllUserSessions(user._id, "password_reset");
@@ -791,7 +947,13 @@ export const updateProfile = async (req, res) => {
     }
 
     // Handle profile image upload
-    if (req.file) {
+    // Support both legacy (req.file) and secure pipeline (req.files.profileImage[0])
+    if (req.files?.profileImage?.[0]) {
+      // New secure pipeline: validateAndUploadToCloudinary sets req.files
+      const uploaded = req.files.profileImage[0];
+      updateData.profileImage = uploaded.secure_url || uploaded.path;
+    } else if (req.file) {
+      // Legacy pipeline fallback
       updateData.profileImage = req.file.path || req.file.secure_url || req.file.url;
     }
 
@@ -947,15 +1109,15 @@ export const sendUpgradeOtp = async (req, res) => {
     await user.save();
 
     try {
-      await sendOTPEmail(user.email, otp, user.name);
-    } catch (emailError) {
-      console.error("❌ Error sending upgrade OTP:", emailError.message);
+      await sendOtpSms(user.phone, otp, "account upgrade");
+    } catch (smsError) {
+      console.error("❌ Error sending upgrade OTP via SMS:", smsError.message);
       return res.status(500).json({ message: "Failed to send OTP. Please try again." });
     }
 
     res.status(200).json({
-      message: "Verification OTP sent to your email",
-      email: user.email,
+      message: "Verification OTP sent to your phone number",
+      phone: user.phone,
     });
   } catch (err) {
     console.error("Send upgrade OTP error:", err);
@@ -991,6 +1153,7 @@ export const verifyUpgradeOtp = async (req, res) => {
 
     // Upgrade user to owner
     user.role = "owner";
+    user.isVerified = true; // Mark verified since user proved phone ownership via OTP
     user.otp = undefined;
     user.otpExpires = undefined;
     await user.save();
@@ -1071,6 +1234,62 @@ export const toggleBlockUser = async (req, res) => {
   } catch (err) {
     console.error("Toggle block error:", err);
     res.status(500).json({ message: "Failed to update user status" });
+  }
+};
+
+// ============================================
+// ACCOUNT DELETION
+// ============================================
+
+export const deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // 1. Delete owned properties
+    await Property.deleteMany({ owner: userId });
+
+    // 2. Clear out all active user sessions and reset tokens
+    await UserSession.deleteMany({ userId });
+    await PasswordResetToken.deleteMany({ user: userId });
+    await LoginTracker.deleteMany({ user: userId });
+
+    // 3. Clear communications and history
+    await ContactInquiry.deleteMany({ user: userId });
+    await SavedSearch.deleteMany({ user: userId });
+    await Report.deleteMany({ reporter: userId });
+    await Notification.deleteMany({ $or: [{ user: userId }, { recipient: userId }] });
+
+    // 4. Chat interactions
+    await Message.deleteMany({ sender: userId });
+    // Remove user from any conversations they were part of
+    await Conversation.updateMany(
+      { participants: userId },
+      { $pull: { participants: userId } }
+    );
+    // Delete any conversations that are now empty
+    await Conversation.deleteMany({ participants: { $size: 0 } });
+
+    // 5. Rewards and Referrals
+    await Reward.deleteMany({ user: userId });
+    await Referral.deleteMany({ $or: [{ referrer: userId }, { referredUser: userId }] });
+
+    // 6. Finally, delete the User document itself
+    const deletedUser = await User.findByIdAndDelete(userId);
+
+    if (!deletedUser) {
+      return res.status(404).json({ message: "User account not found." });
+    }
+
+    // Clear the HTTP-only cookie on the client side
+    clearSessionCookie(res);
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Your account and all associated data have been permanently deleted." 
+    });
+  } catch (error) {
+    console.error("Delete Account error:", error);
+    res.status(500).json({ message: "Failed to delete account. Please try again." });
   }
 };
 

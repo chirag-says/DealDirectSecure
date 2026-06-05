@@ -21,10 +21,13 @@ import {
   getSuggestions,
   getAdminProperties,
   reportProperty,
+  closeDeal,
+  claimDealReward,
 } from "../controllers/propertyController.js";
 import { protectAdmin } from "../middleware/authAdmin.js";
 import { authMiddleware } from "../middleware/authUser.js";
 import { memoryUpload, validateAndUploadToCloudinary, uploadConcurrencyGuard } from "../middleware/upload.js";
+import { documentUpload, uploadDocumentsToCloudinary } from "../middleware/documentUpload.js";
 import { ownerOnlyListingAccess } from "../middleware/roleGuard.js";
 import {
   validatePropertyCreate,
@@ -96,6 +99,19 @@ router.delete("/interested/:id", authMiddleware, validateMongoId('id'), removeIn
 
 // 🔒 Protected: Report property (Any authenticated user)
 router.post("/:id/report", authMiddleware, validatePropertyReport, reportProperty);
+
+// 🔒 Protected: Close Deal (Owner submits proof for admin verification)
+router.post(
+  "/:id/close-deal",
+  authMiddleware,
+  uploadConcurrencyGuard,
+  documentUpload.fields([{ name: "documents", maxCount: 5 }]),
+  uploadDocumentsToCloudinary,
+  closeDeal
+);
+
+// 🔒 Protected: Claim deal reward (Owner or Buyer claims after admin approval)
+router.post("/claim-deal-reward/:verificationId", authMiddleware, claimDealReward);
 
 // ============================================
 // ADMIN ROUTES (Admin authentication required)

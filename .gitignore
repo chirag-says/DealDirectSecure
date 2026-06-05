@@ -1,43 +1,60 @@
-# Dependency directories
+# ╔══════════════════════════════════════════════════════════╗
+# ║          DealDirect — Master .gitignore                  ║
+# ║  Covers: backend / client / client-next / Admin          ║
+# ╚══════════════════════════════════════════════════════════╝
+
+# ===========================================================
+# 1. DEPENDENCIES
+# ===========================================================
 node_modules/
 **/node_modules/
+.pnp
+.pnp.js
 
-# Build outputs
-/dist/
+# ===========================================================
+# 2. BUILD OUTPUTS
+# ===========================================================
+dist/
 **/dist/
-/build/
+build/
 **/build/
-/dist-ssr/
+out/
+**/out/
+dist-ssr/
 **/dist-ssr/
-/.vite/
+
+# Next.js
+.next/
+**/.next/
+
+# Vite
+.vite/
 **/.vite/
-coverage/
-.nyc_output/
 
-# Logs
-logs/
-**/logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-pnpm-debug.log*
-lerna-debug.log*
-error.log*
-debug.log*
+# Turbopack
+.turbo/
 
-# ============================================
-# SECURITY: Environment & Secret Files
-# ============================================
+# ===========================================================
+# 3. ENVIRONMENT & SECRETS (CRITICAL)
+#    Only .env.example files are allowed through.
+# ===========================================================
 .env
 .env.*
 !.env.example
-!*/.env.example
-Admin/.env
-Admin/.env.*
-client/.env
-client/.env.*
+
+# Explicit sub-project env blocking
 backend/.env
 backend/.env.*
+!backend/.env.example
+client/.env
+client/.env.*
+!client/.env.example
+client-next/.env
+client-next/.env.*
+!client-next/.env.example
+Admin/.env
+Admin/.env.*
+!Admin/.env.example
 
 # Secret keys and certificates
 *.pem
@@ -52,26 +69,6 @@ backend/.env.*
 secrets/
 .secrets/
 
-# ============================================
-# SECURITY: Sensitive Data
-# ============================================
-# Database dumps
-*.sql
-*.dump
-*.bak
-*.backup
-
-# Seeding Scripts with Secrets (CRITICAL)
-seedAdmin.js
-backend/seedAdmin.js
-backend/scripts/seedRbac.js
-backend/scripts/fixAdminRole.js
-backend/scripts/debugRbac.js
-seedRbac.js
-scripts/seedRbac.js
-scripts/fixAdminRole.js
-scripts/debugRbac.js
-
 # Credentials and tokens
 .npmrc
 .yarnrc
@@ -81,22 +78,104 @@ service-account*.json
 *-credentials.json
 *-serviceaccount.json
 
-# Local data/uploads
+# ===========================================================
+# 4. SEEDING, MIGRATION & DEBUG SCRIPTS
+#    These often contain credentials or test data.
+#    Uses glob patterns so NEW scripts are auto-caught.
+# ===========================================================
+
+# -- Wildcard patterns (catch everything, any directory) --
+**/seed*.js
+**/seed*.ts
+**/seed*.mjs
+**/migrate*.js
+**/migrate*.ts
+**/migrate*.mjs
+**/fix*.js
+**/debug*.js
+**/test*.js
+
+# -- Explicit files (already known) --
+backend/seed.js
+backend/scripts/seedRbac.js
+backend/scripts/seedBlogs.js
+backend/scripts/fixAdminRole.js
+backend/scripts/debugRbac.js
+backend/scripts/testAdminLogin.js
+backend/scripts/migrateLegacyUsers.js
+
+# -- Keep normalizeCategoryName.js (legitimate utility) --
+!backend/scripts/normalizeCategoryName.js
+
+# ===========================================================
+# 5. DATABASE DUMPS & BACKUPS
+# ===========================================================
+*.sql
+*.dump
+*.bak
+*.backup
+*.sqlite
+*.sqlite3
+
+# ===========================================================
+# 6. LOGS
+# ===========================================================
+logs/
+**/logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+error.log*
+debug.log*
+
+# ===========================================================
+# 7. LINT & TEST OUTPUTS
+# ===========================================================
+lint-output.json
+**/lint-output.json
+coverage/
+**/coverage/
+.coverage/
+.nyc_output/
+test-results/
+playwright-report/
+.env.test
+.env.testing
+*.test.env
+
+# ===========================================================
+# 8. DEBUG & SCRATCH FILES
+# ===========================================================
+head_check.txt
+page_source_check.txt
+generate_task_sheet.py
+generate_report.js
+backend/generate_report.js
+
+# ===========================================================
+# 9. UPLOADED FILES (user-generated, not source code)
+# ===========================================================
 uploads/
 backend/uploads/
 !backend/uploads/.gitkeep
 
-# ============================================
-# System & Editor Files
-# ============================================
+# ===========================================================
+# 10. OS & SYSTEM FILES
+# ===========================================================
 .DS_Store
+**/.DS_Store
 Thumbs.db
 Desktop.ini
+ehthumbs.db
 *.swp
 *.swo
 *~
 
-# Editor files
+# ===========================================================
+# 11. EDITOR & IDE FILES
+# ===========================================================
 .vscode/
 !.vscode/extensions.json
 !.vscode/settings.json
@@ -110,37 +189,30 @@ Desktop.ini
 *.tsbuildinfo
 *.local
 
-# ============================================
-# Debug & Testing
-# ============================================
-.env.test
-.env.testing
-*.test.env
-coverage/
-.coverage/
-test-results/
-playwright-report/
+# ===========================================================
+# 12. AI ASSISTANT / TOOLING METADATA
+# ===========================================================
+.gemini/
+.cursor/
+.copilot/
+.antigravityignore
 
-# ============================================
-# Production Artifacts (should be built in CI/CD)
-# ============================================
-# Uncomment these in production repos
-# dist/
-# build/
+# ===========================================================
+# 13. SENTRY SOURCE MAPS
+# ===========================================================
+.sentryclirc
+.sentry/
 
-# Mobile app folder
-mobile/
+# ===========================================================
+# 14. ROOT PACKAGE-LOCK (empty, no root dependencies)
+#     Sub-project lockfiles (backend/, client/, Admin/) are
+#     intentionally tracked for reproducible builds.
+# ===========================================================
+/package-lock.json
 
-# ============================================
-# Package lock files (optional - uncomment if using specific package manager)
-# ============================================
-# package-lock.json
-# yarn.lock
-# pnpm-lock.yaml
-
-# ============================================
-# Temporary files
-# ============================================
+# ===========================================================
+# 15. TEMPORARY FILES & CACHES
+# ===========================================================
 tmp/
 temp/
 .temp/
@@ -148,3 +220,63 @@ temp/
 *.tmp
 *.temp
 .cache/
+**/.cache/
+
+# ===========================================================
+# 16. MOBILE APP (separate repo)
+# ===========================================================
+mobile/
+
+# ===========================================================
+# 17. NON-CODE PROJECT FILES
+#     Plans, reports, contracts, diagrams, analysis docs,
+#     debug dumps, and one-off scripts that are NOT source
+#     code. Only README.md and .gitignore belong at root.
+# ===========================================================
+
+# --- Implementation Plans & Guides ---
+implementation_plan.md
+BLOG_IMPLEMENTATION_PLAN.md
+CLIENT_APP_IMPLEMENTATION_GUIDE.md
+MIGRATION_EXECUTION_PLAN.md
+HOSTINGER_DEPLOYMENT.md
+SMARTPING_SMS_SETUP_GUIDE.md
+
+# --- Security & Technical Review Docs ---
+SECURITY_FIXES_SUMMARY.md
+TECHNICAL_REVIEW_FIXES.md
+Technical_Review_Response.md
+
+# --- Project Reports & Completion Docs ---
+DealDirect_Project_Completion_Report.md.resolved
+DealDirect_Project_Completion_ReportShort.md
+DealDirect_SOA_Report.md
+
+# --- Architecture Diagrams ---
+DealDirect_SOA_Architecture_Diagram.png
+
+# --- BRD & Task Reports (spreadsheets/CSV) ---
+DealDirect_BRD_Report.xlsx
+DealDirect_Task_Completion_Report.xlsx
+DealDirect_Task_Report_v2.xlsx
+BRD_Feature_Report.csv
+
+# --- Client Contracts & Legal Documents ---
+AMC_Support_Agreement.docx
+Infrastructure_Exclusions_Addendum.docx
+
+# --- Database Analysis ---
+mongodb_vs_postgresql_analysis.md
+
+# --- Debug / Scratch Dumps ---
+head_check.txt
+page_source_check.txt
+
+# --- One-off Utility Scripts ---
+generate_task_sheet.py
+
+# --- Catch-all: block common non-code formats at root ---
+/*.docx
+/*.xlsx
+/*.csv
+/*.resolved

@@ -1482,3 +1482,184 @@ async function createDefaultRoles() {
 
   return await Role.findOne({ name: "viewer" });
 }
+
+// ============================================
+// DEAL VERIFICATION ENDPOINTS
+// ============================================
+
+import TransactionVerification from "../models/TransactionVerification.js";
+import Notification from "../models/Notification.js";
+import { awardPoints } from "../services/rewardService.js";
+
+/**
+ * GET /api/admin/verifications?status=pending&page=1&limit=20
+ * List all deal closure verification requests.
+ */
+export const getDealVerifications = async (req, res) => {
+  try {
+    const { status, page = 1, limit = 20 } = req.query;
+    const filter = {};
+    if (status) filter.status = status;
+
+    const total = await TransactionVerification.countDocuments(filter);
+    const verifications = await TransactionVerification.find(filter)
+      .populate("property", "title listingType city locality address price images status")
+      .populate("owner", "name email phone")
+      .populate("buyer", "name email phone")
+      .populate("reviewedBy", "name email")
+      .sort({ createdAt: -1 })
+      .skip((parseInt(page) - 1) * parseInt(limit))
+      .limit(parseInt(limit))
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      verifications,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        totalPages: Math.ceil(total / parseInt(limit)),
+      },
+    });
+  } catch (error) {
+    console.error("[Admin] getDealVerifications error:", error.message);
+    res.status(500).json({ success: false, message: "Failed to fetch verifications" });
+  }
+};
+
+/**
+ * POST /api/admin/verifications/:id/approve
+ * Admin approves the deal — rewards are dispensed to both owner and buyer.
+ * Body: { adminNotes? }
+ */
+export const approveDealVerification = async (req, res) => {
+  try {
+    const verificationId = req.params.id;
+    const { adminNotes } = req.body;
+
+    const verification = await TransactionVerification.findById(verificationId)
+      .populate("property", "title")
+      .populate("owner", "name email")
+      .populate("buyer", "name email");
+
+    if (!verification) {
+      return res.status(404).json({ success: false, message: "Verification not found" });
+    }
+
+    if (verification.status !== "pending") {
+      return res.status(400).json({ success: false, message: `Verification already ${verification.status}` });
+    }
+
+    // 1. Update property status to sold/rented
+    await Property.findByIdAndUpdate(verification.property._id, {
+      status: verification.closingType, // "sold" or "rented"
+    });
+
+    // 2. Update verification record (NO rewards dispensed yet — user must claim)
+    verification.status = "approved";
+    verification.adminNotes = adminNotes || "";
+    verification.reviewedBy = req.admin._id;
+    verification.reviewedAt = new Date();
+    await verification.save();
+
+    // 3. Send "Claim Your Reward" notification to OWNER
+    await Notification.create({
+      user: verification.owner._id,
+      title: "Deal Verified — Claim Your Reward!",
+      message: `Your property deal for "${verification.property.title}" has been verified! Click below to claim your reward.`,
+      type: "deal_reward",
+      data: {
+        verificationId,
+        propertyId: verification.property._id,
+        actionUrl: `/notifications`,
+        actionText: "Claim Your Reward",
+      },
+    });
+
+    // 4. Send "Claim Your Reward" notification to BUYER
+    await Notification.create({
+      user: verification.buyer._id,
+      title: "Congratulations — Claim Your Reward!",
+      message: `The deal for "${verification.property.title}" is verified! Click below to claim your congratulations gift.`,
+      type: "deal_reward",
+      data: {
+        verificationId,
+        propertyId: verification.property._id,
+        actionUrl: `/notifications`,
+        actionText: "Claim Your Reward",
+      },
+    });
+
+    console.log(`[Admin] Verification ${verificationId} APPROVED by admin ${req.admin.email}`);
+
+    res.status(200).json({
+      success: true,
+      message: "Deal verified successfully. Both parties have been notified to claim their rewards.",
+    });
+  } catch (error) {
+    console.error("[Admin] approveDealVerification error:", error);
+    res.status(500).json({ success: false, message: "Failed to approve verification" });
+  }
+};
+
+/**
+ * POST /api/admin/verifications/:id/reject
+ * Admin rejects the deal — property returns to active.
+ * Body: { adminNotes }
+ */
+export const rejectDealVerification = async (req, res) => {
+  try {
+    const verificationId = req.params.id;
+    const { adminNotes } = req.body;
+
+    if (!adminNotes || adminNotes.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "Rejection notes are required" });
+    }
+
+    const verification = await TransactionVerification.findById(verificationId)
+      .populate("property", "title");
+
+    if (!verification) {
+      return res.status(404).json({ success: false, message: "Verification not found" });
+    }
+
+    if (verification.status !== "pending") {
+      return res.status(400).json({ success: false, message: `Verification already ${verification.status}` });
+    }
+
+    // Revert property status to active
+    await Property.findByIdAndUpdate(verification.property._id, { status: "active" });
+
+    // Update verification
+    verification.status = "rejected";
+    verification.adminNotes = adminNotes.trim();
+    verification.reviewedBy = req.admin._id;
+    verification.reviewedAt = new Date();
+    await verification.save();
+
+    // Notify the owner
+    await Notification.create({
+      user: verification.owner,
+      title: "Deal Verification Rejected",
+      message: `Your deal closure request for "${verification.property.title}" was not approved. Reason: ${adminNotes.trim()}. Your property has been reactivated.`,
+      type: "deal_verification",
+      data: {
+        verificationId,
+        propertyId: verification.property._id,
+        actionUrl: "https://dealdirect.in/my-properties",
+        actionText: "View My Properties",
+      },
+    });
+
+    console.log(`[Admin] Verification ${verificationId} REJECTED by admin ${req.admin.email}`);
+
+    res.status(200).json({
+      success: true,
+      message: "Verification rejected. Property has been reactivated.",
+    });
+  } catch (error) {
+    console.error("[Admin] rejectDealVerification error:", error);
+    res.status(500).json({ success: false, message: "Failed to reject verification" });
+  }
+};

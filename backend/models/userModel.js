@@ -3,6 +3,7 @@
  * Secure user schema with session tracking and security features
  */
 import mongoose from "mongoose";
+import crypto from "crypto";
 
 const userSchema = new mongoose.Schema(
   {
@@ -38,6 +39,8 @@ const userSchema = new mongoose.Schema(
     phone: {
       type: String,
       match: [/^[6-9]\d{9}$/, "Please provide a valid 10-digit phone number"],
+      unique: true,
+      sparse: true,
     },
     alternatePhone: { type: String },
     address: {
@@ -134,6 +137,25 @@ const userSchema = new mongoose.Schema(
       },
     },
 
+    // Referral System — DealDirect Rewards
+    referredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    referralCode: {
+      type: String,
+      unique: true,
+      sparse: true, // Allow null (not every user has one generated yet)
+      uppercase: true,
+      trim: true,
+    },
+    // Tracks whether user has completed their "first action" (for referral milestone)
+    hasCompletedFirstAction: {
+      type: Boolean,
+      default: false,
+    },
+
     // Deprecated fields - kept for migration compatibility
     resetPasswordOtp: {
       type: String,
@@ -169,12 +191,43 @@ const userSchema = new mongoose.Schema(
   }
 );
 
+// ============================================
+// PRE-SAVE HOOK: Auto-generate referralCode
+// ============================================
+
+userSchema.pre("save", async function (next) {
+  // Only generate if this is a new user and no referralCode exists
+  if (this.isNew && !this.referralCode) {
+    const generateCode = () => {
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+      let code = "DD";
+      for (let i = 0; i < 4; i++) {
+        code += chars.charAt(crypto.randomInt(0, chars.length));
+      }
+      return code;
+    };
+
+    // Try up to 5 times to generate a unique code
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = generateCode();
+      const exists = await mongoose.model("User").findOne({ referralCode: code }).lean();
+      if (!exists) {
+        this.referralCode = code;
+        break;
+      }
+    }
+  }
+  next();
+});
+
 // Indexes
 userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ role: 1 });
 userSchema.index({ isVerified: 1 });
 userSchema.index({ isBlocked: 1 });
 userSchema.index({ createdAt: -1 });
+userSchema.index({ referralCode: 1 }, { sparse: true });
+userSchema.index({ referredBy: 1 });
 
 // Virtual for full address
 userSchema.virtual("fullAddress").get(function () {

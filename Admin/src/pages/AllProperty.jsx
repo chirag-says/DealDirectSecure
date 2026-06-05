@@ -11,7 +11,9 @@ import {
     X,
     RefreshCw,
     Home as HomeIcon,
-    AlertTriangle
+    AlertTriangle,
+    Image as ImageIcon,
+    Loader2
 } from "lucide-react";
 import { toast } from "react-toastify";
 import adminApi from "../api/adminApi";
@@ -45,7 +47,7 @@ const AllProperty = () => {
 
     // Helper: Resolve Image
     const resolveImage = (img) => {
-        if (!img) return "https://images.unsplash.com/photo-1560518883-cf3726f1454c?fit=crop&w=600&q=80";
+        if (!img) return null;
         const s = String(img).toLowerCase();
         if (s.startsWith("data:") || s.startsWith("http")) return img;
         if (img.startsWith("/uploads")) return `${API_URL}${img}`;
@@ -64,11 +66,7 @@ const AllProperty = () => {
                 endDate: endDate || undefined
             };
 
-
-
-            // Using adminApi - cookies are sent automatically
             const res = await adminApi.get(`/api/properties/admin/all`, { params });
-
             setProperties(extractList(res.data));
         } catch (err) {
             console.error(err);
@@ -111,10 +109,10 @@ const AllProperty = () => {
 
     // --- Actions (Approve, Reject, Delete) using adminApi ---
     const handleDelete = async (id) => {
-        if (!window.confirm("Permanently delete?")) return;
+        if (!window.confirm("Permanently delete this property?")) return;
         try {
             await adminApi.delete(`/api/properties/delete/${id}`);
-            toast.success("Deleted");
+            toast.success("Property deleted");
             setProperties(prev => prev.filter(p => p._id !== id));
         } catch (err) {
             toast.error("Deletion failed");
@@ -124,9 +122,9 @@ const AllProperty = () => {
     const handleApprove = async (id) => {
         try {
             await adminApi.put(`/api/properties/approve/${id}`, {});
-            toast.success("Property Listed");
+            toast.success("Property Listed successfully");
             fetchProperties();
-        } catch (err) { toast.error("Failed"); }
+        } catch (err) { toast.error("Failed to approve property"); }
     };
 
     const openRejectModal = (id) => {
@@ -136,139 +134,223 @@ const AllProperty = () => {
     };
 
     const submitRejection = async () => {
-        if (!rejectionReason.trim()) return toast.error("Reason required");
+        if (!rejectionReason.trim()) return toast.error("Rejection reason is required");
         try {
             await adminApi.put(`/api/properties/disapprove/${selectedPropertyId}`,
                 { rejectionReason }
             );
-            toast.success("Rejected");
+            toast.success("Property Rejected");
             setIsModalOpen(false);
             fetchProperties();
-        } catch (err) { toast.error("Failed"); }
+        } catch (err) { toast.error("Failed to reject property"); }
     };
 
+    if (loading && properties.length === 0) {
+        return (
+            <div className="min-h-screen flex flex-col justify-center items-center bg-gray-50/50">
+                <Loader2 className="w-10 h-10 animate-spin text-indigo-600 mb-4" />
+                <p className="text-gray-500 font-medium">Loading Property Data...</p>
+            </div>
+        );
+    }
+
     return (
-        <div className="p-2 sm:p-4 bg-gray-50 min-h-screen relative">
-            <div className="flex flex-col mb-6 gap-4">
-                <h2 className="text-3xl font-extrabold text-gray-900 flex items-center gap-2">
-                    <HomeIcon className="w-8 h-8 text-indigo-600" /> Admin Property Manager
-                </h2>
+        <div className="p-4 sm:p-8 min-h-screen bg-gray-50/30 w-full max-w-full mx-auto flex flex-col gap-8">
+            
+             {/* HEADER */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 flex items-center gap-2">
+                    <HomeIcon className="w-8 h-8 text-indigo-600" />
+                    Property Manager
+                </h1>
+                <p className="text-sm text-gray-500 mt-1 sm:ml-10">
+                    Review and manage submitted properties.
+                </p>
+                </div>
+                
+                <div className="hidden sm:flex items-center justify-center px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl">
+                    <span className="text-sm font-bold text-indigo-700">
+                        {properties.length} <span className="font-normal text-indigo-500 uppercase tracking-wider text-xs">Total</span>
+                    </span>
+                </div>
+            </div>
 
-                {/* --- SEARCH BAR --- */}
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+            {/* --- FILTER BAR --- */}
+            <div className="flex flex-col xl:flex-row gap-4 items-center bg-white p-3 rounded-2xl border border-gray-200 shadow-sm">
+                
+                {/* Search */}
+                <div className="relative w-full xl:flex-1">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="Search Title, City, or State... (Press Enter)"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        className="w-full pl-11 pr-4 py-2.5 bg-gray-50/50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all placeholder-gray-400"
+                    />
+                </div>
 
-                    {/* Search Input */}
-                    <div className="md:col-span-4">
-                        <label className="block text-xs font-bold text-gray-500 mb-1">SEARCH</label>
-                        <div className="relative">
-                            <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-                            <input
-                                type="text"
-                                placeholder="Search Title, City, or State..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                onKeyDown={handleKeyDown} // ✅ Press Enter to Search
-                                className="w-full pl-9 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                            />
-                        </div>
-                    </div>
+                <div className="h-8 w-px bg-gray-200 hidden xl:block"></div>
 
-                    {/* Status Filter */}
-                    <div className="md:col-span-2">
-                        <label className="block text-xs font-bold text-gray-500 mb-1">STATUS</label>
-                        <div className="relative">
-                            <Filter className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-                            <select
-                                value={statusFilter}
-                                onChange={(e) => setStatusFilter(e.target.value)}
-                                className="w-full pl-9 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
-                            >
-                                <option value="all">All Properties</option>
-                                <option value="listed">Listed</option>
-                                <option value="rejected">Rejected</option>
-                            </select>
-                        </div>
-                    </div>
+                {/* Status Filter */}
+                <div className="w-full xl:w-48 relative">
+                    <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="w-full py-2.5 px-4 bg-gray-50/50 border-none rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all font-medium cursor-pointer appearance-none"
+                    >
+                        <option value="all">All Status</option>
+                        <option value="listed">Listed Verified</option>
+                        <option value="rejected">Rejected / Pending</option>
+                    </select>
+                </div>
 
-                    {/* Dates */}
-                    <div className="md:col-span-2">
-                        <label className="block text-xs font-bold text-gray-500 mb-1">FROM</label>
-                        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm text-gray-600" />
-                    </div>
-                    <div className="md:col-span-2">
-                        <label className="block text-xs font-bold text-gray-500 mb-1">TO</label>
-                        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm text-gray-600" />
-                    </div>
+                <div className="h-8 w-px bg-gray-200 hidden xl:block"></div>
 
-                    {/* Buttons */}
-                    <div className="md:col-span-2 flex gap-2">
-                        <button onClick={fetchProperties} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-semibold text-sm transition">
-                            Search
-                        </button>
-                        <button onClick={clearFilters} className="px-3 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition">
-                            <RefreshCw className="w-4 h-4" />
-                        </button>
-                    </div>
+                {/* Actions */}
+                <div className="flex w-full xl:w-auto items-center gap-2">
+                    <button 
+                        onClick={fetchProperties} 
+                        className="flex-1 xl:flex-none px-5 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl text-sm hover:bg-indigo-700 hover:shadow shadow-sm transition-all"
+                    >
+                        Search
+                    </button>
+                    <button 
+                        onClick={clearFilters} 
+                        className="p-2.5 bg-white border border-gray-200 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-all shadow-sm flex items-center justify-center"
+                        title="Reset Filters"
+                    >
+                        <RefreshCw className="w-4 h-4" />
+                    </button>
                 </div>
             </div>
 
             {/* --- GRID --- */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-                {loading && <div className="col-span-full text-center py-10">Loading...</div>}
-                {!loading && properties.length === 0 && <div className="col-span-full text-center py-20 text-gray-500 bg-white rounded-xl border border-dashed">No properties match your filters.</div>}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {!loading && properties.length === 0 && (
+                     <div className="col-span-full py-24 flex flex-col items-center justify-center text-gray-500">
+                     <HomeIcon className="w-12 h-12 text-gray-300 mb-3" />
+                     <p className="text-lg font-medium text-gray-600">No properties found</p>
+                     <p className="text-sm mt-1">Adjust your search or filter criteria.</p>
+                 </div>
+                )}
 
-                {!loading && properties.map((item) => (
-                    <div key={item._id} className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden relative group">
-                        <div className={`absolute top-3 right-3 px-3 py-1 text-xs font-bold text-white rounded-full ${item.isApproved ? "bg-green-600" : "bg-red-500"} z-10 shadow-sm`}>
-                            {item.isApproved ? "LISTED" : "REJECTED"}
+                {!loading && properties.map((item) => {
+                    const imgUrl = resolveImage(item.images?.[0]);
+                    return (
+                    <div key={item._id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative group hover:shadow-md transition-shadow flex flex-col">
+                        {/* Status Badge */}
+                        <div className="absolute top-4 right-4 z-10">
+                             <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold shadow-sm uppercase tracking-wider ${item.isApproved ? "bg-emerald-500 text-white" : "bg-white text-gray-600 shadow-xl border border-gray-200"}`}>
+                                 {item.isApproved ? "LISTED" : "REJECTED"}
+                             </span>
                         </div>
-                        <img src={resolveImage(item.images?.[0])} className="w-full h-48 object-cover" alt={item.title} />
-                        <div className="p-5 space-y-3">
-                            <h3 className="text-lg font-bold text-gray-900 truncate">{item.title}</h3>
-                            <div className="flex justify-between text-sm text-gray-600">
-                                <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {item.address?.city || item.city}</span>
-                                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(item.createdAt).toLocaleDateString()}</span>
-                            </div>
 
-                            {!item.isApproved && item.rejectionReason && (
-                                <div className="bg-red-50 border border-red-100 p-3 rounded-lg text-xs text-red-700 mt-2">
-                                    <span className="font-bold block mb-1">Reason:</span> {item.rejectionReason}
+                        {/* Image */}
+                        <div className="w-full aspect-[4/3] relative bg-gray-100 overflow-hidden">
+                            {imgUrl ? (
+                                <img src={imgUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={item.title} />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                    <ImageIcon className="w-10 h-10 text-gray-300" />
                                 </div>
                             )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/60 to-transparent pointer-events-none" />
+                        </div>
 
-                            <div className="pt-3 border-t flex gap-2 mt-2">
+                        <div className="p-5 flex-1 flex flex-col">
+                            {/* Meta info */}
+                             <div className="flex justify-between text-xs text-gray-500 font-medium mb-2">
+                                <span className="flex items-center gap-1.5"><MapPin className="w-3 h-3 text-indigo-500" /> {item.address?.city || item.city || "N/A"}</span>
+                                <span className="flex items-center gap-1.5"><Calendar className="w-3 h-3 text-gray-400" /> {new Date(item.createdAt).toLocaleDateString()}</span>
+                            </div>
+
+                            {/* Title */}
+                            <h3 className="text-lg font-bold text-gray-900 leading-tight mb-2 line-clamp-2" title={item.title}>{item.title}</h3>
+
+                             {/* Price & owner (optional extra info if present) */}
+                             <div className="flex-1">
+                                {!item.isApproved && item.rejectionReason && (
+                                    <div className="bg-rose-50 border border-rose-100 p-3 rounded-xl text-xs text-rose-700 mt-3 font-medium">
+                                        <div className="flex items-start gap-2">
+                                            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+                                            <p><span className="font-bold">Rejected:</span> {item.rejectionReason}</p>
+                                        </div>
+                                    </div>
+                                )}
+                             </div>
+
+                             {/* Actions */}
+                            <div className="pt-4 mt-4 border-t border-gray-100 flex items-center gap-3">
                                 {item.isApproved ? (
-                                    <button onClick={() => openRejectModal(item._id)} className="flex-1 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 py-2 rounded-lg text-xs font-bold flex justify-center items-center gap-2">
-                                        <XCircle className="w-4 h-4" /> REJECT
+                                    <button 
+                                        onClick={() => openRejectModal(item._id)} 
+                                        className="flex-1 bg-white border border-gray-200 text-gray-700 hover:text-rose-600 hover:border-rose-300 hover:bg-rose-50 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm flex justify-center items-center gap-2"
+                                    >
+                                        <XCircle className="w-4 h-4" /> Reject Listing
                                     </button>
                                 ) : (
-                                    <button onClick={() => handleApprove(item._id)} className="flex-1 bg-green-50 text-green-700 hover:bg-green-100 py-2 rounded-lg text-xs font-bold flex justify-center items-center gap-2">
-                                        <CheckCircle className="w-4 h-4" /> LIST
+                                    <button 
+                                        onClick={() => handleApprove(item._id)} 
+                                        className="flex-1 bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm flex justify-center items-center gap-2"
+                                    >
+                                        <CheckCircle className="w-4 h-4" /> Approve Listing
                                     </button>
                                 )}
-                                <button onClick={() => handleDelete(item._id)} className="px-3 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg">
-                                    <Trash className="w-4 h-4" />
+                                <button 
+                                    onClick={() => handleDelete(item._id)} 
+                                    className="p-2.5 bg-white border border-transparent text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors shadow-sm"
+                                    title="Delete Property Completely"
+                                >
+                                    <Trash className="w-5 h-5" />
                                 </button>
                             </div>
                         </div>
                     </div>
-                ))}
+                )})}
             </div>
 
             {/* Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-                        <div className="bg-red-50 px-6 py-4 flex justify-between items-center border-b border-red-100">
-                            <h3 className="text-lg font-bold text-red-800">Reject Property</h3>
-                            <button onClick={() => setIsModalOpen(false)}><X className="w-6 h-6 text-gray-500" /></button>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4">
+                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden transform transition-all">
+                        <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center bg-white">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-rose-100 text-rose-600 rounded-full">
+                                    <XCircle className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-900">Reject Property</h3>
+                                </div>
+                            </div>
                         </div>
-                        <div className="p-6">
-                            <textarea className="w-full border border-gray-300 rounded-lg p-3 h-32" placeholder="Reason..." value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} />
+                        <div className="p-6 bg-gray-50/50">
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Please provide a reason for rejection: <span className="text-rose-500">*</span>
+                            </label>
+                            <textarea 
+                                className="w-full p-4 border border-gray-200 rounded-xl focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 text-sm outline-none transition-all shadow-sm resize-none" 
+                                placeholder="E.g., Incomplete information, fake listing..." 
+                                value={rejectionReason} 
+                                onChange={(e) => setRejectionReason(e.target.value)} 
+                                rows={4}
+                            />
                         </div>
-                        <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3">
-                            <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm">Cancel</button>
-                            <button onClick={submitRejection} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold">Confirm</button>
+                        <div className="px-6 py-5 border-t border-gray-100 flex justify-end gap-3 bg-white">
+                            <button 
+                                onClick={() => setIsModalOpen(false)} 
+                                className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 font-semibold rounded-xl text-sm hover:bg-gray-50 transition-colors shadow-sm"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={submitRejection} 
+                                className="px-5 py-2.5 bg-rose-600 text-white font-semibold rounded-xl text-sm hover:bg-rose-700 transition-all shadow-sm flex items-center gap-2"
+                            >
+                                Reject Property
+                            </button>
                         </div>
                     </div>
                 </div>

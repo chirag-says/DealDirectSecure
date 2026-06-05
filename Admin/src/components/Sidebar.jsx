@@ -10,7 +10,8 @@ import {
   Menu,
   X,
   Mail,
-  Flag
+  Flag,
+  FileText,
 } from "lucide-react";
 import { CiLogout } from "react-icons/ci";
 import { useAdmin } from "../context/AdminContext";
@@ -66,6 +67,21 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       path: "/property-reports",
       name: "Property Reports",
       icon: <Flag className="h-5 w-5" />,
+    },
+    {
+      path: "/blog-management",
+      name: "Blog Management",
+      icon: <FileText className="h-5 w-5" />,
+    },
+    {
+      path: "/rewards-management",
+      name: "Rewards",
+      icon: <BarChart3 className="h-5 w-5" />,
+    },
+    {
+      path: "/deal-verifications",
+      name: "Deal Verifications",
+      icon: <FileText className="h-5 w-5" />,
     },
   ];
 

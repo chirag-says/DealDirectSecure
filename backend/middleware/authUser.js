@@ -21,21 +21,36 @@ const COOKIE_CONFIG = {
 };
 
 /**
- * Set session cookie
+ * Set session cookie (HttpOnly) + companion readable flag cookie
  */
 export const setSessionCookie = (res, sessionToken) => {
   res.cookie(COOKIE_CONFIG.name, sessionToken, COOKIE_CONFIG.options);
+  // Companion readable cookie — JS can check this without reading the HttpOnly token
+  res.cookie('session_exists', '1', {
+    httpOnly: false, // intentionally readable by JS
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: '/',
+    domain: process.env.COOKIE_DOMAIN || undefined,
+  });
 };
-
 /**
- * Clear session cookie
+ * Clear session cookie + companion readable flag
  */
 export const clearSessionCookie = (res) => {
   res.clearCookie(COOKIE_CONFIG.name, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    path: "/",
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    path: '/',
+    domain: process.env.COOKIE_DOMAIN || undefined,
+  });
+  res.clearCookie('session_exists', {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    path: '/',
     domain: process.env.COOKIE_DOMAIN || undefined,
   });
 };

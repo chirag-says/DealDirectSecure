@@ -9,15 +9,7 @@ build/
 
 # Environment Variables (CRITICAL - NEVER COMMIT)
 .env
-.env.local
-.env.development
-.env.development.local
-.env.test
-.env.test.local
-# .env.production - allowed for Hostinger deployment (no secrets, only public URLs)
-!.env.production
-.env.production.local
-*.local
+.env.*
 !.env.example
 
 # Logs

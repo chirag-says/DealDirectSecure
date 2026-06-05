@@ -4,7 +4,11 @@ import mongoose from "mongoose";
 import Lead from "../models/Lead.js";
 import User from "../models/userModel.js";
 import Report from "../models/Report.js";
+import Notification from "../models/Notification.js";
 import SavedSearch from "../models/SavedSearch.js";
+import TransactionVerification from "../models/TransactionVerification.js";
+import { awardPoints } from "../services/rewardService.js";
+import { sendNewLeadWhatsApp, sendNewPropertyWhatsApp } from "../services/whatsappService.js";
 
 // ============================================
 // SECURITY FIX: ReDoS Prevention
@@ -22,7 +26,6 @@ const escapeRegExp = (string) => {
   // Escape all regex special characters: \ ^ $ . * + ? ( ) [ ] { } |
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 };
-import Notification from "../models/Notification.js";
 
 // ============================================
 // SECURITY FIX: Strict WHITELIST approach for mass assignment prevention
@@ -444,7 +447,38 @@ export const addProperty = async (req, res) => {
       console.error("Error generating notifications for saved searches:", notifyErr);
     }
 
-    res.status(201).json(withPublicImages(req, prop));
+    // --- DealDirect Rewards: award points for listing ---
+    let reward = null;
+    try {
+      if (req.user?._id) {
+        reward = await awardPoints(req.user._id, "list_property", { propertyId: prop._id });
+        // Award bonus if 5+ photos uploaded
+        const totalImages = (prop.images || []).length;
+        if (totalImages >= 5) {
+          await awardPoints(req.user._id, "upload_5_photos", { propertyId: prop._id });
+        }
+      }
+    } catch (rewardErr) {
+      console.error("[Rewards] Property listing reward error (non-blocking):", rewardErr.message);
+    }
+    // --- End Rewards hooks ---
+
+    // --- WhatsApp: Notify admin about new property listing ---
+    sendNewPropertyWhatsApp({
+      title: prop.title,
+      price: prop.price,
+      listingType: prop.listingType,
+      city: prop.address?.city || prop.city,
+      locality: prop.address?.area || prop.locality,
+      ownerName: req.user?.name || 'N/A',
+    }).catch(err => console.error('[WhatsApp] New property notification error:', err.message));
+
+    res.status(201).json({
+      success: true,
+      message: "Property listed successfully",
+      data: withPublicImages(req, prop),
+      reward
+    });
   } catch (err) {
     // ============================================
     // SECURITY: Ensure session is cleaned up on error
@@ -596,9 +630,13 @@ export const reportProperty = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Thank you. Your report has been submitted to the admin team.",
+      message: "Thank you. Your report has been submitted to the admin team. You earned 100 reward points!",
       data: report,
     });
+
+    // Award points for reporting (non-blocking, after response)
+    awardPoints(req.user._id, "report_property", { propertyId: property._id, reportId: report._id })
+      .catch(err => console.error("[Rewards] Report property reward error:", err.message));
   } catch (err) {
     console.error("Report Property Error:", err);
     res.status(500).json({ success: false, message: err.message });
@@ -915,6 +953,7 @@ export const getMyProperties = async (req, res) => {
       .populate("category", "name")
       .populate("subcategory", "name")
       .populate("propertyType", "name")
+      .populate("interestedUsers.user", "name email phone profileImage")
       .sort({ createdAt: -1 });
 
     console.log(`Found ${properties.length} properties for user ${userId}`);
@@ -1200,10 +1239,17 @@ export const updateMyProperty = async (req, res) => {
       .populate("subcategory", "name")
       .populate("propertyType", "name");
 
+    // --- DealDirect Rewards: property sale/rental rewards ---
+    // NOTE: Sale rewards are now granted via the Close Deal flow
+    // (POST /api/properties/:id/close-deal) which requires admin verification.
+    // The old automatic reward on status change has been replaced.
+    let reward = null;
+
     res.status(200).json({
       success: true,
       message: "Property updated successfully",
-      data: withPublicImages(req, updated)
+      data: withPublicImages(req, updated),
+      reward
     });
   } catch (error) {
     console.error("Error in updateMyProperty:", error);
@@ -1303,11 +1349,62 @@ export const markInterested = async (req, res) => {
       }
     }
 
+    // Notify property owner (non-blocking)
+    if (property.owner) {
+      try {
+        await Notification.create({
+          user: property.owner,
+          title: "New Interest on Your Property",
+          message: `${user.name} is interested in your property "${property.title}". Check your leads for contact details.`,
+          type: "interest",
+          data: {
+            propertyId: propertyId,
+            propertyTitle: property.title,
+            interestedUserId: userId,
+            interestedUserName: user.name,
+            actionUrl: "https://dealdirect.in/my-properties",
+            actionText: "View Leads"
+          },
+        });
+        console.log(`Notification sent to owner ${property.owner} for property ${propertyId}`);
+      } catch (notifError) {
+        console.error("Error creating notification:", notifError);
+        // Don't fail the interest registration if notification creation fails
+      }
+
+      // WhatsApp notification to property owner (non-blocking)
+      const ownerUser = await User.findById(property.owner).select('phone');
+      sendNewLeadWhatsApp(
+        ownerUser?.phone,
+        { name: user.name, email: user.email, phone: user.phone || '' },
+        {
+          title: property.title,
+          price: property.price || property.expectedPrice,
+          listingType: property.listingType,
+          city: property.city || property.address?.city,
+          locality: property.locality || property.address?.area,
+        }
+      ).catch(err => console.error('[WhatsApp] Lead notification error:', err.message));
+    }
+
     console.log(`User ${userId} expressed interest in property ${propertyId}`);
+
+    // --- DealDirect Rewards: award points for sending enquiry ---
+    let reward = null;
+    try {
+      const rewardResult = await awardPoints(userId, "send_enquiry");
+      if (rewardResult?.success && rewardResult?.pointsAwarded > 0) {
+        reward = rewardResult;
+      }
+      console.log(`[Rewards] Enquiry reward: ${rewardResult?.pointsAwarded} pts to ${userId}`);
+    } catch (rewardErr) {
+      console.error("[Rewards] Enquiry reward error:", rewardErr.message);
+    }
 
     res.status(200).json({
       success: true,
-      message: "Interest registered successfully! The owner will be notified."
+      message: "Interest registered successfully! The owner will be notified.",
+      reward
     });
   } catch (error) {
     console.error("Error in markInterested:", error);
@@ -1812,5 +1909,237 @@ export const getAdminProperties = async (req, res) => {
   } catch (err) {
     console.error("[Property] Admin filter error:", err.message);
     res.status(500).json({ success: false, message: 'Failed to fetch properties' });
+  }
+};
+
+// ============================================
+// CLOSE DEAL — Owner initiates sale/rental closure
+// ============================================
+
+/**
+ * POST /api/properties/:id/close-deal
+ * Owner uploads proof documents and selects the buyer/tenant
+ * from the list of interested users.
+ *
+ * Body (multipart/form-data):
+ *   - buyerId: ObjectId of the buyer from interestedUsers
+ *   - closingType: "sold" | "rented"
+ *   - documents: file uploads (PDF/images) → stored on Cloudinary
+ */
+export const closeDeal = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const propertyId = req.params.id;
+
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(propertyId)) {
+      return res.status(400).json({ success: false, message: "Invalid property ID" });
+    }
+
+    const property = await Property.findOne({ _id: propertyId, owner: userId });
+    if (!property) {
+      return res.status(404).json({ success: false, message: "Property not found or you don't own this property" });
+    }
+
+    // Prevent duplicate submissions
+    if (property.status === "pending_verification" || property.status === "sold" || property.status === "rented") {
+      return res.status(400).json({ success: false, message: `Property is already ${property.status}. Cannot submit again.` });
+    }
+
+    const { buyerId, closingType } = req.body;
+
+    // Validate closing type
+    if (!closingType || !["sold", "rented"].includes(closingType)) {
+      return res.status(400).json({ success: false, message: "closingType must be 'sold' or 'rented'" });
+    }
+
+    // Validate buyer
+    if (!buyerId || !mongoose.Types.ObjectId.isValid(buyerId)) {
+      return res.status(400).json({ success: false, message: "A valid buyerId is required" });
+    }
+
+    // Check buyer is in interestedUsers
+    const isBuyerInterested = property.interestedUsers?.some(
+      (item) => item.user && item.user.toString() === buyerId.toString()
+    );
+    if (!isBuyerInterested) {
+      return res.status(400).json({ success: false, message: "Selected buyer must be from the interested users list" });
+    }
+
+    // Collect uploaded document URLs from Cloudinary
+    const documentUrls = [];
+    if (req.files?.documents) {
+      const docs = Array.isArray(req.files.documents) ? req.files.documents : [req.files.documents];
+      for (const doc of docs) {
+        if (doc.secure_url || doc.path) {
+          documentUrls.push(doc.secure_url || doc.path);
+        }
+      }
+    }
+
+    if (documentUrls.length === 0) {
+      return res.status(400).json({ success: false, message: "At least one proof document is required" });
+    }
+
+    // Check for existing pending verification
+    const existingVerification = await TransactionVerification.findOne({
+      property: propertyId,
+      status: "pending",
+    });
+    if (existingVerification) {
+      return res.status(400).json({ success: false, message: "A verification request for this property is already pending" });
+    }
+
+    // Create the verification record
+    const verification = await TransactionVerification.create({
+      property: propertyId,
+      owner: userId,
+      buyer: buyerId,
+      closingType,
+      documentUrls,
+    });
+
+    // Update property status to pending_verification
+    await Property.findByIdAndUpdate(propertyId, { status: "pending_verification" });
+
+    // Notify the owner that submission is received
+    await Notification.create({
+      user: userId,
+      title: "Deal Closure Submitted",
+      message: `Your deal closure request for "${property.title}" has been submitted for admin verification. You'll be notified once it's approved.`,
+      type: "deal_verification",
+      data: {
+        propertyId,
+        verificationId: verification._id,
+        actionUrl: "https://dealdirect.in/my-properties",
+        actionText: "View My Properties",
+      },
+    });
+
+    console.log(`[CloseDeal] Verification ${verification._id} created for property ${propertyId} by owner ${userId}`);
+
+    res.status(201).json({
+      success: true,
+      message: "Deal closure submitted for verification. You will be notified once the admin approves it.",
+      verification: {
+        _id: verification._id,
+        status: verification.status,
+        closingType: verification.closingType,
+      },
+    });
+  } catch (error) {
+    console.error("[CloseDeal] Error:", error);
+    res.status(500).json({ success: false, message: "Failed to submit deal closure" });
+  }
+};
+
+/**
+ * POST /api/properties/claim-deal-reward/:verificationId
+ * User claims their reward for an approved deal.
+ * Awards points on first claim, returns reward data for the door game.
+ */
+export const claimDealReward = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { verificationId } = req.params;
+
+    const verification = await TransactionVerification.findById(verificationId)
+      .populate("property", "title");
+
+    if (!verification) {
+      return res.status(404).json({ success: false, message: "Verification not found" });
+    }
+
+    if (verification.status !== "approved") {
+      return res.status(400).json({ success: false, message: "This deal has not been approved yet" });
+    }
+
+    // Determine if user is owner or buyer
+    const isOwner = verification.owner.toString() === userId.toString();
+    const isBuyer = verification.buyer.toString() === userId.toString();
+
+    if (!isOwner && !isBuyer) {
+      return res.status(403).json({ success: false, message: "You are not part of this deal" });
+    }
+
+    // Check if already claimed
+    if (isOwner && verification.ownerClaimed) {
+      return res.status(200).json({
+        success: true,
+        alreadyClaimed: true,
+        reward: {
+          pointsAwarded: verification.ownerReward.points,
+          cashValue: verification.ownerReward.cashValue,
+          rewardTier: "common",
+          description: `Deal reward for "${verification.property.title}"`,
+        },
+      });
+    }
+
+    if (isBuyer && verification.buyerClaimed) {
+      return res.status(200).json({
+        success: true,
+        alreadyClaimed: true,
+        reward: {
+          pointsAwarded: verification.buyerReward.points,
+          cashValue: verification.buyerReward.cashValue,
+          rewardTier: "common",
+          description: `Deal reward for "${verification.property.title}"`,
+        },
+      });
+    }
+
+    // Award points NOW
+    const action = isOwner ? "mark_sold_rented" : "complete_deal";
+    let rewardResult;
+
+    try {
+      rewardResult = await awardPoints(userId, action, {
+        propertyId: verification.property._id,
+        role: isOwner ? "owner" : "buyer",
+        verificationId,
+      });
+    } catch (err) {
+      console.error(`[ClaimReward] Error awarding points:`, err.message);
+      return res.status(500).json({ success: false, message: "Failed to award reward" });
+    }
+
+    // Mark as claimed and save reward data
+    if (isOwner) {
+      verification.ownerClaimed = true;
+      verification.ownerReward = {
+        points: rewardResult.pointsAwarded || 0,
+        cashValue: rewardResult.cashValue || 0,
+      };
+    } else {
+      verification.buyerClaimed = true;
+      verification.buyerReward = {
+        points: rewardResult.pointsAwarded || 0,
+        cashValue: rewardResult.cashValue || 0,
+      };
+    }
+    await verification.save();
+
+    // Mark the notification as claimed in the DB
+    await Notification.updateMany(
+      { user: userId, "data.verificationId": verificationId, type: "deal_reward" },
+      { $set: { "data.isClaimed": true } }
+    );
+
+    console.log(`[ClaimReward] ${isOwner ? "Owner" : "Buyer"} ${userId} claimed ${rewardResult.pointsAwarded} pts for verification ${verificationId}`);
+
+    res.status(200).json({
+      success: true,
+      alreadyClaimed: false,
+      reward: {
+        pointsAwarded: rewardResult.pointsAwarded,
+        cashValue: rewardResult.cashValue,
+        rewardTier: rewardResult.rewardTier || "common",
+        description: `Deal reward for "${verification.property.title}"`,
+      },
+    });
+  } catch (error) {
+    console.error("[ClaimReward] Error:", error);
+    res.status(500).json({ success: false, message: "Failed to claim reward" });
   }
 };

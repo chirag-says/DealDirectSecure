@@ -28,6 +28,10 @@ import BuilderProjects from "./pages/BuilderProjects";
 import ContactInquiries from "./pages/ContactInquiries";
 import ReportedMessages from "./pages/ReportedMessages";
 import PropertyReports from "./pages/PropertyReports";
+import BlogManagement from "./pages/BlogManagement";
+import AdminBlogEditor from "./pages/AdminBlogEditor";
+import RewardsManagement from "./pages/RewardsManagement";
+import DealVerifications from "./pages/DealVerifications";
 
 const Layout = ({ isSidebarOpen, toggleSidebar, children }) => {
   const location = useLocation();
@@ -234,7 +238,48 @@ function AppContent() {
             </AdminProtectedRoute>
           }
         />
+        <Route
+          path="/blog-management"
+          element={
+            <AdminProtectedRoute>
+              <BlogManagement />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/blog-editor"
+          element={
+            <AdminProtectedRoute>
+              <AdminBlogEditor />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/blog-editor/:id"
+          element={
+            <AdminProtectedRoute>
+              <AdminBlogEditor />
+            </AdminProtectedRoute>
+          }
+        />
 
+        <Route
+          path="/rewards-management"
+          element={
+            <AdminProtectedRoute>
+              <RewardsManagement />
+            </AdminProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/deal-verifications"
+          element={
+            <AdminProtectedRoute>
+              <DealVerifications />
+            </AdminProtectedRoute>
+          }
+        />
 
         {/* Redirect all other routes */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -101,7 +101,7 @@ const propertySchema = new mongoose.Schema(
     isApproved: { type: Boolean, default: true },
 
     // Property Status & Analytics
-    status: { type: String, enum: ["active", "pending", "sold", "rented", "inactive"], default: "active" },
+    status: { type: String, enum: ["active", "pending", "sold", "rented", "inactive", "pending_verification"], default: "active" },
     views: { type: Number, default: 0 },
     likes: { type: Number, default: 0 },
     inquiries: { type: Number, default: 0 },

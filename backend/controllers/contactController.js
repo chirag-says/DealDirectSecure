@@ -1,5 +1,6 @@
 import ContactInquiry from "../models/ContactInquiry.js";
 import User from "../models/userModel.js";
+import { sendContactInquiryWhatsApp } from "../services/whatsappService.js";
 
 // Create a new contact inquiry (requires logged-in user)
 export const createInquiry = async (req, res) => {
@@ -38,6 +39,16 @@ export const createInquiry = async (req, res) => {
     });
 
     await inquiry.save();
+
+    // Send WhatsApp notification to admin (non-blocking)
+    sendContactInquiryWhatsApp({
+      userName: user.name,
+      userEmail: user.email,
+      userPhone: user.phone || '',
+      subject,
+      message,
+      category: category || 'general',
+    }).catch(err => console.error('[WhatsApp] Contact inquiry notification error:', err.message));
 
     res.status(201).json({
       success: true,

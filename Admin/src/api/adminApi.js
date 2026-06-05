@@ -368,4 +368,96 @@ export const dashboardApi = {
     },
 };
 
+// ============================================
+// BLOG MANAGEMENT API
+// ============================================
+
+export const blogManagementApi = {
+    getAll: async (params = {}) => {
+        const response = await adminApi.get('/api/blogs/admin/all', { params });
+        return response.data;
+    },
+
+    getById: async (id) => {
+        const response = await adminApi.get(`/api/blogs/admin/${id}`);
+        return response.data;
+    },
+
+    create: async (data) => {
+        const response = await adminApi.post('/api/blogs/admin', data);
+        return response.data;
+    },
+
+    update: async (id, data) => {
+        const response = await adminApi.put(`/api/blogs/admin/${id}`, data);
+        return response.data;
+    },
+
+    delete: async (id) => {
+        const response = await adminApi.delete(`/api/blogs/admin/${id}`);
+        return response.data;
+    },
+
+    publish: async (id) => {
+        const response = await adminApi.patch(`/api/blogs/admin/${id}/publish`);
+        return response.data;
+    },
+
+    unpublish: async (id) => {
+        const response = await adminApi.patch(`/api/blogs/admin/${id}/unpublish`);
+        return response.data;
+    },
+};
+
+// ============================================
+// REWARDS MANAGEMENT API
+// ============================================
+
+export const rewardsManagementApi = {
+    getOverview: async (params = {}) => {
+        const response = await adminApi.get('/api/rewards/admin/overview', { params });
+        return response.data;
+    },
+
+    adjustPoints: async (userId, points, reason) => {
+        const response = await adminApi.post('/api/rewards/admin/adjust-points', { userId, points, reason });
+        return response.data;
+    },
+
+    getRedemptions: async (params = {}) => {
+        const response = await adminApi.get('/api/rewards/admin/redemptions', { params });
+        return response.data;
+    },
+
+    updateRedemption: async (id, data) => {
+        const response = await adminApi.put(`/api/rewards/admin/redemptions/${id}`, data);
+        return response.data;
+    },
+
+    getUserWallet: async (userId) => {
+        const response = await adminApi.get(`/api/rewards/admin/user/${userId}/wallet`);
+        return response.data;
+    },
+};
+// ============================================
+// DEAL VERIFICATIONS API
+// ============================================
+
+export const dealVerificationsApi = {
+    getAll: async (params = {}) => {
+        const response = await adminApi.get('/api/admin/verifications', { params });
+        return response.data;
+    },
+
+    approve: async (id, adminNotes = '') => {
+        const response = await adminApi.post(`/api/admin/verifications/${id}/approve`, { adminNotes });
+        return response.data;
+    },
+
+    reject: async (id, adminNotes) => {
+        const response = await adminApi.post(`/api/admin/verifications/${id}/reject`, { adminNotes });
+        return response.data;
+    },
+};
+
 export default adminApi;

@@ -47,7 +47,7 @@ const createTransporter = () => {
 
 // Email templates
 const emailTemplates = {
-  newLead: (ownerName, leadData, propertyData) => ({
+  newLead: (ownerEmail, ownerName, leadData, propertyData) => ({
     subject: `🏠 New Lead for "${propertyData.title}"`,
     html: `
       <!DOCTYPE html>
@@ -102,7 +102,7 @@ const emailTemplates = {
             <p style="margin-top: 20px;">💡 <strong>Tip:</strong> Respond quickly to leads for better conversion rates. Properties with faster response times get 40% more conversions!</p>
             
             <center>
-              <a href="${process.env.CLIENT_URL || process.env.FRONTEND_URL || ''}/my-properties" class="cta-button">
+              <a href="https://dealdirect.in/my-properties?intendedFor=${encodeURIComponent(ownerEmail)}" class="cta-button">
                 View All Leads →
               </a>
             </center>
@@ -133,10 +133,167 @@ const emailTemplates = {
       - Email: ${leadData.email}
       - Phone: ${leadData.phone || 'Not provided'}
       
-      Login to Deal Direct to view and manage your leads.
+      View and manage this lead immediately here: https://dealdirect.in/my-properties?intendedFor=${encodeURIComponent(ownerEmail)}
       
       Best regards,
       Deal Direct Team
+    `
+  }),
+  generalNotification: (userName, title, message, actionUrl = null, actionText = 'View Details') => ({
+    subject: `🔔 Deal Direct: ${title}`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; padding: 30px; border-radius: 12px 12px 0 0; text-align: center; }
+          .header h1 { margin: 0; font-size: 24px; }
+          .content { background: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; }
+          .message-box { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0; }
+          .cta-button { display: inline-block; background: #2563eb; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 20px; margin-bottom: 20px; }
+          .footer { text-align: center; padding: 20px; color: #64748b; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>${title}</h1>
+          </div>
+          
+          <div class="content">
+            <p>Hi <strong>${userName}</strong>,</p>
+            <div class="message-box">
+              <p>${message}</p>
+            </div>
+            ${actionUrl ? `
+            <center>
+              <a href="${actionUrl}" class="cta-button">
+                ${actionText} →
+              </a>
+            </center>
+            ` : ''}
+          </div>
+          
+          <div class="footer">
+            <p>This email was sent by Deal Direct</p>
+            <p>© ${new Date().getFullYear()} Deal Direct. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+    text: `
+      ${title}
+      
+      Hi ${userName},
+      
+      ${message}
+      ${actionUrl ? `\n      ${actionText}: ${actionUrl}` : ''}
+      
+      Best regards,
+      Deal Direct Team
+    `
+  }),
+  welcomeUser: (userName) => ({
+    subject: `Welcome to the Revolution! 🏠 Your journey to a Broker-Free deal starts here.`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #e11d48, #be123c); color: white; padding: 30px; border-radius: 12px 12px 0 0; text-align: center; }
+          .header h1 { margin: 0; font-size: 24px; }
+          .content { background: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; }
+          .highlight-box { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0; border-left: 4px solid #e11d48; }
+          .reward-list { list-style: none; padding: 0; }
+          .reward-list li { margin-bottom: 10px; padding-left: 20px; position: relative; }
+          .reward-list li::before { content: '✓'; color: #e11d48; position: absolute; left: 0; font-weight: bold; }
+          .cta-button { display: inline-block; background: #e11d48; color: white !important; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 20px; text-align: center; }
+          .footer { text-align: center; padding: 20px; color: #64748b; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Welcome to Deal Direct! 🏠</h1>
+          </div>
+          <div class="content">
+            <p>Hi <strong>${userName}</strong>,</p>
+            <p>Welcome to Deal Direct—the only property portal designed to put the power (and the savings) back in your hands.</p>
+            <p>We built this platform with one goal: to eliminate middlemen and help you save lacs of rupees in unnecessary brokerage fees. Whether you are looking to buy, sell, or rent, you are now part of a community that values transparency and direct deals.</p>
+            
+            <div class="highlight-box">
+              <h3 style="margin-top: 0; color: #e11d48;">🛡️ Our "Power of One" Rule</h3>
+              <p style="margin-bottom: 0;">To keep our marketplace 100% spam-free and broker-free, we allow only <strong>1 active property post</strong> per user. This ensures that every listing you see is from a genuine owner or seeker—not a broker flooding the site with duplicates.</p>
+            </div>
+
+            <div class="highlight-box">
+              <h3 style="margin-top: 0; color: #e11d48;">🎁 Earn While You Move</h3>
+              <p>We don't just help you find a home; we reward you for it! Here's how you can start earning points today:</p>
+              <ul class="reward-list">
+                <li><strong>Post your Property:</strong> Get rewarded for sharing your space.</li>
+                <li><strong>Make Enquiries:</strong> Earn points for being an active seeker.</li>
+                <li><strong>Close the Deal:</strong> Tell us when you've successfully shaken hands on a deal for a milestone reward!</li>
+                <li><strong>Refer a Friend:</strong> Share your unique link and earn when your friends join the community.</li>
+              </ul>
+            </div>
+
+            <h3 style="color: #333;">🚀 What's Next?</h3>
+            <ul class="reward-list">
+              <li><strong>Complete Your Profile:</strong> Make sure your details are up to date.</li>
+              <li><strong>Post Your Listing:</strong> Remember, make it count! Use high-quality photos.</li>
+              <li><strong>Start Searching:</strong> Connect directly with owners and tenants today.</li>
+            </ul>
+
+            <center>
+              <a href="https://dealdirect.in/properties" class="cta-button">Start Exploring Deal Direct</a>
+            </center>
+
+            <p style="margin-top: 30px; font-weight: bold; text-align: center;">Stop paying for introductions. Start dealing direct.</p>
+            
+            <p>Cheers,<br>The Deal Direct Team<br><a href="https://www.dealdirect.in" style="color: #e11d48;">www.dealdirect.in</a></p>
+          </div>
+          <div class="footer">
+            <p>This email was sent by Deal Direct</p>
+            <p>© ${new Date().getFullYear()} Deal Direct. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+    text: `
+      Welcome to the Revolution! 🏠 Your journey to a Broker-Free deal starts here.
+      
+      Hi ${userName},
+      
+      Welcome to Deal Direct—the only property portal designed to put the power (and the savings) back in your hands.
+      
+      We built this platform with one goal: to eliminate middlemen and help you save lacs of rupees in unnecessary brokerage fees. Whether you are looking to buy, sell, or rent, you are now part of a community that values transparency and direct deals.
+      
+      🛡️ Our "Power of One" Rule
+      To keep our marketplace 100% spam-free and broker-free, we allow only 1 active property post per user. This ensures that every listing you see is from a genuine owner or seeker—not a broker flooding the site with duplicates.
+      
+      🎁 Earn While You Move
+      We don't just help you find a home; we reward you for it! Here's how you can start earning points today:
+      - Post your Property: Get rewarded for sharing your space.
+      - Make Enquiries: Earn points for being an active seeker.
+      - Close the Deal: Tell us when you've successfully shaken hands on a deal for a milestone reward!
+      - Refer a Friend: Share your unique link and earn when your friends join the community.
+      
+      🚀 What's Next?
+      - Complete Your Profile: Make sure your details are up to date.
+      - Post Your Listing: Remember, make it count! Use high-quality photos.
+      - Start Searching: Connect directly with owners and tenants today.
+      
+      Stop paying for introductions. Start dealing direct.
+      
+      Cheers,
+      The Deal Direct Team
+      www.dealdirect.in
     `
   })
 };
@@ -183,10 +340,20 @@ export const sendEmail = async (to, template, data) => {
 
 // Specific email functions
 export const sendNewLeadNotification = async (ownerEmail, ownerName, leadData, propertyData) => {
-  return sendEmail(ownerEmail, "newLead", [ownerName, leadData, propertyData]);
+  return sendEmail(ownerEmail, "newLead", [ownerEmail, ownerName, leadData, propertyData]);
+};
+
+export const sendGeneralNotification = async (userEmail, userName, title, message, actionUrl = null, actionText = null) => {
+  return sendEmail(userEmail, "generalNotification", [userName, title, message, actionUrl, actionText]);
+};
+
+export const sendWelcomeEmail = async (userEmail, userName) => {
+  return sendEmail(userEmail, "welcomeUser", [userName]);
 };
 
 export default {
   sendEmail,
-  sendNewLeadNotification
+  sendNewLeadNotification,
+  sendGeneralNotification,
+  sendWelcomeEmail
 };

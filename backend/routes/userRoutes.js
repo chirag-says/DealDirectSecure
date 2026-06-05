@@ -27,7 +27,8 @@ import {
   exportUsersPDF,
   exportUsersCSV,
   exportOwnersPDF,
-  exportOwnersCSV
+  exportOwnersCSV,
+  deleteAccount
 } from "../controllers/userController.js";
 import { addProperty, getOwnersWithProjects } from "../controllers/propertyController.js";
 import {
@@ -37,7 +38,7 @@ import {
   requireVerified,
   authRateLimit
 } from "../middleware/authUser.js";
-import { upload, uploadConcurrencyGuard } from "../middleware/upload.js";
+import { upload, memoryUpload, validateAndUploadToCloudinary, uploadConcurrencyGuard } from "../middleware/upload.js";
 import { protectAdmin } from "../middleware/authAdmin.js";
 import { validateProfileUpdate } from "../middleware/validators/index.js";
 
@@ -86,8 +87,9 @@ router.delete("/sessions/:sessionId", authMiddleware, revokeSession);
 
 router.get("/profile", authMiddleware, getProfile);
 router.get("/me", authMiddleware, getProfile); // Alias for /profile - standard REST pattern
-router.put("/profile", authMiddleware, validateProfileUpdate, uploadConcurrencyGuard, upload.single("profileImage"), updateProfile);
+router.put("/profile", authMiddleware, validateProfileUpdate, uploadConcurrencyGuard, memoryUpload.single("profileImage"), validateAndUploadToCloudinary, updateProfile);
 router.put("/change-password", authMiddleware, changePassword);
+router.delete("/me", authMiddleware, deleteAccount);
 
 // ============================================
 // UPGRADE ROUTES (Buyer to Owner)

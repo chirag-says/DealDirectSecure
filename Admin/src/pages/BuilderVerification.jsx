@@ -33,14 +33,15 @@ const formatDate = (dateString) => {
 const StatusBadge = ({ isBlocked }) => {
     let styles, label;
     if (isBlocked) {
-        styles = "bg-red-100 text-red-700 ring-red-300";
+        styles = "bg-rose-50 text-rose-600 border border-rose-200";
         label = "Blocked";
     } else {
-        styles = "bg-emerald-100 text-emerald-700 ring-emerald-300";
+        styles = "bg-emerald-50 text-emerald-600 border border-emerald-200";
         label = "Active";
     }
     return (
-        <span className={`px-3 py-1 rounded-full text-xs font-semibold ring-1 ${styles}`}>
+        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold shadow-sm tracking-wide ${styles}`}>
+            {isBlocked ? <XCircle className="w-3.5 h-3.5 mr-1.5" /> : <CheckCircle className="w-3.5 h-3.5 mr-1.5" />}
             {label}
         </span>
     );
@@ -51,7 +52,7 @@ const StatusBadge = ({ isBlocked }) => {
 export default function BuilderVerification() {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [downloading, setDownloading] = useState(false); // ✅ State for export loading
+    const [downloading, setDownloading] = useState(false);
 
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
@@ -66,22 +67,18 @@ export default function BuilderVerification() {
     const [selectedOwner, setSelectedOwner] = useState(null);
     const [drawerOpen, setDrawerOpen] = useState(false);
 
-    // Auth handled by adminApi via cookies
-
     /* -----------------------------------------------
       🔥 FETCH OWNERS
     ------------------------------------------------- */
     const fetchOwners = async () => {
         try {
             setLoading(true);
-            // Using adminApi - cookies sent automatically
             const { data } = await adminApi.get(`/api/users/list?role=owner`);
             setUsers(data.users.map((u) => ({
                 ...u,
                 joinedAt: formatDate(u.createdAt),
             })));
             setLoading(false);
-            toast.success(`Owner list synchronized!`);
         } catch (error) {
             setLoading(false);
             toast.error("Failed to fetch owners.");
@@ -99,15 +96,13 @@ export default function BuilderVerification() {
         setDownloading(true);
 
         try {
-            // Pointing to the NEW Owner-specific routes
             const endpoint = type === 'csv' ? '/api/users/export-owners-csv' : '/api/users/export-owners-pdf';
             const filename = type === 'csv' ? 'owners_list.csv' : 'owners_list.pdf';
 
             const response = await adminApi.get(endpoint, {
-                responseType: 'blob', // Important for file download
+                responseType: 'blob',
             });
 
-            // Create blob link to trigger download
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
@@ -117,7 +112,7 @@ export default function BuilderVerification() {
             link.remove();
             window.URL.revokeObjectURL(url);
 
-            toast.success(`${type.toUpperCase()} downloaded successfully!`);
+            toast.success(`${type.toUpperCase()} downloaded successfully.`);
         } catch (error) {
             console.error("Download Error:", error);
             toast.error(`Failed to download ${type.toUpperCase()}.`);
@@ -127,11 +122,11 @@ export default function BuilderVerification() {
     };
 
     /* -----------------------------------------------
-      BLOCK / UNBLOCK LOGIC (omitted for brevity, unchanged)
+      BLOCK / UNBLOCK LOGIC
     ------------------------------------------------- */
     const handleBlockClick = (owner) => {
         if (!owner?.id) {
-            toast.error("Owner ID is missing. Cannot perform action.");
+            toast.error("Owner ID missing.");
             return;
         }
         if (owner.isBlocked) {
@@ -148,7 +143,6 @@ export default function BuilderVerification() {
         try {
             const { data } = await adminApi.put(`/api/users/block/${ownerId}`, { reason });
             toast.success(data.message);
-            // API returns { message, user: { isBlocked, blockReason, ... } }
             const newIsBlocked = data.user?.isBlocked ?? data.isBlocked;
             const newBlockReason = data.user?.blockReason || data.blockReason || "";
             setUsers(prevUsers => prevUsers.map(u => u.id === ownerId ? { ...u, isBlocked: newIsBlocked, blockReason: newBlockReason } : u));
@@ -159,19 +153,19 @@ export default function BuilderVerification() {
             setOwnerToBlock(null);
             setBlockReason("");
         } catch (err) {
-            toast.error(err.response?.data?.message || "Action failed. Check console for details.");
+            toast.error(err.response?.data?.message || "Action failed.");
         } finally {
             setBlockLoading(false);
         }
     };
 
     const handleConfirmBlock = () => {
-        if (!blockReason.trim()) return toast.error("Please provide a reason for blocking this owner.");
+        if (!blockReason.trim()) return toast.error("Reason is required.");
         if (ownerToBlock) confirmBlock(ownerToBlock.id, blockReason.trim());
     };
 
     /* -----------------------------------------------
-      FILTERING + SEARCH (omitted for brevity, unchanged)
+      FILTERING + SEARCH
     ------------------------------------------------- */
     const filteredOwners = useMemo(() => {
         return users.filter(user => {
@@ -193,186 +187,171 @@ export default function BuilderVerification() {
 
     if (loading) {
         return (
-            <div className="p-8 bg-gray-50 min-h-screen flex justify-center items-center">
-                <div className="flex items-center text-purple-600">
-                    <Loader2 className="w-8 h-8 animate-spin" />
-                    <span className="ml-4 text-xl font-medium">Loading Property Owner Data...</span>
-                </div>
+            <div className="min-h-screen flex flex-col justify-center items-center bg-gray-50/50">
+                <Loader2 className="w-10 h-10 animate-spin text-indigo-600 mb-4" />
+                <p className="text-gray-500 font-medium">Loading Property Owners...</p>
             </div>
         );
     }
 
     return (
-        <div className="p-2 sm:p-2 min-h-screen">
-            <div className="max-w-7xl mx-auto">
+        <div className="p-4 sm:p-8 min-h-screen bg-gray-50/30 max-w-7xl mx-auto space-y-8">
 
-                {/* Header */}
-                <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div>
-                        <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
-                            <Home className="w-8 h-8 text-pink-600" />
-                            <span>Property Owner Panel</span>
-                        </h2>
-                        <p className="text-gray-500 mt-1">Manage registered property owners.</p>
-                    </div>
-
-                    {/* ✅ EXPORT BUTTONS */}
-                    <div className="flex gap-2 w-full sm:w-auto">
-                        <button
-                            onClick={() => handleDownload('csv')}
-                            disabled={downloading}
-                            className="flex-1 sm:flex-none justify-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center text-sm font-medium shadow-sm disabled:opacity-50"
-                        >
-                            {downloading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <FileSpreadsheet className="mr-2 h-4 w-4" />}
-                            Export CSV
-                        </button>
-                        <button
-                            onClick={() => handleDownload('pdf')}
-                            disabled={downloading}
-                            className="flex-1 sm:flex-none justify-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center text-sm font-medium shadow-sm disabled:opacity-50"
-                        >
-                            {downloading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <FileText className="mr-2 h-4 w-4" />}
-                            Export PDF
-                        </button>
-                    </div>
+            {/* Header Area */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 flex items-center gap-2">
+                        <Home className="w-8 h-8 text-indigo-600" />
+                        Property Owner Panel
+                    </h1>
+                    <p className="text-sm text-gray-500 mt-1 ml-10">Manage, review, and export registered property owners.</p>
                 </div>
+                
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <button
+                        onClick={() => handleDownload('csv')}
+                        disabled={downloading}
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 hover:text-emerald-700 hover:border-emerald-300 rounded-xl shadow-sm transition-all text-sm font-semibold disabled:opacity-50"
+                    >
+                        {downloading ? <Loader2 className="animate-spin w-4 h-4" /> : <FileSpreadsheet className="w-4 h-4" />}
+                        Export CSV
+                    </button>
+                    <button
+                        onClick={() => handleDownload('pdf')}
+                        disabled={downloading}
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 hover:text-rose-700 hover:border-rose-300 rounded-xl shadow-sm transition-all text-sm font-semibold disabled:opacity-50"
+                    >
+                        {downloading ? <Loader2 className="animate-spin w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                        Export PDF
+                    </button>
+                    <button
+                         onClick={fetchOwners}
+                         className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 border border-indigo-600 text-white hover:bg-indigo-700 hover:border-indigo-700 rounded-xl shadow-sm transition-all text-sm font-semibold disabled:opacity-50"
+                    >
+                        <RefreshCw className="w-4 h-4" />
+                        Sync Data
+                    </button>
+                </div>
+            </div>
 
-                {/* Filters and Search (omitted for brevity, unchanged) */}
-                <div className="bg-white p-4 sm:p-5 rounded-xl shadow-lg border border-gray-200 mb-6 flex flex-col md:flex-row gap-3 sm:gap-4 items-center">
-                    {/* Search Input */}
-                    <div className="relative w-full md:w-5/12">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="Search by name, email, or phone..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 sm:py-2.5 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 transition-shadow text-sm"
-                        />
-                    </div>
-                    {/* Mobile Row for Filter & Sync */}
-                    <div className="w-full md:w-auto flex flex-row gap-2 flex-1 md:contents">
-                        {/* Status Filter */}
-                        <select
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                            className="w-1/2 md:w-3/12 py-2 sm:py-2.5 px-3 border border-gray-300 rounded-lg bg-white focus:ring-purple-500 focus:border-purple-500 text-sm"
-                        >
-                            <option value="all">All Statuses</option>
-                            <option value="active">Active</option>
-                            <option value="blocked">Blocked</option>
-                        </select>
-                        <button
-                            onClick={fetchOwners}
-                            className="w-1/2 md:w-2/12 py-2 sm:py-2.5 px-3 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 font-medium text-sm whitespace-nowrap"
-                        >
-                            <RefreshCw className="w-4 h-4" /> Sync
-                        </button>
-                    </div>
-                    <span className="text-xs sm:text-sm font-semibold text-gray-600 w-full md:w-2/12 md:text-right text-center md:text-right">
-                        Total: {filteredOwners.length} / {users.length}
+            {/* Filters and Search */}
+            <div className="flex flex-col sm:flex-row gap-4 items-center bg-white p-3 rounded-2xl border border-gray-200 shadow-sm">
+                <div className="relative w-full sm:flex-1">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="Search by name, email, or phone..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-11 pr-4 py-2.5 bg-gray-50/50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all placeholder-gray-400"
+                    />
+                </div>
+                
+                <div className="h-8 w-px bg-gray-200 hidden sm:block"></div>
+
+                <div className="w-full sm:w-auto flex items-center gap-3">
+                    <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="w-full sm:w-40 py-2.5 px-4 bg-gray-50/50 border-none rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all font-medium cursor-pointer"
+                    >
+                        <option value="all">All Statuses</option>
+                        <option value="active">Active</option>
+                        <option value="blocked">Blocked</option>
+                    </select>
+                </div>
+                
+                <div className="hidden sm:flex items-center justify-center px-4 py-1.5 bg-indigo-50 rounded-lg shrink-0">
+                    <span className="text-sm font-bold text-indigo-700">
+                        {filteredOwners.length} <span className="font-normal text-indigo-500 text-xs uppercase tracking-wider">Results</span>
                     </span>
                 </div>
+            </div>
 
-                {/* --- Owners Table Card --- */}
-                <div className="bg-white rounded-xl shadow-2xl overflow-hidden border-2 border-pink-500/10">
-
-                    {/* Table Header Section - Multi-Color Gradient */}
-                    <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 py-4 px-6">
-                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                            <Users className="w-6 h-6" /> Property Owners
-                        </h3>
-                    </div>
-
-                    {/* Table Content */}
-                    <table className="min-w-full text-sm divide-y divide-purple-100">
-                        <thead className="bg-pink-50">
+            {/* --- Owners Table Card --- */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm divide-y divide-gray-100">
+                        <thead className="bg-gray-50/80">
                             <tr>
-                                <th className="py-4 px-6 text-left font-bold text-pink-800 whitespace-nowrap">OWNER NAME</th>
-                                <th className="py-4 px-6 text-left font-bold text-pink-800 hidden md:table-cell whitespace-nowrap">EMAIL</th>
-                                <th className="py-4 px-6 text-left font-bold text-pink-800 hidden md:table-cell whitespace-nowrap">PHONE</th>
-                                <th className="py-4 px-6 text-left font-bold text-pink-800 hidden md:table-cell whitespace-nowrap">STATUS</th>
-                                <th className="py-4 px-6 text-center font-bold text-pink-800 whitespace-nowrap">ACTIONS</th>
+                                <th className="py-4 px-6 text-left text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">Owner Details</th>
+                                <th className="py-4 px-6 text-left text-xs font-bold text-gray-500 uppercase tracking-wider hidden lg:table-cell whitespace-nowrap">Contact Info</th>
+                                <th className="py-4 px-6 text-left text-xs font-bold text-gray-500 uppercase tracking-wider hidden md:table-cell whitespace-nowrap">Activity Status</th>
+                                <th className="py-4 px-6 text-right text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
                             </tr>
                         </thead>
 
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-gray-100/80 bg-white">
                             {filteredOwners.length > 0 ? (
                                 filteredOwners.map((u) => (
-                                    <tr
-                                        key={u.id}
-                                        className="transition-all hover:bg-pink-50"
-                                    >
-                                        {/* Owner Name */}
+                                    <tr key={u.id} className="transition-all hover:bg-gray-50/50 group">
+                                        {/* Owner Details */}
                                         <td className="py-4 px-6">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center ring-2 ring-red-500/30 flex-shrink-0">
-                                                    <User className="w-4 h-4 text-red-600" />
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-700 flex-shrink-0 font-bold tracking-wider ring-1 ring-indigo-100">
+                                                    {u.name.charAt(0).toUpperCase()}
                                                 </div>
                                                 <div className="flex flex-col">
-                                                    <span className="font-semibold text-gray-900 truncate max-w-[120px] sm:max-w-none block">
+                                                    <span className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">
                                                         {u.name}
                                                     </span>
                                                     {/* Mobile-only secondary info */}
-                                                    <div className="md:hidden flex flex-col text-xs text-gray-500 mt-0.5 space-y-0.5">
-                                                        <span>{u.phone || 'N/A'}</span>
-                                                        <span className={u.isBlocked ? 'text-red-500 font-medium' : 'text-green-500 font-medium'}>
-                                                            {u.isBlocked ? 'Blocked' : 'Active'}
+                                                    <div className="lg:hidden flex flex-col text-xs text-gray-500 mt-1 space-y-1">
+                                                        <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {u.email}</span>
+                                                        <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {u.phone || 'N/A'}</span>
+                                                        <span className="md:hidden mt-2">
+                                                            <StatusBadge isBlocked={u.isBlocked} />
                                                         </span>
                                                     </div>
                                                 </div>
                                             </div>
                                         </td>
 
-                                        {/* Email */}
-                                        <td className="py-4 px-6 text-sm text-gray-600 hidden md:table-cell whitespace-nowrap">
-                                            <div className="flex items-center gap-2">
-                                                <Mail className="w-4 h-4 text-fuchsia-500" />
-                                                <span className="text-xs">{u.email}</span>
-                                            </div>
-                                        </td>
-
-                                        {/* Phone */}
-                                        <td className="py-4 px-6 text-sm text-gray-600 hidden md:table-cell whitespace-nowrap">
-                                            <div className="flex items-center gap-2">
-                                                <Phone className="w-4 h-4 text-orange-500" />
-                                                <span className="text-xs">{u.phone || 'N/A'}</span>
+                                        {/* Contact Info (Desktop) */}
+                                        <td className="py-4 px-6 hidden lg:table-cell whitespace-nowrap">
+                                            <div className="flex flex-col space-y-1.5 text-gray-600 font-medium">
+                                                <div className="flex items-center gap-2">
+                                                    <Mail className="w-3.5 h-3.5 text-gray-400" />
+                                                    <a href={`mailto:${u.email}`} className="hover:text-indigo-600 transition-colors">{u.email}</a>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <Phone className="w-3.5 h-3.5 text-gray-400" />
+                                                    <a href={`tel:${u.phone}`} className="hover:text-indigo-600 transition-colors">{u.phone || 'N/A'}</a>
+                                                </div>
                                             </div>
                                         </td>
 
                                         {/* Status */}
-                                        <td className="py-4 px-6 hidden md:table-cell whitespace-nowrap">
+                                        <td className="py-4 px-6 hidden md:table-cell whitespace-nowrap align-middle">
                                             <StatusBadge isBlocked={u.isBlocked} />
                                         </td>
 
-                                        {/* Actions: Block/Unblock */}
-                                        <td className="py-4 px-6 text-center whitespace-nowrap">
-                                            <div className="flex justify-center gap-2">
-                                                {/* View Button */}
+                                        {/* Actions */}
+                                        <td className="py-4 px-6 text-right whitespace-nowrap">
+                                            <div className="flex justify-end gap-2 items-center">
                                                 <button
                                                     onClick={() => openDrawer(u)}
-                                                    className="px-3 py-1.5 bg-white shadow-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-100 text-xs font-medium transition-colors whitespace-nowrap"
+                                                    className="inline-flex items-center justify-center gap-1px-3 py-1.5 bg-white border border-gray-200 text-gray-600 hover:text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50 rounded-lg text-xs font-bold transition-all shadow-sm"
+                                                    title="View Owner Details"
                                                 >
-                                                    View
+                                                    <span className="px-2">View Profile</span>
                                                 </button>
 
-                                                {/* Block Button (Active Owner -> Block, styled Red) */}
-                                                {!u.isBlocked && (
+                                                {!u.isBlocked ? (
                                                     <button
                                                         onClick={() => handleBlockClick(u)}
-                                                        className="w-24 flex items-center justify-center gap-1 py-1.5 rounded-xl text-white text-xs font-bold transition-all shadow-md bg-red-600 hover:bg-red-700 shadow-red-400/50 hover:shadow-lg whitespace-nowrap"
+                                                        className="inline-flex items-center justify-center p-1.5 border border-transparent text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                                        title="Block Owner"
                                                     >
-                                                        <XCircle className="w-4 h-4" /> Block
+                                                        <XCircle className="w-5 h-5" />
                                                     </button>
-                                                )}
-
-                                                {/* Unblock Button (Blocked Owner -> Unblock, styled Green) */}
-                                                {u.isBlocked && (
+                                                ) : (
                                                     <button
                                                         onClick={() => handleBlockClick(u)}
-                                                        className="w-24 flex items-center justify-center gap-1 py-1.5 rounded-xl text-white text-xs font-bold transition-all shadow-md bg-emerald-600 hover:bg-emerald-700 shadow-emerald-400/50 hover:shadow-lg whitespace-nowrap"
+                                                        className="inline-flex items-center justify-center p-1.5 border border-transparent text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors shadow-sm"
+                                                        title="Unblock Owner"
                                                     >
-                                                        <CheckCircle className="w-4 h-4" /> Unblock
+                                                        <CheckCircle className="w-5 h-5" />
                                                     </button>
                                                 )}
                                             </div>
@@ -381,9 +360,12 @@ export default function BuilderVerification() {
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan="5" className="py-12 text-center text-gray-500 text-lg italic">
-                                        <XCircle className="w-6 h-6 text-red-400 inline-block mr-2" />
-                                        No property owners match the current filter criteria.
+                                    <td colSpan="4" className="py-16 text-center">
+                                        <div className="flex flex-col items-center justify-center text-gray-500">
+                                            <Users className="w-12 h-12 text-gray-300 mb-3" />
+                                            <p className="text-lg font-medium text-gray-600">No property owners found</p>
+                                            <p className="text-sm mt-1">Adjust your search or filter criteria.</p>
+                                        </div>
                                     </td>
                                 </tr>
                             )}
@@ -392,46 +374,56 @@ export default function BuilderVerification() {
                 </div>
             </div>
 
-            {/* BLOCK REASON MODAL (unchanged) */}
+            {/* BLOCK REASON MODAL */}
             {blockModalOpen && ownerToBlock && (
-                <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 overflow-hidden">
-                        <div className="bg-red-600 px-6 py-4">
-                            <h3 className="text-lg font-semibold text-white">Block Owner</h3>
+                <div className="fixed inset-0 flex items-center justify-center z-50 bg-gray-900/60 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden transform transition-all">
+                        <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-rose-100 text-rose-600 rounded-full">
+                                    <XCircle className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-900">Block Owner</h3>
+                                    <p className="text-xs text-gray-500 font-medium mt-0.5">Please provide a reason</p>
+                                </div>
+                            </div>
                         </div>
-                        <div className="p-6">
-                            <p className="text-gray-700 mb-4">
-                                You are about to block <strong>{ownerToBlock.name}</strong> ({ownerToBlock.email}).
+                        <div className="p-6 bg-gray-50/50">
+                            <p className="text-sm text-gray-700 font-medium mb-4">
+                                Blocking <span className="font-bold text-gray-900">{ownerToBlock.name}</span> will prevent them from logging in.
                             </p>
-                            <p className="text-sm text-gray-600 mb-3">
-                                Please provide a reason for blocking this owner. This will be shown to the owner when they try to login.
-                            </p>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Reason for blocking <span className="text-rose-500">*</span>
+                            </label>
                             <textarea
                                 value={blockReason}
                                 onChange={(e) => setBlockReason(e.target.value)}
-                                placeholder="Enter reason for blocking (e.g., Violation of terms of service, Fraudulent property listings, etc.)"
-                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
+                                placeholder="E.g., Fraudulent listings, violation of terms..."
+                                className="w-full p-4 border border-gray-200 rounded-xl focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 text-sm outline-none transition-all shadow-sm resize-none"
                                 rows={4}
+                                maxLength={300}
                             />
+                            <p className="text-xs text-gray-400 mt-2 text-right">{blockReason.length}/300</p>
                         </div>
-                        <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3">
+                        <div className="px-6 py-5 border-t border-gray-100 flex justify-end gap-3 bg-white">
                             <button
                                 onClick={() => {
                                     setBlockModalOpen(false);
                                     setOwnerToBlock(null);
                                     setBlockReason("");
                                 }}
-                                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
+                                className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 font-semibold rounded-xl text-sm hover:bg-gray-50 transition-colors shadow-sm"
                                 disabled={blockLoading}
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleConfirmBlock}
-                                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium flex items-center gap-2"
-                                disabled={blockLoading}
+                                className="px-5 py-2.5 bg-rose-600 text-white font-semibold rounded-xl text-sm hover:bg-rose-700 transition-all shadow-sm flex items-center gap-2 disabled:opacity-50"
+                                disabled={blockLoading || !blockReason.trim()}
                             >
-                                {blockLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                                {blockLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
                                 Block Owner
                             </button>
                         </div>
@@ -439,87 +431,107 @@ export default function BuilderVerification() {
                 </div>
             )}
 
-            {/* OWNER DETAILS DRAWER (unchanged) */}
+            {/* OWNER DETAILS DRAWER */}
             {drawerOpen && selectedOwner && (
                 <div className="fixed inset-0 flex z-50">
                     <div
-                        className="flex-1 bg-black/50 transition-opacity duration-300"
+                        className="flex-1 bg-gray-900/60 backdrop-blur-sm transition-opacity duration-300"
                         onClick={() => setDrawerOpen(false)}
                     />
 
-                    <div className="w-full max-w-lg bg-white shadow-2xl p-6 overflow-y-auto transform translate-x-0 transition-transform duration-300">
-                        <div className="flex justify-between items-start mb-4">
+                    <div className="w-full max-w-md bg-white shadow-2xl overflow-y-auto transform transition-transform duration-300 ml-auto border-l border-gray-200">
+                        <div className="p-6 sticky top-0 bg-white/95 backdrop-blur z-10 border-b border-gray-100 flex justify-between items-center">
                             <div>
-                                <h2 className="text-2xl font-bold text-gray-900">{selectedOwner.name}</h2>
-                                <p className="text-purple-600 font-medium">{selectedOwner.email}</p>
+                                <h2 className="text-xl font-bold text-gray-900">{selectedOwner.name}</h2>
+                                <p className="text-sm text-indigo-600 font-medium">Owner Profile</p>
                             </div>
-                            <button onClick={() => setDrawerOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold">
-                                &times;
+                            <button onClick={() => setDrawerOpen(false)} className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors">
+                                <XCircle className="w-6 h-6" />
                             </button>
                         </div>
 
-                        <div className="flex gap-3 mb-6">
-                            <button
-                                onClick={() => handleBlockClick(selectedOwner)}
-                                className={`px-4 py-2 text-white rounded-md text-sm font-semibold transition-colors ${selectedOwner.isBlocked
-                                    ? "bg-green-600 hover:bg-green-700"
-                                    : "bg-red-600 hover:bg-red-700"
-                                    }`}
-                            >
-                                {selectedOwner.isBlocked ? "Unblock Owner" : "Block Owner"}
-                            </button>
-                        </div>
+                        <div className="p-6 space-y-8">
+                            {/* Fast Actions */}
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => handleBlockClick(selectedOwner)}
+                                    className={`flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all shadow-sm flex justify-center items-center gap-2 ${selectedOwner.isBlocked
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                        : "bg-white text-rose-600 border-gray-200 hover:bg-rose-50 hover:border-rose-200"
+                                        }`}
+                                >
+                                    {selectedOwner.isBlocked ? <CheckCircle className="w-4 h-4"/> : <XCircle className="w-4 h-4"/> }
+                                    {selectedOwner.isBlocked ? "Unblock Owner" : "Block Owner"}
+                                </button>
+                            </div>
 
-                        {/* Owner Details */}
-                        <div className="space-y-4 text-gray-700">
-                            <div className="p-3 bg-purple-50 rounded-lg">
-                                <p className="font-semibold text-gray-900">Role: <span className="text-purple-700 capitalize">{selectedOwner.role}</span></p>
-                                <p className="font-semibold text-gray-900">Status:
-                                    <span className={`ml-2 font-bold ${!selectedOwner.isBlocked ? 'text-green-600' : 'text-red-600'}`}>
-                                        {selectedOwner.isBlocked ? 'Blocked' : 'Active'}
-                                    </span>
-                                </p>
+                            {/* Core Details */}
+                            <div className="space-y-4">
+                                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Account Information</h3>
+                                <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-3 text-sm">
+                                    <div className="flex justify-between border-b border-gray-200 pb-2">
+                                        <span className="text-gray-500">Status</span>
+                                        <StatusBadge isBlocked={selectedOwner.isBlocked} />
+                                    </div>
+                                    <div className="flex justify-between border-b border-gray-200 pb-2">
+                                        <span className="text-gray-500">Role</span>
+                                        <span className="font-semibold text-gray-900 capitalize">{selectedOwner.role}</span>
+                                    </div>
+                                    <div className="flex justify-between pb-1">
+                                        <span className="text-gray-500">Joined</span>
+                                        <span className="font-semibold text-gray-900">{selectedOwner.joinedAt}</span>
+                                    </div>
+                                </div>
                                 {selectedOwner.isBlocked && selectedOwner.blockReason && (
-                                    <div className="mt-2 p-2 bg-red-100 border border-red-200 rounded">
-                                        <p className="text-sm text-red-800"><strong>Block Reason:</strong> {selectedOwner.blockReason}</p>
+                                    <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl mt-2">
+                                        <p className="text-xs text-rose-800 font-medium"><span className="font-bold">Reason:</span> {selectedOwner.blockReason}</p>
                                     </div>
                                 )}
-                                <p className="text-sm text-gray-600"><strong>Joined Date:</strong> {selectedOwner.joinedAt}</p>
                             </div>
 
-                            <p><strong>Phone:</strong> {selectedOwner.phone || "N/A"}</p>
-                            <p><strong>Alternate Phone:</strong> {selectedOwner.alternatePhone || "N/A"}</p>
+                            {/* Contact Details */}
+                            <div className="space-y-4">
+                                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Contact & Personal</h3>
+                                <div className="space-y-3 text-sm">
+                                    <div className="flex items-center gap-3 text-gray-700">
+                                        <Mail className="w-4 h-4 text-gray-400" /> {selectedOwner.email}
+                                    </div>
+                                    <div className="flex items-center gap-3 text-gray-700">
+                                        <Phone className="w-4 h-4 text-gray-400" /> {selectedOwner.phone || "N/A"}
+                                    </div>
+                                    <p className="text-gray-600 pl-7"><span className="text-gray-400 pr-1">Alt:</span> {selectedOwner.alternatePhone || "N/A"}</p>
+                                    <p className="text-gray-600 pl-7"><span className="text-gray-400 pr-1">DOB:</span> {selectedOwner.dateOfBirth ? formatDate(selectedOwner.dateOfBirth) : "N/A"}</p>
+                                    <p className="text-gray-600 pl-7"><span className="text-gray-400 pr-1">Gender:</span> <span className="capitalize">{selectedOwner.gender || "N/A"}</span></p>
+                                </div>
+                            </div>
 
-                            <p><strong>Gender:</strong> {selectedOwner.gender || "N/A"}</p>
-                            <p><strong>Date of Birth:</strong>
-                                {selectedOwner.dateOfBirth
-                                    ? formatDate(selectedOwner.dateOfBirth)
-                                    : "N/A"}
-                            </p>
-
-                            <p><strong>Bio:</strong> {selectedOwner.bio || "N/A"}</p>
-
-                            <div>
-                                <h4 className="font-semibold text-gray-900 mt-4 mb-2">Address Details:</h4>
+                            {/* Address */}
+                            <div className="space-y-4">
+                                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Address</h3>
                                 {selectedOwner.address ? (
-                                    <div className="bg-gray-100 p-3 rounded text-sm space-y-1">
-                                        <p><strong>Line 1:</strong> {selectedOwner.address.line1 || 'N/A'}</p>
-                                        <p><strong>Line 2:</strong> {selectedOwner.address.line2 || 'N/A'}</p>
-                                        <p><strong>City/Town:</strong> {selectedOwner.address.city || 'N/A'}</p>
-                                        <p><strong>State:</strong> {selectedOwner.address.state || 'N/A'}</p>
-                                        <p><strong>Pincode:</strong> <span className="font-bold text-purple-700">{selectedOwner.address.pincode || 'N/A'}</span></p>
+                                    <div className="bg-gray-50 border border-gray-100 p-4 rounded-xl text-sm text-gray-700 space-y-1.5 font-medium">
+                                        <p>{selectedOwner.address.line1 || ""}</p>
+                                        <p>{selectedOwner.address.line2 || ""}</p>
+                                        <p>{selectedOwner.address.city ? selectedOwner.address.city + ", " : ""}{selectedOwner.address.state || ""}</p>
+                                        <p className="pt-2 text-indigo-700 font-bold">{selectedOwner.address.pincode || ""}</p>
                                     </div>
                                 ) : (
-                                    <p className="text-red-500">No address information available.</p>
+                                    <p className="text-sm text-gray-400 italic">No address provided.</p>
                                 )}
                             </div>
 
-                            <div>
-                                <h4 className="font-semibold text-gray-900 mt-4 mb-2">Preferences:</h4>
-                                <ul className="ml-4 list-disc list-inside bg-gray-50 p-3 rounded-lg text-sm">
-                                    <li>Email Notifications: <span className="font-medium">{selectedOwner?.preferences?.emailNotifications ? "Yes" : "No"}</span></li>
-                                    <li>SMS Notifications: <span className="font-medium">{selectedOwner?.preferences?.smsNotifications ? "Yes" : "No"}</span></li>
-                                </ul>
+                            <div className="space-y-4">
+                                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Preferences</h3>
+                                <div className="flex items-center gap-6">
+                                    <p className="text-sm text-gray-700 flex items-center gap-2">
+                                        <span className={`w-2 h-2 rounded-full ${selectedOwner?.preferences?.emailNotifications ? 'bg-emerald-500' : 'bg-gray-300'}`}></span>
+                                        Email Alerts
+                                    </p>
+                                    <p className="text-sm text-gray-700 flex items-center gap-2">
+                                        <span className={`w-2 h-2 rounded-full ${selectedOwner?.preferences?.smsNotifications ? 'bg-emerald-500' : 'bg-gray-300'}`}></span>
+                                        SMS Alerts
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>

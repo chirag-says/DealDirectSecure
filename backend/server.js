@@ -137,6 +137,8 @@ import contactRoutes from './routes/contactRoutes.js';
 import agreementRoutes from './routes/agreementRoutes.js';
 import savedSearchRoutes from './routes/savedSearchRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+import rewardsRoutes from './routes/rewardsRoutes.js';
+import hubbleRoutes from './routes/hubbleRoutes.js';
 
 // ============================================
 // MODEL IMPORT for Socket.io authorization
@@ -208,9 +210,21 @@ if (isProduction) {
 const getWhitelistedOrigins = () => {
   const origins = [];
 
-  // Production domains (required)
-  if (process.env.CLIENT_URL) origins.push(process.env.CLIENT_URL);
-  if (process.env.ADMIN_URL) origins.push(process.env.ADMIN_URL);
+  // Helper to strip trailing slashes from URLs
+  const normalizeUrl = (url) => url ? url.replace(/\/+$/, '') : null;
+
+  // Production domains (required) - strip trailing slashes for consistent matching
+  if (process.env.CLIENT_URL) {
+    const clientUrl = normalizeUrl(process.env.CLIENT_URL);
+    origins.push(clientUrl);
+    // Also allow www variant (or non-www if CLIENT_URL has www)
+    if (clientUrl.includes('://www.')) {
+      origins.push(clientUrl.replace('://www.', '://'));
+    } else {
+      origins.push(clientUrl.replace('://', '://www.'));
+    }
+  }
+  if (process.env.ADMIN_URL) origins.push(normalizeUrl(process.env.ADMIN_URL));
 
   // Development domains (only in non-production)
   if (!isProduction) {
@@ -410,12 +424,10 @@ app.use(globalLimiter);
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (mobile apps, Postman in dev only)
+    // Allow requests with no origin (mobile apps, Postman, Next.js SSR fetches)
+    // Server-to-server requests (like SSR) do NOT send an Origin header.
+    // CORS is a browser security mechanism, so blocking non-browser requests here is unnecessary.
     if (!origin) {
-      if (isProduction) {
-        // In production, reject requests without origin
-        return callback(new Error('Origin required in production'), false);
-      }
       return callback(null, true);
     }
 
@@ -758,6 +770,8 @@ app.use("/api/contact", contactRoutes);
 app.use("/api/agreements", agreementRoutes);
 app.use("/api/saved-searches", savedSearchRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/rewards", rewardsRoutes);
+app.use("/api/rewards/hubble", hubbleRoutes);
 
 // ============================================
 // ERROR HANDLING (Must be LAST)

@@ -3,6 +3,7 @@ import Property from "../models/Property.js";
 import User from "../models/userModel.js";
 import mongoose from "mongoose";
 import { sendNewLeadNotification } from "../utils/emailService.js";
+import { awardPoints } from "../services/rewardService.js";
 
 // ============================================
 // SECURITY: Allowed status values for leads
@@ -238,6 +239,8 @@ export const updateLeadStatus = async (req, res) => {
       { new: true }
     ).populate('user', 'name email phone profileImage');
 
+    // NOTE: Auto-reward on "converted" has been moved to the document verification flow.
+    // The owner must now use "Mark as Sold/Rented" to upload deal proof and receive the reward.
     res.status(200).json({ success: true, data: updatedLead });
   } catch (error) {
     console.error('Error updating lead status:', error);
