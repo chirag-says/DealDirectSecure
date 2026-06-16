@@ -45,6 +45,7 @@ const AdminBlogEditor = () => {
     const [form, setForm] = useState(EMPTY_FORM);
     const [loading, setLoading] = useState(isEditing);
     const [saving, setSaving] = useState(false);
+    const [uploading, setUploading] = useState(false);
     const [showSeo, setShowSeo] = useState(false);
     const [preview, setPreview] = useState(false);
 
@@ -235,28 +236,75 @@ const AdminBlogEditor = () => {
                         </p>
                     </div>
 
-                    {/* Cover Image URL */}
+                    {/* Cover Image Upload */}
                     <div>
                         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                            Cover Image URL
+                            Cover Image
                         </label>
-                        <div className="flex gap-2">
-                            <div className="relative flex-1">
-                                <ImageIcon className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+
+                        {/* File Upload Button */}
+                        <div className="flex gap-2 items-center">
+                            <label className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-indigo-50 border-2 border-dashed border-indigo-200 rounded-xl cursor-pointer hover:bg-indigo-100 hover:border-indigo-400 transition-all text-sm text-indigo-600 font-medium">
+                                <ImageIcon className="w-4 h-4" />
+                                {uploading ? "Uploading..." : "Choose Image"}
+                                <input
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/gif,image/webp"
+                                    className="hidden"
+                                    disabled={uploading}
+                                    onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        if (file.size > 10 * 1024 * 1024) {
+                                            toast.error("Image must be under 10MB");
+                                            return;
+                                        }
+                                        setUploading(true);
+                                        try {
+                                            const res = await blogManagementApi.uploadCover(file);
+                                            if (res.success && res.url) {
+                                                handleChange("coverImage", res.url);
+                                                toast.success("Image uploaded!");
+                                            } else {
+                                                toast.error(res.message || "Upload failed");
+                                            }
+                                        } catch (err) {
+                                            toast.error(err?.response?.data?.message || "Upload failed");
+                                        } finally {
+                                            setUploading(false);
+                                            e.target.value = ""; // Reset input
+                                        }
+                                    }}
+                                />
+                            </label>
+                            {form.coverImage && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleChange("coverImage", "")}
+                                    className="px-3 py-3 text-red-500 hover:bg-red-50 rounded-xl transition text-xs font-medium border border-red-200"
+                                >
+                                    Remove
+                                </button>
+                            )}
+                        </div>
+
+                        {/* URL fallback input */}
+                        <div className="mt-2">
+                            <div className="relative">
+                                <ImageIcon className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
                                 <input
                                     type="text"
-                                    placeholder="https://images.unsplash.com/..."
+                                    placeholder="Or paste a Cloudinary image URL..."
                                     value={form.coverImage}
                                     onChange={(e) =>
-                                        handleChange(
-                                            "coverImage",
-                                            e.target.value
-                                        )
+                                        handleChange("coverImage", e.target.value)
                                     }
-                                    className="w-full pl-9 bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-700"
+                                    className="w-full pl-9 bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-700"
                                 />
                             </div>
                         </div>
+
+                        {/* Image Preview */}
                         {form.coverImage && (
                             <div className="mt-3 rounded-xl overflow-hidden border border-gray-200 max-h-48">
                                 <img

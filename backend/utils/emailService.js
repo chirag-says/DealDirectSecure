@@ -295,6 +295,91 @@ const emailTemplates = {
       The Deal Direct Team
       www.dealdirect.in
     `
+  }),
+  bookingAlert: (booking, projectName, unitName) => ({
+    subject: `💰 New Booking Payment Submitted — ${unitName} at ${projectName}`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #4f46e5, #3730a3); color: white; padding: 28px 30px; border-radius: 12px 12px 0 0; }
+          .header h1 { margin: 0 0 4px 0; font-size: 22px; }
+          .header p { margin: 0; opacity: 0.85; font-size: 14px; }
+          .content { background: #f8fafc; padding: 28px 30px; border: 1px solid #e2e8f0; }
+          .card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 16px; border: 1px solid #e2e8f0; }
+          .card-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #6366f1; margin-bottom: 12px; }
+          .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+          .row:last-child { border-bottom: none; }
+          .row .label { color: #64748b; }
+          .row .value { font-weight: 600; color: #1e293b; text-align: right; }
+          .utr-box { background: #fef9c3; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; font-family: monospace; font-size: 18px; font-weight: 700; color: #92400e; text-align: center; margin: 16px 0; letter-spacing: 0.1em; }
+          .cta-button { display: inline-block; background: #4f46e5; color: white !important; padding: 13px 32px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; }
+          .footer { text-align: center; padding: 18px; color: #94a3b8; font-size: 12px; }
+          .badge { display: inline-block; background: #dcfce7; color: #166534; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-left: 8px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>💰 Payment Proof Submitted</h1>
+            <p>A client has submitted token payment for a unit booking — action required</p>
+          </div>
+          <div class="content">
+            <div class="card">
+              <div class="card-title">🏗️ Project & Unit</div>
+              <div class="row"><span class="label">Project</span><span class="value">${projectName}</span></div>
+              <div class="row"><span class="label">Unit Type</span><span class="value">${unitName}</span></div>
+              <div class="row"><span class="label">Booking ID</span><span class="value" style="font-family:monospace">${booking._id?.toString()?.slice(-8)?.toUpperCase()}</span></div>
+              <div class="row"><span class="label">Token Amount</span><span class="value">₹${booking.payment?.tokenAmount?.toLocaleString('en-IN') || '—'}</span></div>
+            </div>
+            <div class="card">
+              <div class="card-title">👤 Client Details</div>
+              <div class="row"><span class="label">Name</span><span class="value">${booking.clientName}</span></div>
+              <div class="row"><span class="label">Phone</span><span class="value"><a href="tel:${booking.clientPhone}">${booking.clientPhone}</a></span></div>
+              ${booking.clientEmail ? `<div class="row"><span class="label">Email</span><span class="value"><a href="mailto:${booking.clientEmail}">${booking.clientEmail}</a></span></div>` : ''}
+              ${booking.notes ? `<div class="row"><span class="label">Notes</span><span class="value">${booking.notes}</span></div>` : ''}
+            </div>
+            <div class="card">
+              <div class="card-title">🧩 Payment Proof</div>
+              ${booking.payment?.utrNumber ? `
+              <p style="margin: 0 0 8px; font-size: 13px; color: #64748b;">UTR / Transaction Reference:</p>
+              <div class="utr-box">${booking.payment.utrNumber}</div>
+              ` : '<p style="color:#64748b;font-size:14px;">No UTR provided — screenshot uploaded only.</p>'}
+              ${booking.payment?.screenshotUrl ? `<p style="margin:0;font-size:14px;">📎 <a href="${booking.payment.screenshotUrl}" style="color:#4f46e5;font-weight:600;">View Payment Screenshot</a></p>` : ''}
+            </div>
+            <center style="margin-top: 8px;">
+              <a href="${process.env.ADMIN_URL || 'http://localhost:5173'}/bookings" class="cta-button">Review Booking in Admin Panel →</a>
+            </center>
+            <p style="margin-top:20px;font-size:13px;color:#64748b;text-align:center;">Please verify and confirm or reject this booking within 24 hours.</p>
+          </div>
+          <div class="footer">
+            <p>DealDirect Admin Notification · Auto-generated — do not reply</p>
+            <p>© ${new Date().getFullYear()} DealDirect. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+    text: `
+      New Booking Payment Submitted — Action Required
+
+      Project: ${projectName}
+      Unit: ${unitName}
+      Booking ID: ${booking._id?.toString()?.slice(-8)?.toUpperCase()}
+      Token Amount: ₹${booking.payment?.tokenAmount?.toLocaleString('en-IN') || '—'}
+
+      Client: ${booking.clientName}
+      Phone: ${booking.clientPhone}
+      Email: ${booking.clientEmail || 'Not provided'}
+
+      UTR / Reference: ${booking.payment?.utrNumber || 'Not provided'}
+      Screenshot: ${booking.payment?.screenshotUrl || 'Not provided'}
+
+      Review in Admin Panel: ${process.env.ADMIN_URL || 'http://localhost:5173'}/bookings
+    `
   })
 };
 
@@ -351,9 +436,37 @@ export const sendWelcomeEmail = async (userEmail, userName) => {
   return sendEmail(userEmail, "welcomeUser", [userName]);
 };
 
+// Send booking alert to admin when payment proof is submitted
+export const sendBookingAlert = async (booking, projectName, unitName) => {
+  const adminEmail = process.env.ADMIN_NOTIFY_EMAIL;
+  if (!adminEmail) {
+    console.warn('[BookingAlert] ADMIN_NOTIFY_EMAIL not set — skipping email notification.');
+    return;
+  }
+  try {
+    const smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER;
+    const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
+    if (!smtpUser || !smtpPass) return;
+
+    const transporter = createTransporter();
+    const template = emailTemplates.bookingAlert(booking, projectName, unitName);
+    await transporter.sendMail({
+      from: `"DealDirect" <${smtpUser}>`,
+      to: adminEmail,
+      subject: template.subject,
+      html: template.html,
+      text: template.text,
+    });
+    console.log(`[BookingAlert] Admin notified at ${adminEmail} for booking ${booking._id}`);
+  } catch (err) {
+    console.error('[BookingAlert] Failed to send admin email:', err.message);
+  }
+};
+
 export default {
   sendEmail,
   sendNewLeadNotification,
   sendGeneralNotification,
-  sendWelcomeEmail
+  sendWelcomeEmail,
+  sendBookingAlert,
 };

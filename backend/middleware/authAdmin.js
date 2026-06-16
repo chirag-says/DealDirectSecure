@@ -91,14 +91,19 @@ export const createSession = async (admin, req) => {
   const deviceInfo = parseUserAgent(userAgent);
 
   // ============================================
-  // SECURITY FIX: mfaVerified is ALWAYS false at session creation.
-  // Every admin MUST complete MFA verification regardless of role type.
-  // This prevents bypass attacks via legacy admin detection.
+  // SECURITY FIX: Explicitly generate fingerprintData using the same
+  // IP extraction logic that validateFingerprintLenient uses.
+  // Previously relied on pre-save hook which derived IP from this.ipAddress
+  // (req.ip), but validation derives IP from x-forwarded-for headers.
+  // This mismatch caused false session revocations behind CDN/proxies.
   // ============================================
+  const fingerprintData = AdminSession.generateFingerprintData(req);
+
   const session = await AdminSession.create({
     admin: admin._id,
     sessionToken,
     fingerprint,
+    fingerprintData,
     ipAddress: clientIp,
     userAgent,
     deviceInfo,
@@ -220,20 +225,22 @@ export const protectAdmin = async (req, res, next) => {
     }
 
     // ============================================
-    // SECURITY FIX: STRICT session fingerprint validation
-    // Rejects ANY User-Agent or IP address change immediately
-    // This prevents session hijacking via stolen tokens
+    // SECURITY: LENIENT session fingerprint validation
+    // Tolerates browser version updates and same-subnet IP changes
+    // (common with CDN edge rotation and Chrome auto-updates)
+    // Still REVOKES on real hijacking signals: OS change, device
+    // type change, or full network/ISP jump
     // ============================================
-    const fingerprintValidation = session.validateFingerprintStrict(req);
+    const fingerprintValidation = session.validateFingerprintLenient(req);
     if (!fingerprintValidation.valid) {
       // Session hijacking attempt detected - revoke immediately
-      await session.revoke(`strict_fingerprint_mismatch: ${fingerprintValidation.reason}`);
+      await session.revoke(`fingerprint_mismatch: ${fingerprintValidation.reason}`);
       clearSessionCookie(res);
 
       await AuditLog.log({
         admin: session.admin,
         category: "authentication",
-        action: "session_revoked_strict_fingerprint",
+        action: "session_revoked_fingerprint",
         description: `Session revoked: ${fingerprintValidation.reason}`,
         req,
         result: "denied",
@@ -254,7 +261,7 @@ export const protectAdmin = async (req, res, next) => {
     // Special case: mfaSetupPending = true means admin needs to set up MFA
     // In this case, ONLY allow access to MFA setup endpoints (/mfa/setup, /mfa/verify-setup)
     // ============================================
-    console.log("[AUTH] Session mfaVerified:", session.mfaVerified, "mfaSetupPending:", session.mfaSetupPending);
+    if (process.env.NODE_ENV !== 'production') console.log("[AUTH] Session mfaVerified:", session.mfaVerified, "mfaSetupPending:", session.mfaSetupPending);
 
     if (!session.mfaVerified) {
       // Check if this is an MFA setup pending session
@@ -264,7 +271,7 @@ export const protectAdmin = async (req, res, next) => {
         const isAllowedPath = allowedPaths.some(path => req.path.includes(path));
 
         if (!isAllowedPath) {
-          console.log("[AUTH] MFA setup pending - blocking access to:", req.path);
+          if (process.env.NODE_ENV !== 'production') console.log("[AUTH] MFA setup pending - blocking access to:", req.path);
           return res.status(403).json({
             success: false,
             message: "MFA setup is required before accessing admin features.",
@@ -275,10 +282,10 @@ export const protectAdmin = async (req, res, next) => {
         }
 
         // Allow access to MFA setup endpoints
-        console.log("[AUTH] MFA setup pending - allowing access to:", req.path);
+        if (process.env.NODE_ENV !== 'production') console.log("[AUTH] MFA setup pending - allowing access to:", req.path);
       } else {
         // Regular MFA verification required
-        console.log("[AUTH] MFA not verified - requiring MFA for all admin sessions");
+        if (process.env.NODE_ENV !== 'production') console.log("[AUTH] MFA not verified - requiring MFA for all admin sessions");
         return res.status(403).json({
           success: false,
           message: "Multi-factor authentication required.",

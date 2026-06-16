@@ -49,7 +49,7 @@ const getEquenceConfig = () => ({
 export const isSmsConfigured = () => {
     const config = getEquenceConfig();
     const configured = !!(config.username && config.password && config.senderId && config.peId);
-    if (!configured) {
+    if (!configured && process.env.NODE_ENV !== 'production') {
         console.log('[SMS DEBUG] username:', config.username ? '✅ set' : '❌ empty');
         console.log('[SMS DEBUG] password:', config.password ? '✅ set' : '❌ empty');
         console.log('[SMS DEBUG] senderId:', config.senderId ? '✅ set' : '❌ empty');

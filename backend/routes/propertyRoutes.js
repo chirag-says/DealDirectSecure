@@ -1,6 +1,7 @@
 import express from "express";
 import {
   addProperty,
+  addPropertyForBuilder,
   getProperties,
   getPropertyById,
   updateProperty,
@@ -119,6 +120,19 @@ router.post("/claim-deal-reward/:verificationId", authMiddleware, claimDealRewar
 
 // Admin: Get all properties with filters
 router.get("/admin/all", protectAdmin, getAdminProperties);
+
+// Admin: Create property for a builder (no owner auth — admin posts on behalf)
+router.post(
+  "/admin/add",
+  protectAdmin,
+  uploadConcurrencyGuard,
+  memoryUpload.fields([
+    { name: "images", maxCount: 15 },
+    { name: "categorizedImages", maxCount: 50 }
+  ]),
+  validateAndUploadToCloudinary,
+  addPropertyForBuilder
+);
 
 // Admin: Update property
 router.put(

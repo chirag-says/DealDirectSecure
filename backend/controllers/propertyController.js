@@ -3,6 +3,7 @@ import { cloudinary } from "../middleware/upload.js";
 import mongoose from "mongoose";
 import Lead from "../models/Lead.js";
 import User from "../models/userModel.js";
+import Builder from "../models/Builder.js";
 import Report from "../models/Report.js";
 import Notification from "../models/Notification.js";
 import SavedSearch from "../models/SavedSearch.js";
@@ -493,14 +494,176 @@ export const addProperty = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────
+// ADMIN — Add property on behalf of a builder (no user login)
+// POST /api/properties/admin/add
+// ─────────────────────────────────────────────────────────────────
+export const addPropertyForBuilder = async (req, res) => {
+  try {
+    let data = req.body;
+
+    const { builderId } = data;
+    if (!builderId) {
+      return res.status(400).json({ success: false, message: "builderId is required." });
+    }
+
+    // Validate builder exists and is active
+    const builder = await Builder.findById(builderId);
+    if (!builder) {
+      return res.status(404).json({ success: false, message: "Builder not found." });
+    }
+    if (!builder.isActive) {
+      return res.status(400).json({ success: false, message: "Builder is inactive. Reactivate before posting properties." });
+    }
+
+    // Parse JSON fields (same as addProperty)
+    ["area", "parking", "address", "flooring", "features", "legal", "extras", "imageCategoryMap"].forEach((key) => {
+      if (data[key]) {
+        try {
+          data[key] = typeof data[key] === "string" ? JSON.parse(data[key]) : data[key];
+        } catch (e) {
+          console.error(`Error parsing ${key}:`, e);
+        }
+      }
+    });
+
+    if (data.negotiable !== undefined) {
+      data.negotiable = data.negotiable === "true" || data.negotiable === true;
+    }
+
+    // Spread features into top-level data
+    if (data.features && typeof data.features === "object") {
+      const { parking: featuresParking, extras: featuresExtras, ...restFeatures } = data.features;
+      data = { ...data, ...restFeatures };
+      if (featuresParking) {
+        data.parking = { covered: String(featuresParking.covered || 0), open: String(featuresParking.open || 0) };
+      }
+      if (featuresExtras) data.extras = featuresExtras;
+      delete data.features;
+    }
+
+    // Sanitize
+    data = sanitizePropertyData(data);
+
+    // Process images
+    if (req.files?.images?.length > 0) {
+      data.images = extractCloudinaryUrls(req.files.images);
+    } else {
+      data.images = [];
+    }
+
+    if (req.files?.categorizedImages?.length > 0 && data.imageCategoryMap) {
+      const categorizedUrls = extractCloudinaryUrls(req.files.categorizedImages);
+      const categoryMap = data.imageCategoryMap;
+      const isResidential = data.categoryName === "Residential";
+      data.categorizedImages = { residential: {}, commercial: {} };
+      let urlIndex = 0;
+      Object.entries(categoryMap).forEach(([categoryKey, indices]) => {
+        const categoryImages = [];
+        for (let i = 0; i < indices.length && urlIndex < categorizedUrls.length; i++) {
+          categoryImages.push(categorizedUrls[urlIndex]);
+          urlIndex++;
+        }
+        if (isResidential) {
+          data.categorizedImages.residential[categoryKey] = categoryImages;
+        } else {
+          data.categorizedImages.commercial[categoryKey] = categoryImages;
+        }
+      });
+      if (data.images.length === 0) data.images = categorizedUrls;
+      delete data.imageCategoryMap;
+    }
+
+    // Handle coordinates
+    if (data.address) {
+      if (data.address.coordinates) {
+        data.address.latitude = parseFloat(data.address.coordinates.latitude) || null;
+        data.address.longitude = parseFloat(data.address.coordinates.longitude) || null;
+        delete data.address.coordinates;
+      }
+      if (data.address.latitude) data.address.latitude = parseFloat(data.address.latitude);
+      if (data.address.longitude) data.address.longitude = parseFloat(data.address.longitude);
+    }
+    if (data.latitude && data.longitude && data.address) {
+      data.address.latitude = parseFloat(data.latitude);
+      data.address.longitude = parseFloat(data.longitude);
+      delete data.latitude;
+      delete data.longitude;
+    }
+
+    // Normalize categoryName
+    if (data.categoryName) {
+      const lower = data.categoryName.toLowerCase();
+      if (lower.includes("residen")) data.categoryName = "Residential";
+      else if (lower.includes("commercial")) data.categoryName = "Commercial";
+    }
+
+    // Set admin-only fields — no owner, builder instead
+    data = setAdminOnlyFields(data, { isApproved: true, owner: null });
+    data.builder = builderId;
+    data.listingType = data.listingType || "Sale";
+
+    const prop = await Property.create(data);
+
+    // Notify saved searches (non-blocking)
+    try {
+      const savedSearches = await SavedSearch.find({ isActive: true }).lean();
+      const city = (prop.address?.city || "").toLowerCase();
+      const notificationsToCreate = [];
+      for (const search of savedSearches) {
+        const f = search.filters || {};
+        if (f.city && city !== f.city.toLowerCase()) continue;
+        notificationsToCreate.push({
+          user: search.user,
+          title: "New property matches your saved search",
+          message: `${prop.title || "A new property"} in ${prop.address?.city || "your area"} matches "${search.name}"`,
+          type: "saved-search-match",
+          data: { savedSearchId: search._id, propertyId: prop._id },
+        });
+      }
+      if (notificationsToCreate.length) await Notification.insertMany(notificationsToCreate);
+    } catch (notifyErr) {
+      console.error("Error generating notifications:", notifyErr);
+    }
+
+    sendNewPropertyWhatsApp({
+      title: prop.title,
+      price: prop.price,
+      listingType: prop.listingType,
+      city: prop.address?.city || prop.city,
+      locality: prop.address?.area || prop.locality,
+      ownerName: builder.company || builder.name,
+    }).catch(err => console.error("[WhatsApp] Builder property notification error:", err.message));
+
+    console.log(`[Builder Property] Created property ${prop._id} for builder ${builder.name}`);
+
+    return res.status(201).json({
+      success: true,
+      message: "Property created successfully for builder.",
+      data: withPublicImages(req, prop),
+    });
+  } catch (err) {
+    console.error("[Builder Property] Add error:", err.message);
+    return res.status(500).json({ success: false, message: "Failed to create property." });
+  }
+};
+
 // Get All (PUBLIC ENDPOINT)
 // ============================================
 // SECURITY FIX: Critical Data Leak Prevention
 // Previously returned ALL properties including drafts, rejected, banned
 // Now strictly filters to only approved + active properties
+//
+// Query params:
+//   ?isBuilderProperty=true  → return only builder properties (property.builder != null)
+//   ?limit=N                 → cap results (used by home page carousel)
+// By default: returns only OWNER properties (builder == null) to keep feeds separate
 // ============================================
 export const getProperties = async (req, res) => {
   try {
+    const isBuilderProperty = req.query.isBuilderProperty === 'true';
+    const limit = parseInt(req.query.limit) || 0; // 0 = no limit in Mongoose
+
     // SECURITY: Only return properties that are:
     // 1. Approved by admin (isApproved: true)
     // 2. Not soft-deleted (isActive: true or not set)
@@ -515,11 +678,35 @@ export const getProperties = async (req, res) => {
       status: { $nin: ['rejected', 'suspended', 'draft', 'pending'] }
     };
 
-    const list = await Property.find(securityFilter)
+    // ── Feed separation ──────────────────────────────────────────────────────
+    // Builder properties (posted by admin on behalf of a builder) are shown
+    // on a dedicated /projects page and must NOT appear in the regular feed.
+    if (isBuilderProperty) {
+      // Only properties that have a builder reference
+      securityFilter.builder = { $ne: null, $exists: true };
+    } else {
+      // Regular feed: only owner-posted properties (no builder)
+      securityFilter.$and = [
+        ...(securityFilter.$and || []),
+        {
+          $or: [
+            { builder: null },
+            { builder: { $exists: false } }
+          ]
+        }
+      ];
+    }
+
+    let query = Property.find(securityFilter)
       .populate("category")
       .populate("subcategory")
       .populate("propertyType")
+      .populate("builder", "name company logo city")
       .sort({ createdAt: -1 });
+
+    if (limit > 0) query = query.limit(limit);
+
+    const list = await query;
 
     res.json(list.map((item) => withPublicImages(req, item)));
   } catch (err) {
@@ -921,10 +1108,18 @@ export const disapproveProperty = async (req, res) => {
   }
 };
 
-// 🌐 Public: Get All Approved Properties (Home Page)
+// 🌐 Public: Get All Approved Properties (Home Page & Client Property List)
+// ── IMPORTANT: Builder properties are excluded here — they have their own feed ──
 export const getAllPropertiesList = async (req, res) => {
   try {
-    const properties = await Property.find({ isApproved: true })
+    const properties = await Property.find({
+      isApproved: true,
+      // Exclude builder properties — they belong on /projects, not /properties
+      $or: [
+        { builder: null },
+        { builder: { $exists: false } }
+      ]
+    })
       .populate("category", "name")
       .populate("subcategory", "name")
       .populate("propertyType", "name")
@@ -1581,7 +1776,14 @@ export const searchProperties = async (req, res) => {
       sort = "newest",
     } = req.query;
 
-    const filter = { isApproved: true };
+    const filter = {
+      isApproved: true,
+      // Exclude builder properties from regular search feed
+      $or: [
+        { builder: null },
+        { builder: { $exists: false } }
+      ]
+    };
 
     if (category) filter.category = category;
     if (subcategory) filter.subcategory = subcategory;
@@ -1601,13 +1803,28 @@ export const searchProperties = async (req, res) => {
       // SECURITY FIX: Escape regex special characters to prevent ReDoS
       const escapedSearch = escapeRegExp(search);
       const regex = new RegExp(escapedSearch, "i");
-      filter.$or = [
-        { title: regex },
-        { description: regex },
-        { "address.city": regex },
-        { "address.area": regex },
-        { "address.locality": regex },
+      // Use $and to combine with the builder-exclusion $or already in the filter
+      filter.$and = [
+        ...(filter.$and || []),
+        {
+          $or: [
+            { title: regex },
+            { description: regex },
+            { "address.city": regex },
+            { "address.area": regex },
+            { "address.locality": regex },
+          ]
+        }
       ];
+      // Remove the top-level $or since we moved it into $and
+      delete filter.$or;
+      // Re-add builder exclusion inside $and
+      filter.$and.push({
+        $or: [
+          { builder: null },
+          { builder: { $exists: false } }
+        ]
+      });
     }
 
     // Build query
@@ -1657,7 +1874,16 @@ export const getSuggestions = async (req, res) => {
 
     // Use aggregation for better performance - only fetch needed fields including first image
     const suggestions = await Property.aggregate([
-      { $match: { isApproved: true } },
+      {
+        $match: {
+          isApproved: true,
+          // Exclude builder properties from regular suggestions
+          $or: [
+            { builder: null },
+            { builder: { $exists: false } }
+          ]
+        }
+      },
       {
         $facet: {
           // Match by title (projects)
@@ -1743,15 +1969,29 @@ export const filterProperties = async (req, res) => {
   try {
     const { search = "", sort = "newest" } = req.query;
 
-    // Base filter: only approved properties
-    let filter = { isApproved: true };
+    // Base filter: only approved owner-posted properties (no builder)
+    let filter = {
+      isApproved: true,
+      $or: [
+        { builder: null },
+        { builder: { $exists: false } }
+      ]
+    };
 
     // Search in title or city
+    // Note: use $and so we don't overwrite the builder-exclusion $or
     if (search.trim()) {
       // SECURITY FIX: Escape regex special characters to prevent ReDoS
       const escapedSearch = escapeRegExp(search.trim());
       const regex = new RegExp(escapedSearch, "i");
-      filter.$or = [{ title: regex }, { "address.city": regex }];
+      filter.$and = [
+        ...(filter.$and || []),
+        { $or: [{ title: regex }, { "address.city": regex }] }
+      ];
+      delete filter.$or; // Builder exclusion moves inside $and below
+      filter.$and.push({
+        $or: [{ builder: null }, { builder: { $exists: false } }]
+      });
     }
 
     // Fetch properties and populate references
@@ -1890,10 +2130,21 @@ export const getAdminProperties = async (req, res) => {
       }
     }
 
+    // 4. Builder filter
+    if (req.query.hasBuilder === "true") {
+      query.builder = { $ne: null };
+    } else if (req.query.hasBuilder === "false") {
+      query.builder = null;
+    }
+    if (req.query.builderId && mongoose.Types.ObjectId.isValid(req.query.builderId)) {
+      query.builder = req.query.builderId;
+    }
+
     const properties = await Property.find(query)
       .populate("category", "name")
       .populate("subcategory", "name")
       .populate("propertyType", "name")
+      .populate("builder", "name company phone")
       .sort({ createdAt: -1 });
 
     console.log(`Found ${properties.length} properties matching search.`); // 🔍 Debug Log

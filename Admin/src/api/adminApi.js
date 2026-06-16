@@ -232,6 +232,14 @@ export const propertyManagementApi = {
         const response = await adminApi.delete(`/api/properties/delete/${propertyId}`);
         return response.data;
     },
+
+    adminAddProperty: async (formData) => {
+        const response = await adminApi.post('/api/properties/admin/add', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 120000,
+        });
+        return response.data;
+    },
 };
 
 // ============================================
@@ -407,6 +415,16 @@ export const blogManagementApi = {
         const response = await adminApi.patch(`/api/blogs/admin/${id}/unpublish`);
         return response.data;
     },
+
+    uploadCover: async (file) => {
+        const formData = new FormData();
+        formData.append('coverImage', file);
+        const response = await adminApi.post('/api/blogs/admin/upload-cover', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 60000, // 60s for large images
+        });
+        return response.data;
+    },
 };
 
 // ============================================
@@ -456,6 +474,202 @@ export const dealVerificationsApi = {
 
     reject: async (id, adminNotes) => {
         const response = await adminApi.post(`/api/admin/verifications/${id}/reject`, { adminNotes });
+        return response.data;
+    },
+};
+
+// ============================================
+// BUILDER MANAGEMENT API
+// ============================================
+
+export const builderApi = {
+    getAll: async (params = {}) => {
+        const response = await adminApi.get('/api/builders', { params });
+        return response.data;
+    },
+    getById: async (id) => {
+        const response = await adminApi.get(`/api/builders/${id}`);
+        return response.data;
+    },
+    create: async (data) => {
+        const isFormData = data instanceof FormData;
+        const response = await adminApi.post('/api/builders', data, {
+            ...(isFormData && {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                timeout: 60000,
+            }),
+        });
+        return response.data;
+    },
+    update: async (id, data) => {
+        const isFormData = data instanceof FormData;
+        const response = await adminApi.put(`/api/builders/${id}`, data, {
+            ...(isFormData && {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                timeout: 60000,
+            }),
+        });
+        return response.data;
+    },
+    delete: async (id) => {
+        const response = await adminApi.delete(`/api/builders/${id}`);
+        return response.data;
+    },
+};
+
+// ============================================
+// GROUP BUY API
+// ============================================
+
+export const groupBuyApi = {
+    // Projects
+    getProjects: async (params = {}) => {
+        const response = await adminApi.get('/api/group-buy/projects', { params });
+        return response.data;
+    },
+    getProject: async (id) => {
+        const response = await adminApi.get(`/api/group-buy/projects/${id}`);
+        return response.data;
+    },
+    createProject: async (data) => {
+        const response = await adminApi.post('/api/group-buy/projects', data);
+        return response.data;
+    },
+    updateProject: async (id, data) => {
+        const response = await adminApi.put(`/api/group-buy/projects/${id}`, data);
+        return response.data;
+    },
+
+    // Members
+    getMembers: async (groupId) => {
+        const response = await adminApi.get(`/api/group-buy/projects/${groupId}/members`);
+        return response.data;
+    },
+    recordPayment: async (memberId, data) => {
+        const response = await adminApi.post(`/api/group-buy/members/${memberId}/record-payment`, data);
+        return response.data;
+    },
+    lockGroup: async (groupId) => {
+        const response = await adminApi.post(`/api/group-buy/projects/${groupId}/lock`);
+        return response.data;
+    },
+};
+
+// ============================================
+// PROJECT API — Builder Project Flow
+// ============================================
+
+export const projectApi = {
+    getAll: async (params = {}) => {
+        const response = await adminApi.get('/api/projects', { params });
+        return response.data;
+    },
+    getById: async (id) => {
+        const response = await adminApi.get(`/api/projects/${id}`);
+        return response.data;
+    },
+    getByBuilder: async (builderId) => {
+        const response = await adminApi.get(`/api/projects/builder/${builderId}`);
+        return response.data;
+    },
+    create: async (formData) => {
+        const response = await adminApi.post('/api/projects', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 180000, // 3 min — many file uploads
+        });
+        return response.data;
+    },
+    update: async (id, data) => {
+        const isFormData = data instanceof FormData;
+        const response = await adminApi.put(`/api/projects/${id}`, data, {
+            ...(isFormData && {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                timeout: 180000,
+            }),
+        });
+        return response.data;
+    },
+    delete: async (id) => {
+        const response = await adminApi.delete(`/api/projects/${id}`);
+        return response.data;
+    },
+    addConstructionUpdate: async (id, formData) => {
+        const response = await adminApi.post(`/api/projects/${id}/construction-update`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 60000,
+        });
+        return response.data;
+    },
+};
+
+// ============================================
+// UNIT TYPE API — Builder Project Flow
+// ============================================
+
+export const unitTypeApi = {
+    getByProject: async (projectId, params = {}) => {
+        const response = await adminApi.get(`/api/unit-types/project/${projectId}`, { params });
+        return response.data;
+    },
+    getById: async (id) => {
+        const response = await adminApi.get(`/api/unit-types/${id}`);
+        return response.data;
+    },
+    create: async (formData) => {
+        const response = await adminApi.post('/api/unit-types', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 60000,
+        });
+        return response.data;
+    },
+    update: async (id, formData) => {
+        const response = await adminApi.put(`/api/unit-types/${id}`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 60000,
+        });
+        return response.data;
+    },
+    delete: async (id) => {
+        const response = await adminApi.delete(`/api/unit-types/${id}`);
+        return response.data;
+    },
+};
+
+// ============================================
+// CAMPAIGN API — Builder Project Flow
+// ============================================
+
+export const campaignApi = {
+    getByProject: async (projectId, params = {}) => {
+        const response = await adminApi.get(`/api/campaigns/project/${projectId}`, { params });
+        return response.data;
+    },
+    getByUnitType: async (unitTypeId, params = {}) => {
+        const response = await adminApi.get(`/api/campaigns/unit-type/${unitTypeId}`, { params });
+        return response.data;
+    },
+    getById: async (id) => {
+        const response = await adminApi.get(`/api/campaigns/${id}`);
+        return response.data;
+    },
+    create: async (data) => {
+        const response = await adminApi.post('/api/campaigns', data);
+        return response.data;
+    },
+    update: async (id, data) => {
+        const response = await adminApi.put(`/api/campaigns/${id}`, data);
+        return response.data;
+    },
+    getMembers: async (id, params = {}) => {
+        const response = await adminApi.get(`/api/campaigns/${id}/members`, { params });
+        return response.data;
+    },
+    getPendingPayments: async (id) => {
+        const response = await adminApi.get(`/api/campaigns/${id}/pending-payments`);
+        return response.data;
+    },
+    verifyPayment: async (memberId, data = {}) => {
+        const response = await adminApi.put(`/api/campaigns/members/${memberId}/verify`, data);
         return response.data;
     },
 };

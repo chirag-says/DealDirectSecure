@@ -33,7 +33,7 @@ const getWahaConfig = () => ({
 export const isWhatsAppConfigured = () => {
     const config = getWahaConfig();
     const configured = !!(config.apiUrl && config.apiKey);
-    if (!configured) {
+    if (!configured && process.env.NODE_ENV !== 'production') {
         console.log('[WhatsApp DEBUG] apiUrl:', config.apiUrl ? '✅ set' : '❌ empty');
         console.log('[WhatsApp DEBUG] apiKey:', config.apiKey ? '✅ set' : '❌ empty');
     }

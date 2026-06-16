@@ -12,6 +12,7 @@ import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import AdminProtectedRoute from "./components/AdminProtectedRoute";
 import Dashboard from "./pages/Dashboard";
+import BookingManagement from "./pages/BookingManagement";
 
 import AddCategory from "./pages/AddCategory";
 import AddSubCategory from "./pages/AddSubCategory";
@@ -32,6 +33,15 @@ import BlogManagement from "./pages/BlogManagement";
 import AdminBlogEditor from "./pages/AdminBlogEditor";
 import RewardsManagement from "./pages/RewardsManagement";
 import DealVerifications from "./pages/DealVerifications";
+import PopularProperties from "./pages/PopularProperties";
+import SiteVisitManagement from "./pages/SiteVisitManagement";
+import GroupBuyManagement from "./pages/GroupBuyManagement";
+import BuilderManagement from "./pages/BuilderManagement";
+import AdminAddProperty from "./pages/AdminAddProperty";
+import CreateProject from "./pages/CreateProject";
+import ProjectDetail from "./pages/ProjectDetail";
+import CreateUnitType from "./pages/CreateUnitType";
+import CreateCampaign from "./pages/CreateCampaign";
 
 const Layout = ({ isSidebarOpen, toggleSidebar, children }) => {
   const location = useLocation();
@@ -277,6 +287,94 @@ function AppContent() {
           element={
             <AdminProtectedRoute>
               <DealVerifications />
+            </AdminProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/popular-properties"
+          element={
+            <AdminProtectedRoute>
+              <PopularProperties />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/site-visits"
+          element={
+            <AdminProtectedRoute>
+              <SiteVisitManagement />
+            </AdminProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/group-buy"
+          element={
+            <AdminProtectedRoute>
+              <GroupBuyManagement />
+            </AdminProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/builder-management"
+          element={
+            <AdminProtectedRoute>
+              <BuilderManagement />
+            </AdminProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin-add-property"
+          element={
+            <AdminProtectedRoute>
+              <AdminAddProperty />
+            </AdminProtectedRoute>
+          }
+        />
+
+        {/* ── Builder Project Flow ───────────────────────────── */}
+        <Route
+          path="/create-project"
+          element={
+            <AdminProtectedRoute>
+              <CreateProject />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/project/:id"
+          element={
+            <AdminProtectedRoute>
+              <ProjectDetail />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/project/:projectId/add-unit-type"
+          element={
+            <AdminProtectedRoute>
+              <CreateUnitType />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/project/:projectId/campaign/new"
+          element={
+            <AdminProtectedRoute>
+              <CreateCampaign />
+            </AdminProtectedRoute>
+          }
+        />
+
+
+        <Route
+          path="/bookings"
+          element={
+            <AdminProtectedRoute>
+              <BookingManagement />
             </AdminProtectedRoute>
           }
         />

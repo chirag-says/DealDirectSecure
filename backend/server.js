@@ -139,6 +139,13 @@ import savedSearchRoutes from './routes/savedSearchRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import rewardsRoutes from './routes/rewardsRoutes.js';
 import hubbleRoutes from './routes/hubbleRoutes.js';
+import blogRoutes from './routes/blogRoutes.js';
+import groupBuyRoutes from './routes/groupBuyRoutes.js';
+import builderRoutes from './routes/builderRoutes.js';
+import projectRoutes from './routes/projectRoutes.js';
+import unitTypeRoutes from './routes/unitTypeRoutes.js';
+import campaignRoutes from './routes/campaignRoutes.js';
+import bookingRoutes from './routes/bookingRoutes.js';
 
 // ============================================
 // MODEL IMPORT for Socket.io authorization
@@ -160,22 +167,24 @@ app.get('/ping', (req, res) => {
   res.status(200).json({ pong: true, time: Date.now() });
 });
 
-app.get('/debug-startup', (req, res) => {
-  res.status(200).json({
-    status: 'Server started',
-    NODE_ENV: process.env.NODE_ENV || 'NOT SET',
-    PORT: process.env.PORT || 'NOT SET',
-    MONGO_URI: process.env.MONGO_URI ? 'SET (hidden)' : 'NOT SET',
-    JWT_SECRET: process.env.JWT_SECRET ? 'SET (hidden)' : 'NOT SET',
-    CLOUDINARY_URL: process.env.CLOUDINARY_URL ? 'SET (hidden)' : 'NOT SET',
-    CLIENT_URL: process.env.CLIENT_URL || 'NOT SET',
-    ADMIN_URL: process.env.ADMIN_URL || 'NOT SET',
-    cwd: process.cwd(),
-    dirname: __dirname,
-    nodeVersion: process.version,
-    dbState: mongoose.connection.readyState,
+if (!isProduction) {
+  app.get('/debug-startup', (req, res) => {
+    res.status(200).json({
+      status: 'Server started',
+      NODE_ENV: process.env.NODE_ENV || 'NOT SET',
+      PORT: process.env.PORT || 'NOT SET',
+      MONGO_URI: process.env.MONGO_URI ? 'SET (hidden)' : 'NOT SET',
+      JWT_SECRET: process.env.JWT_SECRET ? 'SET (hidden)' : 'NOT SET',
+      CLOUDINARY_URL: process.env.CLOUDINARY_URL ? 'SET (hidden)' : 'NOT SET',
+      CLIENT_URL: process.env.CLIENT_URL || 'NOT SET',
+      ADMIN_URL: process.env.ADMIN_URL || 'NOT SET',
+      cwd: process.cwd(),
+      dirname: __dirname,
+      nodeVersion: process.version,
+      dbState: mongoose.connection.readyState,
+    });
   });
-});
+}
 
 // ============================================
 // SECURITY FIX: Trust Proxy Configuration
@@ -680,6 +689,19 @@ app.use("/api/properties/suggestions", searchLimiter);
 app.use("/api/properties/filter", searchLimiter);
 
 // ============================================
+// Group Buy join rate limiter — prevent abuse
+// ============================================
+const groupBuyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  message: { success: false, message: 'Too many requests. Slow down.', code: 'RATE_LIMITED' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/group-buy/projects/:id/join', groupBuyLimiter);
+app.use('/api/group-buy/projects/:id/exit', groupBuyLimiter);
+
+// ============================================
 // SECURITY: Block retired 'Agent' role globally
 // ============================================
 
@@ -772,6 +794,15 @@ app.use("/api/saved-searches", savedSearchRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/rewards", rewardsRoutes);
 app.use("/api/rewards/hubble", hubbleRoutes);
+app.use("/api/blogs", blogRoutes);
+app.use("/api/group-buy", groupBuyRoutes);
+app.use("/api/builders", builderRoutes);
+
+// ── Builder Project Flow ──────────────────────────────────────────────────────
+app.use("/api/projects", projectRoutes);
+app.use("/api/unit-types", unitTypeRoutes);
+app.use("/api/campaigns", campaignRoutes);
+app.use("/api/bookings", bookingRoutes);
 
 // ============================================
 // ERROR HANDLING (Must be LAST)

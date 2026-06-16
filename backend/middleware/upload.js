@@ -318,6 +318,48 @@ export const memoryUpload = multer({
   fileFilter: secureFileFilter,
 });
 
+/**
+ * File filter for mixed uploads (images + documents like PDFs)
+ * Used by project routes that accept both images and legal documents.
+ */
+const mixedFileFilter = (req, file, cb) => {
+  const allowedMimes = [
+    'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ];
+
+  if (!allowedMimes.includes(file.mimetype)) {
+    console.warn(`⚠️ Rejected file with invalid MIME type: ${file.mimetype} (${file.originalname})`);
+    return cb(new Error('Invalid file type. Only images (JPEG, PNG, GIF, WebP) and documents (PDF) are allowed.'), false);
+  }
+
+  const ext = file.originalname.split('.').pop()?.toLowerCase();
+  const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx'];
+
+  if (!allowedExtensions.includes(ext)) {
+    console.warn(`⚠️ Rejected file with invalid extension: ${ext}`);
+    return cb(new Error('Invalid file extension.'), false);
+  }
+
+  cb(null, true);
+};
+
+/**
+ * Memory upload instance that accepts images AND documents (PDF, etc.)
+ * Used by project routes where brochures and legal docs are uploaded alongside images.
+ */
+export const memoryUploadWithDocs = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 15 * 1024 * 1024, // 15MB per file (PDFs can be larger)
+    files: 50,
+    parts: 100,
+  },
+  fileFilter: mixedFileFilter,
+});
+
 // SECURITY FIX: Track total upload size per request
 const MAX_TOTAL_UPLOAD_SIZE = 100 * 1024 * 1024; // 100MB total per request
 

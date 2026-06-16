@@ -2,8 +2,11 @@ import mongoose from "mongoose";
 
 const propertySchema = new mongoose.Schema(
   {
-    // Owner reference
+    // Owner reference (individual sellers who log in)
     owner: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+
+    // Builder reference (no login — admin posts on their behalf)
+    builder: { type: mongoose.Schema.Types.ObjectId, ref: "Builder", default: null },
 
     propertyType: { type: mongoose.Schema.Types.ObjectId, ref: "PropertyType" },
     propertyTypeName: { type: String }, // Stores exact property type name like "Apartment / Flat", "Office Space"
@@ -182,7 +185,18 @@ const propertySchema = new mongoose.Schema(
       occupancyCertificate: Boolean,
       tradeLicense: Boolean,
       fireNoc: Boolean
-    }
+    },
+
+    // ── Group Buying ──────────────────────────────────────────────────────────
+    // Set to true when admin enables Group Buy for this property
+    groupBuyEnabled: { type: Boolean, default: false },
+    // Reference to the active GroupBuyProject for this property (null if none)
+    groupBuyProject: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "GroupBuyProject",
+      default: null,
+    },
+
   },
   { timestamps: true }
 );
