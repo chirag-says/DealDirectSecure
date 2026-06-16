@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { builderApi, projectApi } from "../api/adminApi";
+import LocationPicker from "../components/LocationPicker";
 
 const STEPS = [
   { id: 1, label: "Basics" },
@@ -81,6 +82,158 @@ export default function CreateProject() {
   const [nearbyInput, setNearbyInput] = useState({ category: "Education", name: "", distance: "" });
   const [bankInput, setBankInput] = useState({ bankName: "", loanType: "Home Loan" });
 
+  // ── Per-step validation ──
+  // Returns an object like { fieldName: "error message" } — empty object = step is valid.
+  const [errors, setErrors] = useState({});
+  const stepContainerRef = useRef(null);
+
+  // Helper: a field is "filled" if it has a non-empty value (or ≥1 for arrays)
+  const isFilled = (val) => {
+    if (val === null || val === undefined) return false;
+    if (typeof val === "string") return val.trim() !== "";
+    if (typeof val === "number") return Number.isFinite(val);
+    if (Array.isArray(val)) return val.length > 0;
+    return true;
+  };
+
+  // Pure validators per step. Keep messages short and actionable.
+  const validateStep = (s) => {
+    const e = {};
+    if (s === 1) {
+      if (!isFilled(form.name)) e.name = "Project name is required";
+      if (!isFilled(form.category)) e.category = "Category is required";
+    } else if (s === 2) {
+      if (!isFilled(form.state)) e.state = "State is required";
+      if (!isFilled(form.city)) e.city = "City is required";
+      if (!isFilled(form.locality)) e.locality = "Locality is required";
+      if (!isFilled(form.pincode)) e.pincode = "Pincode is required";
+      if (!isFilled(form.lat) || !isFilled(form.lng)) e.coords = "Please pick a location on the map";
+      else {
+        const lat = parseFloat(form.lat);
+        const lng = parseFloat(form.lng);
+        if (!Number.isFinite(lat) || lat < -90 || lat > 90) e.coords = "Latitude must be between -90 and 90";
+        else if (!Number.isFinite(lng) || lng < -180 || lng > 180) e.coords = "Longitude must be between -180 and 180";
+      }
+    } else if (s === 3) {
+      // Step 3 is optional (nearby places are nice-to-have). No required fields.
+    } else if (s === 4) {
+      if (!isFilled(form.launchDate)) e.launchDate = "Launch date is required";
+      if (!isFilled(form.possessionDate)) e.possessionDate = "Possession date is required";
+      if (isFilled(form.launchDate) && isFilled(form.possessionDate)) {
+        if (new Date(form.possessionDate) < new Date(form.launchDate)) {
+          e.possessionDate = "Possession date must be on or after the launch date";
+        }
+      }
+      if (!isFilled(form.totalLandArea)) e.totalLandArea = "Total land area is required";
+      if (!isFilled(form.totalTowers)) e.totalTowers = "Number of towers is required";
+    } else if (s === 5) {
+      if (form.amenities.length === 0) e.amenities = "Select at least one amenity";
+    } else if (s === 6) {
+      if (!files.exteriorImages || files.exteriorImages.length === 0) {
+        e.exteriorImages = "At least one exterior image is required";
+      }
+    } else if (s === 7) {
+      if (!files.reraCertificateUrl || files.reraCertificateUrl.length === 0) {
+        e.reraCertificateUrl = "RERA certificate is required";
+      }
+      if (!form.titleClear) e.titleClear = "Title must be clear to publish";
+    } else if (s === 8) {
+      if (!isFilled(form.bookingAmount)) e.bookingAmount = "Booking amount is required";
+      else if (parseFloat(form.bookingAmount) < 0) e.bookingAmount = "Booking amount cannot be negative";
+      if (!isFilled(form.salesPhone)) e.salesPhone = "Sales phone is required";
+      else if (!/^[+\d\s()-]{7,20}$/.test(String(form.salesPhone).trim())) {
+        e.salesPhone = "Enter a valid phone number";
+      }
+      if (!isFilled(form.salesEmail)) e.salesEmail = "Sales email is required";
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.salesEmail).trim())) {
+        e.salesEmail = "Enter a valid email address";
+      }
+    }
+    return e;
+  };
+
+  // Try to advance. If invalid, surface errors + scroll to the first invalid field.
+  const goNext = () => {
+    const e = validateStep(step);
+    setErrors(e);
+    if (Object.keys(e).length > 0) {
+      const firstField = Object.keys(e)[0];
+      const label = e[firstField];
+      toast.error(label);
+      // Scroll the step container back into view, then try to focus the first invalid input.
+      if (stepContainerRef.current) {
+        stepContainerRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      // Give the DOM a tick to paint the error borders, then focus
+      setTimeout(() => {
+        const el = stepContainerRef.current?.querySelector(`[data-field="${firstField}"]`);
+        if (el) {
+          if (typeof el.focus === "function") el.focus();
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 50);
+      return;
+    }
+    setErrors({});
+    setStep(s => Math.min(9, s + 1));
+  };
+
+  // ── localStorage persistence ──
+  const DRAFT_KEY = `createProjectDraft_${builderId}`;
+
+  // Deep clone form and files for storage (files are intentionally excluded)
+  const serializeState = () => {
+    const { files: _, ...formOnly } = form;
+    return {
+      form: formOnly,
+      step,
+      timestamp: Date.now(),
+    };
+  };
+
+  // Saved draft checker
+  const [draftExists, setDraftExists] = useState(false);
+
+  // Auto-save on form change — but avoid initial sync
+  const saveTimeoutRef = useRef(null);
+  useEffect(() => {
+    if (builderId) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(() => {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(serializeState()));
+        setDraftExists(true);
+      }, 1000);
+    }
+    return () => clearTimeout(saveTimeoutRef.current);
+  }, [form, step, builderId]);
+
+  // Load saved draft on mount
+  useEffect(() => {
+    if (!builderId) return;
+    const saved = localStorage.getItem(DRAFT_KEY);
+    if (saved) {
+      try {
+        const draft = JSON.parse(saved);
+        // Only use if recent (<24h) and same builder
+        if (draft.step && Date.now() - draft.timestamp < 86400000) {
+          setForm(draft.form);
+          setStep(draft.step);
+          setDraftExists(true);
+        }
+      } catch (e) {
+        // Invalid JSON, skip it
+      }
+    }
+  }, [builderId]);
+
+  // Clear draft
+  const clearDraft = () => {
+    if (builderId) {
+      localStorage.removeItem(DRAFT_KEY);
+      setDraftExists(false);
+    }
+  };
+
   useEffect(() => {
     if (!builderId) { toast.error("No builder selected."); navigate("/builder-management"); return; }
     builderApi.getById(builderId)
@@ -88,7 +241,15 @@ export default function CreateProject() {
       .catch(() => { toast.error("Builder not found."); navigate("/builder-management"); });
   }, [builderId]);
 
-  const set = (key, val) => setForm(p => ({ ...p, [key]: val }));
+  // `set` writes a top-level form field AND clears any active error for that key,
+  // so the red border disappears as soon as the user starts typing.
+  const set = (key, val) => {
+    setForm(p => ({ ...p, [key]: val }));
+    if (errors[key]) {
+      const { [key]: _drop, ...rest } = errors;
+      setErrors(rest);
+    }
+  };
 
   const addHighlight = () => {
     if (!highlightInput.trim()) return;
@@ -120,6 +281,11 @@ export default function CreateProject() {
     setFiles(p => ({ ...p, [field]: [...(p[field] || []), ...selectedFiles] }));
     // Reset the input so the same file can be re-selected after removal
     e.target.value = "";
+    // Clear the validation error for this field once a file is added
+    if (errors[field]) {
+      const { [field]: _drop, ...rest } = errors;
+      setErrors(rest);
+    }
   };
 
   const removeFile = (field, index) => {
@@ -130,9 +296,35 @@ export default function CreateProject() {
   };
 
   const handleSubmit = async () => {
-    if (!form.name || !form.state || !form.city) {
-      toast.error("Project name, state and city are required."); return;
+    // Run validation across EVERY step, not just step 9. The "Next" button already
+    // gates each individual step, but a user could still click Step 9 in the indicator
+    // and try to submit from there. This is the final safety net.
+    const allErrors = {};
+    for (let s = 1; s <= 8; s++) {
+      Object.assign(allErrors, validateStep(s));
     }
+    if (Object.keys(allErrors).length > 0) {
+      setErrors(allErrors);
+      const count = Object.keys(allErrors).length;
+      toast.error(`${count} field${count > 1 ? "s" : ""} need${count > 1 ? "" : "s"} attention. Please review the form.`);
+      // Jump to the first step that has an error
+      for (let s = 1; s <= 8; s++) {
+        if (Object.keys(validateStep(s)).length > 0) {
+          setStep(s);
+          setTimeout(() => {
+            const firstField = Object.keys(validateStep(s))[0];
+            const el = stepContainerRef.current?.querySelector(`[data-field="${firstField}"]`);
+            if (el) {
+              if (typeof el.focus === "function") el.focus();
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+          }, 50);
+          break;
+        }
+      }
+      return;
+    }
+    setErrors({});
     setSubmitting(true);
     try {
       const fd = new FormData();
@@ -147,6 +339,8 @@ export default function CreateProject() {
       });
       const res = await projectApi.create(fd);
       toast.success("Project created!");
+      // Clear the saved draft once the project is created
+      clearDraft();
       navigate(`/project/${res.data._id}`);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to create project.");
@@ -173,34 +367,67 @@ export default function CreateProject() {
           )}
           <div>
             <label className={lbl}>Project Name *</label>
-            <input className={inp} value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. Prestige Lake View" />
+            <input
+              data-field="name"
+              className={inp}
+              value={form.name}
+              onChange={e => set("name", e.target.value)}
+              placeholder="e.g. Prestige Lake View"
+            />
           </div>
           <div>
             <label className={lbl}>Description</label>
-            <textarea className={inp} rows={3} value={form.description} onChange={e => set("description", e.target.value)} placeholder="Marketing description..." />
+            <textarea
+              data-field="description"
+              className={inp}
+              rows={3}
+              value={form.description}
+              onChange={e => set("description", e.target.value)}
+              placeholder="Marketing description..."
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={lbl}>Category *</label>
-              <select className={inp} value={form.category} onChange={e => set("category", e.target.value)}>
+              <select
+                data-field="category"
+                className={inp}
+                value={form.category}
+                onChange={e => set("category", e.target.value)}
+              >
                 {["Residential","Commercial","Mixed Use"].map(c => <option key={c}>{c}</option>)}
               </select>
             </div>
             <div>
               <label className={lbl}>Sub Type</label>
-              <select className={inp} value={form.subType} onChange={e => set("subType", e.target.value)}>
+              <select
+                data-field="subType"
+                className={inp}
+                value={form.subType}
+                onChange={e => set("subType", e.target.value)}
+              >
                 {["Apartment","Villa Community","Plotted Development","Commercial Office","Retail","Mall","Business Park"].map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
             <div>
               <label className={lbl}>Status</label>
-              <select className={inp} value={form.status} onChange={e => set("status", e.target.value)}>
+              <select
+                data-field="status"
+                className={inp}
+                value={form.status}
+                onChange={e => set("status", e.target.value)}
+              >
                 {["New Launch","Under Construction","Ready To Move","Completed"].map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
             <div>
               <label className={lbl}>Ownership</label>
-              <select className={inp} value={form.ownershipType} onChange={e => set("ownershipType", e.target.value)}>
+              <select
+                data-field="ownershipType"
+                className={inp}
+                value={form.ownershipType}
+                onChange={e => set("ownershipType", e.target.value)}
+              >
                 {["Freehold","Leasehold","Cooperative Housing Society","Power of Attorney"].map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
@@ -230,36 +457,14 @@ export default function CreateProject() {
         </div>
       );
       case 2: return (
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-800">Location Details</h2>
-          <div className="grid grid-cols-2 gap-4">
-            {[["state","State *"],["city","City *"],["locality","Locality"],["microMarket","Micro Market"],["addressLine","Address Line"],["landmark","Landmark"],["pincode","Pincode"]].map(([k,l]) => (
-              <div key={k}>
-                <label className={lbl}>{l}</label>
-                <input className={inp} value={form[k]} onChange={e => set(k, e.target.value)} />
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className={lbl}>Latitude</label>
-              <input className={inp} type="number" value={form.lat} onChange={e => set("lat", e.target.value)} placeholder="e.g. 12.9716" />
-            </div>
-            <div>
-              <label className={lbl}>Longitude</label>
-              <input className={inp} type="number" value={form.lng} onChange={e => set("lng", e.target.value)} placeholder="e.g. 77.5946" />
-            </div>
-          </div>
-          <h3 className="font-medium text-gray-700 pt-2">Connectivity</h3>
-          <div className="grid grid-cols-2 gap-4">
-            {[["distanceToMetro","Metro"],["distanceToAirport","Airport"],["distanceToRailway","Railway"],["distanceToBusStop","Bus Stop"]].map(([k,l]) => (
-              <div key={k}>
-                <label className={lbl}>Distance to {l}</label>
-                <input className={inp} value={form[k]} onChange={e => set(k, e.target.value)} placeholder="e.g. 1.2 km" />
-              </div>
-            ))}
-          </div>
-        </div>
+        <LocationPicker
+          value={form}
+          errors={errors}
+          onChange={(patch) => {
+            // Merge partial updates from LocationPicker
+            Object.entries(patch).forEach(([k, val]) => set(k, val));
+          }}
+        />
       );
       case 3: return (
         <div className="space-y-4">
@@ -295,10 +500,26 @@ export default function CreateProject() {
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-gray-800">Project Overview</h2>
           <div className="grid grid-cols-2 gap-4">
-            {[["launchDate","Launch Date","date"],["possessionDate","Possession Date","date"],["totalLandArea","Total Land Area","text"],["totalTowers","Number of Towers","number"],["floorsPerTower","Floors per Tower","text"],["totalUnits","Total Units","number"],["openSpacePercentage","Open Space %","number"]].map(([k,l,t]) => (
+            {[
+              ["launchDate","Launch Date *","date"],
+              ["possessionDate","Possession Date *","date"],
+              ["totalLandArea","Total Land Area *","text"],
+              ["totalTowers","Number of Towers *","number"],
+              ["floorsPerTower","Floors per Tower","text"],
+              ["totalUnits","Total Units","number"],
+              ["openSpacePercentage","Open Space %","number"],
+            ].map(([k,l,t]) => (
               <div key={k}>
                 <label className={lbl}>{l}</label>
-                <input className={inp} type={t} value={form[k]} onChange={e => set(k, e.target.value)} placeholder={t === "text" ? "e.g. 10 Acres" : ""} />
+                <input
+                  data-field={k}
+                  className={errors[k] ? "w-full border border-red-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" : inp}
+                  type={t}
+                  value={form[k]}
+                  onChange={e => set(k, e.target.value)}
+                  placeholder={t === "text" ? "e.g. 10 Acres" : ""}
+                />
+                {errors[k] && <p className="text-xs text-red-500 mt-1">{errors[k]}</p>}
               </div>
             ))}
           </div>
@@ -307,6 +528,7 @@ export default function CreateProject() {
       case 5: return (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-gray-800">Amenities</h2>
+          <p className="text-xs text-gray-500">Select at least one amenity to continue *</p>
           {Object.entries(AMENITY_PRESETS).map(([cat, items]) => (
             <div key={cat}>
               <h3 className="font-medium text-gray-700 mb-2">{cat}</h3>
@@ -314,7 +536,17 @@ export default function CreateProject() {
                 {items.map(item => {
                   const checked = form.amenities.some(a => a.category === cat && a.name === item);
                   return (
-                    <button key={item} onClick={() => toggleAmenity(cat, item)}
+                    <button
+                      key={item}
+                      onClick={() => {
+                        toggleAmenity(cat, item);
+                        // Clear the amenities error as soon as one is selected
+                        if (errors.amenities && form.amenities.length === 0) {
+                          const { amenities: _, ...rest } = errors;
+                          setErrors(rest);
+                        }
+                      }}
+                      data-field="amenities"
                       className={`px-3 py-1.5 rounded-full text-sm border transition-all ${checked ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-300 hover:border-blue-400"}`}>
                       {item}
                     </button>
@@ -323,13 +555,14 @@ export default function CreateProject() {
               </div>
             </div>
           ))}
+          {errors.amenities && <p className="text-xs text-red-500">{errors.amenities}</p>}
         </div>
       );
       case 6: return (
         <div className="space-y-5">
           <h2 className="text-lg font-semibold text-gray-800">Media</h2>
           {[
-            ["exteriorImages","Exterior Images (multiple)","image/*",true],
+            ["exteriorImages","Exterior Images (multiple) *","image/*",true],
             ["droneImages","Drone/Aerial Images","image/*",true],
             ["masterPlan","Master Plan","image/*",true],
             ["locationMap","Location Map","image/*",true],
@@ -338,10 +571,17 @@ export default function CreateProject() {
           ].map(([field,label,accept,multiple]) => {
             const isImage = accept.startsWith("image");
             return (
-              <div key={field} className="border border-gray-200 rounded-xl p-4 bg-gray-50/50">
+              <div key={field} className={`border rounded-xl p-4 ${errors[field] ? "border-red-400 bg-red-50/30" : "border-gray-200 bg-gray-50/50"}`}>
                 <label className={lbl}>{label}</label>
-                <input type="file" accept={accept} multiple={multiple} onChange={e => handleFiles(field, e)}
-                  className="block w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-4 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100 cursor-pointer" />
+                <input
+                  data-field={field}
+                  type="file"
+                  accept={accept}
+                  multiple={multiple}
+                  onChange={e => handleFiles(field, e)}
+                  className="block w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-4 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100 cursor-pointer"
+                />
+                {errors[field] && <p className="text-xs text-red-500 mt-1">{errors[field]}</p>}
 
                 {/* ── Image Preview Grid ── */}
                 {files[field]?.length > 0 && (
@@ -391,16 +631,23 @@ export default function CreateProject() {
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-gray-800">Documents & Legal</h2>
           {[
-            ["reraCertificateUrl","RERA Certificate"],
+            ["reraCertificateUrl","RERA Certificate *"],
             ["commencementCertificateUrl","Commencement Certificate"],
             ["occupancyCertificateUrl","Occupancy Certificate"],
             ["environmentalClearanceUrl","Environmental Clearance"],
             ["approvalDocumentUrls","Other Approvals (multiple)"],
           ].map(([field, label]) => (
-            <div key={field} className="border border-gray-200 rounded-xl p-4 bg-gray-50/50">
+            <div key={field} className={`border rounded-xl p-4 ${errors[field] ? "border-red-400 bg-red-50/30" : "border-gray-200 bg-gray-50/50"}`}>
               <label className={lbl}>{label}</label>
-              <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple={field === "approvalDocumentUrls"} onChange={e => handleFiles(field, e)}
-                className="block w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-4 file:rounded-lg file:border-0 file:bg-gray-50 file:text-gray-600 hover:file:bg-gray-100 cursor-pointer" />
+              <input
+                data-field={field}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                multiple={field === "approvalDocumentUrls"}
+                onChange={e => handleFiles(field, e)}
+                className="block w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-4 file:rounded-lg file:border-0 file:bg-gray-50 file:text-gray-600 hover:file:bg-gray-100 cursor-pointer"
+              />
+              {errors[field] && <p className="text-xs text-red-500 mt-1">{errors[field]}</p>}
 
               {/* ── Selected Files List ── */}
               {files[field]?.length > 0 && (
@@ -437,19 +684,45 @@ export default function CreateProject() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <input type="checkbox" id="titleClear" checked={form.titleClear} onChange={e => set("titleClear", e.target.checked)} />
-            <label htmlFor="titleClear" className="text-sm text-gray-700">Title Clear</label>
+            <input
+              data-field="titleClear"
+              type="checkbox"
+              id="titleClear"
+              checked={form.titleClear}
+              onChange={e => {
+                set("titleClear", e.target.checked);
+                if (e.target.checked && errors.titleClear) {
+                  const { titleClear: _, ...rest } = errors;
+                  setErrors(rest);
+                }
+              }}
+            />
+            <label htmlFor="titleClear" className="text-sm text-gray-700">Title Clear *</label>
           </div>
+          {errors.titleClear && <p className="text-xs text-red-500">{errors.titleClear}</p>}
         </div>
       );
       case 8: return (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-gray-800">Payment & Banking</h2>
           <div className="grid grid-cols-2 gap-4">
-            {[["bookingAmount","Booking Amount (₹)"],["gstPercentage","GST %"],["stampDutyPercentage","Stamp Duty %"],["registrationCharges","Registration Charges (₹)"]].map(([k,l]) => (
+            {[
+              ["bookingAmount","Booking Amount (₹) *"],
+              ["gstPercentage","GST %"],
+              ["stampDutyPercentage","Stamp Duty %"],
+              ["registrationCharges","Registration Charges (₹)"],
+            ].map(([k,l]) => (
               <div key={k}>
                 <label className={lbl}>{l}</label>
-                <input className={inp} type="number" value={form[k]} onChange={e => set(k, e.target.value)} />
+                <input
+                  data-field={k}
+                  className={errors[k] ? "w-full border border-red-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" : inp}
+                  type="number"
+                  min="0"
+                  value={form[k]}
+                  onChange={e => set(k, e.target.value)}
+                />
+                {errors[k] && <p className="text-xs text-red-500 mt-1">{errors[k]}</p>}
               </div>
             ))}
           </div>
@@ -475,10 +748,21 @@ export default function CreateProject() {
           </div>
           <h3 className="font-medium text-gray-700 pt-2">Sales Contact</h3>
           <div className="grid grid-cols-2 gap-4">
-            {[["managerName","Manager Name"],["salesPhone","Phone"],["salesWhatsapp","WhatsApp"],["salesEmail","Email"]].map(([k,l]) => (
+            {[
+              ["managerName","Manager Name"],
+              ["salesPhone","Phone *"],
+              ["salesWhatsapp","WhatsApp"],
+              ["salesEmail","Email *"],
+            ].map(([k,l]) => (
               <div key={k}>
                 <label className={lbl}>{l}</label>
-                <input className={inp} value={form[k]} onChange={e => set(k, e.target.value)} />
+                <input
+                  data-field={k}
+                  className={errors[k] ? "w-full border border-red-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" : inp}
+                  value={form[k]}
+                  onChange={e => set(k, e.target.value)}
+                />
+                {errors[k] && <p className="text-xs text-red-500 mt-1">{errors[k]}</p>}
               </div>
             ))}
           </div>
@@ -523,6 +807,50 @@ export default function CreateProject() {
         {builder && <p className="text-gray-500 text-sm mt-1">for {builder.company || builder.name}</p>}
       </div>
 
+      {/* Draft saved banner */}
+      {draftExists && (
+        <div className="mb-4 flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-sm">
+          <div className="flex items-center gap-2 text-emerald-700">
+            <span>✓</span>
+            <span>Your progress is auto-saved in this browser.</span>
+          </div>
+          <button
+            onClick={() => {
+              if (window.confirm("Clear saved draft? This will reset the form to empty.")) {
+                localStorage.removeItem(DRAFT_KEY);
+                setDraftExists(false);
+                setForm({
+                  name: "", description: "", category: "Residential", subType: "Apartment",
+                  status: "New Launch", ownershipType: "Freehold", isVastuCompliant: false,
+                  highlights: [], reraNumber: "", country: "India", state: "", city: "",
+                  locality: "", microMarket: "", addressLine: "", landmark: "", pincode: "",
+                  lat: "", lng: "", distanceToMetro: "", distanceToAirport: "", distanceToRailway: "",
+                  distanceToBusStop: "", nearbyPlaces: [], launchDate: "", possessionDate: "",
+                  totalLandArea: "", totalTowers: "", floorsPerTower: "", totalUnits: "",
+                  openSpacePercentage: "", amenities: [], paymentPlans: [], bookingAmount: "",
+                  gstPercentage: "", stampDutyPercentage: "", registrationCharges: "",
+                  bankApprovals: [], managerName: "", salesPhone: "", salesWhatsapp: "", salesEmail: "",
+                  landTitleType: "Freehold", titleClear: true, litigationStatus: "None",
+                  encumbrances: "", litigationDetails: "", walkthroughVideoUrl: "",
+                });
+                setFiles({
+                  exteriorImages: [], droneImages: [], masterPlan: [], locationMap: [],
+                  constructionProgressImages: [], brochureUrl: [], reraCertificateUrl: [],
+                  commencementCertificateUrl: [], occupancyCertificateUrl: [],
+                  environmentalClearanceUrl: [], approvalDocumentUrls: [],
+                });
+                setStep(1);
+                setErrors({});
+                toast.success("Draft cleared.");
+              }
+            }}
+            className="text-xs px-3 py-1 border border-emerald-300 text-emerald-700 rounded hover:bg-emerald-100 whitespace-nowrap"
+          >
+            Clear draft
+          </button>
+        </div>
+      )}
+
       {/* Step indicator */}
       <div className="flex items-center mb-8 overflow-x-auto pb-2">
         {STEPS.map((s, i) => (
@@ -537,7 +865,7 @@ export default function CreateProject() {
       </div>
 
       {/* Step content */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+      <div ref={stepContainerRef} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
         {renderStep()}
       </div>
 
@@ -548,7 +876,7 @@ export default function CreateProject() {
           ← Previous
         </button>
         {step < 9 ? (
-          <button onClick={() => setStep(s => Math.min(9, s + 1))}
+          <button onClick={goNext}
             className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
             Next →
           </button>
