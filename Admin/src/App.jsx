@@ -37,6 +37,7 @@ import PopularProperties from "./pages/PopularProperties";
 import SiteVisitManagement from "./pages/SiteVisitManagement";
 import GroupBuyManagement from "./pages/GroupBuyManagement";
 import BuilderManagement from "./pages/BuilderManagement";
+import BuilderProjectsList from "./pages/BuilderProjectsList";
 import AdminAddProperty from "./pages/AdminAddProperty";
 import CreateProject from "./pages/CreateProject";
 import ProjectDetail from "./pages/ProjectDetail";
@@ -349,6 +350,14 @@ function AppContent() {
           element={
             <AdminProtectedRoute>
               <ProjectDetail />
+            </AdminProtectedRoute>
+          }
+        />
+        <Route
+          path="/builder/:builderId/projects"
+          element={
+            <AdminProtectedRoute>
+              <BuilderProjectsList />
             </AdminProtectedRoute>
           }
         />

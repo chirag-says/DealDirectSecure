@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import {
     Building2, Plus, Search, RefreshCw, Loader2,
-    X, Phone, Mail, Home, Pencil, Ban, CheckCircle, PlusCircle
+    X, Phone, Mail, Home, Pencil, Ban, CheckCircle, PlusCircle, ChevronRight
 } from "lucide-react";
 
 const formatDate = (d) => {
@@ -337,11 +337,21 @@ export default function BuilderManagement() {
                                     <th className="py-4 px-6 text-left text-xs font-bold text-gray-500 uppercase tracking-wider hidden lg:table-cell">Properties</th>
                                     <th className="py-4 px-6 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
                                     <th className="py-4 px-6 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
+                                    <th className="py-4 px-2 w-px hidden md:table-cell"></th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100/80 bg-white">
                                 {builders.map(b => (
-                                    <tr key={b._id} className="hover:bg-gray-50/50 transition-all group">
+                                    <tr key={b._id} className="hover:bg-gray-50/50 transition-all group cursor-pointer"
+                                        onClick={() => navigate(`/builder/${b._id}/projects`)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter" || e.key === " ") {
+                                                e.preventDefault();
+                                                navigate(`/builder/${b._id}/projects`);
+                                            }
+                                        }}
+                                        role="link"
+                                        tabIndex={0}>
                                         <td className="py-4 px-6">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
@@ -388,30 +398,33 @@ export default function BuilderManagement() {
                                         </td>
                                         <td className="py-4 px-6 text-right">
                                             <div className="flex justify-end gap-2">
-                                                <button onClick={() => navigate(`/admin-add-property?builderId=${b._id}`)}
+                                                <button onClick={(e) => { e.stopPropagation(); navigate(`/admin-add-property?builderId=${b._id}`); }}
                                                     className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Add Legacy Property">
                                                     <PlusCircle className="w-4 h-4" />
                                                 </button>
-                                                <button onClick={() => navigate(`/create-project?builderId=${b._id}`)}
+                                                <button onClick={(e) => { e.stopPropagation(); navigate(`/create-project?builderId=${b._id}`); }}
                                                     className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Add New Project">
                                                     <Building2 className="w-4 h-4" />
                                                 </button>
-                                                <button onClick={() => openEdit(b)}
+                                                <button onClick={(e) => { e.stopPropagation(); openEdit(b); }}
                                                     className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Edit">
                                                     <Pencil className="w-4 h-4" />
                                                 </button>
                                                 {b.isActive ? (
-                                                    <button onClick={() => handleDeactivate(b)}
+                                                    <button onClick={(e) => { e.stopPropagation(); handleDeactivate(b); }}
                                                         className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Deactivate">
                                                         <Ban className="w-4 h-4" />
                                                     </button>
                                                 ) : (
-                                                    <button onClick={() => handleReactivate(b)}
+                                                    <button onClick={(e) => { e.stopPropagation(); handleReactivate(b); }}
                                                         className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Reactivate">
                                                         <CheckCircle className="w-4 h-4" />
                                                     </button>
                                                 )}
                                             </div>
+                                        </td>
+                                        <td className="py-4 px-2 hidden md:table-cell">
+                                            <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
                                         </td>
                                     </tr>
                                 ))}
