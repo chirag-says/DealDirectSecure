@@ -1,0 +1,41 @@
+{
+  "name": "client-next",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "prebuild": "rm -rf .next",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "@sentry/nextjs": "^10.38.0",
+    "@tailwindcss/typography": "^0.5.19",
+    "@uiw/react-md-editor": "^4.0.11",
+    "axios": "^1.13.5",
+    "date-fns": "^4.1.0",
+    "framer-motion": "^12.34.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.563.0",
+    "next": "16.1.6",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-icons": "^5.5.0",
+    "react-image-crop": "^11.0.10",
+    "react-leaflet": "^5.0.0",
+    "react-markdown": "^10.1.0",
+    "react-toastify": "^11.0.5",
+    "recharts": "^3.7.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "tailwindcss": "^4"
+  }
+}

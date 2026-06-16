@@ -1,0 +1,812 @@
+{
+  "cities": [
+    {
+      "name": "Mumbai",
+      "areas": [
+        {
+          "name": "Goregaon",
+          "projects": [
+            "Gokuldham Society",
+            "Lodha Park",
+            "Hiranandani Garden",
+            "Oberoi Realty Housing",
+            "Kalpataru Residency",
+            "Godrej Nature Plus",
+            "Prestige Residence"
+          ]
+        },
+        {
+          "name": "Borivali",
+          "projects": [
+            "Gokuldham Society",
+            "Lodha Splendour",
+            "Hiranandani Estate",
+            "Godrej Prime Residency",
+            "Kalpataru Park",
+            "Prestige Pinnacle",
+            "Oberoi Garden Estates"
+          ]
+        },
+        {
+          "name": "Worli",
+          "projects": [
+            "Four Seasons Private Residences",
+            "Lodha World Crest",
+            "Hiranandani Fort",
+            "Peninsula Corporate Park",
+            "Godrej M2K",
+            "Prestige Ocean Crest",
+            "Oberoi Sky Heights"
+          ]
+        },
+        {
+          "name": "Bandra",
+          "projects": [
+            "Lodha Altamount",
+            "Hiranandani Towers",
+            "Godrej Landmark",
+            "Prestige Serenity Towers",
+            "Oberoi Manor",
+            "Peninsula Residences",
+            "HDIL Dreams"
+          ]
+        },
+        {
+          "name": "Powai",
+          "projects": [
+            "Lodha Talaaria",
+            "Hiranandani Heritage",
+            "Godrej Garden City",
+            "Prestige Lakeside Habitat",
+            "Oberoi Woods",
+            "K Raheja Atlantis",
+            "Indiabulls Sky Forest"
+          ]
+        },
+        {
+          "name": "Andheri",
+          "projects": [
+            "Lodha Crown",
+            "Godrej Vriksha",
+            "Hiranandani Meadows",
+            "Prestige Lakewood",
+            "Oberoi Springs",
+            "Peninsula Pinnacle",
+            "HDIL Grace"
+          ]
+        },
+        {
+          "name": "Thane",
+          "projects": [
+            "Lodha Grandezza",
+            "Godrej Grove",
+            "Hiranandani Hillwood Estate",
+            "Prestige Raintree Park",
+            "Oberoi Mulberry",
+            "K Raheja Maple",
+            "Sunteck Realty Signature"
+          ]
+        },
+        {
+          "name": "Navi Mumbai",
+          "projects": [
+            "Lodha Codename Palmerston",
+            "Godrej Parkland",
+            "Hiranandani Woods",
+            "Prestige Primrose",
+            "Oberoi Exquisite",
+            "K Raheja Atlantica",
+            "Sunteck Signia"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Bangalore",
+      "areas": [
+        {
+          "name": "Whitefield",
+          "projects": [
+            "Prestige Falcon Towers",
+            "DLF Cyber Hub",
+            "Godrej Nest",
+            "Lodha Codename Zion",
+            "Hiranandani Tech Parks",
+            "Brigade Gateway",
+            "Embassy Tech Park"
+          ]
+        },
+        {
+          "name": "Koramangala",
+          "projects": [
+            "Four Seasons Private Residences",
+            "DLF Magnolias",
+            "Prestige High Fields",
+            "Godrej Glade",
+            "Lodha Crown Acadia",
+            "Hiranandani Apartments",
+            "Brigade Meadows"
+          ]
+        },
+        {
+          "name": "Indiranagar",
+          "projects": [
+            "Prestige Tranquility",
+            "DLF Gardenia",
+            "Godrej Forest View",
+            "Lodha New World",
+            "Hiranandani Gardens",
+            "Brigade Valencia",
+            "K Raheja Torche"
+          ]
+        },
+        {
+          "name": "Jayanagar",
+          "projects": [
+            "DLF Kings Court",
+            "Prestige Primrose",
+            "Godrej Platinum",
+            "Lodha Infinity",
+            "Hiranandani The Address",
+            "Brigade Cornerstone",
+            "Sattva Grand"
+          ]
+        },
+        {
+          "name": "Marathahalli",
+          "projects": [
+            "Prestige Central",
+            "DLF Cyber Golds",
+            "Godrej Eon",
+            "Lodha The Park",
+            "Hiranandani Opus",
+            "Brigade Green Glen",
+            "Sattva Auras"
+          ]
+        },
+        {
+          "name": "HSR Layout",
+          "projects": [
+            "Prestige Lakeside",
+            "DLF Laurel Heights",
+            "Godrej Grove",
+            "Lodha Splendor",
+            "Hiranandani Cascades",
+            "Brigade Bricklane",
+            "K Raheja Pinnacle"
+          ]
+        },
+        {
+          "name": "Sarjapur Road",
+          "projects": [
+            "DLF Pinnacle Heights",
+            "Prestige Central Park",
+            "Godrej The Trees",
+            "Lodha South View",
+            "Hiranandani Meadows",
+            "Brigade Orchards",
+            "Sattva Skyline"
+          ]
+        },
+        {
+          "name": "Ulsoor",
+          "projects": [
+            "Prestige Residences",
+            "DLF Courtyard",
+            "Godrej Prime",
+            "Lodha The Grand",
+            "Hiranandani Towers",
+            "Brigade Meadows Towers",
+            "K Raheja Tulip"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Delhi NCR",
+      "areas": [
+        {
+          "name": "Sector 31 Gurgaon",
+          "projects": [
+            "DLF The Pinnacle",
+            "Godrej Meridian",
+            "Prestige Primrose",
+            "Lodha Codename Gold",
+            "Hiranandani Fortuna",
+            "M3M Crown Peak",
+            "Emaar Dakshin"
+          ]
+        },
+        {
+          "name": "Sector 51 Gurgaon",
+          "projects": [
+            "DLF Magnolia",
+            "Godrej Platinum",
+            "Prestige Windridge",
+            "Lodha Sterling Ascentia",
+            "Hiranandani Heritage",
+            "M3M Latitude",
+            "Signature Global"
+          ]
+        },
+        {
+          "name": "Noida City Center",
+          "projects": [
+            "DLF Downtown",
+            "Godrej Park Residences",
+            "Prestige Primrose Residences",
+            "Lodha New World Park",
+            "Hiranandani Nest",
+            "Supertech Ecociti",
+            "ATS Primrose Residences"
+          ]
+        },
+        {
+          "name": "Greater Noida",
+          "projects": [
+            "DLF Northcrest",
+            "Godrej Nest Express",
+            "Prestige Serenity",
+            "Lodha Codename Sai",
+            "Hiranandani Meadows",
+            "Supertech Haryana",
+            "BPTP Park Residences"
+          ]
+        },
+        {
+          "name": "Delhi South",
+          "projects": [
+            "DLF Park Place",
+            "Godrej South Estate",
+            "Prestige Serenity Towers",
+            "Lodha Crown Heights",
+            "Hiranandani Gardens Delhi",
+            "Shriram Chirp",
+            "Rosewood Residences"
+          ]
+        },
+        {
+          "name": "Dwarka",
+          "projects": [
+            "DLF Century Heights",
+            "Godrej Prime Dwarka",
+            "Prestige Primrose Dwarka",
+            "Lodha Infinity Heights",
+            "Hiranandani Meadows Dwarka",
+            "K Raheja Pinnacle Park",
+            "Suncity Villas"
+          ]
+        },
+        {
+          "name": "Faridabad",
+          "projects": [
+            "DLF The Belvedere",
+            "Godrej Meridian Homes",
+            "Prestige Northwynd",
+            "Lodha Splendor",
+            "Hiranandani Towers Faridabad",
+            "Tech Mahindra Residences",
+            "Sushma Joynest"
+          ]
+        },
+        {
+          "name": "Sector 77 Noida",
+          "projects": [
+            "DLF Capital Greens",
+            "Godrej Reserve",
+            "Prestige Central Park",
+            "Lodha Sterling Oasis",
+            "Hiranandani Woods",
+            "Godrej Edge",
+            "BPTP Park Heights"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Pune",
+      "areas": [
+        {
+          "name": "Baner",
+          "projects": [
+            "Lodha Wonderland",
+            "Godrej Parkland",
+            "Prestige Waterfront",
+            "Hiranandani Meadows",
+            "K Raheja Maple Leaf",
+            "Puravankara Crystals",
+            "Sattva Signature"
+          ]
+        },
+        {
+          "name": "Wakad",
+          "projects": [
+            "Lodha Meridian",
+            "Godrej Green Estate",
+            "Prestige Lakewood",
+            "Hiranandani Towers",
+            "K Raheja Sapphire",
+            "Puravankara Zenium",
+            "Sattva Sienna"
+          ]
+        },
+        {
+          "name": "Koregaon Park",
+          "projects": [
+            "Lodha Luxe",
+            "Godrej Nest",
+            "Prestige Central",
+            "Hiranandani Heritage",
+            "K Raheja Olive",
+            "Puravankara Elena",
+            "Sattva Auras"
+          ]
+        },
+        {
+          "name": "Kharadi",
+          "projects": [
+            "Lodha Infinity",
+            "Godrej Parks",
+            "Prestige Park View",
+            "Hiranandani Crest",
+            "K Raheja Sunflower",
+            "Puravankara Iridium",
+            "Sattva Grand"
+          ]
+        },
+        {
+          "name": "Hinjewadi",
+          "projects": [
+            "Lodha Codename Sky",
+            "Godrej Eon",
+            "Prestige Meadows",
+            "Hiranandani Tech Zone",
+            "K Raheja Acropolis",
+            "Puravankara North Park",
+            "Sattva Highland"
+          ]
+        },
+        {
+          "name": "Magarpatta",
+          "projects": [
+            "Lodha Sterling Residences",
+            "Godrej Pinnacle",
+            "Prestige Ashford",
+            "Hiranandani Gateway",
+            "K Raheja Summit",
+            "Puravankara East Park",
+            "Sattva Meridian"
+          ]
+        },
+        {
+          "name": "Pune City Center",
+          "projects": [
+            "Lodha Park",
+            "Godrej Grand Estate",
+            "Prestige Crescendos",
+            "Hiranandani Towers Pune",
+            "K Raheja Centella",
+            "Puravankara Plaza",
+            "Sattva Residency"
+          ]
+        },
+        {
+          "name": "Ravet",
+          "projects": [
+            "Lodha New World",
+            "Godrej Grovenest",
+            "Prestige Jade Towers",
+            "Hiranandani Elegance",
+            "K Raheja Aura",
+            "Puravankara Zenscape",
+            "Sattva Jade"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Hyderabad",
+      "areas": [
+        {
+          "name": "Gachibowli",
+          "projects": [
+            "DLF Cyber Greens",
+            "Godrej Sunrise",
+            "Prestige Highfields",
+            "Lodha Aqua",
+            "Hiranandani Heritage",
+            "K Raheja Serenity",
+            "TATA Housing Divyasree"
+          ]
+        },
+        {
+          "name": "Hitech City",
+          "projects": [
+            "DLF Cyber Hub",
+            "Godrej Parkland",
+            "Prestige Central Park",
+            "Lodha Heights",
+            "Hiranandani Towers",
+            "K Raheja Pinnacle",
+            "Sattva Corporate Park"
+          ]
+        },
+        {
+          "name": "Jubilee Hills",
+          "projects": [
+            "DLF Park Place",
+            "Godrej Emerald Estate",
+            "Prestige Residences",
+            "Lodha Grandezza",
+            "Hiranandani Pride",
+            "K Raheja Green Heights",
+            "Suncity Villas"
+          ]
+        },
+        {
+          "name": "Banjara Hills",
+          "projects": [
+            "DLF Pinnacle Heights",
+            "Godrej Grand Estate",
+            "Prestige Landmark",
+            "Lodha Metropolis",
+            "Hiranandani Estates",
+            "K Raheja Orchid",
+            "Sattva Heritage"
+          ]
+        },
+        {
+          "name": "Madhapur",
+          "projects": [
+            "DLF Westend Heights",
+            "Godrej Parkridge",
+            "Prestige Lakeside",
+            "Lodha Windmills",
+            "Hiranandani Tech Park",
+            "K Raheja Azure",
+            "TATA Housing Protown"
+          ]
+        },
+        {
+          "name": "Whitefield",
+          "projects": [
+            "DLF Galleria",
+            "Godrej Galaxy",
+            "Prestige Towers",
+            "Lodha Signature",
+            "Hiranandani Gardens",
+            "K Raheja Summit",
+            "Sattva Signature"
+          ]
+        },
+        {
+          "name": "Kondapur",
+          "projects": [
+            "DLF Cyber Gateway",
+            "Godrej Mulberry",
+            "Prestige Central",
+            "Lodha Park Heights",
+            "Hiranandani Crest",
+            "K Raheja Maple",
+            "Sattva Grand"
+          ]
+        },
+        {
+          "name": "Secunderabad",
+          "projects": [
+            "DLF Park Towers",
+            "Godrej Prime",
+            "Prestige Jade Towers",
+            "Lodha Sterling",
+            "Hiranandani Heights",
+            "K Raheja Seraph",
+            "Suncity Park"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Chennai",
+      "areas": [
+        {
+          "name": "OMR (Old Mahabalipuram Road)",
+          "projects": [
+            "DLF The Gateway",
+            "Godrej Signature",
+            "Prestige Finsbury Park",
+            "Lodha Meridian",
+            "Hiranandani Forum",
+            "Shriram Properties",
+            "TATA Housing Promont"
+          ]
+        },
+        {
+          "name": "Anna Nagar",
+          "projects": [
+            "DLF Park Towers",
+            "Godrej Nest",
+            "Prestige Central",
+            "Lodha New World",
+            "Hiranandani Gardens",
+            "K Raheja Phoenix",
+            "Sattva Residency"
+          ]
+        },
+        {
+          "name": "Nungambakkam",
+          "projects": [
+            "DLF Pinnacle Heights",
+            "Godrej Prime Residences",
+            "Prestige Towers",
+            "Lodha Sterling Towers",
+            "Hiranandani Estates",
+            "Shriram Grand City",
+            "Sattva Heritage"
+          ]
+        },
+        {
+          "name": "Velachery",
+          "projects": [
+            "DLF Westend Heights",
+            "Godrej Galaxy",
+            "Prestige Lakewood",
+            "Lodha Central Park",
+            "Hiranandani Towers",
+            "K Raheja Pinnacle",
+            "Sattva Meridian"
+          ]
+        },
+        {
+          "name": "Adyar",
+          "projects": [
+            "DLF Cyber Gateway",
+            "Godrej Parkland",
+            "Prestige Meadows",
+            "Lodha Splendor",
+            "Hiranandani Heritage",
+            "Shriram Chirp Homes",
+            "Sattva Signature"
+          ]
+        },
+        {
+          "name": "Kodambakkam",
+          "projects": [
+            "DLF Crown Heights",
+            "Godrej Grove",
+            "Prestige Jade Towers",
+            "Lodha Grandezza",
+            "Hiranandani Heights",
+            "K Raheja Sunflower",
+            "Suncity Park"
+          ]
+        },
+        {
+          "name": "Thiruvanmiyur",
+          "projects": [
+            "DLF Park Place",
+            "Godrej Mulberry",
+            "Prestige Green Towers",
+            "Lodha New Heights",
+            "Hiranandani Crest",
+            "Shriram Rhythm",
+            "Sattva Grand"
+          ]
+        },
+        {
+          "name": "Porur",
+          "projects": [
+            "DLF Avenue",
+            "Godrej Emerald",
+            "Prestige Jade Park",
+            "Lodha Signature Heights",
+            "Hiranandani Vista",
+            "K Raheja Aura",
+            "Sattva Auras"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Kolkata",
+      "areas": [
+        {
+          "name": "Salt Lake",
+          "projects": [
+            "Lodha Wonderland",
+            "Godrej Parkland",
+            "Prestige Highfields",
+            "Hiranandani Heritage",
+            "K Raheja Phoenix",
+            "Merlin Skyland",
+            "Sattva Signature"
+          ]
+        },
+        {
+          "name": "Rajarhat",
+          "projects": [
+            "Lodha Sterling",
+            "Godrej Nest Express",
+            "Prestige Central",
+            "Hiranandani Towers",
+            "K Raheja Pinnacle",
+            "Merlin Luxurious",
+            "Sattva Grand"
+          ]
+        },
+        {
+          "name": "New Town",
+          "projects": [
+            "Lodha Infinity",
+            "Godrej Green Estate",
+            "Prestige Lakewood",
+            "Hiranandani Gardens",
+            "K Raheja Maple",
+            "Merlin Chambers",
+            "Sattva Meridian"
+          ]
+        },
+        {
+          "name": "Park Circus",
+          "projects": [
+            "Lodha Park Heights",
+            "Godrej Prime",
+            "Prestige Towers",
+            "Hiranandani Estates",
+            "K Raheja Acropolis",
+            "Landmark Residency",
+            "Sattva Heritage"
+          ]
+        },
+        {
+          "name": "Ballygunge",
+          "projects": [
+            "Lodha Grandezza",
+            "Godrej Galaxy",
+            "Prestige Residences",
+            "Hiranandani Heights",
+            "K Raheja Summit",
+            "Merlin Imperial",
+            "Sattva Signature"
+          ]
+        },
+        {
+          "name": "Alipore",
+          "projects": [
+            "Lodha Sterling Heights",
+            "Godrej Mulberry",
+            "Prestige Jade Towers",
+            "Hiranandani Crest",
+            "K Raheja Seraph",
+            "South City Park",
+            "Suncity Park"
+          ]
+        },
+        {
+          "name": "Kasba",
+          "projects": [
+            "Lodha Meridian",
+            "Godrej Emerald",
+            "Prestige Central Park",
+            "Hiranandani Vista",
+            "K Raheja Sunflower",
+            "Merlin Pinnacle",
+            "Sattva Grand"
+          ]
+        },
+        {
+          "name": "Siliguri",
+          "projects": [
+            "Lodha New World",
+            "Godrej Grove",
+            "Prestige Windridge",
+            "Hiranandani Meadows",
+            "K Raheja Olive",
+            "Merlin Marvel",
+            "Sattva Auras"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Ahmedabad",
+      "areas": [
+        {
+          "name": "Thaltej",
+          "projects": [
+            "Prestige Falcon Towers",
+            "DLF Avenue",
+            "Godrej Meridian",
+            "Lodha Serenity",
+            "Hiranandani Towers",
+            "K Raheja Pinnacle",
+            "Sattva Signature"
+          ]
+        },
+        {
+          "name": "SG Highway",
+          "projects": [
+            "Prestige Central",
+            "DLF Pinnacle Heights",
+            "Godrej Nest",
+            "Lodha Heights",
+            "Hiranandani Heritage",
+            "K Raheja Green Heights",
+            "Sattva Grand"
+          ]
+        },
+        {
+          "name": "Iscon Ambli",
+          "projects": [
+            "Prestige Primrose",
+            "DLF Park Place",
+            "Godrej Prime",
+            "Lodha Grandezza",
+            "Hiranandani Gardens",
+            "K Raheja Maple",
+            "Sattva Meridian"
+          ]
+        },
+        {
+          "name": "Makarba",
+          "projects": [
+            "Prestige Windridge",
+            "DLF Cyber Gateway",
+            "Godrej Galaxy",
+            "Lodha Infinity",
+            "Hiranandani Estates",
+            "K Raheja Acropolis",
+            "Sattva Heritage"
+          ]
+        },
+        {
+          "name": "Gota",
+          "projects": [
+            "Prestige Jade Towers",
+            "DLF The Gateway",
+            "Godrej Mulberry",
+            "Lodha Sterling",
+            "Hiranandani Crest",
+            "K Raheja Summit",
+            "Sattva Signature"
+          ]
+        },
+        {
+          "name": "Bodakdev",
+          "projects": [
+            "Prestige Central Park",
+            "DLF Westend Heights",
+            "Godrej Emerald Estate",
+            "Lodha New World",
+            "Hiranandani Heights",
+            "K Raheja Seraph",
+            "Suncity Park"
+          ]
+        },
+        {
+          "name": "Ahmedabad City Center",
+          "projects": [
+            "Prestige Highfields",
+            "DLF Park Towers",
+            "Godrej Grove",
+            "Lodha Splendor",
+            "Hiranandani Vista",
+            "K Raheja Phoenix",
+            "Sattva Grand"
+          ]
+        },
+        {
+          "name": "Kudasan",
+          "projects": [
+            "Prestige Lakewood",
+            "DLF Crown Heights",
+            "Godrej Parkland",
+            "Lodha Meridian",
+            "Hiranandani Meadows",
+            "K Raheja Sunflower",
+            "Sattva Auras"
+          ]
+        }
+      ]
+    }
+  ]
+}
