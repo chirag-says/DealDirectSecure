@@ -201,4 +201,18 @@ const propertySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// ============================================
+// H12 FIX: Add indexes for common query patterns
+// Without these, the most heavily queried collection does full scans
+// ============================================
+propertySchema.index({ owner: 1 });
+propertySchema.index({ builder: 1 });
+propertySchema.index({ status: 1, isApproved: 1 });
+propertySchema.index({ city: 1, status: 1 });
+propertySchema.index({ listingType: 1, status: 1, createdAt: -1 });
+propertySchema.index({ "address.city": 1, "address.state": 1 });
+propertySchema.index({ categoryName: 1, propertyTypeName: 1 });
+propertySchema.index({ price: 1 });
+propertySchema.index({ createdAt: -1 });
+
 export default mongoose.model("Property", propertySchema);

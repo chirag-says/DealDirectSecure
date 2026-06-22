@@ -31,12 +31,14 @@ const verifySignature = (data, signature, secretKey) => {
 };
 
 /**
- * Generate unique idempotency key
- * Combination of property ID, owner ID, buyer ID, and timestamp
+ * Generate idempotency key for agreement creation.
+ * Based on content fields ONLY (no timestamp) — same parties + property = same key.
+ *
+ * C2 FIX: Removed Date.now() which made every millisecond produce a unique key,
+ * completely defeating the purpose of idempotency.
  */
 const generateIdempotencyKey = (propertyId, ownerId, buyerId) => {
-    const timestamp = Date.now();
-    const uniqueString = `${propertyId}-${ownerId}-${buyerId}-${timestamp}`;
+    const uniqueString = `${propertyId}-${ownerId}-${buyerId}`;
     return crypto.createHash('sha256').update(uniqueString).digest('hex').substring(0, 32);
 };
 
@@ -218,11 +220,11 @@ const agreementSchema = new mongoose.Schema(
         // ============================================
 
         payments: [{
-            type: { type: String, enum: ['deposit', 'rent', 'maintenance', 'refund'] },
+            type: { type: String, enum: ['deposit', 'rent', 'maintenance', 'refund', 'unknown'] },
             amount: Number,
             transactionId: String,
             paymentGateway: String,
-            status: { type: String, enum: ['pending', 'completed', 'failed', 'refunded'] },
+            status: { type: String, enum: ['pending', 'completed', 'failed', 'refunded', 'fraud_suspected'] },
             paidAt: Date,
             verifiedAt: Date,
             webhookValidated: { type: Boolean, default: false },
@@ -292,8 +294,13 @@ agreementSchema.statics.createSecureAgreement = async function (data, req) {
         data.buyer
     );
 
-    // Check for duplicate (idempotency)
-    const existing = await this.findOne({ idempotencyKey });
+    // C2 FIX: Status-scoped idempotency check
+    // Only blocks duplicates for ACTIVE agreements — allows re-creation after cancellation
+    const TERMINAL_STATUSES = ['cancelled', 'terminated', 'expired'];
+    const existing = await this.findOne({
+        idempotencyKey,
+        status: { $nin: TERMINAL_STATUSES }
+    });
     if (existing) {
         return { duplicate: true, agreement: existing };
     }

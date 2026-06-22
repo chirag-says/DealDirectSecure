@@ -43,6 +43,7 @@ const projectSchema = new mongoose.Schema(
           "Apartment",
           "Villa Community",
           "Plotted Development",
+          "Integrated Township",
           "Commercial Office",
           "Retail",
           "Mall",
@@ -220,6 +221,15 @@ const projectSchema = new mongoose.Schema(
       whatsapp: { type: String, trim: true },
       email: { type: String, trim: true, lowercase: true },
     },
+
+    // ── Denormalized Price Range (updated by UnitType create/update/delete) ──
+    priceRange: {
+      min: { type: Number, default: 0, min: 0 },
+      max: { type: Number, default: 0, min: 0 },
+    },
+
+    // ── Denormalized Campaign Count (updated by GroupBuyCampaign hooks) ──────
+    activeCampaignCount: { type: Number, default: 0, min: 0 },
 
     // ── Meta ──────────────────────────────────────────────────────────────────
     isActive: { type: Boolean, default: true },

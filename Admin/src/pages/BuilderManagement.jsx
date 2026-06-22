@@ -22,10 +22,20 @@ function BuilderModal({ builder, onClose, onSaved }) {
         email: builder?.email || "",
         reraNumber: builder?.reraNumber || "",
         gstNumber: builder?.gstNumber || "",
+        addressLine: builder?.address?.line || "",
         city: builder?.address?.city || "",
         state: builder?.address?.state || "",
         notes: builder?.notes || "",
+        description: builder?.description || "",
+        yearEstablished: builder?.yearEstablished || "",
+        totalProjectsDelivered: builder?.totalProjectsDelivered || "",
+        totalSqFtDelivered: builder?.totalSqFtDelivered || "",
+        websiteUrl: builder?.websiteUrl || "",
+        operatingCities: builder?.operatingCities || [],
+        awards: builder?.awards || [],
     });
+    const [cityInput, setCityInput] = useState("");
+    const [awardInput, setAwardInput] = useState({ name: "", year: "" });
     const [logoFile, setLogoFile] = useState(null);
     const [logoPreview, setLogoPreview] = useState(builder?.logoUrl || null);
     const [submitting, setSubmitting] = useState(false);
@@ -63,8 +73,15 @@ function BuilderModal({ builder, onClose, onSaved }) {
                 if (form.email.trim()) fd.append("email", form.email.trim());
                 if (form.reraNumber.trim()) fd.append("reraNumber", form.reraNumber.trim());
                 if (form.gstNumber.trim()) fd.append("gstNumber", form.gstNumber.trim());
-                fd.append("address", JSON.stringify({ city: form.city.trim(), state: form.state.trim() }));
+                fd.append("address", JSON.stringify({ line: form.addressLine.trim(), city: form.city.trim(), state: form.state.trim() }));
                 if (form.notes.trim()) fd.append("notes", form.notes.trim());
+                if (form.description.trim()) fd.append("description", form.description.trim());
+                if (form.yearEstablished) fd.append("yearEstablished", form.yearEstablished);
+                if (form.totalProjectsDelivered) fd.append("totalProjectsDelivered", form.totalProjectsDelivered);
+                if (form.totalSqFtDelivered) fd.append("totalSqFtDelivered", form.totalSqFtDelivered);
+                if (form.websiteUrl.trim()) fd.append("websiteUrl", form.websiteUrl.trim());
+                if (form.operatingCities.length) fd.append("operatingCities", JSON.stringify(form.operatingCities));
+                if (form.awards.length) fd.append("awards", JSON.stringify(form.awards));
                 fd.append("logo", logoFile);
 
                 if (builder) {
@@ -83,8 +100,15 @@ function BuilderModal({ builder, onClose, onSaved }) {
                     email: form.email.trim() || undefined,
                     reraNumber: form.reraNumber.trim() || undefined,
                     gstNumber: form.gstNumber.trim() || undefined,
-                    address: { city: form.city.trim(), state: form.state.trim() },
+                    address: { line: form.addressLine.trim() || undefined, city: form.city.trim(), state: form.state.trim() },
                     notes: form.notes.trim() || undefined,
+                    description: form.description.trim() || undefined,
+                    yearEstablished: form.yearEstablished || undefined,
+                    totalProjectsDelivered: form.totalProjectsDelivered || undefined,
+                    totalSqFtDelivered: form.totalSqFtDelivered || undefined,
+                    websiteUrl: form.websiteUrl.trim() || undefined,
+                    operatingCities: form.operatingCities.length ? form.operatingCities : undefined,
+                    awards: form.awards.length ? form.awards : undefined,
                 };
                 if (builder) {
                     await builderApi.update(builder._id, payload);
@@ -186,6 +210,11 @@ function BuilderModal({ builder, onClose, onSaved }) {
                             <input value={form.gstNumber} onChange={e => set("gstNumber", e.target.value)} placeholder="Optional"
                                 className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-gray-50" />
                         </div>
+                        <div className="col-span-2">
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Office Address</label>
+                            <input value={form.addressLine} onChange={e => set("addressLine", e.target.value)} placeholder="e.g. 301, Business Centre, MG Road"
+                                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-gray-50" />
+                        </div>
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">City</label>
                             <input value={form.city} onChange={e => set("city", e.target.value)} placeholder="e.g. Pune"
@@ -195,6 +224,76 @@ function BuilderModal({ builder, onClose, onSaved }) {
                             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">State</label>
                             <input value={form.state} onChange={e => set("state", e.target.value)} placeholder="e.g. Maharashtra"
                                 className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-gray-50" />
+                        </div>
+                        <div className="col-span-2">
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Company Description</label>
+                            <textarea value={form.description} onChange={e => set("description", e.target.value)} rows={2}
+                                placeholder="Brief description of the company"
+                                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-gray-50 resize-none" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Year Established</label>
+                            <input type="number" min="1900" max="2030" value={form.yearEstablished} onChange={e => set("yearEstablished", e.target.value)} placeholder="e.g. 2005"
+                                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-gray-50" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Projects Delivered</label>
+                            <input type="number" min="0" value={form.totalProjectsDelivered} onChange={e => set("totalProjectsDelivered", e.target.value)} placeholder="e.g. 25"
+                                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-gray-50" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Total Sq.Ft Delivered</label>
+                            <input value={form.totalSqFtDelivered} onChange={e => set("totalSqFtDelivered", e.target.value)} placeholder="e.g. 10M sq.ft"
+                                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-gray-50" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Website</label>
+                            <input value={form.websiteUrl} onChange={e => set("websiteUrl", e.target.value)} placeholder="https://"
+                                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-gray-50" />
+                        </div>
+                        {/* ── Operating Cities ── */}
+                        <div className="col-span-2">
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Operating Cities</label>
+                            <div className="flex gap-2">
+                                <input value={cityInput} onChange={e => setCityInput(e.target.value)}
+                                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); if (cityInput.trim() && !form.operatingCities.includes(cityInput.trim())) { set("operatingCities", [...form.operatingCities, cityInput.trim()]); setCityInput(""); } } }}
+                                    placeholder="Type city and press Enter..."
+                                    className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-gray-50" />
+                                <button type="button" onClick={() => { if (cityInput.trim() && !form.operatingCities.includes(cityInput.trim())) { set("operatingCities", [...form.operatingCities, cityInput.trim()]); setCityInput(""); } }}
+                                    className="px-3 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold hover:bg-indigo-700">Add</button>
+                            </div>
+                            {form.operatingCities.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                    {form.operatingCities.map((c, i) => (
+                                        <span key={i} className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg text-xs flex items-center gap-1 border border-indigo-100">
+                                            {c}
+                                            <button type="button" onClick={() => set("operatingCities", form.operatingCities.filter((_, j) => j !== i))} className="text-indigo-400 hover:text-red-500 ml-0.5">×</button>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        {/* ── Awards ── */}
+                        <div className="col-span-2">
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Awards</label>
+                            <div className="flex gap-2">
+                                <input value={awardInput.name} onChange={e => setAwardInput(p => ({ ...p, name: e.target.value }))}
+                                    placeholder="Award name" className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-gray-50" />
+                                <input type="number" value={awardInput.year} onChange={e => setAwardInput(p => ({ ...p, year: e.target.value }))}
+                                    placeholder="Year" min="1990" max="2030" className="w-24 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-gray-50" />
+                                <button type="button" onClick={() => { if (awardInput.name.trim()) { set("awards", [...form.awards, { name: awardInput.name.trim(), year: awardInput.year ? Number(awardInput.year) : undefined }]); setAwardInput({ name: "", year: "" }); } }}
+                                    className="px-3 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold hover:bg-indigo-700">Add</button>
+                            </div>
+                            {form.awards.length > 0 && (
+                                <div className="space-y-1.5 mt-2">
+                                    {form.awards.map((a, i) => (
+                                        <div key={i} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-1.5 text-sm border border-gray-100">
+                                            <span><strong>{a.name}</strong>{a.year ? ` (${a.year})` : ""}</span>
+                                            <button type="button" onClick={() => set("awards", form.awards.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 text-xs">Remove</button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                         <div className="col-span-2">
                             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Internal Notes</label>
@@ -334,7 +433,7 @@ export default function BuilderManagement() {
                                     <th className="py-4 px-6 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Builder</th>
                                     <th className="py-4 px-6 text-left text-xs font-bold text-gray-500 uppercase tracking-wider hidden md:table-cell">Contact</th>
                                     <th className="py-4 px-6 text-left text-xs font-bold text-gray-500 uppercase tracking-wider hidden md:table-cell">Location</th>
-                                    <th className="py-4 px-6 text-left text-xs font-bold text-gray-500 uppercase tracking-wider hidden lg:table-cell">Properties</th>
+                                    <th className="py-4 px-6 text-left text-xs font-bold text-gray-500 uppercase tracking-wider hidden lg:table-cell">Projects</th>
                                     <th className="py-4 px-6 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
                                     <th className="py-4 px-6 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
                                     <th className="py-4 px-2 w-px hidden md:table-cell"></th>
@@ -343,11 +442,11 @@ export default function BuilderManagement() {
                             <tbody className="divide-y divide-gray-100/80 bg-white">
                                 {builders.map(b => (
                                     <tr key={b._id} className="hover:bg-gray-50/50 transition-all group cursor-pointer"
-                                        onClick={() => navigate(`/builder/${b._id}/projects`)}
+                                        onClick={() => navigate(`/builder/${b._id}`)}
                                         onKeyDown={(e) => {
                                             if (e.key === "Enter" || e.key === " ") {
                                                 e.preventDefault();
-                                                navigate(`/builder/${b._id}/projects`);
+                                                navigate(`/builder/${b._id}`);
                                             }
                                         }}
                                         role="link"
@@ -387,8 +486,8 @@ export default function BuilderManagement() {
                                         <td className="py-4 px-6 hidden lg:table-cell">
                                             <div className="flex items-center gap-1.5">
                                                 <Home className="w-4 h-4 text-gray-400" />
-                                                <span className="font-bold text-gray-900">{b.propertyCount || 0}</span>
-                                                <span className="text-gray-400 text-xs">propert{b.propertyCount === 1 ? "y" : "ies"}</span>
+                                                <span className="font-bold text-gray-900">{b.projectCount || 0}</span>
+                                                <span className="text-gray-400 text-xs">project{b.projectCount === 1 ? "" : "s"}</span>
                                             </div>
                                         </td>
                                         <td className="py-4 px-6">

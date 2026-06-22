@@ -203,7 +203,13 @@ export default function ProjectDetailContent({ project, unitTypes = [] }) {
             {p.builder && (
               <div className="bg-white border border-slate-200 rounded-2xl p-5">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-xl border border-slate-200">{(p.builder.company || p.builder.name || "B").charAt(0)}</div>
+                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-xl border border-slate-200 overflow-hidden">
+                    {p.builder.logoUrl ? (
+                      <img src={p.builder.logoUrl} alt={p.builder.company || p.builder.name} className="w-full h-full object-cover" />
+                    ) : (
+                      (p.builder.company || p.builder.name || "B").charAt(0)
+                    )}
+                  </div>
                   <div>
                     <p className="font-bold text-slate-900 flex items-center gap-1.5">{p.builder.company || p.builder.name} <FaCheckCircle className="text-blue-500" size={12} /></p>
                     <p className="text-xs text-slate-400">Verified Developer</p>
@@ -228,19 +234,7 @@ export default function ProjectDetailContent({ project, unitTypes = [] }) {
                 </div>
               </div>
             )}
-            {p.bankApprovals?.length > 0 && (
-              <div className="bg-white border border-slate-200 rounded-2xl p-5">
-                <h3 className="font-bold text-slate-900 mb-3">Bank Approvals</h3>
-                <div className="flex flex-wrap gap-2">
-                  {p.bankApprovals.map((b, i) => (
-                    <span key={i} className="flex items-center gap-2 text-sm bg-blue-50 text-blue-700 border border-blue-100 px-3 py-1.5 rounded-full font-medium">
-                      <span className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[9px] font-bold">{b.bankName?.charAt(0)}</span>
-                      {b.bankName}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+
             {highlights.length > 0 && (
               <div className="bg-gradient-to-br from-[#1a1145] to-[#2d1b4e] rounded-2xl p-5 text-white">
                 <h3 className="font-bold mb-4 flex items-center gap-2"><Star size={16} className="text-amber-400" /> Highlights</h3>

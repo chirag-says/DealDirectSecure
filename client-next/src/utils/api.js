@@ -598,5 +598,161 @@ export const rewardsApi = {
     },
 };
 
+// ============================================
+// PROJECT API METHODS
+// Mounted at: /api/projects
+// ============================================
+
+export const projectApi = {
+    /**
+     * List all active projects (public).
+     * @param {object} params — e.g. { isActive: true, limit: 50, city: 'Mumbai' }
+     */
+    getAll: async (params = {}) => {
+        const response = await api.get('/projects', { params });
+        return response.data;
+    },
+
+    /**
+     * Get a single project by ID (public).
+     */
+    getById: async (id) => {
+        const response = await api.get(`/projects/${id}`);
+        return response.data;
+    },
+
+    /**
+     * Get all projects belonging to a specific builder (public).
+     * Used on the builder profile page.
+     */
+    getByBuilder: async (builderId, params = {}) => {
+        const response = await api.get(`/projects/builder/${builderId}`, { params });
+        return response.data;
+    },
+};
+
+// ============================================
+// UNIT TYPE API METHODS
+// Mounted at: /api/unit-types
+// ============================================
+
+export const unitTypeApi = {
+    /**
+     * Get all unit types for a project (public).
+     * This is the primary call on the project detail page.
+     */
+    getByProject: async (projectId) => {
+        const response = await api.get(`/unit-types/project/${projectId}`);
+        return response.data;
+    },
+
+    /**
+     * Get a single unit type by ID (public).
+     * Used on the unit detail / booking page.
+     */
+    getById: async (id) => {
+        const response = await api.get(`/unit-types/${id}`);
+        return response.data;
+    },
+};
+
+// ============================================
+// CAMPAIGN API METHODS
+// Mounted at: /api/campaigns
+// ============================================
+
+export const campaignApi = {
+    /**
+     * Get all campaigns for a specific unit type (public).
+     * Displayed on the unit detail page as active group-buy offers.
+     */
+    getByUnitType: async (unitTypeId) => {
+        const response = await api.get(`/campaigns/unit-type/${unitTypeId}`);
+        return response.data;
+    },
+
+    /**
+     * Get all campaigns for a project (public).
+     */
+    getByProject: async (projectId) => {
+        const response = await api.get(`/campaigns/project/${projectId}`);
+        return response.data;
+    },
+
+    /**
+     * Get a single campaign by ID (public).
+     */
+    getById: async (id) => {
+        const response = await api.get(`/campaigns/${id}`);
+        return response.data;
+    },
+
+    /**
+     * Join a campaign (authenticated buyer).
+     * Adds the current user to the campaign member list.
+     */
+    join: async (campaignId) => {
+        const response = await api.post(`/campaigns/${campaignId}/join`);
+        return response.data;
+    },
+
+    /**
+     * Exit / withdraw from a campaign (authenticated buyer).
+     */
+    exit: async (campaignId) => {
+        const response = await api.post(`/campaigns/${campaignId}/exit`);
+        return response.data;
+    },
+
+    /**
+     * Upload payment proof for a campaign slot (authenticated buyer).
+     * @param {string} campaignId
+     * @param {FormData} formData — must contain `paymentProof` file field
+     */
+    uploadPaymentProof: async (campaignId, formData) => {
+        const response = await api.post(`/campaigns/${campaignId}/payment-proof`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        return response.data;
+    },
+};
+
+// ============================================
+// BOOKING API METHODS
+// Mounted at: /api/bookings
+// ============================================
+
+export const bookingApi = {
+    /**
+     * Create a new booking for a unit type (optionally authenticated).
+     * If the user is logged in, the booking is auto-linked to their account.
+     * @param {object} data — { unitTypeId, projectId, name, phone, email, ... }
+     */
+    create: async (data) => {
+        const response = await api.post('/bookings', data);
+        return response.data;
+    },
+
+    /**
+     * Submit payment proof (UTR + screenshot) for an existing booking.
+     * @param {string} bookingId
+     * @param {FormData} formData — must contain `screenshot` file field + UTR fields
+     */
+    submitPayment: async (bookingId, formData) => {
+        const response = await api.post(`/bookings/${bookingId}/payment`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        return response.data;
+    },
+
+    /**
+     * Get all bookings for the currently authenticated user.
+     */
+    getMyBookings: async () => {
+        const response = await api.get('/bookings/my');
+        return response.data;
+    },
+};
+
 // Export the base api instance for custom requests
 export default api;

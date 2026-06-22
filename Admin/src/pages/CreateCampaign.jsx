@@ -2,11 +2,17 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { campaignApi, unitTypeApi } from "../api/adminApi";
+import Wizard from "../components/wizard/Wizard";
+import { inp, lbl } from "../components/wizard/FormField";
+import { validateCampaignStep } from "../schemas/campaignSchema";
 
 const STEPS = [
-  { id: 1, label: "Basics" }, { id: 2, label: "Buyers" },
-  { id: 3, label: "Duration" }, { id: 4, label: "Pricing" },
-  { id: 5, label: "Inventory" }, { id: 6, label: "Milestones" },
+  { id: 1, label: "Basics" },
+  { id: 2, label: "Buyers" },
+  { id: 3, label: "Duration" },
+  { id: 4, label: "Pricing" },
+  { id: 5, label: "Inventory" },
+  { id: 6, label: "Milestones" },
 ];
 
 export default function CreateCampaign() {
@@ -16,6 +22,7 @@ export default function CreateCampaign() {
   const navigate = useNavigate();
 
   const [step, setStep] = useState(1);
+  const [errors, setErrors] = useState({});
   const [unitType, setUnitType] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [milestoneInput, setMilestoneInput] = useState({ buyerCount: "", benefit: "" });
@@ -42,7 +49,10 @@ export default function CreateCampaign() {
     }).catch(() => { toast.error("Unit type not found."); navigate(-1); });
   }, [unitTypeId]);
 
-  const set = (key, val) => setForm(p => ({ ...p, [key]: val }));
+  const set = (key, val) => {
+    setForm(p => ({ ...p, [key]: val }));
+    if (errors[key]) setErrors(e => { const { [key]: _, ...rest } = e; return rest; });
+  };
 
   const savings = () => {
     const r = Number(form.regularPrice) || 0;
@@ -52,25 +62,30 @@ export default function CreateCampaign() {
 
   const addMilestone = () => {
     if (!milestoneInput.buyerCount || !milestoneInput.benefit.trim()) return;
-    set("milestones", [...form.milestones, { buyerCount: Number(milestoneInput.buyerCount), benefit: milestoneInput.benefit.trim(), isAchieved: false }]);
+    set("milestones", [...form.milestones, {
+      buyerCount: Number(milestoneInput.buyerCount),
+      benefit: milestoneInput.benefit.trim(),
+      isAchieved: false,
+    }]);
     setMilestoneInput({ buyerCount: "", benefit: "" });
   };
 
+  // Per-step validation — backed by Zod from campaignSchema.js
+  const validateStep = (s) => validateCampaignStep(s, form, unitType);
+
   const handleSubmit = async () => {
-    if (!form.name || !form.startDate || !form.endDate || !form.groupBuyPrice || !form.tokenAmount) {
-      toast.error("Please fill all required fields."); return;
-    }
-    if (Number(form.groupBuyPrice) >= Number(form.regularPrice)) {
-      toast.error("Group buy price must be less than regular price."); return;
-    }
     setSubmitting(true);
     try {
       await campaignApi.create({
         unitTypeId,
-        name: form.name, description: form.description,
-        minBuyers: Number(form.minBuyers), maxBuyers: Number(form.maxBuyers),
-        startDate: form.startDate, endDate: form.endDate,
-        regularPrice: Number(form.regularPrice), groupBuyPrice: Number(form.groupBuyPrice),
+        name: form.name,
+        description: form.description,
+        minBuyers: Number(form.minBuyers),
+        maxBuyers: Number(form.maxBuyers),
+        startDate: form.startDate,
+        endDate: form.endDate,
+        regularPrice: Number(form.regularPrice),
+        groupBuyPrice: Number(form.groupBuyPrice),
         tokenAmount: Number(form.tokenAmount),
         unitsReserved: Number(form.unitsReserved),
         milestones: JSON.stringify(form.milestones),
@@ -84,9 +99,6 @@ export default function CreateCampaign() {
     }
   };
 
-  const inp = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500";
-  const lbl = "block text-sm font-medium text-gray-700 mb-1";
-
   const renderStep = () => {
     switch (step) {
       case 1: return (
@@ -96,16 +108,27 @@ export default function CreateCampaign() {
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
               <p className="text-xs text-orange-600 font-medium">Unit Type</p>
               <p className="font-semibold text-orange-800">{unitType.config?.name}</p>
-              <p className="text-xs text-orange-600">{unitType.inventory?.availableUnits} units available · ₹{unitType.pricing?.effectivePrice?.toLocaleString()} effective price</p>
+              <p className="text-xs text-orange-600">
+                {unitType.inventory?.availableUnits} units available · ₹{unitType.pricing?.effectivePrice?.toLocaleString()} effective price
+              </p>
             </div>
           )}
           <div>
-            <label className={lbl}>Campaign Name *</label>
-            <input className={inp} value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. Pre-Launch Group Buy — 2BHK" />
+            <label className={lbl}>Campaign Name <span className="text-red-500">*</span></label>
+            <input
+              data-field="name"
+              className={`${inp} ${errors.name ? "border-red-400" : ""}`}
+              value={form.name}
+              onChange={e => set("name", e.target.value)}
+              placeholder="e.g. Pre-Launch Group Buy — 2BHK"
+            />
+            {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
           </div>
           <div>
             <label className={lbl}>Description</label>
-            <textarea className={inp} rows={3} value={form.description} onChange={e => set("description", e.target.value)} placeholder="Campaign details, what buyers get, etc." />
+            <textarea className={inp} rows={3} value={form.description}
+              onChange={e => set("description", e.target.value)}
+              placeholder="Campaign details, what buyers get, etc." />
           </div>
         </div>
       );
@@ -114,14 +137,28 @@ export default function CreateCampaign() {
           <h2 className="text-lg font-semibold">Buyer Targets</h2>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={lbl}>Minimum Buyers *</label>
-              <input className={inp} type="number" min="3" value={form.minBuyers} onChange={e => set("minBuyers", e.target.value)} />
-              <p className="text-xs text-gray-400 mt-1">Campaign activates when this is reached</p>
+              <label className={lbl}>Minimum Buyers <span className="text-red-500">*</span></label>
+              <input
+                data-field="minBuyers"
+                className={`${inp} ${errors.minBuyers ? "border-red-400" : ""}`}
+                type="number" min="3"
+                value={form.minBuyers} onChange={e => set("minBuyers", e.target.value)}
+              />
+              {errors.minBuyers
+                ? <p className="text-xs text-red-500 mt-1">{errors.minBuyers}</p>
+                : <p className="text-xs text-gray-400 mt-1">Campaign activates when this is reached</p>}
             </div>
             <div>
-              <label className={lbl}>Maximum Buyers *</label>
-              <input className={inp} type="number" min={form.minBuyers} value={form.maxBuyers} onChange={e => set("maxBuyers", e.target.value)} />
-              <p className="text-xs text-gray-400 mt-1">Campaign closes when full</p>
+              <label className={lbl}>Maximum Buyers <span className="text-red-500">*</span></label>
+              <input
+                data-field="maxBuyers"
+                className={`${inp} ${errors.maxBuyers ? "border-red-400" : ""}`}
+                type="number" min={form.minBuyers}
+                value={form.maxBuyers} onChange={e => set("maxBuyers", e.target.value)}
+              />
+              {errors.maxBuyers
+                ? <p className="text-xs text-red-500 mt-1">{errors.maxBuyers}</p>
+                : <p className="text-xs text-gray-400 mt-1">Campaign closes when full</p>}
             </div>
           </div>
         </div>
@@ -131,15 +168,19 @@ export default function CreateCampaign() {
           <h2 className="text-lg font-semibold">Campaign Duration</h2>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={lbl}>Start Date *</label>
-              <input className={inp} type="date" value={form.startDate} onChange={e => set("startDate", e.target.value)} />
+              <label className={lbl}>Start Date <span className="text-red-500">*</span></label>
+              <input data-field="startDate" className={`${inp} ${errors.startDate ? "border-red-400" : ""}`}
+                type="date" value={form.startDate} onChange={e => set("startDate", e.target.value)} />
+              {errors.startDate && <p className="text-xs text-red-500 mt-1">{errors.startDate}</p>}
             </div>
             <div>
-              <label className={lbl}>End Date *</label>
-              <input className={inp} type="date" value={form.endDate} min={form.startDate} onChange={e => set("endDate", e.target.value)} />
+              <label className={lbl}>End Date <span className="text-red-500">*</span></label>
+              <input data-field="endDate" className={`${inp} ${errors.endDate ? "border-red-400" : ""}`}
+                type="date" value={form.endDate} min={form.startDate} onChange={e => set("endDate", e.target.value)} />
+              {errors.endDate && <p className="text-xs text-red-500 mt-1">{errors.endDate}</p>}
             </div>
           </div>
-          {form.startDate && form.endDate && (
+          {form.startDate && form.endDate && !errors.endDate && (
             <p className="text-sm text-blue-600 bg-blue-50 rounded-lg p-2">
               Campaign duration: {Math.ceil((new Date(form.endDate) - new Date(form.startDate)) / 86400000)} days
             </p>
@@ -150,13 +191,18 @@ export default function CreateCampaign() {
         <div className="space-y-4">
           <h2 className="text-lg font-semibold">Pricing</h2>
           <div>
-            <label className={lbl}>Regular Price (₹) *</label>
-            <input className={inp} type="number" value={form.regularPrice} onChange={e => set("regularPrice", e.target.value)} />
-            <p className="text-xs text-gray-400 mt-1">Pre-filled from unit type effective price</p>
+            <label className={lbl}>Regular Price (₹) <span className="text-red-500">*</span></label>
+            <input data-field="regularPrice" className={`${inp} ${errors.regularPrice ? "border-red-400" : ""}`}
+              type="number" value={form.regularPrice} onChange={e => set("regularPrice", e.target.value)} />
+            {errors.regularPrice
+              ? <p className="text-xs text-red-500 mt-1">{errors.regularPrice}</p>
+              : <p className="text-xs text-gray-400 mt-1">Pre-filled from unit type effective price</p>}
           </div>
           <div>
-            <label className={lbl}>Group Buy Price (₹) *</label>
-            <input className={inp} type="number" value={form.groupBuyPrice} onChange={e => set("groupBuyPrice", e.target.value)} />
+            <label className={lbl}>Group Buy Price (₹) <span className="text-red-500">*</span></label>
+            <input data-field="groupBuyPrice" className={`${inp} ${errors.groupBuyPrice ? "border-red-400" : ""}`}
+              type="number" value={form.groupBuyPrice} onChange={e => set("groupBuyPrice", e.target.value)} />
+            {errors.groupBuyPrice && <p className="text-xs text-red-500 mt-1">{errors.groupBuyPrice}</p>}
           </div>
           {savings() > 0 && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-4">
@@ -166,9 +212,12 @@ export default function CreateCampaign() {
             </div>
           )}
           <div>
-            <label className={lbl}>Token Amount (₹) — Collected by DealDirect *</label>
-            <input className={inp} type="number" value={form.tokenAmount} onChange={e => set("tokenAmount", e.target.value)} placeholder="e.g. 50000" />
-            <p className="text-xs text-orange-500 mt-1">⚠ This is collected via DealDirect UPI/Netbanking. Admin verifies manually.</p>
+            <label className={lbl}>Token Amount (₹) — Collected by DealDirect <span className="text-red-500">*</span></label>
+            <input data-field="tokenAmount" className={`${inp} ${errors.tokenAmount ? "border-red-400" : ""}`}
+              type="number" value={form.tokenAmount} onChange={e => set("tokenAmount", e.target.value)} placeholder="e.g. 50000" />
+            {errors.tokenAmount
+              ? <p className="text-xs text-red-500 mt-1">{errors.tokenAmount}</p>
+              : <p className="text-xs text-orange-500 mt-1">⚠ Collected via DealDirect UPI/Netbanking. Admin verifies manually.</p>}
           </div>
         </div>
       );
@@ -177,46 +226,57 @@ export default function CreateCampaign() {
           <h2 className="text-lg font-semibold">Inventory Allocation</h2>
           {unitType && (
             <div className="bg-gray-50 rounded-lg p-3 text-sm">
-              <p className="text-gray-500">Available in this unit type: <span className="font-semibold text-gray-800">{unitType.inventory?.availableUnits || 0} units</span></p>
+              <p className="text-gray-500">Available in this unit type:{" "}
+                <span className="font-semibold text-gray-800">{unitType.inventory?.availableUnits || 0} units</span>
+              </p>
             </div>
           )}
           <div>
-            <label className={lbl}>Units Reserved for this Campaign *</label>
-            <input className={inp} type="number" min="1" max={unitType?.inventory?.availableUnits || 999} value={form.unitsReserved} onChange={e => set("unitsReserved", e.target.value)} />
+            <label className={lbl}>Units Reserved for this Campaign <span className="text-red-500">*</span></label>
+            <input data-field="unitsReserved"
+              className={`${inp} ${errors.unitsReserved ? "border-red-400" : ""}`}
+              type="number" min="1" max={unitType?.inventory?.availableUnits || 999}
+              value={form.unitsReserved} onChange={e => set("unitsReserved", e.target.value)} />
+            {errors.unitsReserved && <p className="text-xs text-red-500 mt-1">{errors.unitsReserved}</p>}
           </div>
         </div>
       );
       case 6: return (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold">Milestone Benefits</h2>
-          <p className="text-sm text-gray-500">Define buyer count milestones that unlock benefits (e.g. "5 buyers → Free Modular Kitchen")</p>
+          <p className="text-sm text-gray-500">Define buyer count milestones that unlock benefits (optional)</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Buyer Count</label>
-              <input className={inp} type="number" min="1" value={milestoneInput.buyerCount} onChange={e => setMilestoneInput(p => ({ ...p, buyerCount: e.target.value }))} placeholder="e.g. 5" />
+              <input className={inp} type="number" min="1" value={milestoneInput.buyerCount}
+                onChange={e => setMilestoneInput(p => ({ ...p, buyerCount: e.target.value }))} placeholder="e.g. 5" />
             </div>
             <div>
               <label className={lbl}>Benefit</label>
-              <input className={inp} value={milestoneInput.benefit} onChange={e => setMilestoneInput(p => ({ ...p, benefit: e.target.value }))} placeholder="e.g. Free Modular Kitchen" />
+              <input className={inp} value={milestoneInput.benefit}
+                onChange={e => setMilestoneInput(p => ({ ...p, benefit: e.target.value }))}
+                placeholder="e.g. Free Modular Kitchen"
+                onKeyDown={e => e.key === "Enter" && addMilestone()} />
             </div>
           </div>
-          <button onClick={addMilestone} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Add Milestone</button>
+          <button type="button" onClick={addMilestone}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors">
+            Add Milestone
+          </button>
           <div className="space-y-2">
-            {form.milestones.sort((a,b) => a.buyerCount - b.buyerCount).map((m, i) => (
+            {form.milestones.sort((a, b) => a.buyerCount - b.buyerCount).map((m, i) => (
               <div key={i} className="flex items-center justify-between bg-blue-50 rounded-lg p-3">
                 <div>
                   <span className="text-sm font-medium text-blue-800">{m.buyerCount} buyers</span>
                   <span className="text-sm text-blue-600 ml-2">→ {m.benefit}</span>
                 </div>
-                <button onClick={() => set("milestones", form.milestones.filter((_,j) => j !== i))} className="text-red-400 hover:text-red-600 text-xs">Remove</button>
+                <button type="button"
+                  onClick={() => set("milestones", form.milestones.filter((_, j) => j !== i))}
+                  className="text-red-400 hover:text-red-600 text-xs">
+                  Remove
+                </button>
               </div>
             ))}
-          </div>
-          <div className="border-t pt-4 mt-2">
-            <button onClick={handleSubmit} disabled={submitting}
-              className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition disabled:opacity-50">
-              {submitting ? "Creating Campaign..." : "🚀 Launch Campaign"}
-            </button>
           </div>
         </div>
       );
@@ -225,37 +285,26 @@ export default function CreateCampaign() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto py-6 px-4">
-      <div className="mb-6">
-        <button onClick={() => navigate(`/project/${projectId}`)} className="text-sm text-blue-600 hover:underline mb-2">← Back to Project</button>
-        <h1 className="text-2xl font-bold text-gray-900">Create Group Buy Campaign</h1>
-      </div>
-      <div className="flex items-center mb-8 overflow-x-auto pb-2">
-        {STEPS.map((s, i) => (
-          <React.Fragment key={s.id}>
-            <button onClick={() => setStep(s.id)}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${step === s.id ? "bg-orange-500 text-white" : step > s.id ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-              {step > s.id ? "✓" : s.id}. {s.label}
-            </button>
-            {i < STEPS.length - 1 && <div className={`flex-1 h-0.5 mx-1 min-w-[8px] ${step > s.id ? "bg-green-400" : "bg-gray-200"}`} />}
-          </React.Fragment>
-        ))}
-      </div>
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-        {renderStep()}
-      </div>
-      <div className="flex justify-between mt-6">
-        <button onClick={() => setStep(s => Math.max(1, s - 1))} disabled={step === 1}
-          className="px-5 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40">
-          ← Previous
+    <div>
+      <div className="max-w-2xl mx-auto pt-6 px-4">
+        <button type="button" onClick={() => navigate(`/project/${projectId}`)}
+          className="text-sm text-blue-600 hover:underline mb-2">
+          ← Back to Project
         </button>
-        {step < 6 && (
-          <button onClick={() => setStep(s => Math.min(6, s + 1))}
-            className="px-5 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600">
-            Next →
-          </button>
-        )}
+        <h1 className="text-2xl font-bold text-gray-900 mb-6">Create Group Buy Campaign</h1>
       </div>
+      <Wizard
+        steps={STEPS}
+        currentStep={step}
+        onStepChange={setStep}
+        validateStep={validateStep}
+        onSetErrors={setErrors}
+        onSubmit={handleSubmit}
+        submitting={submitting}
+        submitLabel="🚀 Launch Campaign"
+      >
+        {renderStep()}
+      </Wizard>
     </div>
   );
 }

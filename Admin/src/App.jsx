@@ -25,7 +25,6 @@ import ChangePassword from "./pages/ChangePassword";
 import MfaVerify from "./pages/MfaVerify";
 import LeadMonitoring from "./pages/LeadMonitoring";
 import BuilderVerification from "./pages/BuilderVerification";
-import BuilderProjects from "./pages/BuilderProjects";
 import ContactInquiries from "./pages/ContactInquiries";
 import ReportedMessages from "./pages/ReportedMessages";
 import PropertyReports from "./pages/PropertyReports";
@@ -37,6 +36,7 @@ import PopularProperties from "./pages/PopularProperties";
 import SiteVisitManagement from "./pages/SiteVisitManagement";
 import GroupBuyManagement from "./pages/GroupBuyManagement";
 import BuilderManagement from "./pages/BuilderManagement";
+import BuilderDetail from "./pages/BuilderDetail";
 import BuilderProjectsList from "./pages/BuilderProjectsList";
 import AdminAddProperty from "./pages/AdminAddProperty";
 import CreateProject from "./pages/CreateProject";
@@ -193,14 +193,7 @@ function AppContent() {
             </AdminProtectedRoute>
           }
         />
-        <Route
-          path="/owners-projects"
-          element={
-            <AdminProtectedRoute>
-              <BuilderProjects />
-            </AdminProtectedRoute>
-          }
-        />
+
         <Route
           path="/all-clients"
           element={
@@ -323,6 +316,15 @@ function AppContent() {
           element={
             <AdminProtectedRoute>
               <BuilderManagement />
+            </AdminProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/builder/:builderId"
+          element={
+            <AdminProtectedRoute>
+              <BuilderDetail />
             </AdminProtectedRoute>
           }
         />

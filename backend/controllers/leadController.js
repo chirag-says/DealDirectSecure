@@ -453,7 +453,11 @@ export const getOwnerLeads = async (req, res) => {
 
     const query = { propertyOwner: ownerId };
 
-    if (status && status !== "all") query.status = status;
+    // H6 FIX: Whitelist-validate status to prevent NoSQL operator injection
+    if (status && status !== "all") {
+      const sanitized = sanitizeLeadStatus(status);
+      if (sanitized) query.status = sanitized;
+    }
     if (property && mongoose.Types.ObjectId.isValid(property)) query.property = property;
 
     // Date Filtering Logic
@@ -534,9 +538,10 @@ export const getAllLeads = async (req, res) => {
     // 1. Build Query Filters
     let matchQuery = {};
 
-    // Status Filter
+    // Status Filter — H6 FIX: Whitelist-validate to prevent NoSQL operator injection
     if (status && status !== 'all') {
-      matchQuery.status = status;
+      const sanitized = sanitizeLeadStatus(status);
+      if (sanitized) matchQuery.status = sanitized;
     }
 
     // Search Filter (by user name, email, or property title)

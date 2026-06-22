@@ -1,283 +1,390 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { FaBed, FaBath, FaRulerCombined, FaCompass, FaCouch, FaPhone, FaWhatsapp, FaCheckCircle, FaParking } from 'react-icons/fa';
-import { ChevronLeft, Shield, MapPin, Layers, Home, Tag, ArrowRight } from 'lucide-react';
-import BookingModal from './BookingModal';
+import { useRouter, useParams } from 'next/navigation';
+import { FaBed, FaBath, FaRulerCombined, FaCompass, FaFilePdf, FaPhone, FaWhatsapp } from 'react-icons/fa';
+import { Shield, Users, Calendar, CheckCircle, Upload, Loader2, X, AlertTriangle, ChevronRight, Home, Tag, TrendingDown } from 'lucide-react';
+import { bookingApi } from '../../../../../utils/api';
+import { useAuth } from '../../../../../context/AuthContext';
+import { toast } from 'react-toastify';
 
-const FALLBACK = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800";
-const fmt = (n) => n ? `₹${n >= 1e7 ? (n/1e7).toFixed(2)+'Cr' : (n/1e5).toFixed(2)+'L'}` : null;
-const fmtN = (n) => n?.toLocaleString('en-IN');
+const fmt = (n) => !n ? null : n >= 1e7 ? `₹${(n/1e7).toFixed(2)} Cr` : `₹${(n/1e5).toFixed(2)} L`;
+const inp = 'w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition';
 
-function SpecRow({ label, value }) {
-  if (!value) return null;
+/* ── Booking Modal ── */
+function BookingModal({ ut, project, onClose, user }) {
+  const [step, setStep] = useState(1);
+  const [form, setForm] = useState({
+    name: user?.name || '',
+    phone: user?.phone || '',
+    email: user?.email || '',
+    notes: '',
+  });
+  const [bookingId, setBookingId] = useState(null);
+  const [utr, setUtr] = useState('');
+  const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const token = project?.financials?.bookingAmount || 0;
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  // Payment config — fetched securely from backend
+  const [qrUrl, setQrUrl] = useState('');
+  const [upiId, setUpiId] = useState('');
+
+  useEffect(() => {
+    const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api';
+    fetch(`${API}/bookings/payment-config`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (d.success) { setQrUrl(d.data.qrUrl); setUpiId(d.data.upiId); } })
+      .catch(() => {});
+  }, []);
+
+  const doStep1 = async () => {
+    if (!form.name.trim() || !form.phone.trim()) { setErr('Name and phone are required.'); return; }
+    setErr(''); setLoading(true);
+    try {
+      const d = await bookingApi.create({
+        unitTypeId: ut._id,
+        projectId: project?._id,
+        clientName: form.name,
+        clientPhone: form.phone,
+        clientEmail: form.email,
+        notes: form.notes,
+        tokenAmount: token,
+      });
+      if (!d.success) throw new Error(d.message);
+      setBookingId(d.data.bookingId); setStep(2);
+    } catch(e) { setErr(e?.response?.data?.message || e.message || 'Failed.'); }
+    finally { setLoading(false); }
+  };
+
+  const doStep3 = async () => {
+    if (!utr.trim() && !file) { setErr('Enter UTR or upload screenshot.'); return; }
+    setErr(''); setLoading(true);
+    try {
+      const fd = new FormData();
+      if (utr.trim()) fd.append('utrNumber', utr.trim());
+      if (file) fd.append('screenshot', file);
+      await bookingApi.submitPayment(bookingId, fd);
+      setStep(4);
+    } catch(e) { setErr(e?.response?.data?.message || e.message || 'Failed.'); }
+    finally { setLoading(false); }
+  };
+
   return (
-    <div className="flex justify-between py-2.5 border-b border-slate-100 last:border-0 text-sm">
-      <span className="text-slate-500">{label}</span>
-      <span className="font-semibold text-slate-800 text-right max-w-[55%]">{value}</span>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
+      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div>
+            <p className="font-bold text-gray-900 text-base">{ut?.config?.name}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{project?.basics?.name}</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition"><X size={15}/></button>
+        </div>
+        {/* Step bar */}
+        <div className="flex border-b border-gray-100">
+          {['Details','Payment','Proof','Done'].map((s,i)=>(
+            <div key={i} className={`flex-1 text-center py-2.5 text-xs font-semibold transition border-b-2 ${step===i+1?'border-blue-600 text-blue-600':step>i+1?'border-green-400 text-green-600':'border-transparent text-gray-400'}`}>{step>i+1?'✓ ':''}{s}</div>
+          ))}
+        </div>
+        {/* Body */}
+        <div className="px-5 py-5 overflow-y-auto space-y-4">
+          {err && <p className="text-sm text-red-600 bg-red-50 border border-red-200 px-4 py-2.5 rounded-lg flex items-center gap-2"><AlertTriangle size={14}/>{err}</p>}
+          {step===1 && (<>
+            <div className="space-y-3">
+              <div><label className="text-xs font-semibold text-gray-500 block mb-1">Full Name *</label><input className={inp} placeholder="Rahul Mehta" value={form.name} onChange={e=>set('name',e.target.value)}/></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-xs font-semibold text-gray-500 block mb-1">Phone *</label><input className={inp} type="tel" placeholder="10-digit" value={form.phone} onChange={e=>set('phone',e.target.value)}/></div>
+                <div><label className="text-xs font-semibold text-gray-500 block mb-1">Email</label><input className={inp} type="email" placeholder="Optional" value={form.email} onChange={e=>set('email',e.target.value)}/></div>
+              </div>
+              <div><label className="text-xs font-semibold text-gray-500 block mb-1">Notes</label><textarea className={`${inp} resize-none`} rows={2} value={form.notes} onChange={e=>set('notes',e.target.value)}/></div>
+            </div>
+            {token>0 && <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-4 py-3"><span className="text-sm text-blue-700 font-medium">Token Amount</span><span className="text-xl font-bold text-blue-800">₹{token.toLocaleString('en-IN')}</span></div>}
+            <button onClick={doStep1} disabled={loading} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition disabled:opacity-60 flex items-center justify-center gap-2">
+              {loading?<><Loader2 size={15} className="animate-spin"/>Processing...</>:<>Continue <ChevronRight size={15}/></>}
+            </button>
+          </>)}
+          {step===2 && (<>
+            <p className="text-sm text-gray-600 text-center">Scan the QR code below and pay the token amount to secure your booking.</p>
+            {qrUrl && (
+              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 text-center">
+                <img src={qrUrl} alt="DealDirect UPI QR" className="w-48 h-48 object-contain mx-auto rounded-lg" onError={e => { e.target.style.display='none'; }}/>
+                {upiId && (
+                  <div className="mt-3 bg-blue-50 rounded-xl px-4 py-2">
+                    <p className="text-xs text-gray-500">UPI ID</p>
+                    <p className="font-bold text-blue-700 text-sm">{upiId}</p>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="bg-gray-900 rounded-xl p-4 text-white text-center">
+              <p className="text-gray-400 text-xs font-semibold mb-1 uppercase tracking-wide">Token Amount to Transfer</p>
+              <p className="text-3xl font-bold">₹{token.toLocaleString('en-IN')}</p>
+            </div>
+            {bookingId && <p className="text-xs text-gray-500 text-center">Booking ref: <span className="font-mono font-bold text-gray-700">#{bookingId.slice(-8).toUpperCase()}</span></p>}
+            {project?.salesContact?.phone && <p className="text-xs text-gray-500 text-center flex items-center justify-center gap-1.5"><FaPhone size={10}/>For queries: +91 {project.salesContact.phone}</p>}
+            <button onClick={()=>setStep(3)} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition">I've Paid — Upload Proof →</button>
+            <button onClick={onClose} className="w-full text-xs text-gray-400 hover:text-gray-600 text-center">Upload later in My Bookings</button>
+          </>)}
+          {step===3 && (<>
+            <div><label className="text-xs font-semibold text-gray-500 block mb-1">UTR / Transaction ID</label><input className={`${inp} font-mono`} placeholder="e.g. SBIN12345678" value={utr} onChange={e=>setUtr(e.target.value)}/></div>
+            <label className={`flex flex-col items-center gap-2.5 border-2 border-dashed rounded-xl py-7 cursor-pointer transition ${file?'border-green-400 bg-green-50':'border-gray-200 hover:border-blue-300 hover:bg-blue-50/30'}`}>
+              <input type="file" accept="image/*" className="hidden" onChange={e=>setFile(e.target.files[0])}/>
+              {file?<><CheckCircle size={24} className="text-green-500"/><span className="text-sm font-medium text-green-700">{file.name}</span></>:<><Upload size={24} className="text-gray-300"/><span className="text-sm text-gray-500">Upload Payment Screenshot</span><span className="text-xs text-gray-400">JPG or PNG</span></>}
+            </label>
+            <button onClick={doStep3} disabled={loading} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition disabled:opacity-60 flex items-center justify-center gap-2">
+              {loading?<><Loader2 size={15} className="animate-spin"/>Submitting...</>:'Submit Proof →'}
+            </button>
+          </>)}
+          {step===4 && (
+            <div className="text-center py-6">
+              <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4"><CheckCircle size={32} className="text-green-500"/></div>
+              <p className="font-bold text-gray-900 text-lg mb-1">Booking Submitted!</p>
+              <p className="text-gray-500 text-sm mb-5">Our team will verify and confirm within 24 hours.</p>
+              <Link href="/my-bookings" className="inline-block px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition">Track My Bookings →</Link>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function Section({ title, children }) {
+/* ── Campaign Card ── */
+function CampaignCard({ c, onBook }) {
+  const active = c.status==='active';
+  const pct = Math.min(100, Math.round(((c.currentBuyers||0)/(c.maxBuyers||1))*100));
+  const savings = c.regularPrice&&c.groupBuyPrice ? Math.round(((c.regularPrice-c.groupBuyPrice)/c.regularPrice)*100) : 0;
+  const ends = c.endDate ? new Date(c.endDate).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : null;
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5">
-      <h2 className="font-bold text-slate-900 mb-4 text-base">{title}</h2>
-      {children}
+    <div className={`rounded-xl border p-4 ${active&&pct<100?'border-blue-200 bg-blue-50/40':'border-gray-200 bg-white opacity-60'}`}>
+      <div className="flex items-start justify-between mb-3">
+        <div><p className="font-semibold text-gray-900 text-sm">{c.name}</p>{ends&&<p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1"><Calendar size={10}/>Ends {ends}</p>}</div>
+        {savings>0 && <span className="text-xs font-bold px-2 py-1 bg-green-100 text-green-700 rounded-full flex items-center gap-1"><TrendingDown size={10}/>{savings}% off</span>}
+      </div>
+      <div className="mb-3">
+        <div className="flex justify-between text-xs text-gray-400 mb-1"><span className="flex items-center gap-1"><Users size={10}/>{c.currentBuyers||0}/{c.maxBuyers} joined</span><span className="font-semibold text-blue-600">{pct}% full</span></div>
+        <div className="bg-gray-200 rounded-full h-1.5"><div className="bg-blue-500 h-1.5 rounded-full" style={{width:`${pct}%`}}/></div>
+      </div>
+      <div className="flex items-center justify-between">
+        <div>{c.groupBuyPrice&&<p className="font-bold text-gray-900">{fmt(c.groupBuyPrice)} <span className="text-xs font-normal text-gray-400 line-through">{fmt(c.regularPrice)}</span></p>}</div>
+        {active&&pct<100&&<button onClick={onBook} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold text-xs hover:bg-blue-700 transition">Join Now</button>}
+      </div>
     </div>
   );
 }
 
-export default function UnitDetailContent({ unitType: ut, project: p }) {
-  const [showBooking, setShowBooking] = useState(false);
-  const loc = [p.location?.locality, p.location?.city, p.location?.state].filter(Boolean).join(', ');
+/* ── Spec Tabs ── */
+function SpecsSection({ specs }) {
+  const [tab, setTab] = useState(0);
+  if (!specs) return null;
+  const sections = [
+    { label:'Flooring', rows:[['Living/Dining',specs.flooring?.livingDining],['Bedrooms',specs.flooring?.bedrooms],['Kitchen',specs.flooring?.kitchen],['Bathroom',specs.flooring?.bathroom],['Balcony',specs.flooring?.balcony]] },
+    { label:'Kitchen', rows:[['Countertop',specs.kitchen?.countertop],['Sink',specs.kitchen?.sink],['Modular',specs.kitchen?.isModular?'Yes':null],['Chimney',specs.kitchen?.chimney?'Included':null]] },
+    { label:'Bathroom', rows:[['Sanitary Brand',specs.bathroom?.sanitaryBrand],['Fittings Brand',specs.bathroom?.fittingsBrand],['Dado Height',specs.bathroom?.dadoHeight]] },
+    { label:'Doors & Windows', rows:[['Main Door',specs.doors?.mainDoor],['Internal Doors',specs.doors?.internalDoors],['Finish',specs.doors?.finish],['Window Type',specs.windows?.type],['Mosquito Mesh',specs.windows?.mosquitoMesh?'Yes':null]] },
+    { label:'Electrical', rows:[['Wiring',specs.electrical?.wiringType],['Switch Brand',specs.electrical?.switchBrand],['AC Points/Room',specs.electrical?.acPointsPerRoom!=null?String(specs.electrical.acPointsPerRoom):null]] },
+  ].filter(s=>s.rows.some(([,v])=>v));
+  if (!specs.structure && sections.length===0) return null;
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="px-5 pt-5">
+        <h2 className="font-bold text-gray-900 text-base mb-3">Construction Specifications</h2>
+        {specs.structure && <div className="text-sm text-gray-600 bg-gray-50 rounded-lg px-4 py-2.5 mb-4"><span className="font-semibold text-gray-700">Structure: </span>{specs.structure}</div>}
+      </div>
+      {sections.length>0 && (<>
+        <div className="flex overflow-x-auto border-b border-gray-100 px-3">
+          {sections.map((s,i)=>(
+            <button key={i} onClick={()=>setTab(i)} className={`px-4 py-2.5 text-xs font-semibold whitespace-nowrap border-b-2 transition ${tab===i?'border-blue-600 text-blue-700':'border-transparent text-gray-400 hover:text-gray-600'}`}>{s.label}</button>
+          ))}
+        </div>
+        <div className="px-5 py-4 divide-y divide-gray-50">
+          {sections[tab]?.rows.filter(([,v])=>v).map(([label,value],i)=>(
+            <div key={i} className="flex justify-between py-2.5 text-sm"><span className="text-gray-500">{label}</span><span className="font-medium text-gray-800 text-right max-w-[55%]">{value}</span></div>
+          ))}
+        </div>
+      </>)}
+    </div>
+  );
+}
+
+/* ── Main Page ── */
+export default function UnitDetailContent({ unitType:ut, campaigns=[], project, projectId }) {
+  const [showModal, setShowModal] = useState(false);
+  const { isAuthenticated, user } = useAuth();
+  const router = useRouter();
   const price = ut.pricing?.effectivePrice;
-  const base = ut.pricing?.basePrice;
-  const charges = ut.pricing?.additionalCharges || {};
-  const fp2d = ut.floorPlans?.twoDUrl;
-  const fp3d = ut.floorPlans?.threeDUrl;
-  const specs = ut.specifications || {};
-  const tokenAmount = p.financials?.bookingAmount || 0;
+  const carpet = ut.area?.carpetSqft;
+  const hasCharges = ut.pricing?.additionalCharges && Object.values(ut.pricing.additionalCharges).some(v=>v>0);
+
+  // Login gate — same pattern as "I'm Interested" on owner properties
+  const handleBookClick = () => {
+    if (!isAuthenticated || !user) {
+      toast.info('Please login to book this unit');
+      router.push(`/login?from=/projects/${projectId}/units/${ut._id}`);
+      return;
+    }
+    setShowModal(true);
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
+      {showModal && <BookingModal ut={ut} project={project} user={user} onClose={()=>setShowModal(false)}/>}
+
       {/* Breadcrumb */}
-      <div className="bg-white border-b border-slate-200 py-3 px-4 pt-4">
-        <div className="max-w-6xl mx-auto flex items-center gap-2 text-sm text-slate-500">
-          <Link href="/" className="hover:text-indigo-600">Home</Link><span>&gt;</span>
-          <Link href="/projects" className="hover:text-indigo-600">Projects</Link><span>&gt;</span>
-          <Link href={`/projects/${p._id}`} className="hover:text-indigo-600">{p.basics?.name}</Link><span>&gt;</span>
-          <span className="text-slate-800 font-medium">{ut.config?.name}</span>
+      <div className="bg-white border-b border-gray-200 px-4 py-3">
+        <div className="max-w-6xl mx-auto flex items-center gap-1.5 text-xs text-gray-400 flex-wrap">
+          <Link href="/" className="hover:text-blue-600 flex items-center gap-1"><Home size={11}/>Home</Link>
+          <ChevronRight size={10}/><Link href="/projects" className="hover:text-blue-600">Projects</Link>
+          <ChevronRight size={10}/><Link href={`/projects/${projectId}`} className="hover:text-blue-600 max-w-[120px] truncate">{project?.basics?.name||'Project'}</Link>
+          <ChevronRight size={10}/><span className="text-gray-700 font-semibold">{ut.config?.name}</span>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* ── LEFT ── */}
+      <div className="max-w-6xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* LEFT */}
         <div className="lg:col-span-2 space-y-5">
 
-          {/* Hero */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6">
-            <Link href={`/projects/${p._id}`} className="inline-flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-800 mb-4 font-medium">
-              <ChevronLeft size={16} /> Back to {p.basics?.name}
-            </Link>
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-extrabold text-slate-900 mb-1">{ut.config?.name}</h1>
-                <p className="text-slate-500 flex items-center gap-1.5 text-sm"><MapPin size={13} className="text-red-500" /> {loc}</p>
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {ut.config?.bedrooms && <span className="flex items-center gap-1.5 text-sm bg-slate-100 px-3 py-1 rounded-full text-slate-700"><FaBed size={12}/> {ut.config.bedrooms} BHK</span>}
-                  {ut.config?.bathrooms && <span className="flex items-center gap-1.5 text-sm bg-slate-100 px-3 py-1 rounded-full text-slate-700"><FaBath size={12}/> {ut.config.bathrooms} Bath</span>}
-                  {ut.area?.carpetSqft && <span className="flex items-center gap-1.5 text-sm bg-slate-100 px-3 py-1 rounded-full text-slate-700"><FaRulerCombined size={12}/> {fmtN(ut.area.carpetSqft)} sqft</span>}
-                  {ut.facing?.length > 0 && <span className="flex items-center gap-1.5 text-sm bg-slate-100 px-3 py-1 rounded-full text-slate-700"><FaCompass size={12}/> {ut.facing.join(', ')}</span>}
-                  {ut.furnishing && ut.furnishing !== 'Bare Shell' && <span className="flex items-center gap-1.5 text-sm bg-slate-100 px-3 py-1 rounded-full text-slate-700"><FaCouch size={12}/> {ut.furnishing}</span>}
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-3xl font-extrabold text-slate-900">{fmt(price) || 'Price on request'}</p>
-                {ut.area?.carpetSqft && price && <p className="text-sm text-slate-400">₹{Math.round(price/ut.area.carpetSqft).toLocaleString('en-IN')}/sqft</p>}
-                <div className="flex items-center gap-2 mt-1 justify-end text-sm text-slate-500">
-                  <span className="text-emerald-600 font-semibold">{ut.inventory?.availableUnits ?? '—'} available</span>
-                  <span>of {ut.inventory?.totalUnits ?? '—'} total</span>
-                </div>
-              </div>
+          {/* Title */}
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="flex flex-wrap gap-2 mb-2">
+              {ut.furnishing && <span className="text-xs font-semibold px-2.5 py-1 bg-blue-50 text-blue-700 rounded-md">{ut.furnishing}</span>}
+              {ut.facing?.length>0 && <span className="text-xs font-semibold px-2.5 py-1 bg-gray-100 text-gray-600 rounded-md flex items-center gap-1"><FaCompass size={9}/>{ut.facing.join(', ')} Facing</span>}
+              {ut.config?.hasUtilityArea && <span className="text-xs font-semibold px-2.5 py-1 bg-green-50 text-green-700 rounded-md">Utility Area</span>}
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900">{ut.config?.name}</h1>
+            <p className="text-gray-500 text-sm mt-1">{project?.basics?.name}{project?.location?.city ? ` · ${project.location.city}` : ''}</p>
+
+            {/* Key stats inline */}
+            <div className="flex flex-wrap gap-5 mt-4 pt-4 border-t border-gray-100 text-sm">
+              {ut.config?.bedrooms>0 && <div className="flex items-center gap-1.5 text-gray-600"><FaBed className="text-gray-400"/><span className="font-semibold text-gray-900">{ut.config.bedrooms}</span> Beds</div>}
+              {ut.config?.bathrooms>0 && <div className="flex items-center gap-1.5 text-gray-600"><FaBath className="text-gray-400"/><span className="font-semibold text-gray-900">{ut.config.bathrooms}</span> Baths</div>}
+              {carpet>0 && <div className="flex items-center gap-1.5 text-gray-600"><FaRulerCombined className="text-gray-400"/><span className="font-semibold text-gray-900">{carpet.toLocaleString('en-IN')}</span> sqft carpet</div>}
+              {ut.area?.builtUpSqft>0 && <div className="text-gray-600"><span className="font-semibold text-gray-900">{ut.area.builtUpSqft.toLocaleString('en-IN')}</span> sqft built-up</div>}
+              {ut.area?.superBuiltUpSqft>0 && <div className="text-gray-600"><span className="font-semibold text-gray-900">{ut.area.superBuiltUpSqft.toLocaleString('en-IN')}</span> sqft super BU</div>}
+              {ut.pricing?.pricePerSqft>0 && <div className="text-gray-600"><span className="font-semibold text-gray-900">₹{ut.pricing.pricePerSqft.toLocaleString('en-IN')}</span>/sqft</div>}
+              {ut.config?.balconies>0 && <div className="text-gray-600"><span className="font-semibold text-gray-900">{ut.config.balconies}</span> Balcon{ut.config.balconies>1?'ies':'y'}</div>}
             </div>
           </div>
 
           {/* Floor Plans */}
-          {(fp2d || fp3d) && (
-            <Section title="Floor Plans">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {fp2d && (
-                  <a href={fp2d} target="_blank" rel="noopener noreferrer" className="block group">
-                    <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 h-52">
-                      <img src={fp2d} alt="2D Floor Plan" className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                        onError={e => { e.target.onerror=null; e.target.src=FALLBACK; }} />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition flex items-center justify-center">
-                        <span className="opacity-0 group-hover:opacity-100 transition bg-white text-slate-800 text-xs font-semibold px-3 py-1.5 rounded-full shadow">View Full Size</span>
-                      </div>
-                    </div>
-                    <p className="text-sm font-medium text-slate-700 mt-2 text-center">2D Floor Plan</p>
-                  </a>
+          {(ut.floorPlans?.twoDUrl || ut.floorPlans?.threeDUrl) && (
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <h2 className="font-bold text-gray-900 mb-4">Floor Plans</h2>
+              <div className={`grid gap-4 ${ut.floorPlans?.twoDUrl && ut.floorPlans?.threeDUrl ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+                {ut.floorPlans?.twoDUrl && (
+                  <div><p className="text-xs font-semibold text-gray-400 mb-2">2D PLAN</p><img src={ut.floorPlans.twoDUrl} alt="2D Floor Plan" className="w-full rounded-lg border border-gray-100 object-contain max-h-72 bg-gray-50"/></div>
                 )}
-                {fp3d && (
-                  <a href={fp3d} target="_blank" rel="noopener noreferrer" className="block group">
-                    <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 h-52">
-                      <img src={fp3d} alt="3D Floor Plan" className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                        onError={e => { e.target.onerror=null; e.target.src=FALLBACK; }} />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition flex items-center justify-center">
-                        <span className="opacity-0 group-hover:opacity-100 transition bg-white text-slate-800 text-xs font-semibold px-3 py-1.5 rounded-full shadow">View Full Size</span>
-                      </div>
-                    </div>
-                    <p className="text-sm font-medium text-slate-700 mt-2 text-center">3D Floor Plan</p>
-                  </a>
+                {ut.floorPlans?.threeDUrl && (
+                  <div><p className="text-xs font-semibold text-gray-400 mb-2">3D VIEW</p><img src={ut.floorPlans.threeDUrl} alt="3D Floor Plan" className="w-full rounded-lg border border-gray-100 object-contain max-h-72 bg-gray-50"/></div>
                 )}
               </div>
-            </Section>
-          )}
-
-          {/* Area Details */}
-          <Section title="Area Details">
-            <div className="grid grid-cols-3 gap-4">
-              {[['Carpet Area', ut.area?.carpetSqft, 'sqft'], ['Built-up Area', ut.area?.builtUpSqft, 'sqft'], ['Super Built-up', ut.area?.superBuiltUpSqft, 'sqft']].map(([label, val, unit]) =>
-                val ? (
-                  <div key={label} className="bg-slate-50 rounded-xl p-4 text-center">
-                    <p className="text-xs text-slate-400 mb-1">{label}</p>
-                    <p className="font-bold text-slate-900 text-lg">{fmtN(val)}</p>
-                    <p className="text-xs text-slate-400">{unit}</p>
-                  </div>
-                ) : null
-              )}
             </div>
-          </Section>
-
-          {/* Specifications */}
-          {(specs.flooring || specs.kitchen || specs.bathroom || specs.doors || specs.electrical) && (
-            <Section title="Specifications">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                {specs.flooring && Object.values(specs.flooring).some(Boolean) && (
-                  <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">Flooring</p>
-                    <SpecRow label="Living / Dining" value={specs.flooring.livingDining} />
-                    <SpecRow label="Bedrooms" value={specs.flooring.bedrooms} />
-                    <SpecRow label="Kitchen" value={specs.flooring.kitchen} />
-                    <SpecRow label="Bathroom" value={specs.flooring.bathroom} />
-                    <SpecRow label="Balcony" value={specs.flooring.balcony} />
-                  </div>
-                )}
-                {specs.kitchen && (
-                  <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">Kitchen</p>
-                    <SpecRow label="Countertop" value={specs.kitchen.countertop} />
-                    <SpecRow label="Modular" value={specs.kitchen.isModular ? 'Yes' : null} />
-                    <SpecRow label="Chimney" value={specs.kitchen.chimney ? 'Included' : null} />
-                    <SpecRow label="Sink" value={specs.kitchen.sink} />
-                  </div>
-                )}
-                {specs.bathroom && (
-                  <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">Bathroom</p>
-                    <SpecRow label="Sanitary Brand" value={specs.bathroom.sanitaryBrand} />
-                    <SpecRow label="Fittings Brand" value={specs.bathroom.fittingsBrand} />
-                    <SpecRow label="Dado Height" value={specs.bathroom.dadoHeight} />
-                  </div>
-                )}
-                {specs.doors && (
-                  <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">Doors & Windows</p>
-                    <SpecRow label="Main Door" value={specs.doors.mainDoor} />
-                    <SpecRow label="Internal Doors" value={specs.doors.internalDoors} />
-                    <SpecRow label="Finish" value={specs.doors.finish} />
-                    <SpecRow label="Windows" value={specs.windows?.type} />
-                    <SpecRow label="Mosquito Mesh" value={specs.windows?.mosquitoMesh ? 'Included' : null} />
-                  </div>
-                )}
-                {specs.electrical && (
-                  <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">Electrical</p>
-                    <SpecRow label="Wiring" value={specs.electrical.wiringType} />
-                    <SpecRow label="Switch Brand" value={specs.electrical.switchBrand} />
-                    <SpecRow label="AC Points/Room" value={specs.electrical.acPointsPerRoom} />
-                  </div>
-                )}
-              </div>
-            </Section>
           )}
+
+          {/* Highlights */}
+          {ut.highlights?.length>0 && (
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <h2 className="font-bold text-gray-900 mb-4">Key Highlights</h2>
+              <div className="grid sm:grid-cols-2 gap-2.5">
+                {ut.highlights.map((h,i)=>(
+                  <div key={i} className="flex items-start gap-2.5 bg-blue-50/60 border border-blue-100 rounded-lg px-3.5 py-2.5 text-sm text-gray-700">
+                    <CheckCircle size={14} className="text-blue-500 shrink-0 mt-0.5"/>{h}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Specs */}
+          <SpecsSection specs={ut.specifications}/>
 
           {/* Parking */}
-          {(ut.parking?.covered > 0 || ut.parking?.open > 0 || ut.parking?.ev > 0) && (
-            <Section title="Parking">
-              <div className="flex flex-wrap gap-4">
-                {ut.parking.covered > 0 && <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-4 py-3"><FaParking className="text-indigo-500"/> <span className="text-sm font-medium text-slate-700">{ut.parking.covered} Covered</span></div>}
-                {ut.parking.open > 0 && <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-4 py-3"><FaParking className="text-slate-400"/> <span className="text-sm font-medium text-slate-700">{ut.parking.open} Open</span></div>}
-                {ut.parking.ev > 0 && <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-4 py-3"><FaParking className="text-emerald-500"/> <span className="text-sm font-medium text-slate-700">{ut.parking.ev} EV Charging</span></div>}
+          {(ut.parking?.covered>0||ut.parking?.open>0||ut.parking?.ev>0) && (
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <h2 className="font-bold text-gray-900 mb-4">Parking</h2>
+              <div className="flex gap-4 flex-wrap">
+                {ut.parking?.covered>0 && <div className="bg-gray-50 border border-gray-200 rounded-xl px-5 py-3 text-center"><p className="text-xl font-bold text-gray-900">{ut.parking.covered}</p><p className="text-xs text-gray-500 mt-0.5">Covered</p></div>}
+                {ut.parking?.open>0 && <div className="bg-gray-50 border border-gray-200 rounded-xl px-5 py-3 text-center"><p className="text-xl font-bold text-gray-900">{ut.parking.open}</p><p className="text-xs text-gray-500 mt-0.5">Open</p></div>}
+                {ut.parking?.ev>0 && <div className="bg-green-50 border border-green-200 rounded-xl px-5 py-3 text-center"><p className="text-xl font-bold text-green-700">{ut.parking.ev}</p><p className="text-xs text-green-500 mt-0.5">EV Charging</p></div>}
               </div>
-            </Section>
+            </div>
           )}
 
-          {/* Unit Highlights */}
-          {ut.highlights?.length > 0 && (
-            <Section title="Unit Highlights">
-              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {ut.highlights.map((h, i) => (
-                  <li key={i} className="flex items-center gap-2 text-sm text-slate-700">
-                    <FaCheckCircle className="text-emerald-500 flex-shrink-0" size={13} /> {h}
-                  </li>
-                ))}
-              </ul>
-            </Section>
+          {/* Campaigns */}
+          {campaigns.length>0 && (
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Tag size={15} className="text-blue-500"/>Group Buy Campaigns</h2>
+              <div className="space-y-3">{campaigns.map(c=><CampaignCard key={c._id} c={c} onBook={handleBookClick}/>)}</div>
+            </div>
+          )}
+
+          {/* Brochure */}
+          {project?.media?.brochureUrl && (
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <h2 className="font-bold text-gray-900 mb-3">Documents</h2>
+              <a href={project.media.brochureUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-700 border border-red-200 rounded-lg text-sm font-semibold hover:bg-red-100 transition"><FaFilePdf/>Project Brochure</a>
+            </div>
           )}
         </div>
 
-        {/* ── RIGHT SIDEBAR ── */}
+        {/* RIGHT SIDEBAR */}
         <div>
           <div className="sticky top-24 space-y-4">
-            {/* Pricing Breakdown */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-5">
-              <h3 className="font-bold text-slate-900 mb-4">Pricing Breakdown</h3>
-              <div className="space-y-2.5 text-sm">
-                <div className="flex justify-between"><span className="text-slate-500">Base Price</span><span className="font-semibold">{fmt(base) || '—'}</span></div>
-                {charges.plc > 0 && <div className="flex justify-between"><span className="text-slate-500">PLC Charges</span><span className="font-semibold">{fmt(charges.plc)}</span></div>}
-                {charges.parking > 0 && <div className="flex justify-between"><span className="text-slate-500">Parking</span><span className="font-semibold">{fmt(charges.parking)}</span></div>}
-                {charges.clubhouse > 0 && <div className="flex justify-between"><span className="text-slate-500">Clubhouse</span><span className="font-semibold">{fmt(charges.clubhouse)}</span></div>}
-                {charges.legal > 0 && <div className="flex justify-between"><span className="text-slate-500">Legal Charges</span><span className="font-semibold">{fmt(charges.legal)}</span></div>}
-                {charges.maintenance > 0 && <div className="flex justify-between"><span className="text-slate-500">Maintenance</span><span className="font-semibold">{fmt(charges.maintenance)}</span></div>}
-                {ut.pricing?.viewPremium > 0 && <div className="flex justify-between"><span className="text-slate-500">View Premium</span><span className="font-semibold">{fmt(ut.pricing.viewPremium)}</span></div>}
-                <div className="flex justify-between pt-2.5 border-t border-slate-200"><span className="font-bold text-slate-900">Total Price</span><span className="font-extrabold text-indigo-700 text-base">{fmt(price) || '—'}</span></div>
-                {p.financials?.gstPercentage && <div className="flex justify-between text-xs text-slate-400"><span>+ GST</span><span>{p.financials.gstPercentage}%</span></div>}
-                {p.financials?.stampDutyPercentage && <div className="flex justify-between text-xs text-slate-400"><span>+ Stamp Duty</span><span>{p.financials.stampDutyPercentage}%</span></div>}
+            {/* Price */}
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+              <div className="px-5 py-4 border-b border-gray-100">
+                {price ? (<>
+                  <p className="text-2xl font-bold text-gray-900">{fmt(price)}</p>
+                  {ut.pricing?.pricePerSqft>0 && <p className="text-xs text-gray-400 mt-0.5">₹{ut.pricing.pricePerSqft.toLocaleString('en-IN')}/sqft</p>}
+                </>) : <p className="text-gray-500 font-semibold">Price on request</p>}
               </div>
-
-              {/* Book Now CTA */}
-              <div className="mt-5 space-y-2">
-                <button onClick={() => setShowBooking(true)}
-                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition flex items-center justify-center gap-2">
-                  Book Now — Pay ₹{tokenAmount.toLocaleString('en-IN')} Token
-                  <ArrowRight size={16} />
-                </button>
-                {p.salesContact?.phone && (
-                  <a href={`tel:${p.salesContact.phone}`} className="w-full py-2.5 border border-slate-200 text-slate-700 rounded-xl font-semibold text-sm hover:bg-slate-50 transition flex items-center justify-center gap-2">
-                    <FaPhone size={12}/> Call Sales Team
-                  </a>
+              <div className="px-5 py-4 space-y-3">
+                {/* Charge breakdown */}
+                {hasCharges && (
+                  <div className="text-sm space-y-2 pb-3 border-b border-gray-100">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Price Breakdown</p>
+                    {ut.pricing.additionalCharges.plc>0 && <div className="flex justify-between text-gray-500"><span>PLC</span><span>₹{ut.pricing.additionalCharges.plc.toLocaleString('en-IN')}</span></div>}
+                    {ut.pricing.additionalCharges.parking>0 && <div className="flex justify-between text-gray-500"><span>Parking</span><span>₹{ut.pricing.additionalCharges.parking.toLocaleString('en-IN')}</span></div>}
+                    {ut.pricing.additionalCharges.clubhouse>0 && <div className="flex justify-between text-gray-500"><span>Clubhouse</span><span>₹{ut.pricing.additionalCharges.clubhouse.toLocaleString('en-IN')}</span></div>}
+                    {ut.pricing.additionalCharges.legal>0 && <div className="flex justify-between text-gray-500"><span>Legal</span><span>₹{ut.pricing.additionalCharges.legal.toLocaleString('en-IN')}</span></div>}
+                    {ut.pricing.additionalCharges.maintenance>0 && <div className="flex justify-between text-gray-500"><span>Maintenance</span><span>₹{ut.pricing.additionalCharges.maintenance.toLocaleString('en-IN')}</span></div>}
+                    {ut.pricing?.viewPremium>0 && <div className="flex justify-between text-gray-500"><span>View Premium</span><span>₹{ut.pricing.viewPremium.toLocaleString('en-IN')}</span></div>}
+                    <div className="flex justify-between font-bold text-gray-900 pt-2 border-t border-gray-100"><span>Total</span><span>{fmt(price)}</span></div>
+                  </div>
                 )}
-                {p.salesContact?.whatsapp && (
-                  <a href={`https://wa.me/91${p.salesContact.whatsapp}?text=Hi, I'm interested in ${ut.config?.name} at ${p.basics?.name}`} target="_blank" rel="noopener noreferrer"
-                    className="w-full py-2.5 bg-green-500 text-white rounded-xl font-semibold text-sm hover:bg-green-600 transition flex items-center justify-center gap-2">
-                    <FaWhatsapp /> WhatsApp
-                  </a>
+                {/* Inventory */}
+                <div className="text-sm space-y-2">
+                  {ut.inventory?.availableUnits!=null && <div className="flex justify-between"><span className="text-gray-500">Available</span><span className="font-bold text-green-600">{ut.inventory.availableUnits} units</span></div>}
+                  {ut.inventory?.bookedUnits>0 && <div className="flex justify-between"><span className="text-gray-500">Booked</span><span className="font-bold text-gray-900">{ut.inventory.bookedUnits}</span></div>}
+                  {ut.inventory?.totalUnits!=null && <div className="flex justify-between"><span className="text-gray-500">Total</span><span className="font-bold text-gray-900">{ut.inventory.totalUnits} units</span></div>}
+                </div>
+                {/* Tower */}
+                {ut.inventory?.towerAllocation?.length>0 && (
+                  <div className="pt-2 border-t border-gray-100 text-sm space-y-1">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Tower Allocation</p>
+                    {ut.inventory.towerAllocation.map((t,i)=>(
+                      <div key={i} className="flex justify-between text-gray-600"><span>Tower {t.tower}</span><span className="font-medium">{t.units} units</span></div>
+                    ))}
+                  </div>
                 )}
+                <button onClick={handleBookClick} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition">Book This Unit</button>
+                <Link href={`/projects/${projectId}`} className="w-full py-2.5 border border-gray-200 text-gray-600 rounded-xl font-semibold text-sm hover:bg-gray-50 transition flex items-center justify-center">← Back to Project</Link>
               </div>
             </div>
 
-            {/* Project Info */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-5">
-              <h3 className="font-bold text-slate-900 mb-3">About the Project</h3>
-              <Link href={`/projects/${p._id}`} className="flex items-start gap-3 group">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center font-bold text-indigo-700 flex-shrink-0">
-                  {(p.builder?.company || p.builder?.name || 'B').charAt(0)}
+            {/* Builder */}
+            {project?.builder && (
+              <div className="bg-white border border-gray-200 rounded-xl p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center font-bold text-blue-600 text-base">{(project.builder.company||project.builder.name||'B').charAt(0)}</div>
+                  <div><p className="font-semibold text-gray-900 text-sm flex items-center gap-1">{project.builder.company||project.builder.name}<CheckCircle size={12} className="text-blue-500"/></p><p className="text-xs text-gray-400">Verified Developer</p></div>
                 </div>
-                <div>
-                  <p className="font-semibold text-slate-900 group-hover:text-indigo-600 transition">{p.basics?.name}</p>
-                  <p className="text-xs text-slate-400">{p.builder?.company || p.builder?.name} · {p.basics?.status}</p>
-                </div>
-              </Link>
-              {p.basics?.reraNumber && (
-                <div className="mt-3 flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-100">
-                  <Shield size={12}/> RERA: {p.basics.reraNumber}
-                </div>
-              )}
-            </div>
-
-            {/* Inventory Bar */}
-            {ut.inventory?.totalUnits > 0 && (
-              <div className="bg-white border border-slate-200 rounded-2xl p-5">
-                <h3 className="font-bold text-slate-900 mb-3">Availability</h3>
-                <div className="w-full bg-slate-100 rounded-full h-2.5 mb-3">
-                  <div className="bg-emerald-500 h-2.5 rounded-full transition-all"
-                    style={{ width: `${Math.round((ut.inventory.availableUnits / ut.inventory.totalUnits) * 100)}%` }} />
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-emerald-600 font-semibold">{ut.inventory.availableUnits} Available</span>
-                  <span className="text-slate-400">{ut.inventory.bookedUnits || 0} Booked</span>
+                <div className="space-y-2">
+                  {project.salesContact?.phone && <a href={`tel:${project.salesContact.phone}`} className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition"><FaPhone size={11}/>Call Sales</a>}
+                  {project.salesContact?.whatsapp && <a href={`https://wa.me/91${project.salesContact.whatsapp}`} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-2 py-2.5 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 transition"><FaWhatsapp size={13}/>WhatsApp</a>}
                 </div>
               </div>
             )}
@@ -285,15 +392,12 @@ export default function UnitDetailContent({ unitType: ut, project: p }) {
         </div>
       </div>
 
-      {/* Booking Modal */}
-      {showBooking && (
-        <BookingModal
-          unitType={ut}
-          project={p}
-          tokenAmount={tokenAmount}
-          onClose={() => setShowBooking(false)}
-        />
-      )}
+      {/* Mobile sticky CTA */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3 z-40">
+        <div className="flex-1"><p className="font-bold text-gray-900">{price ? fmt(price) : 'Price on request'}</p>{ut.inventory?.availableUnits!=null && <p className="text-xs text-green-600">{ut.inventory.availableUnits} units available</p>}</div>
+        <button onClick={handleBookClick} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition">Book Now</button>
+      </div>
+      <div className="h-20 lg:hidden"/>
     </div>
   );
 }

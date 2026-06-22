@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { projectApi, unitTypeApi, campaignApi } from "../api/adminApi";
-import { Plus, Building2, IndianRupee, Home, Layers, ChevronRight, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { Plus, Building2, IndianRupee, Home, Layers, ChevronRight, Trash2, ToggleLeft, ToggleRight, HardHat, Upload, X } from "lucide-react";
 
 const badge = (status) => {
   const map = {
@@ -22,6 +22,9 @@ export default function ProjectDetail() {
   const [campaigns, setCampaigns] = useState([]);
   const [tab, setTab] = useState("units");
   const [loading, setLoading] = useState(true);
+  const [updateForm, setUpdateForm] = useState({ title: "", description: "", percentComplete: "" });
+  const [updateImages, setUpdateImages] = useState([]);
+  const [postingUpdate, setPostingUpdate] = useState(false);
 
   const load = async () => {
     try {
@@ -58,6 +61,30 @@ export default function ProjectDetail() {
       toast.success("Unit type deleted.");
     } catch (err) {
       toast.error(err.response?.data?.message || "Cannot delete.");
+    }
+  };
+
+  const postConstructionUpdate = async (e) => {
+    e.preventDefault();
+    if (!updateForm.title.trim()) return toast.error("Title is required.");
+    setPostingUpdate(true);
+    try {
+      const fd = new FormData();
+      fd.append("title", updateForm.title.trim());
+      if (updateForm.description.trim()) fd.append("description", updateForm.description.trim());
+      if (updateForm.percentComplete) fd.append("percentComplete", updateForm.percentComplete);
+      updateImages.forEach(f => fd.append("images", f));
+      const res = await projectApi.addConstructionUpdate(id, fd);
+      // Reload project to get fresh constructionUpdates array
+      const pRes = await projectApi.getById(id);
+      setProject(pRes.data || pRes);
+      setUpdateForm({ title: "", description: "", percentComplete: "" });
+      setUpdateImages([]);
+      toast.success("Construction update posted.");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to post update.");
+    } finally {
+      setPostingUpdate(false);
     }
   };
 
@@ -119,10 +146,10 @@ export default function ProjectDetail() {
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
-        {["units", "campaigns", "info"].map(t => (
+        {["units", "campaigns", "updates", "info"].map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-5 py-2.5 text-sm font-medium capitalize border-b-2 transition-colors ${tab === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
-            {t === "units" ? "Unit Types" : t === "campaigns" ? "Campaigns" : "Project Info"}
+            {t === "units" ? "Unit Types" : t === "campaigns" ? "Campaigns" : t === "updates" ? "Construction Updates" : "Project Info"}
           </button>
         ))}
       </div>
@@ -209,6 +236,92 @@ export default function ProjectDetail() {
         </div>
       )}
 
+      {tab === "updates" && (
+        <div className="space-y-5">
+          {/* Post new update */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <HardHat size={18} className="text-orange-500" /> Post Construction Update
+            </h3>
+            <form onSubmit={postConstructionUpdate} className="space-y-3">
+              <div className="grid grid-cols-4 gap-3">
+                <div className="col-span-3">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Title *</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    value={updateForm.title} onChange={e => setUpdateForm(p => ({ ...p, title: e.target.value }))}
+                    placeholder="e.g. Ground Floor Slab Completed" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">% Complete</label>
+                  <input type="number" min="0" max="100"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    value={updateForm.percentComplete} onChange={e => setUpdateForm(p => ({ ...p, percentComplete: e.target.value }))}
+                    placeholder="e.g. 35" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Description</label>
+                <textarea rows={2} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+                  value={updateForm.description} onChange={e => setUpdateForm(p => ({ ...p, description: e.target.value }))}
+                  placeholder="Additional details about progress..." />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Progress Photos</label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label className="flex items-center gap-1.5 px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-500 cursor-pointer hover:bg-gray-50">
+                    <Upload size={14} /> Add Photos
+                    <input type="file" accept="image/*" multiple className="hidden"
+                      onChange={e => setUpdateImages(p => [...p, ...Array.from(e.target.files || [])])} />
+                  </label>
+                  {updateImages.map((f, i) => (
+                    <span key={i} className="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs border border-blue-100">
+                      {f.name.slice(0, 20)}{f.name.length > 20 ? "…" : ""}
+                      <button type="button" onClick={() => setUpdateImages(p => p.filter((_, j) => j !== i))} className="text-blue-300 hover:text-red-500"><X size={10} /></button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <button type="submit" disabled={postingUpdate}
+                className="px-5 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50">
+                {postingUpdate ? "Posting…" : "Post Update"}
+              </button>
+            </form>
+          </div>
+
+          {/* Existing updates */}
+          {(p.constructionUpdates || []).length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-300">
+              <HardHat size={36} className="mx-auto text-gray-300 mb-2" />
+              <p className="text-gray-500 text-sm">No construction updates posted yet.</p>
+            </div>
+          ) : (
+            [...(p.constructionUpdates || [])].reverse().map((u, i) => (
+              <div key={i} className="bg-white rounded-xl border border-gray-200 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h4 className="font-semibold text-gray-800">{u.title}</h4>
+                    {u.description && <p className="text-sm text-gray-500 mt-0.5">{u.description}</p>}
+                    <p className="text-xs text-gray-400 mt-1">{u.date ? new Date(u.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""}</p>
+                  </div>
+                  {u.percentComplete !== undefined && (
+                    <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-sm font-semibold whitespace-nowrap">{u.percentComplete}%</span>
+                  )}
+                </div>
+                {u.images?.length > 0 && (
+                  <div className="flex gap-2 mt-3 flex-wrap">
+                    {u.images.map((img, j) => (
+                      <a key={j} href={img} target="_blank" rel="noopener noreferrer">
+                        <img src={img} alt="progress" className="w-20 h-20 object-cover rounded-lg border border-gray-100 hover:opacity-90 transition" />
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
       {tab === "info" && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4 text-sm">
           {[
@@ -219,7 +332,6 @@ export default function ProjectDetail() {
             ["Ownership", p.basics?.ownershipType || "—"],
             ["Vastu", p.basics?.isVastuCompliant ? "Yes" : "No"],
             ["Litigation", p.legal?.litigationStatus || "—"],
-            ["Bank Approvals", p.bankApprovals?.map(b => b.bankName).join(", ") || "None"],
             ["Sales Manager", p.salesContact?.managerName || "—"],
             ["Sales Phone", p.salesContact?.phone || "—"],
           ].map(([k, v]) => (

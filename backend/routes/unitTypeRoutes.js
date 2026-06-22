@@ -13,14 +13,16 @@ import {
   updateUnitType,
   deleteUnitType,
 } from "../controllers/unitTypeController.js";
-import { protectAdmin } from "../middleware/authAdmin.js";
+import { protectAdmin, attachAdminIfPresent } from "../middleware/authAdmin.js";
 import { memoryUpload, uploadConcurrencyGuard } from "../middleware/upload.js";
 
 const router = express.Router();
 
 // ── Public routes ─────────────────────────────────────────────────────────────
-router.get("/project/:projectId", listByProject); // MUST be before /:id
-router.get("/:id", getUnitType);
+// attachAdminIfPresent: anonymous callers see only active unit types;
+// a logged-in admin still sees inactive ones (needed for the Admin edit screens).
+router.get("/project/:projectId", attachAdminIfPresent, listByProject); // MUST be before /:id
+router.get("/:id", attachAdminIfPresent, getUnitType);
 
 // ── Admin routes ──────────────────────────────────────────────────────────────
 router.post(

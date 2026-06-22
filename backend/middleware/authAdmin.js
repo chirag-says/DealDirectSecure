@@ -296,8 +296,9 @@ export const protectAdmin = async (req, res, next) => {
     }
 
     // Get admin from database
-    // Note: Don't populate role - legacy admins have string roles instead of ObjectIds
-    const admin = await Admin.findById(session.admin);
+    // Populate role for ObjectId-based roles (needed for permission/level checks)
+    // Legacy admins with string roles will have role as a plain string (populate is a no-op)
+    const admin = await Admin.findById(session.admin).populate('role');
 
     if (!admin) {
       await session.revoke("admin_not_found");
@@ -413,6 +414,50 @@ export const protectAdmin = async (req, res, next) => {
       code: "AUTH_ERROR",
     });
   }
+};
+
+/**
+ * Optional admin detection — for endpoints that are PUBLIC but should reveal
+ * more (e.g. inactive/draft records, internal fields) to a logged-in admin.
+ *
+ * Never blocks the request: if no valid admin session is present, it simply
+ * continues as an anonymous/public request. On success it sets:
+ *   req.isAdminViewer = true
+ *
+ * Intentionally lightweight — no audit logging, no fingerprint enforcement,
+ * no MFA-setup branching. It grants READ visibility only, never mutation
+ * rights (those endpoints use protectAdmin). It requires an active, unexpired,
+ * MFA-verified session, mirroring the core checks in protectAdmin.
+ */
+export const attachAdminIfPresent = async (req, res, next) => {
+  try {
+    let sessionToken = req.cookies?.[COOKIE_CONFIG.name];
+    if (!sessionToken) {
+      const authHeader = req.headers.authorization;
+      if (authHeader?.startsWith("Bearer ")) {
+        sessionToken = authHeader.split(" ")[1];
+      }
+    }
+    if (!sessionToken) return next();
+
+    const session = await AdminSession.findOne({
+      sessionToken,
+      isActive: true,
+      expiresAt: { $gt: new Date() },
+    });
+
+    // Require a fully verified session — anything less is treated as public
+    if (session?.mfaVerified) {
+      const admin = await Admin.findById(session.admin).select("isActive isLocked");
+      if (admin && admin.isActive !== false && !admin.isLocked) {
+        req.isAdminViewer = true;
+      }
+    }
+  } catch (err) {
+    // Never block the public path on an auth-detection error
+    console.error("[attachAdminIfPresent] non-blocking error:", err.message);
+  }
+  return next();
 };
 
 /**

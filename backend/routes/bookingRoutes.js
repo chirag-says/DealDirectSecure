@@ -10,25 +10,28 @@ import {
   listBookings,
   verifyPayment,
   updateBookingStatus,
+  getPaymentConfig,
 } from "../controllers/bookingController.js";
-import { authMiddleware, optionalAuth } from "../middleware/authUser.js";
+import { authMiddleware } from "../middleware/authUser.js";
 import { protectAdmin } from "../middleware/authAdmin.js";
 import { memoryUpload } from "../middleware/upload.js";
 
 const router = express.Router();
 
-// ── Public (optional auth to attach user) ─────────────────────────────────────
-router.post("/", optionalAuth, createBooking);
+// ── Authenticated user — login required to book (same as "I'm Interested" for properties)
+router.post("/", authMiddleware, createBooking);
 
-// Submit payment proof (UTR + screenshot)
+// Submit payment proof (UTR + screenshot) — must be the booking's owner
 router.post(
   "/:id/payment",
+  authMiddleware,
   memoryUpload.single("screenshot"),
   submitPayment
 );
 
 // ── Authenticated user ─────────────────────────────────────────────────────────
 router.get("/my", authMiddleware, getMyBookings);
+router.get("/payment-config", authMiddleware, getPaymentConfig);
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 router.get("/", protectAdmin, listBookings);

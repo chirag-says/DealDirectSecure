@@ -93,6 +93,10 @@ const rewardSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    // C4 FIX: Enable optimistic concurrency to prevent race conditions.
+    // save() will check __v and throw VersionError if the document was
+    // modified between our read and write (TOCTOU protection for points).
+    optimisticConcurrency: true,
   }
 );
 

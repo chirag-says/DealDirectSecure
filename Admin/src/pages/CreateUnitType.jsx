@@ -1,4 +1,12 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { toast } from "react-toastify";
+import { unitTypeApi, projectApi } from "../api/adminApi";
+import Wizard from "../components/wizard/Wizard";
+import { inp, lbl } from "../components/wizard/FormField";
+import ConfirmModal from "../components/wizard/ConfirmModal";
+import { useFormDraft } from "../components/wizard/useFormDraft";
+import { validateUnitTypeStep } from "../schemas/unitTypeSchema";
 
 // ── Thumbnail component that safely manages blob URL lifecycle ────────────────
 function FloorPlanPreview({ file }) {
@@ -18,7 +26,6 @@ function FloorPlanPreview({ file }) {
     return <img src={url} alt={file.name} className="mt-2 rounded-lg border border-gray-200 max-h-48 object-contain bg-gray-50" />;
   }
 
-  // PDF or non-image: show file info card
   return (
     <div className="mt-2 flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
       <span className="text-gray-400">📄</span>
@@ -27,9 +34,6 @@ function FloorPlanPreview({ file }) {
     </div>
   );
 }
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { toast } from "react-toastify";
-import { unitTypeApi, projectApi } from "../api/adminApi";
 
 const STEPS = [
   { id: 1, label: "Config" }, { id: 2, label: "Area" }, { id: 3, label: "Facing" },
@@ -50,6 +54,13 @@ export default function CreateUnitType() {
   const [project, setProject] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [highlightInput, setHighlightInput] = useState("");
+  const [confirmClearDraft, setConfirmClearDraft] = useState(false);
+  // Per-step errors
+  const [errors, setErrors] = useState({});
+
+  // Draft persistence via the shared hook
+  const DRAFT_KEY = `createUnitTypeDraft_${projectId}_${editId || "new"}`;
+  const { draftExists, saveDraft, loadDraft, clearDraft } = useFormDraft(DRAFT_KEY, !editId);
 
   const [form, setForm] = useState({
     name: "", bedrooms: "", bathrooms: "", balconies: "", hasUtilityArea: false,
@@ -73,112 +84,25 @@ export default function CreateUnitType() {
 
   const [files, setFiles] = useState({ twoDFloorPlan: null, threeDFloorPlan: null });
 
-  // ── Per-step validation ──
-  const [errors, setErrors] = useState({});
-  const stepContainerRef = useRef(null);
+  // Per-step validation — backed by Zod from unitTypeSchema.js
+  const validateStep = (s) => validateUnitTypeStep(s, form, files);
 
-  const isFilled = (val) => {
-    if (val === null || val === undefined) return false;
-    if (typeof val === "string") return val.trim() !== "";
-    if (typeof val === "number") return Number.isFinite(val);
-    if (typeof val === "boolean") return true;
-    if (Array.isArray(val)) return val.length > 0;
-    return true;
-  };
-
-  const validateStep = (s) => {
-    const e = {};
-    if (s === 1) {
-      if (!isFilled(form.name)) e.name = "Unit type name is required";
-      else if (String(form.name).trim().length > 100) e.name = "Name cannot exceed 100 characters";
-      if (!isFilled(form.bedrooms) && !isFilled(form.bathrooms)) {
-        e.bedrooms = "Specify at least bedrooms or bathrooms";
-      }
-    } else if (s === 2) {
-      if (!isFilled(form.carpetSqft)) e.carpetSqft = "Carpet area is required";
-      else {
-        const c = Number(form.carpetSqft);
-        if (c <= 0) e.carpetSqft = "Carpet area must be greater than 0";
-      }
-      // Sanity: built-up ≥ carpet, super-built-up ≥ built-up
-      if (isFilled(form.builtUpSqft) && isFilled(form.carpetSqft)) {
-        if (Number(form.builtUpSqft) < Number(form.carpetSqft)) {
-          e.builtUpSqft = "Built-up area must be ≥ carpet area";
-        }
-      }
-      if (isFilled(form.superBuiltUpSqft) && isFilled(form.builtUpSqft)) {
-        if (Number(form.superBuiltUpSqft) < Number(form.builtUpSqft)) {
-          e.superBuiltUpSqft = "Super built-up must be ≥ built-up area";
-        }
-      }
-    } else if (s === 3) {
-      // Facing is optional in real-estate — no required fields
-    } else if (s === 4) {
-      // Furnishing always has a default — no required fields
-    } else if (s === 5) {
-      ["coveredParking", "openParking", "evParking"].forEach((k) => {
-        const v = form[k];
-        if (isFilled(v) && (!Number.isInteger(Number(v)) || Number(v) < 0)) {
-          e[k] = "Must be a non-negative whole number";
-        }
-      });
-    } else if (s === 6) {
-      // Specs are optional but useful — no required fields
-    } else if (s === 7) {
-      if (!files.twoDFloorPlan) e.twoDFloorPlan = "2D floor plan is required";
-    } else if (s === 8) {
-      if (!isFilled(form.basePrice)) e.basePrice = "Base price is required";
-      else if (Number(form.basePrice) <= 0) e.basePrice = "Base price must be greater than 0";
-      if (isFilled(form.floorRisePerSqft) && Number(form.floorRisePerSqft) < 0) {
-        e.floorRisePerSqft = "Floor rise cannot be negative";
-      }
-      if (isFilled(form.viewPremium) && Number(form.viewPremium) < 0) {
-        e.viewPremium = "View premium cannot be negative";
-      }
-    } else if (s === 9) {
-      if (!isFilled(form.totalUnits)) e.totalUnits = "Total units is required";
-      else if (Number(form.totalUnits) <= 0) e.totalUnits = "Total units must be greater than 0";
-      else {
-        const total = Number(form.totalUnits);
-        const available = Number(form.availableUnits) || 0;
-        const booked = Number(form.bookedUnits) || 0;
-        const blocked = Number(form.blockedUnits) || 0;
-        if (Number(form.availableUnits) === "" || form.availableUnits === undefined) {
-          e.availableUnits = "Available units is required";
-        } else if (available < 0) {
-          e.availableUnits = "Available units cannot be negative";
-        } else if (available + booked + blocked > total) {
-          e.availableUnits = `Available (${available}) + Booked (${booked}) + Blocked (${blocked}) cannot exceed Total (${total})`;
-        }
-        if (booked < 0) e.bookedUnits = "Booked units cannot be negative";
-        if (blocked < 0) e.blockedUnits = "Blocked units cannot be negative";
-      }
+  // ── localStorage persistence — now handled by useFormDraft hook ─────────────
+  useEffect(() => {
+    if (projectId && !editId) {
+      saveDraft(form, step);
     }
-    return e;
-  };
+  }, [form, step, projectId, editId]);
 
-  // Try to advance. If invalid, surface errors + scroll to first invalid field.
-  const goNext = () => {
-    const e = validateStep(step);
-    setErrors(e);
-    if (Object.keys(e).length > 0) {
-      const firstField = Object.keys(e)[0];
-      toast.error(e[firstField]);
-      if (stepContainerRef.current) {
-        stepContainerRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-      setTimeout(() => {
-        const el = stepContainerRef.current?.querySelector(`[data-field="${firstField}"]`);
-        if (el) {
-          if (typeof el.focus === "function") el.focus();
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-      }, 50);
-      return;
+  useEffect(() => {
+    if (!projectId || editId) return;
+    const saved = loadDraft();
+    if (saved) {
+      setForm(saved.form);
+      setStep(saved.step);
     }
-    setErrors({});
-    setStep(s => Math.min(10, s + 1));
-  };
+  }, [projectId, editId]);
+
 
   useEffect(() => {
     projectApi.getById(projectId)
@@ -269,48 +193,7 @@ export default function CreateUnitType() {
     }
   };
 
-  // ── localStorage persistence ──
-  const DRAFT_KEY = `createUnitTypeDraft_${projectId}_${editId || "new"}`;
-  const [draftExists, setDraftExists] = useState(false);
-  const saveTimeoutRef = useRef(null);
 
-  useEffect(() => {
-    if (projectId) {
-      clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = setTimeout(() => {
-        // In edit mode, don't save a "draft" — the source of truth is the DB.
-        if (editId) return;
-        // Don't persist files (File objects don't survive JSON.stringify)
-        localStorage.setItem(DRAFT_KEY, JSON.stringify({ form, step, timestamp: Date.now() }));
-        setDraftExists(true);
-      }, 1000);
-    }
-    return () => clearTimeout(saveTimeoutRef.current);
-  }, [form, step, projectId, editId]);
-
-  useEffect(() => {
-    if (!projectId) return;
-    // In edit mode, the edit fetch is the source of truth — never restore a draft on top of it.
-    if (editId) return;
-    const saved = localStorage.getItem(DRAFT_KEY);
-    if (saved) {
-      try {
-        const draft = JSON.parse(saved);
-        if (draft.step && Date.now() - draft.timestamp < 86400000) {
-          setForm(draft.form);
-          setStep(draft.step);
-          setDraftExists(true);
-        }
-      } catch { /* skip invalid */ }
-    }
-  }, [projectId, editId]);
-
-  const clearDraft = () => {
-    if (projectId) {
-      localStorage.removeItem(DRAFT_KEY);
-      setDraftExists(false);
-    }
-  };
 
   const resetForm = () => {
     setForm({
@@ -406,7 +289,9 @@ export default function CreateUnitType() {
   };
 
   const inp = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500";
-  const lbl = "block text-sm font-medium text-gray-700 mb-1";
+  const lbl_local = "block text-sm font-medium text-gray-700 mb-1";
+  // Note: inp/lbl now imported from wizard kit — the local definitions above are kept
+  // for inline reference clarity but the imported ones take precedence via closure.
 
   const renderStep = () => {
     switch (step) {
@@ -567,6 +452,34 @@ export default function CreateUnitType() {
             </div>
           </div>
           <div>
+            <p className={`${lbl} mb-2`}>Doors</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="text-xs text-gray-500">Main Door</label>
+                <input className={inp} value={form.specifications.doors.mainDoor} onChange={e => setSpec("doors","mainDoor",e.target.value)} placeholder="e.g. Teak Wood, Laminate Finish" /></div>
+              <div><label className="text-xs text-gray-500">Internal Doors</label>
+                <input className={inp} value={form.specifications.doors.internalDoors} onChange={e => setSpec("doors","internalDoors",e.target.value)} placeholder="e.g. Flush Doors with Enamel Paint" /></div>
+              <div><label className="text-xs text-gray-500">Finish</label>
+                <input className={inp} value={form.specifications.doors.finish} onChange={e => setSpec("doors","finish",e.target.value)} placeholder="e.g. Veneer / Laminate / Polish" /></div>
+            </div>
+          </div>
+          <div>
+            <p className={`${lbl} mb-2`}>Windows</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="text-xs text-gray-500">Type</label>
+                <select className={inp} value={form.specifications.windows.type} onChange={e => setSpec("windows","type",e.target.value)}>
+                  <option value="">Select type...</option>
+                  {["UPVC", "Aluminium Sliding", "Aluminium Casement", "Wooden", "UPVC Sliding", "UPVC Casement"].map(t => <option key={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className="flex items-end pb-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={form.specifications.windows.mosquitoMesh} onChange={e => setSpec("windows","mosquitoMesh",e.target.checked)} />
+                  Mosquito Mesh Provided
+                </label>
+              </div>
+            </div>
+          </div>
+          <div>
             <p className={`${lbl} mb-2`}>Electrical</p>
             <div className="grid grid-cols-2 gap-3">
               {[["wiringType","Wiring Type"],["switchBrand","Switch Brand"],["acPointsPerRoom","AC Points / Room"]].map(([k,l]) => (
@@ -677,6 +590,55 @@ export default function CreateUnitType() {
               </div>
             ))}
           </div>
+
+          {/* ── Tower Allocation ── */}
+          <div className="border-t border-gray-200 pt-4">
+            <h3 className="font-medium text-gray-700 mb-2">Tower Allocation</h3>
+            <p className="text-xs text-gray-500 mb-3">Specify which towers this unit type is available in.</p>
+            <div className="grid grid-cols-4 gap-2 items-end">
+              <div>
+                <label className="text-xs text-gray-500">Tower Name</label>
+                <input id="towerNameInput" className={inp} placeholder="e.g. C10" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">From Floor</label>
+                <input id="towerFromFloor" className={inp} type="number" min="1" placeholder="1" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">To Floor</label>
+                <input id="towerToFloor" className={inp} type="number" min="1" placeholder="20" />
+              </div>
+              <button type="button" onClick={() => {
+                const nameEl = document.getElementById("towerNameInput");
+                const fromEl = document.getElementById("towerFromFloor");
+                const toEl = document.getElementById("towerToFloor");
+                const name = nameEl?.value?.trim();
+                if (!name) return;
+                const entry = {
+                  towerName: name,
+                  floors: fromEl?.value && toEl?.value ? `${fromEl.value}-${toEl.value}` : undefined,
+                  unitsOnFloor: undefined,
+                };
+                set("towerAllocation", [...form.towerAllocation, entry]);
+                if (nameEl) nameEl.value = "";
+                if (fromEl) fromEl.value = "";
+                if (toEl) toEl.value = "";
+              }} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm whitespace-nowrap">Add Tower</button>
+            </div>
+            {form.towerAllocation.length > 0 && (
+              <div className="space-y-1.5 mt-3">
+                {form.towerAllocation.map((t, i) => (
+                  <div key={i} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm border border-gray-100">
+                    <span>
+                      <strong>{t.towerName}</strong>
+                      {t.floors && <span className="text-gray-500 ml-2">Floors {t.floors}</span>}
+                    </span>
+                    <button type="button" onClick={() => set("towerAllocation", form.towerAllocation.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 text-xs">Remove</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       );
       case 10: return (
@@ -719,67 +681,62 @@ export default function CreateUnitType() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto py-6 px-4">
-      <div className="mb-6">
-        <button onClick={() => navigate(`/project/${projectId}`)} className="text-sm text-blue-600 hover:underline mb-2">← Back to Project</button>
+    <div>
+      {/* Header */}
+      <div className="max-w-2xl mx-auto pt-6 px-4">
+        <button type="button" onClick={() => navigate(`/project/${projectId}`)}
+          className="text-sm text-blue-600 hover:underline mb-2">
+          ← Back to Project
+        </button>
         <h1 className="text-2xl font-bold text-gray-900">{editId ? "Edit" : "Add"} Unit Type</h1>
         {project && <p className="text-gray-500 text-sm mt-1">{project.basics?.name}</p>}
       </div>
 
-      {/* Draft saved banner */}
-      {draftExists && (
-        <div className="mb-4 flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-sm">
-          <div className="flex items-center gap-2 text-emerald-700">
-            <span>✓</span>
-            <span>Your progress is auto-saved in this browser.</span>
+      <Wizard
+        steps={STEPS}
+        currentStep={step}
+        onStepChange={setStep}
+        validateStep={validateStep}
+        onSetErrors={setErrors}
+        onSubmit={handleSubmit}
+        submitting={submitting}
+        submitLabel={editId ? "Update Unit Type" : "Create Unit Type"}
+        draftBanner={draftExists && (
+          <div className="flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-sm">
+            <div className="flex items-center gap-2 text-emerald-700">
+              <span>✓</span>
+              <span>Your progress is auto-saved in this browser.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setConfirmClearDraft(true)}
+              className="text-xs px-3 py-1 border border-emerald-300 text-emerald-700 rounded hover:bg-emerald-100 whitespace-nowrap"
+            >
+              Clear draft
+            </button>
           </div>
-          <button
-            onClick={() => {
-              if (window.confirm("Clear saved draft? This will reset the form to empty.")) {
-                clearDraft();
-                resetForm();
-                toast.success("Draft cleared.");
-              }
-            }}
-            className="text-xs px-3 py-1 border border-emerald-300 text-emerald-700 rounded hover:bg-emerald-100 whitespace-nowrap"
-          >
-            Clear draft
-          </button>
-        </div>
-      )}
-      <div className="flex items-center mb-8 overflow-x-auto pb-2">
-        {STEPS.map((s, i) => {
-          // Allow clicking a step only if it is the current step, a previous one,
-          // or the immediately next one. Anything further is locked.
-          const reachable = s.id === step || s.id < step || s.id === step + 1;
-          return (
-            <React.Fragment key={s.id}>
-              <button
-                onClick={() => reachable && setStep(s.id)}
-                disabled={!reachable}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${step === s.id ? "bg-blue-600 text-white" : step > s.id ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"} ${!reachable ? "opacity-50 cursor-not-allowed" : ""}`}>
-                {step > s.id ? "✓" : s.id}. {s.label}
-              </button>
-              {i < STEPS.length - 1 && <div className={`flex-1 h-0.5 mx-0.5 min-w-[6px] ${step > s.id ? "bg-green-400" : "bg-gray-200"}`} />}
-            </React.Fragment>
-          );
-        })}
-      </div>
-      <div ref={stepContainerRef} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-        {renderStep()}
-      </div>
-      <div className="flex justify-between mt-6">
-        <button onClick={() => setStep(s => Math.max(1, s - 1))} disabled={step === 1}
-          className="px-5 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40">
-          ← Previous
-        </button>
-        {step < 10 && (
-          <button onClick={goNext}
-            className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
-            Next →
-          </button>
         )}
-      </div>
+      >
+        {renderStep()}
+      </Wizard>
+
+      {/* ConfirmModal replaces window.confirm for draft clear */}
+      {confirmClearDraft && (
+        <ConfirmModal
+          title="Clear saved draft?"
+          message="This will reset the form to empty. This cannot be undone."
+          confirmLabel="Clear Draft"
+          cancelLabel="Keep Draft"
+          variant="warn"
+          onConfirm={() => {
+            clearDraft();
+            resetForm();
+            toast.success("Draft cleared.");
+          }}
+          onCancel={() => setConfirmClearDraft(false)}
+        />
+      )}
     </div>
   );
 }
+

@@ -265,7 +265,7 @@ export const getOrCreateWallet = async (userId) => {
  * @param {Object} [metadata={}] - Optional metadata (propertyId, etc.)
  * @returns {{ success: boolean, pointsAwarded: number, newBalance: number, tier: string }}
  */
-export const awardPoints = async (userId, action, metadata = {}) => {
+export const awardPoints = async (userId, action, metadata = {}, _retryCount = 0) => {
   try {
     // Check if this action is recognized
     const category = ACTION_CATEGORY_MAP[action];
@@ -346,6 +346,11 @@ export const awardPoints = async (userId, action, metadata = {}) => {
       description: ACTION_DESCRIPTIONS[action] || action,
     };
   } catch (error) {
+    // C4 FIX: Retry once on optimistic concurrency conflict (VersionError)
+    if (error.name === 'VersionError' && _retryCount < 1) {
+      console.warn(`[RewardService] Concurrency conflict for ${userId}/${action}, retrying...`);
+      return awardPoints(userId, action, metadata, _retryCount + 1);
+    }
     console.error(`[RewardService] awardPoints error for ${userId}/${action}:`, error.message);
     return { success: false, error: error.message };
   }
@@ -358,7 +363,7 @@ export const awardPoints = async (userId, action, metadata = {}) => {
  * @param {string} rewardSlug - slug from REWARDS_STORE
  * @param {Object} [extraData={}] - bankDetails for cash, etc.
  */
-export const redeemPoints = async (userId, rewardSlug, extraData = {}) => {
+export const redeemPoints = async (userId, rewardSlug, extraData = {}, _retryCount = 0) => {
   try {
     const reward = REWARDS_STORE.find((r) => r.slug === rewardSlug);
     if (!reward) {
@@ -407,6 +412,11 @@ export const redeemPoints = async (userId, rewardSlug, extraData = {}) => {
       newBalance: wallet.availablePoints,
     };
   } catch (error) {
+    // C4 FIX: Retry once on optimistic concurrency conflict (VersionError)
+    if (error.name === 'VersionError' && _retryCount < 1) {
+      console.warn(`[RewardService] Concurrency conflict for redeem ${userId}/${rewardSlug}, retrying...`);
+      return redeemPoints(userId, rewardSlug, extraData, _retryCount + 1);
+    }
     console.error(`[RewardService] redeemPoints error:`, error.message);
     return { success: false, error: error.message };
   }

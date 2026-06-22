@@ -182,36 +182,55 @@ export const updateCampaign = async (req, res) => {
 // ── Join Campaign (User) ──────────────────────────────────────────────────────
 export const joinCampaign = async (req, res) => {
   try {
-    const campaign = await GroupBuyCampaign.findById(req.params.id).lean();
+    // H11 FIX: Atomic increment with condition to prevent exceeding maxBuyers.
+    // Two concurrent joins both reading memberCount=9 (max=10) would both pass
+    // a simple check. findOneAndUpdate with $lt ensures only one succeeds.
+    const campaign = await GroupBuyCampaign.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        status: "active",
+        $expr: { $lt: ["$memberCount", "$buyerTargets.maxBuyers"] },
+        "duration.endDate": { $gt: new Date() },
+      },
+      { $inc: { memberCount: 1 } },
+      { new: true }
+    ).lean();
+
     if (!campaign) {
-      return res.status(404).json({ success: false, message: "Campaign not found." });
-    }
-    if (campaign.status !== "active") {
-      return res.status(400).json({ success: false, message: "Campaign is not active." });
-    }
-    if (campaign.memberCount >= campaign.buyerTargets.maxBuyers) {
+      // Could be: not found, not active, full, or ended — check which
+      const raw = await GroupBuyCampaign.findById(req.params.id).lean();
+      if (!raw) return res.status(404).json({ success: false, message: "Campaign not found." });
+      if (raw.status !== "active") return res.status(400).json({ success: false, message: "Campaign is not active." });
+      if (new Date() > new Date(raw.duration.endDate)) return res.status(400).json({ success: false, message: "Campaign has ended." });
       return res.status(400).json({ success: false, message: "Campaign is full." });
-    }
-    if (new Date() > new Date(campaign.duration.endDate)) {
-      return res.status(400).json({ success: false, message: "Campaign has ended." });
     }
 
     // Get user snapshot
     const user = await User.findById(req.user._id).select("name email phone").lean();
 
-    // Create member (tokenStatus: pending — awaiting admin verification)
-    const member = await CampaignMember.create({
-      campaign: campaign._id,
-      user: req.user._id,
-      tokenAmount: campaign.tokenAmount,
-      tokenStatus: "pending",
-      userSnapshot: {
-        name: user?.name,
-        email: user?.email,
-        phone: user?.phone,
-      },
-    });
-    // post-save hook handles memberCount sync and milestone checks
+    // Create member record
+    let member;
+    try {
+      member = await CampaignMember.create({
+        campaign: campaign._id,
+        user: req.user._id,
+        tokenAmount: campaign.tokenAmount,
+        tokenStatus: "pending",
+        userSnapshot: {
+          name: user?.name,
+          email: user?.email,
+          phone: user?.phone,
+        },
+      });
+    } catch (createError) {
+      // If member creation fails (e.g., duplicate), roll back the memberCount increment
+      await GroupBuyCampaign.findByIdAndUpdate(campaign._id, { $inc: { memberCount: -1 } });
+
+      if (createError.code === 11000) {
+        return res.status(409).json({ success: false, message: "You have already joined this campaign." });
+      }
+      throw createError;
+    }
 
     return res.status(201).json({
       success: true,
@@ -223,9 +242,6 @@ export const joinCampaign = async (req, res) => {
       },
     });
   } catch (error) {
-    if (error.code === 11000) {
-      return res.status(409).json({ success: false, message: "You have already joined this campaign." });
-    }
     console.error("[campaignController.joinCampaign]", error);
     return res.status(500).json({ success: false, message: "Server error." });
   }

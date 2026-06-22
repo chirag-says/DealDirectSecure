@@ -20,12 +20,12 @@ export const metadata = {
 
 // Server-side data fetching with timeout + graceful fallback
 async function getHomeData() {
-  const [propsData, catsData, ptData, blogData, builderPropsData] = await ssrFetchAll([
+  const [propsData, catsData, ptData, blogData, projectsData] = await ssrFetchAll([
     { path: '/api/properties/property-list', revalidate: 120 },
     { path: '/api/categories/list-category', revalidate: 3600 },
     { path: '/api/propertyTypes/list-propertytype', revalidate: 3600 },
     { path: '/api/blogs?limit=3', revalidate: 600 },
-    { path: '/api/properties/list?isBuilderProperty=true&limit=8', revalidate: 120 },
+    { path: '/api/projects?isActive=true&limit=8', revalidate: 120 },
   ]);
 
   return {
@@ -33,12 +33,12 @@ async function getHomeData() {
     categories: catsData?.data || catsData || [],
     propertyTypes: ptData?.data || ptData || [],
     latestPosts: blogData?.success ? (blogData.data || []) : [],
-    builderProperties: Array.isArray(builderPropsData) ? builderPropsData : (builderPropsData?.data || builderPropsData?.properties || []),
+    builderProjects: projectsData?.data || (Array.isArray(projectsData) ? projectsData : []),
   };
 }
 
 export default async function HomePage() {
-  const { properties, categories, propertyTypes, latestPosts, builderProperties } = await getHomeData();
+  const { properties, categories, propertyTypes, latestPosts, builderProjects } = await getHomeData();
 
   return (
     <>
@@ -49,7 +49,7 @@ export default async function HomePage() {
         initialCategories={categories}
         initialPropertyTypes={propertyTypes}
         initialLatestPosts={latestPosts}
-        initialBuilderProperties={builderProperties}
+        initialBuilderProjects={builderProjects}
       />
     </>
   );

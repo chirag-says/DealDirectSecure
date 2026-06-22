@@ -89,61 +89,12 @@ const Dashboard = () => {
       // Using adminApi with automatic cookie authentication
       const { data } = await adminApi.get(`/api/admin/dashboard/stats`);
       if (data.success) {
-        // Generate last 6 months labels
-        const last6Months = [];
-        for (let i = 5; i >= 0; i--) {
-          const d = new Date();
-          d.setMonth(d.getMonth() - i);
-          last6Months.push(d.toLocaleString("default", { month: "short" }));
-        }
-
-        // Mock history data for attractive curves
-        const mockPropHistory = [12, 18, 15, 24, 20];
-        const mockLeadHistory = [8, 15, 12, 22, 18];
-        const mockUserHistory = [30, 45, 40, 60, 55]; // Mock user history data
-
-        // Get current real-time values (last item from API response)
-        const currentPropValue = data.data.charts?.properties?.length
-          ? data.data.charts.properties[data.data.charts.properties.length - 1].value
-          : 0;
-
-        const currentLeadValue = data.data.charts?.leads?.length
-          ? data.data.charts.leads[data.data.charts.leads.length - 1].value
-          : 0;
-
-        const currentUserValue = data.data.charts?.users?.length
-          ? data.data.charts.users[data.data.charts.users.length - 1].value
-          : 0;
-
-        // Merge mock history with current real-time data
-        const enhancedProperties = last6Months.map((month, idx) => ({
-          label: month,
-          // Using a mock value for historical data and the real-time value for the current month (index 5)
-          value: idx < 5 ? mockPropHistory[idx] : currentPropValue
-        }));
-
-        const enhancedLeads = last6Months.map((month, idx) => ({
-          label: month,
-          // Using a mock value for historical data and the real-time value for the current month (index 5)
-          value: idx < 5 ? mockLeadHistory[idx] : currentLeadValue
-        }));
-
-        const enhancedUsers = last6Months.map((month, idx) => ({
-          label: month,
-          // Using a mock value for historical data and the real-time value for the current month (index 5)
-          value: idx < 5 ? mockUserHistory[idx] : currentUserValue
-        }));
-
-
-        // Update the charts data
-        data.data.charts = {
-          ...data.data.charts,
-          properties: enhancedProperties,
-          leads: enhancedLeads,
-          users: enhancedUsers // Include the enhanced user data
-        };
-
+        // Use the API response charts directly — no fake historical data
+        // The backend sends data.data.charts.properties / leads / users as arrays.
+        // If the backend only returns the current month, that's what the chart shows.
+        // Empty arrays cause the existing empty-state UI to render naturally.
         setStats(data.data);
+
       }
     } catch (error) {
       console.error("Failed to fetch dashboard stats:", error);

@@ -86,9 +86,9 @@ import {
 } from "../controllers/adminController.js";
 
 // Deal Verifications
-router.get("/verifications", protectAdmin, getDealVerifications);
-router.post("/verifications/:id/approve", protectAdmin, approveDealVerification);
-router.post("/verifications/:id/reject", protectAdmin, rejectDealVerification);
+router.get("/verifications", protectAdmin, requirePermission("verifications:read"), getDealVerifications);
+router.post("/verifications/:id/approve", protectAdmin, requirePermission("verifications:approve"), approveDealVerification);
+router.post("/verifications/:id/reject", protectAdmin, requirePermission("verifications:approve"), rejectDealVerification);
 
 // Audit Logs (Super Admin only)
 router.get("/audit-logs", protectAdmin, requireSuperAdmin, getAuditLogs);

@@ -36,11 +36,35 @@ router.get("/templates", getAgreementTemplates);
 router.get("/states", getIndianStates);
 
 // ============================================
+// PAYMENT WEBHOOK ROUTE
+// MUST be before authMiddleware — payment gateways
+// use HMAC signatures, not JWT cookies
+// ============================================
+
+// Webhook for payment validation (separate validation in controller)
+router.post(
+  "/webhook/payment",
+  express.json({ type: 'application/json' }), // Raw body for signature verification
+  validatePaymentWebhook
+);
+
+// ============================================
+// ADMIN ROUTES (uses its own protectAdmin auth)
+// ============================================
+
+// Get all agreements (admin only)
+router.get(
+  "/admin/all",
+  protectAdmin,
+  getAllAgreementsAdmin
+);
+
+// ============================================
 // PROTECTED ROUTES - Owners and Buyers ONLY
 // Block any retired roles (including Agent)
 // ============================================
 
-// Apply auth and role blocking to all protected routes
+// Apply auth and role blocking to all protected routes below
 router.use(authMiddleware);
 router.use(blockRetiredRoles); // Global block for retired roles
 
@@ -74,27 +98,5 @@ router.post(
   signAgreement
 );
 
-// ============================================
-// PAYMENT WEBHOOK ROUTE
-// Special authentication - uses webhook signature
-// ============================================
-
-// Webhook for payment validation (separate validation in controller)
-router.post(
-  "/webhook/payment",
-  express.json({ type: 'application/json' }), // Raw body for signature verification
-  validatePaymentWebhook
-);
-
-// ============================================
-// ADMIN ROUTES
-// ============================================
-
-// Get all agreements (admin only)
-router.get(
-  "/admin/all",
-  protectAdmin,
-  getAllAgreementsAdmin
-);
-
 export default router;
+

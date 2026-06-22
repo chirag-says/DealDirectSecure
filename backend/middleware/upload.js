@@ -353,7 +353,7 @@ const mixedFileFilter = (req, file, cb) => {
 export const memoryUploadWithDocs = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 15 * 1024 * 1024, // 15MB per file (PDFs can be larger)
+    fileSize: 50 * 1024 * 1024, // 50MB per file — builder brochures can be 30-40MB
     files: 50,
     parts: 100,
   },
@@ -361,7 +361,7 @@ export const memoryUploadWithDocs = multer({
 });
 
 // SECURITY FIX: Track total upload size per request
-const MAX_TOTAL_UPLOAD_SIZE = 100 * 1024 * 1024; // 100MB total per request
+const MAX_TOTAL_UPLOAD_SIZE = 200 * 1024 * 1024; // 200MB total per request (brochure + images)
 
 /**
  * SECURITY: Middleware to validate uploaded file buffers

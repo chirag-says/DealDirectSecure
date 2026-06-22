@@ -5,6 +5,7 @@
  */
 import Builder from "../models/Builder.js";
 import Property from "../models/Property.js";
+import Project from "../models/Project.js";
 import { cloudinary } from "../middleware/upload.js";
 import { Readable } from "stream";
 
@@ -47,21 +48,21 @@ export const listBuilders = async (req, res) => {
       Builder.countDocuments(filter),
     ]);
 
-    // Attach property count per builder
+    // Attach project count per builder (using Project model, not legacy Property)
     const builderIds = builders.map((b) => b._id);
-    const propertyCounts = await Property.aggregate([
-      { $match: { builder: { $in: builderIds } } },
+    const projectCounts = await Project.aggregate([
+      { $match: { builder: { $in: builderIds }, isActive: true } },
       { $group: { _id: "$builder", count: { $sum: 1 } } },
     ]);
 
     const countMap = {};
-    propertyCounts.forEach((p) => {
+    projectCounts.forEach((p) => {
       countMap[p._id.toString()] = p.count;
     });
 
     const enriched = builders.map((b) => ({
       ...b,
-      propertyCount: countMap[b._id.toString()] || 0,
+      projectCount: countMap[b._id.toString()] || 0,
     }));
 
     return res.status(200).json({
@@ -91,15 +92,15 @@ export const getBuilder = async (req, res) => {
       return res.status(404).json({ success: false, message: "Builder not found." });
     }
 
-    // Fetch their properties
-    const properties = await Property.find({ builder: builder._id })
-      .select("title address.city price priceUnit isApproved groupBuyEnabled images createdAt")
+    // Fetch their projects (not legacy properties)
+    const projects = await Project.find({ builder: builder._id, isActive: true })
+      .select("basics.name basics.status basics.category location.city overview.totalUnits media.exteriorImages priceRange createdAt")
       .sort({ createdAt: -1 })
       .lean();
 
     return res.status(200).json({
       success: true,
-      data: { ...builder, properties },
+      data: { ...builder, projects },
     });
   } catch (err) {
     console.error("[Builder] getBuilder error:", err);
@@ -114,6 +115,8 @@ export const createBuilder = async (req, res) => {
       name, company, phone, alternatePhone,
       email, reraNumber, gstNumber,
       address, notes,
+      description, yearEstablished, totalProjectsDelivered,
+      totalSqFtDelivered, websiteUrl, operatingCities, awards,
     } = req.body;
 
     if (!name?.trim()) {
@@ -148,6 +151,13 @@ export const createBuilder = async (req, res) => {
       });
     }
 
+    // Parse JSON strings from FormData for arrays/objects
+    const parseJSON = (val, fallback) => {
+      if (!val) return fallback;
+      if (typeof val !== "string") return val;
+      try { return JSON.parse(val); } catch { return fallback; }
+    };
+
     const builder = await Builder.create({
       name: name.trim(),
       company: company?.trim(),
@@ -158,6 +168,13 @@ export const createBuilder = async (req, res) => {
       gstNumber: gstNumber?.trim(),
       address: typeof address === "string" ? (() => { try { return JSON.parse(address); } catch { return address; } })() : address,
       notes: notes?.trim(),
+      description: description?.trim(),
+      yearEstablished: yearEstablished || undefined,
+      totalProjectsDelivered: totalProjectsDelivered || undefined,
+      totalSqFtDelivered: totalSqFtDelivered?.trim?.() || totalSqFtDelivered,
+      websiteUrl: websiteUrl?.trim(),
+      operatingCities: parseJSON(operatingCities, []),
+      awards: parseJSON(awards, []),
       addedBy: req.admin?._id,
       ...(logoUrl && { logoUrl }),
     });
@@ -187,13 +204,15 @@ export const updateBuilder = async (req, res) => {
     const allowed = [
       "name", "company", "phone", "alternatePhone",
       "email", "reraNumber", "gstNumber", "address", "notes", "isActive",
+      "description", "yearEstablished", "totalProjectsDelivered",
+      "totalSqFtDelivered", "operatingCities", "awards", "websiteUrl",
     ];
 
     allowed.forEach((key) => {
       if (req.body[key] !== undefined) {
         let val = req.body[key];
-        // Parse JSON strings (from FormData) for nested objects
-        if (key === "address" && typeof val === "string") {
+        // Parse JSON strings (from FormData) for nested objects/arrays
+        if (["address", "operatingCities", "awards"].includes(key) && typeof val === "string") {
           try { val = JSON.parse(val); } catch { /* keep as-is */ }
         }
         builder[key] = val;

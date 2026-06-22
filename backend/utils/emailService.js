@@ -9,6 +9,17 @@ import nodemailer from "nodemailer";
  * - NO fallback defaults for security-sensitive values
  */
 
+// H7 FIX: Escape user-supplied values before interpolating into HTML templates
+const escapeHtml = (str) => {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+};
+
 // Create SMTP transporter
 const createTransporter = () => {
   // SECURITY: No hardcoded fallbacks for sensitive values
@@ -29,10 +40,11 @@ const createTransporter = () => {
     },
   };
 
-  // Add TLS options for better compatibility
+  // H8 FIX: Enable TLS verification by default to prevent MITM attacks.
+  // Only disable via explicit SMTP_ALLOW_SELF_SIGNED=true for dev environments.
   if (!smtpConfig.secure) {
     smtpConfig.tls = {
-      rejectUnauthorized: false // Allow self-signed certificates
+      rejectUnauthorized: process.env.SMTP_ALLOW_SELF_SIGNED !== 'true'
     };
   }
 
@@ -79,7 +91,7 @@ const emailTemplates = {
           </div>
           
           <div class="content">
-            <p>Hi <strong>${ownerName}</strong>,</p>
+            <p>Hi <strong>${escapeHtml(ownerName)}</strong>,</p>
             <p>Great news! A potential ${propertyData.listingType === 'Rent' ? 'tenant' : 'buyer'} has expressed interest in your property.</p>
             
             <div class="property-card">
@@ -93,9 +105,9 @@ const emailTemplates = {
             
             <div class="lead-card">
               <div class="lead-title">👤 Lead Details</div>
-              <div class="lead-info"><strong>Name:</strong> ${leadData.name}</div>
-              <div class="lead-info"><strong>Email:</strong> <a href="mailto:${leadData.email}">${leadData.email}</a></div>
-              ${leadData.phone ? `<div class="lead-info"><strong>Phone:</strong> <a href="tel:${leadData.phone}">${leadData.phone}</a></div>` : ''}
+              <div class="lead-info"><strong>Name:</strong> ${escapeHtml(leadData.name)}</div>
+              <div class="lead-info"><strong>Email:</strong> <a href="mailto:${encodeURIComponent(leadData.email)}">${escapeHtml(leadData.email)}</a></div>
+              ${leadData.phone ? `<div class="lead-info"><strong>Phone:</strong> <a href="tel:${escapeHtml(leadData.phone)}">${escapeHtml(leadData.phone)}</a></div>` : ''}
               <div class="lead-info"><strong>Interested on:</strong> ${new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
             </div>
             
@@ -163,7 +175,7 @@ const emailTemplates = {
           </div>
           
           <div class="content">
-            <p>Hi <strong>${userName}</strong>,</p>
+            <p>Hi <strong>${escapeHtml(userName)}</strong>,</p>
             <div class="message-box">
               <p>${message}</p>
             </div>
@@ -337,10 +349,10 @@ const emailTemplates = {
             </div>
             <div class="card">
               <div class="card-title">👤 Client Details</div>
-              <div class="row"><span class="label">Name</span><span class="value">${booking.clientName}</span></div>
-              <div class="row"><span class="label">Phone</span><span class="value"><a href="tel:${booking.clientPhone}">${booking.clientPhone}</a></span></div>
-              ${booking.clientEmail ? `<div class="row"><span class="label">Email</span><span class="value"><a href="mailto:${booking.clientEmail}">${booking.clientEmail}</a></span></div>` : ''}
-              ${booking.notes ? `<div class="row"><span class="label">Notes</span><span class="value">${booking.notes}</span></div>` : ''}
+              <div class="row"><span class="label">Name</span><span class="value">${escapeHtml(booking.clientName)}</span></div>
+              <div class="row"><span class="label">Phone</span><span class="value"><a href="tel:${escapeHtml(booking.clientPhone)}">${escapeHtml(booking.clientPhone)}</a></span></div>
+              ${booking.clientEmail ? `<div class="row"><span class="label">Email</span><span class="value"><a href="mailto:${encodeURIComponent(booking.clientEmail)}">${escapeHtml(booking.clientEmail)}</a></span></div>` : ''}
+              ${booking.notes ? `<div class="row"><span class="label">Notes</span><span class="value">${escapeHtml(booking.notes)}</span></div>` : ''}
             </div>
             <div class="card">
               <div class="card-title">🧩 Payment Proof</div>

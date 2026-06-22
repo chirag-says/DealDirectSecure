@@ -3,25 +3,36 @@ import Message from "../models/Message.js";
 import Property from "../models/Property.js";
 import User from "../models/userModel.js";
 
+// H4 FIX: Basic HTML entity escaping to prevent stored XSS
+const escapeHtml = (str) => {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+};
+
 // Start or get existing conversation
 export const startConversation = async (req, res) => {
   try {
-    let { propertyId, ownerId } = req.body;
+    // H5 FIX: ownerId is NEVER accepted from the client.
+    // Always derived from the property's actual owner to prevent IDOR/spam.
+    const { propertyId } = req.body;
     // Use _id as the primary, fallback to id for special cases like agent/owner
     const buyerId = req.user._id || req.user.id;
 
-    console.log("Start conversation request:", { propertyId, ownerId, buyerId });
+    console.log("Start conversation request:", { propertyId, buyerId });
 
-    // Validate property exists and get owner if not provided
+    // Validate property exists and get owner
     const property = await Property.findById(propertyId).populate("owner", "_id name email");
     if (!property) {
       return res.status(404).json({ success: false, message: "Property not found" });
     }
 
-    // If ownerId is not provided, try to get it from the property
-    if (!ownerId) {
-      ownerId = property.owner?._id?.toString() || property.owner?.toString();
-    }
+    // Always derive ownerId from the property — never trust client input
+    const ownerId = property.owner?._id?.toString() || property.owner?.toString();
 
     // Validate ownerId exists
     if (!ownerId) {
@@ -194,11 +205,17 @@ export const sendMessage = async (req, res) => {
       return res.status(403).json({ success: false, message: "Not authorized" });
     }
 
+    // H4 FIX: Sanitize and limit message text to prevent stored XSS
+    const sanitizedText = escapeHtml(text?.substring(0, 5000));
+    if (!sanitizedText || sanitizedText.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "Message text is required" });
+    }
+
     // Create message
     const message = new Message({
       conversation: conversationId,
       sender: senderId,
-      text,
+      text: sanitizedText,
       messageType,
       readBy: [{ user: senderId, readAt: new Date() }],
     });

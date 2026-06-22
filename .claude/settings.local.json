@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(npx vite:*)",
-      "Bash(find /c/Users/jitin/Desktop/Desk/Projects/DealDirectSecure -type d -name builder*)"
-    ]
-  }
-}

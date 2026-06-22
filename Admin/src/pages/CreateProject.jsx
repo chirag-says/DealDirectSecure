@@ -1,8 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { builderApi, projectApi } from "../api/adminApi";
 import LocationPicker from "../components/LocationPicker";
+import Wizard from "../components/wizard/Wizard";
+import { inp, lbl } from "../components/wizard/FormField";
+import ConfirmModal from "../components/wizard/ConfirmModal";
+import { useFormDraft } from "../components/wizard/useFormDraft";
+import { validateProjectStep } from "../schemas/projectSchema";
 
 const STEPS = [
   { id: 1, label: "Basics" },
@@ -12,7 +17,7 @@ const STEPS = [
   { id: 5, label: "Amenities" },
   { id: 6, label: "Media" },
   { id: 7, label: "Docs & Legal" },
-  { id: 8, label: "Payment & Banking" },
+  { id: 8, label: "Payment & Sales" },
   { id: 9, label: "Review" },
 ];
 
@@ -55,6 +60,14 @@ export default function CreateProject() {
   const [builder, setBuilder] = useState(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmClearDraft, setConfirmClearDraft] = useState(false);
+
+  // Per-step errors
+  const [errors, setErrors] = useState({});
+
+  // Draft persistence via the shared hook
+  const DRAFT_KEY = `createProjectDraft_${builderId}`;
+  const { draftExists, saveDraft, loadDraft, clearDraft } = useFormDraft(DRAFT_KEY);
 
   const [form, setForm] = useState({
     name: "", description: "", category: "Residential", subType: "Apartment",
@@ -66,10 +79,11 @@ export default function CreateProject() {
     totalLandArea: "", totalTowers: "", floorsPerTower: "", totalUnits: "",
     openSpacePercentage: "", amenities: [], paymentPlans: [], bookingAmount: "",
     gstPercentage: "", stampDutyPercentage: "", registrationCharges: "",
-    bankApprovals: [], managerName: "", salesPhone: "", salesWhatsapp: "", salesEmail: "",
+    managerName: "", salesPhone: "", salesWhatsapp: "", salesEmail: "",
     landTitleType: "Freehold", titleClear: true, litigationStatus: "None",
     encumbrances: "", litigationDetails: "", walkthroughVideoUrl: "",
   });
+
 
   const [files, setFiles] = useState({
     exteriorImages: [], droneImages: [], masterPlan: [], locationMap: [],
@@ -80,159 +94,23 @@ export default function CreateProject() {
 
   const [highlightInput, setHighlightInput] = useState("");
   const [nearbyInput, setNearbyInput] = useState({ category: "Education", name: "", distance: "" });
-  const [bankInput, setBankInput] = useState({ bankName: "", loanType: "Home Loan" });
 
-  // ── Per-step validation ──
-  // Returns an object like { fieldName: "error message" } — empty object = step is valid.
-  const [errors, setErrors] = useState({});
-  const stepContainerRef = useRef(null);
 
-  // Helper: a field is "filled" if it has a non-empty value (or ≥1 for arrays)
-  const isFilled = (val) => {
-    if (val === null || val === undefined) return false;
-    if (typeof val === "string") return val.trim() !== "";
-    if (typeof val === "number") return Number.isFinite(val);
-    if (Array.isArray(val)) return val.length > 0;
-    return true;
-  };
+  // Per-step validation — now backed by Zod schemas from projectSchema.js
+  const validateStep = (s) => validateProjectStep(s, form, files);
 
-  // Pure validators per step. Keep messages short and actionable.
-  const validateStep = (s) => {
-    const e = {};
-    if (s === 1) {
-      if (!isFilled(form.name)) e.name = "Project name is required";
-      if (!isFilled(form.category)) e.category = "Category is required";
-    } else if (s === 2) {
-      if (!isFilled(form.state)) e.state = "State is required";
-      if (!isFilled(form.city)) e.city = "City is required";
-      if (!isFilled(form.locality)) e.locality = "Locality is required";
-      if (!isFilled(form.pincode)) e.pincode = "Pincode is required";
-      if (!isFilled(form.lat) || !isFilled(form.lng)) e.coords = "Please pick a location on the map";
-      else {
-        const lat = parseFloat(form.lat);
-        const lng = parseFloat(form.lng);
-        if (!Number.isFinite(lat) || lat < -90 || lat > 90) e.coords = "Latitude must be between -90 and 90";
-        else if (!Number.isFinite(lng) || lng < -180 || lng > 180) e.coords = "Longitude must be between -180 and 180";
-      }
-    } else if (s === 3) {
-      // Step 3 is optional (nearby places are nice-to-have). No required fields.
-    } else if (s === 4) {
-      if (!isFilled(form.launchDate)) e.launchDate = "Launch date is required";
-      if (!isFilled(form.possessionDate)) e.possessionDate = "Possession date is required";
-      if (isFilled(form.launchDate) && isFilled(form.possessionDate)) {
-        if (new Date(form.possessionDate) < new Date(form.launchDate)) {
-          e.possessionDate = "Possession date must be on or after the launch date";
-        }
-      }
-      if (!isFilled(form.totalLandArea)) e.totalLandArea = "Total land area is required";
-      if (!isFilled(form.totalTowers)) e.totalTowers = "Number of towers is required";
-    } else if (s === 5) {
-      if (form.amenities.length === 0) e.amenities = "Select at least one amenity";
-    } else if (s === 6) {
-      if (!files.exteriorImages || files.exteriorImages.length === 0) {
-        e.exteriorImages = "At least one exterior image is required";
-      }
-    } else if (s === 7) {
-      if (!files.reraCertificateUrl || files.reraCertificateUrl.length === 0) {
-        e.reraCertificateUrl = "RERA certificate is required";
-      }
-      if (!form.titleClear) e.titleClear = "Title must be clear to publish";
-    } else if (s === 8) {
-      if (!isFilled(form.bookingAmount)) e.bookingAmount = "Booking amount is required";
-      else if (parseFloat(form.bookingAmount) < 0) e.bookingAmount = "Booking amount cannot be negative";
-      if (!isFilled(form.salesPhone)) e.salesPhone = "Sales phone is required";
-      else if (!/^[+\d\s()-]{7,20}$/.test(String(form.salesPhone).trim())) {
-        e.salesPhone = "Enter a valid phone number";
-      }
-      if (!isFilled(form.salesEmail)) e.salesEmail = "Sales email is required";
-      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.salesEmail).trim())) {
-        e.salesEmail = "Enter a valid email address";
-      }
-    }
-    return e;
-  };
 
-  // Try to advance. If invalid, surface errors + scroll to the first invalid field.
-  const goNext = () => {
-    const e = validateStep(step);
-    setErrors(e);
-    if (Object.keys(e).length > 0) {
-      const firstField = Object.keys(e)[0];
-      const label = e[firstField];
-      toast.error(label);
-      // Scroll the step container back into view, then try to focus the first invalid input.
-      if (stepContainerRef.current) {
-        stepContainerRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-      // Give the DOM a tick to paint the error borders, then focus
-      setTimeout(() => {
-        const el = stepContainerRef.current?.querySelector(`[data-field="${firstField}"]`);
-        if (el) {
-          if (typeof el.focus === "function") el.focus();
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-      }, 50);
-      return;
-    }
-    setErrors({});
-    setStep(s => Math.min(9, s + 1));
-  };
-
-  // ── localStorage persistence ──
-  const DRAFT_KEY = `createProjectDraft_${builderId}`;
-
-  // Deep clone form and files for storage (files are intentionally excluded)
-  const serializeState = () => {
-    const { files: _, ...formOnly } = form;
-    return {
-      form: formOnly,
-      step,
-      timestamp: Date.now(),
-    };
-  };
-
-  // Saved draft checker
-  const [draftExists, setDraftExists] = useState(false);
-
-  // Auto-save on form change — but avoid initial sync
-  const saveTimeoutRef = useRef(null);
+  // ── localStorage persistence — now via useFormDraft hook ──────────────────
   useEffect(() => {
-    if (builderId) {
-      clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = setTimeout(() => {
-        localStorage.setItem(DRAFT_KEY, JSON.stringify(serializeState()));
-        setDraftExists(true);
-      }, 1000);
-    }
-    return () => clearTimeout(saveTimeoutRef.current);
+    if (builderId) saveDraft(form, step);
   }, [form, step, builderId]);
 
-  // Load saved draft on mount
   useEffect(() => {
     if (!builderId) return;
-    const saved = localStorage.getItem(DRAFT_KEY);
-    if (saved) {
-      try {
-        const draft = JSON.parse(saved);
-        // Only use if recent (<24h) and same builder
-        if (draft.step && Date.now() - draft.timestamp < 86400000) {
-          setForm(draft.form);
-          setStep(draft.step);
-          setDraftExists(true);
-        }
-      } catch (e) {
-        // Invalid JSON, skip it
-      }
-    }
+    const saved = loadDraft();
+    if (saved) { setForm(saved.form); setStep(saved.step); }
   }, [builderId]);
 
-  // Clear draft
-  const clearDraft = () => {
-    if (builderId) {
-      localStorage.removeItem(DRAFT_KEY);
-      setDraftExists(false);
-    }
-  };
 
   useEffect(() => {
     if (!builderId) { toast.error("No builder selected."); navigate("/builder-management"); return; }
@@ -263,17 +141,26 @@ export default function CreateProject() {
     else set("amenities", [...form.amenities, { category, name }]);
   };
 
+  const [customAmenity, setCustomAmenity] = useState({ category: "Lifestyle", name: "" });
+  const addCustomAmenity = () => {
+    const name = customAmenity.name.trim();
+    if (!name) return;
+    // Prevent duplicates (case-insensitive)
+    if (form.amenities.some(a => a.category === customAmenity.category && a.name.toLowerCase() === name.toLowerCase())) {
+      toast.info("This amenity is already added.");
+      return;
+    }
+    set("amenities", [...form.amenities, { category: customAmenity.category, name }]);
+    setCustomAmenity(p => ({ ...p, name: "" }));
+  };
+
   const addNearby = () => {
     if (!nearbyInput.name.trim()) return;
     set("nearbyPlaces", [...form.nearbyPlaces, { ...nearbyInput }]);
     setNearbyInput({ category: "Education", name: "", distance: "" });
   };
 
-  const addBank = () => {
-    if (!bankInput.bankName.trim()) return;
-    set("bankApprovals", [...form.bankApprovals, { ...bankInput }]);
-    setBankInput({ bankName: "", loanType: "Home Loan" });
-  };
+
 
   const handleFiles = (field, e) => {
     const selectedFiles = Array.from(e.target.files || []);
@@ -349,9 +236,6 @@ export default function CreateProject() {
     }
   };
 
-  const inp = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500";
-  const lbl = "block text-sm font-medium text-gray-700 mb-1";
-
   const renderStep = () => {
     switch (step) {
       case 1: return (
@@ -406,7 +290,7 @@ export default function CreateProject() {
                 value={form.subType}
                 onChange={e => set("subType", e.target.value)}
               >
-                {["Apartment","Villa Community","Plotted Development","Commercial Office","Retail","Mall","Business Park"].map(s => <option key={s}>{s}</option>)}
+                {["Apartment","Villa Community","Plotted Development","Integrated Township","Commercial Office","Retail","Mall","Business Park"].map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
             <div>
@@ -528,7 +412,7 @@ export default function CreateProject() {
       case 5: return (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-gray-800">Amenities</h2>
-          <p className="text-xs text-gray-500">Select at least one amenity to continue *</p>
+          <p className="text-xs text-gray-500">Select from presets or add custom amenities. At least one required *</p>
           {Object.entries(AMENITY_PRESETS).map(([cat, items]) => (
             <div key={cat}>
               <h3 className="font-medium text-gray-700 mb-2">{cat}</h3>
@@ -540,7 +424,6 @@ export default function CreateProject() {
                       key={item}
                       onClick={() => {
                         toggleAmenity(cat, item);
-                        // Clear the amenities error as soon as one is selected
                         if (errors.amenities && form.amenities.length === 0) {
                           const { amenities: _, ...rest } = errors;
                           setErrors(rest);
@@ -555,6 +438,46 @@ export default function CreateProject() {
               </div>
             </div>
           ))}
+
+          {/* ── Custom Amenity Input ── */}
+          <div className="border-t border-gray-200 pt-4">
+            <h3 className="font-medium text-gray-700 mb-2">Add Custom Amenity</h3>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className={lbl}>Category</label>
+                <select className={inp} value={customAmenity.category} onChange={e => setCustomAmenity(p => ({ ...p, category: e.target.value }))}>
+                  {["Lifestyle","Fitness","Recreation","Safety","Utilities"].map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className={lbl}>Amenity Name</label>
+                <div className="flex gap-2">
+                  <input className={inp} value={customAmenity.name} onChange={e => setCustomAmenity(p => ({ ...p, name: e.target.value }))}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addCustomAmenity(); } }}
+                    placeholder="e.g. Rooftop Lifestyle Zone, Basketball Court..." />
+                  <button type="button" onClick={addCustomAmenity} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm whitespace-nowrap">Add</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Show all selected amenities (including custom) ── */}
+          {form.amenities.length > 0 && (
+            <div className="border-t border-gray-200 pt-3">
+              <p className="text-xs text-gray-500 mb-2">{form.amenities.length} amenities selected</p>
+              <div className="flex flex-wrap gap-2">
+                {form.amenities.map((a, i) => {
+                  const isPreset = Object.entries(AMENITY_PRESETS).some(([cat, items]) => cat === a.category && items.includes(a.name));
+                  return (
+                    <span key={i} className={`px-3 py-1 rounded-full text-xs flex items-center gap-1 border ${isPreset ? "bg-blue-100 text-blue-700 border-blue-200" : "bg-emerald-100 text-emerald-700 border-emerald-200"}`}>
+                      <span className="text-[10px] text-gray-400">{a.category}:</span> {a.name}
+                      {!isPreset && <button type="button" onClick={() => set("amenities", form.amenities.filter((_, j) => j !== i))} className="ml-1 text-emerald-400 hover:text-red-500">×</button>}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {errors.amenities && <p className="text-xs text-red-500">{errors.amenities}</p>}
         </div>
       );
@@ -700,6 +623,18 @@ export default function CreateProject() {
             <label htmlFor="titleClear" className="text-sm text-gray-700">Title Clear *</label>
           </div>
           {errors.titleClear && <p className="text-xs text-red-500">{errors.titleClear}</p>}
+          <div>
+            <label className={lbl}>Encumbrances</label>
+            <input className={inp} value={form.encumbrances} onChange={e => set("encumbrances", e.target.value)}
+              placeholder="e.g. Mortgage with SBI (to be cleared before registration)" />
+          </div>
+          {form.litigationStatus !== "None" && (
+            <div>
+              <label className={lbl}>Litigation Details</label>
+              <textarea className={inp} rows={2} value={form.litigationDetails} onChange={e => set("litigationDetails", e.target.value)}
+                placeholder="Describe the pending/resolved litigation..." />
+            </div>
+          )}
         </div>
       );
       case 8: return (
@@ -726,26 +661,7 @@ export default function CreateProject() {
               </div>
             ))}
           </div>
-          <h3 className="font-medium text-gray-700 pt-2">Bank Approvals</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={lbl}>Bank Name</label>
-              <input className={inp} value={bankInput.bankName} onChange={e => setBankInput(p => ({ ...p, bankName: e.target.value }))} placeholder="e.g. SBI" />
-            </div>
-            <div>
-              <label className={lbl}>Loan Type</label>
-              <input className={inp} value={bankInput.loanType} onChange={e => setBankInput(p => ({ ...p, loanType: e.target.value }))} />
-            </div>
-          </div>
-          <button onClick={addBank} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Add Bank</button>
-          <div className="flex flex-wrap gap-2 mt-1">
-            {form.bankApprovals.map((b, i) => (
-              <span key={i} className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs flex items-center gap-1">
-                {b.bankName} — {b.loanType}
-                <button onClick={() => set("bankApprovals", form.bankApprovals.filter((_, j) => j !== i))} className="ml-1 text-green-400 hover:text-red-500">×</button>
-              </span>
-            ))}
-          </div>
+
           <h3 className="font-medium text-gray-700 pt-2">Sales Contact</h3>
           <div className="grid grid-cols-2 gap-4">
             {[
@@ -780,7 +696,7 @@ export default function CreateProject() {
               <div><span className="text-gray-500">RERA:</span><p className="font-medium">{form.reraNumber || "Not provided"}</p></div>
               <div><span className="text-gray-500">Amenities:</span><p className="font-medium">{form.amenities.length} selected</p></div>
               <div><span className="text-gray-500">Nearby Places:</span><p className="font-medium">{form.nearbyPlaces.length} added</p></div>
-              <div><span className="text-gray-500">Bank Approvals:</span><p className="font-medium">{form.bankApprovals.length} banks</p></div>
+
             </div>
             <div>
               <span className="text-gray-500">Highlights:</span>
@@ -800,88 +716,82 @@ export default function CreateProject() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto py-6 px-4">
-      <div className="mb-6">
-        <button onClick={() => navigate("/builder-management")} className="text-sm text-blue-600 hover:underline mb-2">← Back to Builders</button>
+    <div>
+      {/* Header */}
+      <div className="max-w-3xl mx-auto pt-6 px-4">
+        <button type="button" onClick={() => navigate("/builder-management")}
+          className="text-sm text-blue-600 hover:underline mb-2">
+          ← Back to Builders
+        </button>
         <h1 className="text-2xl font-bold text-gray-900">Create New Project</h1>
         {builder && <p className="text-gray-500 text-sm mt-1">for {builder.company || builder.name}</p>}
       </div>
 
-      {/* Draft saved banner */}
-      {draftExists && (
-        <div className="mb-4 flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-sm">
-          <div className="flex items-center gap-2 text-emerald-700">
-            <span>✓</span>
-            <span>Your progress is auto-saved in this browser.</span>
-          </div>
-          <button
-            onClick={() => {
-              if (window.confirm("Clear saved draft? This will reset the form to empty.")) {
-                localStorage.removeItem(DRAFT_KEY);
-                setDraftExists(false);
-                setForm({
-                  name: "", description: "", category: "Residential", subType: "Apartment",
-                  status: "New Launch", ownershipType: "Freehold", isVastuCompliant: false,
-                  highlights: [], reraNumber: "", country: "India", state: "", city: "",
-                  locality: "", microMarket: "", addressLine: "", landmark: "", pincode: "",
-                  lat: "", lng: "", distanceToMetro: "", distanceToAirport: "", distanceToRailway: "",
-                  distanceToBusStop: "", nearbyPlaces: [], launchDate: "", possessionDate: "",
-                  totalLandArea: "", totalTowers: "", floorsPerTower: "", totalUnits: "",
-                  openSpacePercentage: "", amenities: [], paymentPlans: [], bookingAmount: "",
-                  gstPercentage: "", stampDutyPercentage: "", registrationCharges: "",
-                  bankApprovals: [], managerName: "", salesPhone: "", salesWhatsapp: "", salesEmail: "",
-                  landTitleType: "Freehold", titleClear: true, litigationStatus: "None",
-                  encumbrances: "", litigationDetails: "", walkthroughVideoUrl: "",
-                });
-                setFiles({
-                  exteriorImages: [], droneImages: [], masterPlan: [], locationMap: [],
-                  constructionProgressImages: [], brochureUrl: [], reraCertificateUrl: [],
-                  commencementCertificateUrl: [], occupancyCertificateUrl: [],
-                  environmentalClearanceUrl: [], approvalDocumentUrls: [],
-                });
-                setStep(1);
-                setErrors({});
-                toast.success("Draft cleared.");
-              }
-            }}
-            className="text-xs px-3 py-1 border border-emerald-300 text-emerald-700 rounded hover:bg-emerald-100 whitespace-nowrap"
-          >
-            Clear draft
-          </button>
-        </div>
-      )}
-
-      {/* Step indicator */}
-      <div className="flex items-center mb-8 overflow-x-auto pb-2">
-        {STEPS.map((s, i) => (
-          <React.Fragment key={s.id}>
-            <button onClick={() => setStep(s.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${step === s.id ? "bg-blue-600 text-white" : step > s.id ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-              {step > s.id ? "✓" : s.id}. {s.label}
+      <Wizard
+        steps={STEPS}
+        currentStep={step}
+        onStepChange={setStep}
+        validateStep={validateStep}
+        onSetErrors={setErrors}
+        onSubmit={handleSubmit}
+        submitting={submitting}
+        submitLabel="Create Project"
+        draftBanner={draftExists && (
+          <div className="flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-sm">
+            <div className="flex items-center gap-2 text-emerald-700">
+              <span>✓</span>
+              <span>Your progress is auto-saved in this browser.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setConfirmClearDraft(true)}
+              className="text-xs px-3 py-1 border border-emerald-300 text-emerald-700 rounded hover:bg-emerald-100 whitespace-nowrap"
+            >
+              Clear draft
             </button>
-            {i < STEPS.length - 1 && <div className={`flex-1 h-0.5 mx-1 min-w-[8px] ${step > s.id ? "bg-green-400" : "bg-gray-200"}`} />}
-          </React.Fragment>
-        ))}
-      </div>
-
-      {/* Step content */}
-      <div ref={stepContainerRef} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+          </div>
+        )}
+      >
         {renderStep()}
-      </div>
+      </Wizard>
 
-      {/* Navigation */}
-      <div className="flex justify-between mt-6">
-        <button onClick={() => setStep(s => Math.max(1, s - 1))} disabled={step === 1}
-          className="px-5 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40">
-          ← Previous
-        </button>
-        {step < 9 ? (
-          <button onClick={goNext}
-            className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
-            Next →
-          </button>
-        ) : null}
-      </div>
+      {confirmClearDraft && (
+        <ConfirmModal
+          title="Clear saved draft?"
+          message="This will reset the entire form to empty. This cannot be undone."
+          confirmLabel="Clear Draft"
+          cancelLabel="Keep Draft"
+          variant="warn"
+          onConfirm={() => {
+            clearDraft();
+            setForm({
+              name: "", description: "", category: "Residential", subType: "Apartment",
+              status: "New Launch", ownershipType: "Freehold", isVastuCompliant: false,
+              highlights: [], reraNumber: "", country: "India", state: "", city: "",
+              locality: "", microMarket: "", addressLine: "", landmark: "", pincode: "",
+              lat: "", lng: "", distanceToMetro: "", distanceToAirport: "", distanceToRailway: "",
+              distanceToBusStop: "", nearbyPlaces: [], launchDate: "", possessionDate: "",
+              totalLandArea: "", totalTowers: "", floorsPerTower: "", totalUnits: "",
+              openSpacePercentage: "", amenities: [], paymentPlans: [], bookingAmount: "",
+              gstPercentage: "", stampDutyPercentage: "", registrationCharges: "",
+              managerName: "", salesPhone: "", salesWhatsapp: "", salesEmail: "",
+              landTitleType: "Freehold", titleClear: true, litigationStatus: "None",
+              encumbrances: "", litigationDetails: "", walkthroughVideoUrl: "",
+            });
+            setFiles({
+              exteriorImages: [], droneImages: [], masterPlan: [], locationMap: [],
+              constructionProgressImages: [], brochureUrl: [], reraCertificateUrl: [],
+              commencementCertificateUrl: [], occupancyCertificateUrl: [],
+              environmentalClearanceUrl: [], approvalDocumentUrls: [],
+            });
+            setStep(1);
+            setErrors({});
+            toast.success("Draft cleared.");
+            setConfirmClearDraft(false);
+          }}
+          onCancel={() => setConfirmClearDraft(false)}
+        />
+      )}
     </div>
   );
 }

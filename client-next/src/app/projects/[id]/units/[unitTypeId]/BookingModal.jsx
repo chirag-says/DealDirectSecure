@@ -1,12 +1,8 @@
 'use client';
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, CheckCircle, Upload, Loader2 } from 'lucide-react';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api';
-
-// DealDirect UPI QR — replace QR_URL with the actual hosted QR image URL
-const QR_URL = process.env.NEXT_PUBLIC_DEALDIRECT_QR_URL || '/dealdirect-upi-qr.png';
-const UPI_ID = process.env.NEXT_PUBLIC_DEALDIRECT_UPI_ID || 'dealdirect@upi';
 
 const STEPS = ['details', 'payment', 'proof', 'done'];
 
@@ -17,11 +13,28 @@ export default function BookingModal({ unitType: ut, project: p, tokenAmount, on
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
 
+  // Payment config — fetched securely from backend (never in client bundle)
+  const [qrUrl, setQrUrl] = useState('');
+  const [upiId, setUpiId] = useState('');
+
+  useEffect(() => {
+    fetch(`${API}/bookings/payment-config`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          setQrUrl(d.data.qrUrl);
+          setUpiId(d.data.upiId);
+        }
+      })
+      .catch(() => {}); // Silently fail — payment step will show fallback
+  }, []);
+
   // Form state
   const [form, setForm] = useState({ name: '', phone: '', email: '', notes: '' });
   const [utr, setUtr] = useState('');
   const [screenshot, setScreenshot] = useState(null);
   const fileRef = useRef(null);
+
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -141,11 +154,11 @@ export default function BookingModal({ unitType: ut, project: p, tokenAmount, on
               <p className="text-sm text-slate-600">Scan the QR code below and pay the token amount to secure your booking.</p>
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 inline-block">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={QR_URL} alt="DealDirect UPI QR" className="w-48 h-48 object-contain mx-auto"
+                <img src={qrUrl} alt="DealDirect UPI QR" className="w-48 h-48 object-contain mx-auto"
                   onError={e => { e.target.style.display='none'; }} />
                 <div className="mt-3 bg-indigo-50 rounded-xl px-4 py-2">
                   <p className="text-xs text-slate-500">UPI ID</p>
-                  <p className="font-bold text-indigo-700 text-sm">{UPI_ID}</p>
+                  <p className="font-bold text-indigo-700 text-sm">{upiId}</p>
                 </div>
               </div>
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-left">

@@ -39,11 +39,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       name: "All Owners",
       icon: <BarChart3 className="h-5 w-5" />,
     },
-    {
-      path: "/owners-projects",
-      name: "Owner's Project",
-      icon: <BarChart3 className="h-5 w-5" />,
-    },
+
     {
       path: "/all-properties",
       name: "All Properties",

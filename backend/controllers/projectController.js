@@ -218,13 +218,32 @@ export const createProject = async (req, res) => {
 // ── Get Single Project ────────────────────────────────────────────────────────
 export const getProject = async (req, res) => {
   try {
-    const project = await Project.findById(req.params.id)
-      .populate("builder", "name company phone email logoUrl description")
-      .populate("createdBy", "name email")
-      .lean();
+    const isAdmin = req.isAdminViewer === true;
+
+    let query = Project.findById(req.params.id)
+      .populate("builder", "name company phone email logoUrl description yearEstablished totalProjectsDelivered");
+
+    // Only expose the creating admin (name/email) to other admins — never publicly.
+    if (isAdmin) query = query.populate("createdBy", "name email");
+
+    const project = await query.lean();
 
     if (!project) {
       return res.status(404).json({ success: false, message: "Project not found." });
+    }
+
+    // Inactive/deactivated projects are not publicly viewable.
+    if (!isAdmin && project.isActive === false) {
+      return res.status(404).json({ success: false, message: "Project not found." });
+    }
+
+    // Strip internal-only fields from the public response.
+    if (!isAdmin) {
+      delete project.createdBy;
+      if (project.legal) {
+        delete project.legal.litigationDetails;
+        delete project.legal.encumbrances;
+      }
     }
 
     return res.status(200).json({ success: true, data: project });
@@ -240,7 +259,12 @@ export const listProjects = async (req, res) => {
     const { search = "", city, category, status, isActive, page = 1, limit = 20 } = req.query;
 
     const filter = {};
-    if (isActive !== undefined) filter.isActive = isActive === "true";
+    // Public callers may only ever see active projects, regardless of query param.
+    if (req.isAdminViewer === true) {
+      if (isActive !== undefined) filter.isActive = isActive === "true";
+    } else {
+      filter.isActive = true;
+    }
     if (city) filter["location.city"] = { $regex: city, $options: "i" };
     if (category) filter["basics.category"] = category;
     if (status) filter["basics.status"] = status;
@@ -278,7 +302,11 @@ export const listProjects = async (req, res) => {
 // ── List Projects by Builder ──────────────────────────────────────────────────
 export const listProjectsByBuilder = async (req, res) => {
   try {
-    const projects = await Project.find({ builder: req.params.builderId })
+    const filter = { builder: req.params.builderId };
+    // Public callers only see active projects; admins see all.
+    if (req.isAdminViewer !== true) filter.isActive = true;
+
+    const projects = await Project.find(filter)
       .sort({ createdAt: -1 })
       .populate("builder", "name company logoUrl")
       .lean();

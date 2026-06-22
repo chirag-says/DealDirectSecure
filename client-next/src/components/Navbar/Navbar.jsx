@@ -26,6 +26,11 @@ const HiOutlineDocumentText = (props) => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
   </svg>
 );
+const CalendarCheck = (props) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={props.size || "1em"} height={props.size || "1em"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={props.className}>
+    <path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>
+  </svg>
+);
 import logo from "../../assets/dealdirect_logo.png";
 
 const EmailVerificationModal = dynamic(
@@ -807,7 +812,7 @@ function Navbar() {
                         <span className="font-medium">Saved Properties</span>
                       </Link>
                       <Link href="/my-bookings" onClick={() => setIsUserDropdownOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-gray-700 hover:bg-gray-50 transition-colors">
-                        <BsBuilding className="w-5 h-5 text-gray-500" />
+                        <CalendarCheck className="w-5 h-5 text-gray-500" />
                         <span className="font-medium">My Bookings</span>
                       </Link>
                       <Link href="/agreements" onClick={() => setIsUserDropdownOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-gray-700 hover:bg-gray-50 transition-colors">
@@ -948,7 +953,7 @@ function Navbar() {
                     Saved Properties
                   </Link>
                   <Link href="/my-bookings" onClick={toggleMenu} className="flex items-center gap-3 px-4 py-3 text-slate-700 font-medium rounded-xl hover:bg-red-50 hover:text-red-600 transition">
-                    <BsBuilding size={18} />
+                    <CalendarCheck size={18} />
                     My Bookings
                   </Link>
                 </>
@@ -1114,7 +1119,7 @@ function Navbar() {
                       <AiOutlineHeart size={14} /> Saved
                     </Link>
                     <Link href="/my-bookings" onClick={toggleMenu} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 transition">
-                      <BsBuilding size={14} /> Bookings
+                      <CalendarCheck size={14} /> Bookings
                     </Link>
                   </div>
 

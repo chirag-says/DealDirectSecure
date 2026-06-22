@@ -2,12 +2,11 @@
  * Booking Controller — DealDirect Projects
  * Handles the full QR-based token payment booking lifecycle.
  *
- * Public:
- *   POST /api/bookings              — create enquiry
- *   POST /api/bookings/:id/payment  — submit UTR + screenshot
- *
- * User:
+ * User (login required):
+ *   POST /api/bookings              — create enquiry (auto-linked to req.user)
+ *   POST /api/bookings/:id/payment  — submit UTR + screenshot (owner only)
  *   GET  /api/bookings/my           — list my bookings
+ *   GET  /api/bookings/payment-config — QR/UPI details
  *
  * Admin:
  *   GET  /api/bookings              — list all bookings (with filters)
@@ -57,7 +56,7 @@ export const createBooking = async (req, res) => {
       project: projectId,
       unitType: unitTypeId,
       builder: unitType.builder,
-      user: req.user?._id || null,
+      user: req.user._id,
       clientName: clientName.trim(),
       clientPhone: clientPhone.trim(),
       clientEmail: clientEmail?.trim() || undefined,
@@ -96,6 +95,13 @@ export const submitPayment = async (req, res) => {
 
     const booking = await ProjectBooking.findById(id);
     if (!booking) return res.status(404).json({ success: false, message: "Booking not found." });
+
+    // C3 FIX: Ownership check — if user is authenticated and booking has a user, they must match
+    if (req.user && booking.user && booking.user.toString() !== req.user._id.toString()) {
+      console.warn(`⚠️ IDOR attempt: User ${req.user._id} tried to submit payment for booking owned by ${booking.user}`);
+      return res.status(403).json({ success: false, message: "You are not authorized to submit payment for this booking." });
+    }
+
     if (booking.status !== "enquiry") {
       return res.status(400).json({ success: false, message: `Booking is already in '${booking.status}' state.` });
     }
@@ -219,13 +225,51 @@ export const verifyPayment = async (req, res) => {
       booking.reviewedAt = new Date();
       await booking.save();
 
-      // 2. Decrement inventory atomically — prevent race conditions with $inc
-      await UnitType.findByIdAndUpdate(booking.unitType._id, {
-        $inc: {
-          "inventory.availableUnits": -1,
-          "inventory.bookedUnits": 1,
+      // 2. Decrement inventory atomically — C6 FIX: prevent negative inventory
+      //    Uses $gte:1 filter so only one concurrent approval can succeed for the last unit
+      const inventoryResult = await UnitType.findOneAndUpdate(
+        {
+          _id: booking.unitType._id,
+          "inventory.availableUnits": { $gte: 1 },
         },
-      });
+        {
+          $inc: {
+            "inventory.availableUnits": -1,
+            "inventory.bookedUnits": 1,
+          },
+        },
+        { new: true }
+      );
+
+      if (!inventoryResult) {
+        // Race condition: inventory exhausted between approval check and here
+        // Revert booking to cancelled state
+        booking.status = "cancelled";
+        booking.adminNotes = (adminNotes || "") + " [Auto-cancelled: unit no longer available]";
+        booking.statusHistory.push({
+          status: "cancelled",
+          changedBy: "admin",
+          note: "Auto-cancelled: no inventory available (race condition)",
+        });
+        await booking.save();
+
+        // Notify client if possible
+        if (booking.clientEmail) {
+          const projectName = booking.project?.basics?.name || "the project";
+          sendGeneralNotification(
+            booking.clientEmail,
+            booking.clientName,
+            "Booking Could Not Be Confirmed",
+            `We're sorry, but the unit you selected at <strong>${projectName}</strong> is no longer available. All units of this type have been booked. Our team will contact you about alternative options.`,
+            null, null
+          ).catch(() => {});
+        }
+
+        return res.status(409).json({
+          success: false,
+          message: "No units available. This unit type is fully booked.",
+        });
+      }
 
       // 3. Notify client — fire and forget
       if (booking.clientEmail) {
@@ -312,5 +356,29 @@ export const updateBookingStatus = async (req, res) => {
   } catch (err) {
     console.error("[Booking] updateBookingStatus error:", err);
     return res.status(500).json({ success: false, message: "Failed to update booking status." });
+  }
+};
+
+// ── GET /api/bookings/payment-config ──────────────────────────────────────────
+// Returns QR URL + UPI ID from server env. Auth-gated so QR is never in client code.
+export const getPaymentConfig = async (req, res) => {
+  try {
+    const qrUrl = process.env.DEALDIRECT_PAYMENT_QR_URL;
+    const upiId = process.env.DEALDIRECT_UPI_ID || "dealdirect@upi";
+
+    if (!qrUrl) {
+      return res.status(503).json({
+        success: false,
+        message: "Payment configuration not available. Please contact support.",
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: { qrUrl, upiId },
+    });
+  } catch (err) {
+    console.error("[Booking] getPaymentConfig error:", err);
+    return res.status(500).json({ success: false, message: "Server error." });
   }
 };

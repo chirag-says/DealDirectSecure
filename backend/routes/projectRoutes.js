@@ -16,7 +16,7 @@ import {
   addConstructionUpdate,
   deleteProject,
 } from "../controllers/projectController.js";
-import { protectAdmin } from "../middleware/authAdmin.js";
+import { protectAdmin, attachAdminIfPresent } from "../middleware/authAdmin.js";
 import { memoryUpload, memoryUploadWithDocs, uploadConcurrencyGuard } from "../middleware/upload.js";
 
 const router = express.Router();
@@ -67,9 +67,11 @@ const organizeProjectFiles = (req, res, next) => {
 };
 
 // ── Public routes ─────────────────────────────────────────────────────────────
-router.get("/builder/:builderId", listProjectsByBuilder); // MUST be before /:id
-router.get("/", listProjects);
-router.get("/:id", getProject);
+// attachAdminIfPresent: anonymous callers see only active projects + public fields;
+// a logged-in admin (e.g. Admin panel) still sees inactive records & internal fields.
+router.get("/builder/:builderId", attachAdminIfPresent, listProjectsByBuilder); // MUST be before /:id
+router.get("/", attachAdminIfPresent, listProjects);
+router.get("/:id", attachAdminIfPresent, getProject);
 
 // ── Admin routes ──────────────────────────────────────────────────────────────
 router.post(

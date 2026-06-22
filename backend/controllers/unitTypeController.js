@@ -18,6 +18,27 @@ const uploadToCloudinary = (buffer, folder, resourceType = "image") =>
     Readable.from(buffer).pipe(stream);
   });
 
+// ── Helper: Recalculate price range on parent project ─────────────────────────
+const recalcPriceRange = async (projectId) => {
+  try {
+    const result = await UnitType.aggregate([
+      { $match: { project: projectId, isActive: true, "pricing.effectivePrice": { $gt: 0 } } },
+      { $group: {
+        _id: null,
+        min: { $min: "$pricing.effectivePrice" },
+        max: { $max: "$pricing.effectivePrice" },
+      }},
+    ]);
+    const range = result[0] || { min: 0, max: 0 };
+    await Project.findByIdAndUpdate(projectId, {
+      "priceRange.min": range.min || 0,
+      "priceRange.max": range.max || 0,
+    });
+  } catch (err) {
+    console.error("[recalcPriceRange] Non-blocking error:", err.message);
+  }
+};
+
 // ── Create UnitType ───────────────────────────────────────────────────────────
 export const createUnitType = async (req, res) => {
   try {
@@ -92,6 +113,9 @@ export const createUnitType = async (req, res) => {
     // Increment parent project's unit type count
     await Project.findByIdAndUpdate(body.projectId, { $inc: { unitTypeCount: 1 } });
 
+    // Recalculate denormalized price range on parent project
+    await recalcPriceRange(project._id);
+
     return res.status(201).json({
       success: true,
       message: "Unit type created successfully.",
@@ -119,6 +143,11 @@ export const getUnitType = async (req, res) => {
       return res.status(404).json({ success: false, message: "Unit type not found." });
     }
 
+    // Inactive unit types are not publicly viewable.
+    if (req.isAdminViewer !== true && unitType.isActive === false) {
+      return res.status(404).json({ success: false, message: "Unit type not found." });
+    }
+
     return res.status(200).json({ success: true, data: unitType });
   } catch (error) {
     console.error("[unitTypeController.getUnitType]", error);
@@ -130,8 +159,13 @@ export const getUnitType = async (req, res) => {
 export const listByProject = async (req, res) => {
   try {
     const filter = { project: req.params.projectId };
-    if (req.query.isActive !== undefined) {
-      filter.isActive = req.query.isActive === "true";
+    // Public callers only see active unit types, regardless of query param.
+    if (req.isAdminViewer === true) {
+      if (req.query.isActive !== undefined) {
+        filter.isActive = req.query.isActive === "true";
+      }
+    } else {
+      filter.isActive = true;
     }
 
     const unitTypes = await UnitType.find(filter).sort({ createdAt: 1 }).lean();
@@ -185,6 +219,9 @@ export const updateUnitType = async (req, res) => {
 
     await unitType.save(); // triggers pre-save auto-calc
 
+    // Recalculate denormalized price range on parent project
+    await recalcPriceRange(unitType.project);
+
     return res.status(200).json({
       success: true,
       message: "Unit type updated.",
@@ -221,6 +258,9 @@ export const deleteUnitType = async (req, res) => {
 
     // Decrement parent project's unit type count
     await Project.findByIdAndUpdate(projectId, { $inc: { unitTypeCount: -1 } });
+
+    // Recalculate denormalized price range on parent project
+    await recalcPriceRange(projectId);
 
     return res.status(200).json({ success: true, message: "Unit type deleted." });
   } catch (error) {
