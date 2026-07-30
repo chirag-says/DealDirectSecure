@@ -14,14 +14,13 @@ const STATUS = {
   payment_submitted: { label: 'Payment Under Review', icon: Clock,       color: 'text-amber-700',    bg: 'bg-amber-50',     border: 'border-amber-200', step: 2 },
   confirmed:         { label: 'Booking Confirmed',    icon: CheckCircle, color: 'text-emerald-700',  bg: 'bg-emerald-50',   border: 'border-emerald-200', step: 3 },
   cancelled:         { label: 'Cancelled',            icon: XCircle,     color: 'text-red-600',      bg: 'bg-red-50',       border: 'border-red-200', step: 0 },
-  completed:         { label: 'Completed',            icon: ShieldCheck, color: 'text-blue-700',     bg: 'bg-blue-50',      border: 'border-blue-200', step: 4 },
+  completed:         { label: 'Completed',            icon: ShieldCheck, color: 'text-blue-700',     bg: 'bg-blue-50',      border: 'border-blue-200', step: 3 },
 };
 
 const STEPS = [
   { label: 'Enquiry',   icon: FileText },
   { label: 'Payment',   icon: IndianRupee },
-  { label: 'Verified',  icon: ShieldCheck },
-  { label: 'Completed', icon: CheckCircle },
+  { label: 'Confirmed', icon: CheckCircle },
 ];
 
 /* ── Progress stepper ── */
@@ -195,12 +194,10 @@ function BookingCard({ booking, onRefresh }) {
             <div>
               <p className="text-sm font-semibold text-emerald-800">Your unit has been allotted</p>
               <p className="text-xs text-emerald-600 mt-0.5">Our sales team will contact you with next steps — agreement signing, payment schedule, etc.</p>
-              {booking.project?.salesContact?.phone && (
-                <a href={`tel:${booking.project.salesContact.phone}`}
+              <a href="tel:6360122696"
                   className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 transition">
-                  <Phone size={12} /> Call Sales Team
+                  <Phone size={12} /> Call DealDirect
                 </a>
-              )}
             </div>
           </div>
         </div>

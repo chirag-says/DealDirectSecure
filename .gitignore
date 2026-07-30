@@ -196,6 +196,7 @@ ehthumbs.db
 .cursor/
 .copilot/
 .antigravityignore
+client-next-standalone/
 
 # ===========================================================
 # 13. SENTRY SOURCE MAPS

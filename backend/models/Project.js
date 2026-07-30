@@ -22,9 +22,10 @@ const projectSchema = new mongoose.Schema(
 
     // ── Project Basics ────────────────────────────────────────────────────────
     basics: {
+      // Admin-authored records: no data field is compulsory. Only the Builder /
+      // Admin references above are enforced — they are set by the server, not typed.
       name: {
         type: String,
-        required: [true, "Project name is required"],
         trim: true,
         maxlength: [200, "Project name cannot exceed 200 characters"],
       },
@@ -35,7 +36,6 @@ const projectSchema = new mongoose.Schema(
       category: {
         type: String,
         enum: ["Residential", "Commercial", "Mixed Use"],
-        required: [true, "Category is required"],
       },
       subType: {
         type: String,
@@ -69,8 +69,8 @@ const projectSchema = new mongoose.Schema(
     // ── Location ──────────────────────────────────────────────────────────────
     location: {
       country: { type: String, trim: true, default: "India" },
-      state: { type: String, required: [true, "State is required"], trim: true },
-      city: { type: String, required: [true, "City is required"], trim: true },
+      state: { type: String, trim: true },
+      city: { type: String, trim: true },
       locality: { type: String, trim: true },
       microMarket: { type: String, trim: true },
       addressLine: { type: String, trim: true },
@@ -141,6 +141,7 @@ const projectSchema = new mongoose.Schema(
       brochureUrl: { type: String, trim: true },
       walkthroughVideoUrl: { type: String, trim: true },
       constructionProgressImages: [{ type: String }],
+      amenityImages: [{ type: String }],           // Feature 5 — amenity photo gallery
     },
 
     // ── Legal Documents ───────────────────────────────────────────────────────

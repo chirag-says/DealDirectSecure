@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname, useSearchParams, useParams } from 'next/navigation';
 import Link from 'next/link';
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   HeartIcon,
   ShareIcon,
@@ -14,6 +14,10 @@ import {
   TagIcon,
   CheckCircleIcon,
   ShieldCheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  XMarkIcon,
+  ArrowsPointingOutIcon,
 
 } from "@heroicons/react/24/outline";
 import { FlagIcon } from "@heroicons/react/24/outline";
@@ -554,6 +558,7 @@ const PropertyDetails = ({ initialProperty }) => {
 
   const [error, setError] = useState(null);
   const [activeImage, setActiveImage] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [reportLoading, setReportLoading] = useState(false);
@@ -746,6 +751,32 @@ const PropertyDetails = ({ initialProperty }) => {
     setTotalPayment(totalPay);
     setTotalInterest(totalPay - principal);
   }, [loanAmount, interestRate, loanTenure, property]);
+
+  // Gallery navigation (wraps around) — shared by hero, arrows and lightbox
+  const showPrev = useCallback(() => {
+    setActiveImage((i) => (imgs.length ? (i - 1 + imgs.length) % imgs.length : 0));
+  }, [imgs.length]);
+
+  const showNext = useCallback(() => {
+    setActiveImage((i) => (imgs.length ? (i + 1) % imgs.length : 0));
+  }, [imgs.length]);
+
+  // Keyboard control + body scroll lock while the fullscreen viewer is open
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setLightboxOpen(false);
+      else if (e.key === "ArrowLeft") showPrev();
+      else if (e.key === "ArrowRight") showNext();
+    };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [lightboxOpen, showPrev, showNext]);
 
   if (loading)
     return (
@@ -946,7 +977,11 @@ const PropertyDetails = ({ initialProperty }) => {
           <div className="grid lg:grid-cols-3 gap-0">
             {/* Media */}
             <div className="lg:col-span-2 relative">
-              <div className="relative h-[380px] sm:h-[480px] lg:h-[520px] bg-slate-100">
+              <div
+                className="group relative h-[380px] sm:h-[480px] lg:h-[520px] bg-slate-100 cursor-zoom-in"
+                onClick={() => imgs.length > 0 && setLightboxOpen(true)}
+                title="Click to view fullscreen"
+              >
                 <img
                   src={
                     imgs[activeImage] ||
@@ -960,13 +995,57 @@ const PropertyDetails = ({ initialProperty }) => {
                     e.target.src = FALLBACK_IMAGE;
                   }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-900/20 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-900/20 to-transparent pointer-events-none" />
+
+                {/* Prev / next arrows */}
+                {imgs.length > 1 && (
+                  <>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        showPrev();
+                      }}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white text-slate-800 rounded-full shadow-lg backdrop-blur-sm transition hover:scale-105 active:scale-95 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                      aria-label="Previous image"
+                    >
+                      <ChevronLeftIcon className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        showNext();
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white text-slate-800 rounded-full shadow-lg backdrop-blur-sm transition hover:scale-105 active:scale-95 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                      aria-label="Next image"
+                    >
+                      <ChevronRightIcon className="w-5 h-5" />
+                    </button>
+                  </>
+                )}
+
+                {/* Fullscreen affordance */}
+                {imgs.length > 0 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLightboxOpen(true);
+                    }}
+                    className="absolute bottom-4 right-4 bg-white/85 hover:bg-white text-slate-800 rounded-full shadow-lg backdrop-blur-sm transition hover:scale-105 active:scale-95 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                    aria-label="View fullscreen"
+                    title="View fullscreen"
+                  >
+                    <ArrowsPointingOutIcon className="w-5 h-5" />
+                  </button>
+                )}
 
                 {/* Top-right actions */}
                 {/* Top-right actions — larger touch targets for mobile */}
                 <div className="absolute top-4 right-4 flex gap-2 sm:gap-3">
                   <button
-                    onClick={() => setShowReportModal(true)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowReportModal(true);
+                    }}
                     className="bg-white/90 backdrop-blur-sm px-3 py-2.5 sm:p-3 rounded-full shadow-lg hover:scale-105 active:scale-95 transition flex items-center gap-1.5 min-w-[44px] min-h-[44px] justify-center"
                     title="Report this property"
                     aria-label="Report this property"
@@ -975,7 +1054,8 @@ const PropertyDetails = ({ initialProperty }) => {
                     <span className="text-xs font-semibold text-red-600 sm:hidden">Report</span>
                   </button>
                   <button
-                    onClick={async () => {
+                    onClick={async (e) => {
+                      e.stopPropagation();
                       const shareData = {
                         title: property.title,
                         text: `Check out this property: ${property.title} — ₹${formattedPrice}`,
@@ -1424,11 +1504,116 @@ const PropertyDetails = ({ initialProperty }) => {
         </div>
       </div>
 
+      {/* Fullscreen image viewer */}
+      {lightboxOpen && imgs.length > 0 && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-center justify-center"
+          onClick={() => setLightboxOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Property image viewer"
+        >
+          {/* Close */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setLightboxOpen(false);
+            }}
+            className="absolute top-4 right-4 z-10 bg-white/10 hover:bg-white/20 text-white rounded-full p-3 transition min-w-[44px] min-h-[44px] flex items-center justify-center"
+            aria-label="Close fullscreen"
+          >
+            <XMarkIcon className="w-6 h-6" />
+          </button>
+
+          {/* Counter + category */}
+          <div className="absolute top-5 left-4 z-10 flex items-center gap-2">
+            <span className="bg-white/10 text-white text-xs px-3 py-1.5 rounded-full tracking-wide">
+              {activeImage + 1} / {imgs.length}
+            </span>
+            {currentImageCategory && (
+              <span className="bg-[#0f4fb5] text-white text-xs px-3 py-1.5 rounded-full font-semibold">
+                {currentImageCategory}
+              </span>
+            )}
+          </div>
+
+          {/* Prev */}
+          {imgs.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                showPrev();
+              }}
+              className="absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 z-10 bg-white/10 hover:bg-white/20 text-white rounded-full p-3 transition min-w-[48px] min-h-[48px] flex items-center justify-center"
+              aria-label="Previous image"
+            >
+              <ChevronLeftIcon className="w-6 h-6" />
+            </button>
+          )}
+
+          {/* Image */}
+          <img
+            src={imgs[activeImage] || FALLBACK_IMAGE}
+            alt={property.title}
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[85vh] max-w-[92vw] object-contain select-none rounded-lg shadow-2xl"
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = FALLBACK_IMAGE;
+            }}
+          />
+
+          {/* Next */}
+          {imgs.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                showNext();
+              }}
+              className="absolute right-3 sm:right-6 top-1/2 -translate-y-1/2 z-10 bg-white/10 hover:bg-white/20 text-white rounded-full p-3 transition min-w-[48px] min-h-[48px] flex items-center justify-center"
+              aria-label="Next image"
+            >
+              <ChevronRightIcon className="w-6 h-6" />
+            </button>
+          )}
+
+          {/* Thumbnail strip */}
+          {imgs.length > 1 && (
+            <div
+              className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex gap-2 px-4 max-w-full overflow-x-auto scrollbar-hide"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {imgs.map((img, i) => (
+                <button
+                  key={i}
+                  onClick={() => setActiveImage(i)}
+                  className={`h-14 w-20 flex-shrink-0 rounded-lg overflow-hidden border-2 transition ${i === activeImage
+                    ? "border-white"
+                    : "border-transparent opacity-60 hover:opacity-100"
+                    }`}
+                  aria-label={`View image ${i + 1}`}
+                >
+                  <img
+                    src={img}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = FALLBACK_IMAGE;
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Property Hunt Game Modal */}
       {rewardData && (
-        <RewardRevealRouter 
-          reward={rewardData} 
-          onClose={() => setRewardData(null)} 
+        <RewardRevealRouter
+          reward={rewardData}
+          onClose={() => setRewardData(null)}
         />
       )}
     </div>

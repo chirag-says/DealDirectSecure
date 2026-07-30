@@ -264,8 +264,8 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
                 </div>
             </section>
 
-            {/* 🏗 Builder Projects Section */}
-            {builderProjects.length > 0 && (
+            {/* Builder Projects Section — only shown when 5+ projects are listed */}
+            {builderProjects.length >= 5 && (
                 <section className="relative py-10 bg-gradient-to-b from-indigo-50/60 to-white">
                     <div className="max-w-7xl mx-auto px-6">
                         <div className="flex flex-col sm:justify-between sm:flex-row justify-center items-center sm:items-end mb-3">

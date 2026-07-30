@@ -19,6 +19,14 @@ async function getUnitTypes(projectId) {
     return res?.data || [];
 }
 
+async function getCampaigns(projectId) {
+    if (!projectId) return [];
+    try {
+        const res = await ssrFetch(`/api/campaigns/project/${projectId}?status=active`, { revalidate: 60 });
+        return res?.data || [];
+    } catch { return []; }
+}
+
 // ── SEO Metadata ──────────────────────────────────────────────────────────────
 export async function generateMetadata(props) {
     const params = await props.params;
@@ -55,9 +63,10 @@ export default async function ProjectDetailPage(props) {
     const params = await props.params;
     const id = params?.id;
 
-    const [project, unitTypes] = await Promise.all([
+    const [project, unitTypes, campaigns] = await Promise.all([
         getProject(id),
         getUnitTypes(id),
+        getCampaigns(id),
     ]);
 
     if (!project) notFound();
@@ -70,7 +79,7 @@ export default async function ProjectDetailPage(props) {
                 { name: project.basics?.name || 'Project', href: `/projects/${id}` },
             ]} />
             <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-slate-500">Loading project...</div>}>
-                <ProjectDetailContent project={project} unitTypes={unitTypes} />
+                <ProjectDetailContent project={project} unitTypes={unitTypes} campaigns={campaigns} />
             </Suspense>
         </>
     );

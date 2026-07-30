@@ -9,13 +9,31 @@ import { cloudinary } from "../middleware/upload.js";
 import { Readable } from "stream";
 
 // ── Helper ────────────────────────────────────────────────────────────────────
+/**
+ * Upload a single buffer to Cloudinary under a unit-type-scoped folder.
+ * Hardened identically to projectController.uploadToCloudinary:
+ *  - timeout: 120s so Cloudinary fires the callback on hung uploads
+ *  - chunk_size: 6 MB chunks to avoid single-shot timeout on large images
+ *  - source .on('error', reject): routes stream errors into the Promise chain
+ */
 const uploadToCloudinary = (buffer, folder, resourceType = "image") =>
   new Promise((resolve, reject) => {
+    const opts = {
+      folder: `dealdirect/unit-types/${folder}`,
+      resource_type: resourceType,
+      timeout: 120_000,
+      chunk_size: 6_000_000,
+    };
+    if (resourceType === "image") {
+      opts.transformation = [
+        { width: 1400, height: 900, crop: "limit", quality: "auto", fetch_format: "auto" },
+      ];
+    }
     const stream = cloudinary.uploader.upload_stream(
-      { folder: `dealdirect/unit-types/${folder}`, resource_type: resourceType },
+      opts,
       (err, result) => (err ? reject(err) : resolve(result.secure_url))
     );
-    Readable.from(buffer).pipe(stream);
+    Readable.from(buffer).on("error", reject).pipe(stream);
   });
 
 // ── Helper: Recalculate price range on parent project ─────────────────────────
@@ -51,42 +69,64 @@ export const createUnitType = async (req, res) => {
       return res.status(404).json({ success: false, message: "Project not found." });
     }
 
-    // Upload floor plans
+    // Upload floor plans + interior photos in parallel
     const folder = `${project.builder}/${project._id}`;
-    const [twoDUrl, threeDUrl] = await Promise.all([
+    const photoRooms = JSON.parse(body.unitPhotoRooms || "[]"); // parallel array of room tags
+
+    const [twoDUrl, threeDUrl, ...uploadedPhotos] = await Promise.all([
       files.twoDFloorPlan?.[0]
         ? uploadToCloudinary(files.twoDFloorPlan[0].buffer, folder)
         : Promise.resolve(""),
       files.threeDFloorPlan?.[0]
         ? uploadToCloudinary(files.threeDFloorPlan[0].buffer, folder)
         : Promise.resolve(""),
+      ...(files.unitPhotos || []).map((f, i) =>
+        uploadToCloudinary(f.buffer, `${folder}/photos`).then(url => ({
+          url,
+          room: photoRooms[i] || "Other",
+          caption: "",
+        }))
+      ),
     ]);
+
+    const photos = uploadedPhotos.filter(Boolean);
 
     const unitType = await UnitType.create({
       project: body.projectId,
       builder: project.builder,
       createdBy: req.admin._id,
       config: {
-        name: body.name,
+        name: body.name || undefined,
         bedrooms: body.bedrooms ? Number(body.bedrooms) : undefined,
         bathrooms: body.bathrooms ? Number(body.bathrooms) : undefined,
         balconies: body.balconies ? Number(body.balconies) : undefined,
         hasUtilityArea: body.hasUtilityArea === "true",
       },
       area: {
-        carpetSqft: body.carpetSqft ? Number(body.carpetSqft) : undefined,
-        builtUpSqft: body.builtUpSqft ? Number(body.builtUpSqft) : undefined,
+        carpetSqft:      body.carpetSqft      ? Number(body.carpetSqft)      : undefined,
+        builtUpSqft:     body.builtUpSqft     ? Number(body.builtUpSqft)     : undefined,
         superBuiltUpSqft: body.superBuiltUpSqft ? Number(body.superBuiltUpSqft) : undefined,
+        // Feature 4 — plot fields
+        plotAreaSqft:    body.plotAreaSqft    ? Number(body.plotAreaSqft)    : undefined,
+        plotDimensions:  body.plotLength && body.plotWidth ? {
+          length: Number(body.plotLength),
+          width:  Number(body.plotWidth),
+        } : undefined,
       },
       facing: body.facing ? JSON.parse(body.facing) : [],
-      furnishing: body.furnishing,
+      // Blank would fail the enum — send undefined so the schema default applies.
+      furnishing: body.furnishing || undefined,
       parking: {
         covered: body.coveredParking ? Number(body.coveredParking) : 0,
         open: body.openParking ? Number(body.openParking) : 0,
         ev: body.evParking ? Number(body.evParking) : 0,
       },
       specifications: body.specifications ? JSON.parse(body.specifications) : {},
-      floorPlans: { twoDUrl, threeDUrl },
+      floorPlans: {
+        twoDUrl,
+        threeDUrl,
+        videoUrl: body.videoTourUrl || "", // Feature 8
+      },
       pricing: {
         basePrice: body.basePrice ? Number(body.basePrice) : undefined,
         additionalCharges: {
@@ -108,6 +148,13 @@ export const createUnitType = async (req, res) => {
         towerAllocation: body.towerAllocation ? JSON.parse(body.towerAllocation) : [],
       },
       highlights: body.highlights ? JSON.parse(body.highlights) : [],
+      photos, // Feature 3 — interior photos (empty array if none uploaded)
+      paymentTerms: {
+        bookingAmount:       body.bookingAmount       ? Number(body.bookingAmount)       : undefined,
+        gstPercentage:       body.gstPercentage       ? Number(body.gstPercentage)       : undefined,
+        stampDutyPercentage: body.stampDutyPercentage ? Number(body.stampDutyPercentage) : undefined,
+        registrationCharges: body.registrationCharges ? Number(body.registrationCharges) : undefined,
+      },
     });
 
     // Increment parent project's unit type count
@@ -214,8 +261,61 @@ export const updateUnitType = async (req, res) => {
       }
     });
 
+    // Payment terms arrive as FLAT fields from the form (not a nested object),
+    // so map them explicitly — mirrors createUnitType.
+    const ptKeys = ["bookingAmount", "gstPercentage", "stampDutyPercentage", "registrationCharges"];
+    if (ptKeys.some((k) => body[k] !== undefined)) {
+      unitType.paymentTerms = {
+        bookingAmount:       body.bookingAmount       ? Number(body.bookingAmount)       : undefined,
+        gstPercentage:       body.gstPercentage       ? Number(body.gstPercentage)       : undefined,
+        stampDutyPercentage: body.stampDutyPercentage ? Number(body.stampDutyPercentage) : undefined,
+        registrationCharges: body.registrationCharges ? Number(body.registrationCharges) : undefined,
+      };
+    }
+
     if (body.facing) unitType.facing = JSON.parse(body.facing);
     if (body.isActive !== undefined) unitType.isActive = body.isActive === "true" || body.isActive === true;
+
+    // Feature 4: explicit flat-field mapping for plot (body sends flat, not a JSON blob)
+    if (body.plotAreaSqft !== undefined) {
+      if (!unitType.area) unitType.area = {};
+      unitType.area.plotAreaSqft = body.plotAreaSqft ? Number(body.plotAreaSqft) : undefined;
+    }
+    if (body.plotLength && body.plotWidth) {
+      if (!unitType.area) unitType.area = {};
+      unitType.area.plotDimensions = { length: Number(body.plotLength), width: Number(body.plotWidth) };
+    }
+
+    // Feature 8: video tour URL
+    if (body.videoTourUrl !== undefined) {
+      unitType.floorPlans = unitType.floorPlans || {};
+      unitType.floorPlans.videoUrl = body.videoTourUrl;
+    }
+
+    // Feature 3: interior photos
+    const photoRooms = JSON.parse(body.unitPhotoRooms || "[]");
+    if (files.unitPhotos?.length) {
+      const folder = `${unitType.project}/photos`;
+      // First remove any URLs the admin explicitly wants deleted
+      if (body.removePhotoUrls) {
+        const toRemove = new Set(JSON.parse(body.removePhotoUrls));
+        unitType.photos = (unitType.photos || []).filter(p => !toRemove.has(p.url));
+      }
+      const newPhotos = await Promise.all(
+        files.unitPhotos.map((f, i) =>
+          uploadToCloudinary(f.buffer, folder).then(url => ({
+            url,
+            room: photoRooms[i] || "Other",
+            caption: "",
+          }))
+        )
+      );
+      unitType.photos = [...(unitType.photos || []), ...newPhotos];
+    } else if (body.removePhotoUrls) {
+      // Allow removal even without new uploads
+      const toRemove = new Set(JSON.parse(body.removePhotoUrls));
+      unitType.photos = (unitType.photos || []).filter(p => !toRemove.has(p.url));
+    }
 
     await unitType.save(); // triggers pre-save auto-calc
 

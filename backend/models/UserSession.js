@@ -302,23 +302,23 @@ userSessionSchema.methods.validateFingerprintLenient = function (req) {
         };
     }
 
-    // 3. IP prefix change (different network) = REVOKE
-    // Rationale: User shouldn't jump between completely different IP ranges
-    // This catches country/ISP changes while allowing DHCP within same network
-    if (storedData.ipPrefix && currentData.ipPrefix &&
-        storedData.ipPrefix !== currentData.ipPrefix) {
-        return {
-            valid: false,
-            refreshed: false,
-            reason: `IP range changed from ${storedData.ipPrefix}.x to ${currentData.ipPrefix}.x`,
-        };
-    }
-
     // ============================================
     // MINOR CHANGES - Allow and optionally refresh
     // ============================================
 
     let needsRefresh = false;
+
+    // 3. IP prefix change (different network) = LOG + REFRESH (not revoke)
+    // Rationale: Users commonly switch networks (mobile→WiFi, ISP rotation).
+    // Revoking sessions on IP change causes excessive logouts, especially
+    // for Indian mobile ISPs (Jio, Airtel, Vi) that rotate IPs frequently.
+    // Security is maintained via OS check, device type check, HttpOnly cookies,
+    // CORS whitelist, and HTTPS-only cookies.
+    if (storedData.ipPrefix && currentData.ipPrefix &&
+        storedData.ipPrefix !== currentData.ipPrefix) {
+        console.warn(`[Auth] IP range changed from ${storedData.ipPrefix}.x to ${currentData.ipPrefix}.x — allowing (OS/device unchanged)`);
+        needsRefresh = true;
+    }
 
     // Browser family change is suspicious but allowed with warning
     if (storedData.browser && currentData.browser !== storedData.browser) {

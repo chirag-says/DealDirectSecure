@@ -4,6 +4,8 @@
  *
  * Admin: create, update, verify payments, list pending payments.
  * User: join campaign, exit campaign, upload payment proof.
+ *
+ * No negotiations. Admin sets everything upfront (discount, perks, min buyers).
  */
 import GroupBuyCampaign from "../models/GroupBuyCampaign.js";
 import CampaignMember from "../models/CampaignMember.js";
@@ -22,7 +24,7 @@ const uploadProof = (buffer, campaignId) =>
     Readable.from(buffer).pipe(stream);
   });
 
-// ── Create Campaign ───────────────────────────────────────────────────────────
+// ── Create Campaign (Admin) ───────────────────────────────────────────────────
 export const createCampaign = async (req, res) => {
   try {
     const body = req.body;
@@ -30,23 +32,6 @@ export const createCampaign = async (req, res) => {
     const unitType = await UnitType.findById(body.unitTypeId).lean();
     if (!unitType) {
       return res.status(404).json({ success: false, message: "Unit type not found." });
-    }
-
-    // Validate inventory allocation doesn't exceed available
-    const unitsReserved = Number(body.unitsReserved);
-    if (unitsReserved > (unitType.inventory?.availableUnits || 0)) {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot reserve ${unitsReserved} units. Only ${unitType.inventory?.availableUnits} available.`,
-      });
-    }
-
-    // Validate pricing
-    if (Number(body.groupBuyPrice) >= Number(body.regularPrice)) {
-      return res.status(400).json({
-        success: false,
-        message: "Group buy price must be less than regular price.",
-      });
     }
 
     const campaign = await GroupBuyCampaign.create({
@@ -60,24 +45,18 @@ export const createCampaign = async (req, res) => {
       },
       buyerTargets: {
         minBuyers: Number(body.minBuyers),
-        maxBuyers: Number(body.maxBuyers),
+        maxBuyers: body.maxBuyers ? Number(body.maxBuyers) : null,
       },
       duration: {
         startDate: body.startDate,
         endDate: body.endDate,
       },
-      pricing: {
-        regularPrice: Number(body.regularPrice),
-        groupBuyPrice: Number(body.groupBuyPrice),
-        // savings auto-calc in pre-save
-      },
-      tokenAmount: Number(body.tokenAmount),
-      inventoryAllocation: { unitsReserved },
-      milestones: body.milestones ? JSON.parse(body.milestones) : [],
+      discountPerBuyer: Number(body.discountPerBuyer),
+      perks: body.perks
+        ? (typeof body.perks === "string" ? body.perks.split(",").map(p => p.trim()).filter(Boolean) : body.perks)
+        : [],
+      adminNotes: body.adminNotes || "",
     });
-
-    // Increment unit type's active campaign count
-    await UnitType.findByIdAndUpdate(body.unitTypeId, { $inc: { activeCampaignCount: 1 } });
 
     return res.status(201).json({
       success: true,
@@ -147,7 +126,7 @@ export const listByProject = async (req, res) => {
   }
 };
 
-// ── Update Campaign ───────────────────────────────────────────────────────────
+// ── Update Campaign (Admin) ───────────────────────────────────────────────────
 export const updateCampaign = async (req, res) => {
   try {
     const campaign = await GroupBuyCampaign.findById(req.params.id);
@@ -155,22 +134,25 @@ export const updateCampaign = async (req, res) => {
       return res.status(404).json({ success: false, message: "Campaign not found." });
     }
 
-    const allowed = ["basics", "buyerTargets", "duration", "pricing", "milestones", "status"];
-    allowed.forEach((key) => {
-      if (req.body[key] !== undefined) {
-        try {
-          campaign[key] = typeof req.body[key] === "string"
-            ? JSON.parse(req.body[key])
-            : req.body[key];
-        } catch { /* leave as-is */ }
-      }
-    });
+    const body = req.body;
 
-    if (req.body.tokenAmount !== undefined) {
-      campaign.tokenAmount = Number(req.body.tokenAmount);
+    // Update allowed fields
+    if (body.name !== undefined) campaign.basics.name = body.name;
+    if (body.description !== undefined) campaign.basics.description = body.description;
+    if (body.minBuyers !== undefined) campaign.buyerTargets.minBuyers = Number(body.minBuyers);
+    if (body.maxBuyers !== undefined) campaign.buyerTargets.maxBuyers = body.maxBuyers ? Number(body.maxBuyers) : null;
+    if (body.startDate !== undefined) campaign.duration.startDate = body.startDate;
+    if (body.endDate !== undefined) campaign.duration.endDate = body.endDate;
+    if (body.discountPerBuyer !== undefined) campaign.discountPerBuyer = Number(body.discountPerBuyer);
+    if (body.status !== undefined) campaign.status = body.status;
+    if (body.adminNotes !== undefined) campaign.adminNotes = body.adminNotes;
+    if (body.perks !== undefined) {
+      campaign.perks = typeof body.perks === "string"
+        ? body.perks.split(",").map(p => p.trim()).filter(Boolean)
+        : body.perks;
     }
 
-    await campaign.save(); // pre-save recalculates savings
+    await campaign.save();
 
     return res.status(200).json({ success: true, message: "Campaign updated.", data: campaign });
   } catch (error) {
@@ -182,26 +164,30 @@ export const updateCampaign = async (req, res) => {
 // ── Join Campaign (User) ──────────────────────────────────────────────────────
 export const joinCampaign = async (req, res) => {
   try {
-    // H11 FIX: Atomic increment with condition to prevent exceeding maxBuyers.
-    // Two concurrent joins both reading memberCount=9 (max=10) would both pass
-    // a simple check. findOneAndUpdate with $lt ensures only one succeeds.
+    // Build atomic update filter
+    const filter = {
+      _id: req.params.id,
+      status: "active",
+      "duration.endDate": { $gt: new Date() },
+    };
+
+    // If maxBuyers is set, enforce it atomically
+    const raw = await GroupBuyCampaign.findById(req.params.id).lean();
+    if (!raw) return res.status(404).json({ success: false, message: "Campaign not found." });
+    if (raw.status !== "active") return res.status(400).json({ success: false, message: "Campaign is not active." });
+    if (new Date() > new Date(raw.duration.endDate)) return res.status(400).json({ success: false, message: "Campaign has ended." });
+
+    if (raw.buyerTargets.maxBuyers) {
+      filter.$expr = { $lt: ["$memberCount", "$buyerTargets.maxBuyers"] };
+    }
+
     const campaign = await GroupBuyCampaign.findOneAndUpdate(
-      {
-        _id: req.params.id,
-        status: "active",
-        $expr: { $lt: ["$memberCount", "$buyerTargets.maxBuyers"] },
-        "duration.endDate": { $gt: new Date() },
-      },
+      filter,
       { $inc: { memberCount: 1 } },
       { new: true }
     ).lean();
 
     if (!campaign) {
-      // Could be: not found, not active, full, or ended — check which
-      const raw = await GroupBuyCampaign.findById(req.params.id).lean();
-      if (!raw) return res.status(404).json({ success: false, message: "Campaign not found." });
-      if (raw.status !== "active") return res.status(400).json({ success: false, message: "Campaign is not active." });
-      if (new Date() > new Date(raw.duration.endDate)) return res.status(400).json({ success: false, message: "Campaign has ended." });
       return res.status(400).json({ success: false, message: "Campaign is full." });
     }
 
@@ -214,7 +200,6 @@ export const joinCampaign = async (req, res) => {
       member = await CampaignMember.create({
         campaign: campaign._id,
         user: req.user._id,
-        tokenAmount: campaign.tokenAmount,
         tokenStatus: "pending",
         userSnapshot: {
           name: user?.name,
@@ -237,8 +222,9 @@ export const joinCampaign = async (req, res) => {
       message: "You have joined the campaign. Please pay the token amount to confirm your spot.",
       data: {
         memberId: member._id,
-        tokenAmount: campaign.tokenAmount,
         campaignName: campaign.basics.name,
+        discountPerBuyer: campaign.discountPerBuyer,
+        perks: campaign.perks,
       },
     });
   } catch (error) {
@@ -299,7 +285,7 @@ export const verifyPayment = async (req, res) => {
       member.paymentReference = req.body.paymentReference;
     }
 
-    await member.save(); // post-save hook syncs paidMemberCount + milestone check
+    await member.save(); // post-save hook syncs paidMemberCount
 
     return res.status(200).json({
       success: true,

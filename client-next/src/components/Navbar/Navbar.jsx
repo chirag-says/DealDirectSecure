@@ -662,7 +662,7 @@ function Navbar() {
                         <ul className="space-y-2">
                           <li><button onClick={handleRegisterProperty} className="text-gray-700 hover:text-red-600 text-sm text-left w-full">Post Property Free</button></li>
                           <li><Link href="/properties" className="text-gray-700 hover:text-red-600 text-sm">Browse Properties</Link></li>
-                          <li><Link href="/projects" className="text-gray-700 hover:text-indigo-600 text-sm font-medium">🏗 Builder Projects</Link></li>
+                          <li><Link href="/projects" className="text-gray-700 hover:text-red-600 text-sm">Builder Projects</Link></li>
                           <li><Link href="/coming-soon" className="text-gray-700 hover:text-red-600 text-sm">On the horizon</Link></li>
                         </ul>
                       </div>
@@ -977,13 +977,21 @@ function Navbar() {
                   <div className="ml-8 mr-2 mb-2 space-y-1 border-l-2 border-red-100 pl-4">
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-1 mb-1">Residential</p>
                     <Link href="/properties?search=Apartment&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Apartment / Flat</Link>
-                    <Link href="/properties?search=Villa&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Villa</Link>
                     <Link href="/properties?search=Independent House&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Independent House</Link>
+                    <Link href="/properties?search=Villa&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Villa</Link>
                     <Link href="/properties?search=Builder Floor&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Builder Floor</Link>
+                    <Link href="/properties?search=Penthouse&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Penthouse</Link>
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-3 mb-1">Commercial</p>
                     <Link href="/properties?search=Office Space&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Office Space</Link>
                     <Link href="/properties?search=Shop&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Shop / Showroom</Link>
-                    <Link href="/properties?search=Warehouse&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Warehouse</Link>
+                    <Link href="/properties?search=Warehouse&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Warehouse / Godown</Link>
+                    <Link href="/properties?search=Industrial&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Industrial Building</Link>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-3 mb-1">By BHK</p>
+                    <Link href="/properties?search=1 BHK&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">1 BHK</Link>
+                    <Link href="/properties?search=2 BHK&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">2 BHK</Link>
+                    <Link href="/properties?search=3 BHK&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">3 BHK</Link>
+                    <Link href="/properties?search=4 BHK&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">4 BHK</Link>
+                    <Link href="/properties?search=5%2B BHK&availableFor=Sell" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">5+ BHK</Link>
                   </div>
                 )}
               </div>
@@ -1006,12 +1014,21 @@ function Navbar() {
                   <div className="ml-8 mr-2 mb-2 space-y-1 border-l-2 border-red-100 pl-4">
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-1 mb-1">Residential</p>
                     <Link href="/properties?search=Apartment&availableFor=Rent" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Apartment / Flat</Link>
+                    <Link href="/properties?search=Independent House&availableFor=Rent" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Independent House</Link>
                     <Link href="/properties?search=Villa&availableFor=Rent" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Villa</Link>
+                    <Link href="/properties?search=Builder Floor&availableFor=Rent" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Builder Floor</Link>
                     <Link href="/properties?search=PG&availableFor=Rent" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">PG / Hostel</Link>
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-3 mb-1">Commercial</p>
                     <Link href="/properties?search=Office Space&availableFor=Rent" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Office Space</Link>
                     <Link href="/properties?search=Shop&availableFor=Rent" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Shop / Showroom</Link>
                     <Link href="/properties?search=Coworking&availableFor=Rent" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Coworking Space</Link>
+                    <Link href="/properties?search=Warehouse&availableFor=Rent" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Warehouse / Godown</Link>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-3 mb-1">By BHK</p>
+                    <Link href="/properties?search=1 RK&availableFor=Rent" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">1 RK</Link>
+                    <Link href="/properties?search=1 BHK&availableFor=Rent" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">1 BHK</Link>
+                    <Link href="/properties?search=2 BHK&availableFor=Rent" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">2 BHK</Link>
+                    <Link href="/properties?search=3 BHK&availableFor=Rent" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">3 BHK</Link>
+                    <Link href="/properties?search=4 BHK&availableFor=Rent" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">4 BHK</Link>
                   </div>
                 )}
               </div>
@@ -1035,6 +1052,7 @@ function Navbar() {
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-1 mb-1">Property Services</p>
                     <button onClick={() => { handleRegisterProperty(); toggleMenu(); }} className="block py-1.5 text-sm text-gray-600 hover:text-red-600 text-left w-full">Post Property Free</button>
                     <Link href="/properties" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Browse Properties</Link>
+                    <Link href="/projects" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">Builder Projects</Link>
                     <Link href="/coming-soon" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">On the Horizon</Link>
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-3 mb-1">Company</p>
                     <Link href="/about" onClick={toggleMenu} className="block py-1.5 text-sm text-gray-600 hover:text-red-600">About Us</Link>

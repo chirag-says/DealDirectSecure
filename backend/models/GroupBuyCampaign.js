@@ -1,7 +1,15 @@
 /**
  * GroupBuyCampaign Model — DealDirect
- * DealDirect's core USP — milestone-based group buying for a specific UnitType.
- * Campaign pricing uses fixed tiers, NOT negotiation (that's GroupBuyProject's domain).
+ * 
+ * DealDirect's core USP — group buying for a specific UnitType within a Project.
+ * Admin creates the campaign with pre-agreed terms from the builder.
+ * No negotiation. Admin sets discount, min buyers, perks — all finalized upfront.
+ *
+ * Flow:
+ *   1. Builder agrees to group discount terms with DealDirect admin
+ *   2. Admin creates campaign on a UnitType (e.g., 2BHK in Project X)
+ *   3. Users see Group Buy banner on the project page, join & pay token
+ *   4. Once min buyers threshold met → all buyers get the flat ₹ discount
  *
  * Token payments are collected by DealDirect admin via UPI/Netbanking.
  * No payment gateway. Admin verifies manually via CampaignMember.
@@ -17,7 +25,7 @@ const groupBuyCampaignSchema = new mongoose.Schema(
       ref: "UnitType",
       required: [true, "UnitType reference is required"],
     },
-    // Denormalized for efficient queries
+    // Denormalized for efficient queries (e.g., show all campaigns for a project)
     project: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Project",
@@ -54,11 +62,11 @@ const groupBuyCampaignSchema = new mongoose.Schema(
       minBuyers: {
         type: Number,
         required: [true, "Minimum buyers is required"],
-        min: [3, "Minimum 3 buyers required for a group buy"],
+        min: [2, "Minimum 2 buyers required for a group buy"],
       },
       maxBuyers: {
         type: Number,
-        required: [true, "Maximum buyers is required"],
+        default: null, // null = unlimited
       },
     },
 
@@ -68,54 +76,23 @@ const groupBuyCampaignSchema = new mongoose.Schema(
       endDate: { type: Date, required: [true, "End date is required"] },
     },
 
-    // ── Pricing ───────────────────────────────────────────────────────────────
-    pricing: {
-      regularPrice: {
-        type: Number,
-        required: [true, "Regular price is required"],
-        min: 0,
-      },
-      groupBuyPrice: {
-        type: Number,
-        required: [true, "Group buy price is required"],
-        min: 0,
-      },
-      savings: { type: Number, min: 0 }, // Auto-calculated
-    },
-
-    // ── Token Amount (collected by DealDirect admin via UPI/Netbanking) ────────
-    tokenAmount: {
+    // ── Discount ──────────────────────────────────────────────────────────────
+    // Flat ₹ discount per buyer (e.g., 10000000 = ₹1 Cr off per buyer)
+    // NOT percentage-based. Builder pre-agrees to this amount.
+    discountPerBuyer: {
       type: Number,
-      required: [true, "Token amount is required"],
-      min: [1, "Token amount must be at least ₹1"],
+      required: [true, "Discount per buyer is required"],
+      min: [1, "Discount must be at least ₹1"],
     },
 
-    // ── Inventory Allocation ──────────────────────────────────────────────────
-    inventoryAllocation: {
-      unitsReserved: {
-        type: Number,
-        required: [true, "Units reserved is required"],
-        min: [1, "At least 1 unit must be reserved"],
-      },
+    // ── Perks ─────────────────────────────────────────────────────────────────
+    // Additional benefits offered by DealDirect or builder
+    // e.g., ["DealDirect covers GST", "Free stamp duty", "Free parking"]
+    perks: {
+      type: [String],
+      default: [],
     },
 
-    // ── Milestone Benefits ────────────────────────────────────────────────────
-    // e.g. "5 buyers joined → Free Modular Kitchen"
-    milestones: [
-      {
-        buyerCount: {
-          type: Number,
-          required: true,
-          min: 1,
-        },
-        benefit: {
-          type: String,
-          required: true,
-          trim: true,
-        },
-        isAchieved: { type: Boolean, default: false },
-      },
-    ],
 
     // ── Status & Counters ─────────────────────────────────────────────────────
     status: {
@@ -125,6 +102,14 @@ const groupBuyCampaignSchema = new mongoose.Schema(
     },
     memberCount: { type: Number, default: 0, min: 0 },
     paidMemberCount: { type: Number, default: 0, min: 0 },
+
+    // ── Admin Notes (internal, not visible to buyers) ─────────────────────────
+    adminNotes: {
+      type: String,
+      trim: true,
+      maxlength: [2000, "Notes cannot exceed 2000 characters"],
+      default: "",
+    },
   },
   {
     timestamps: true,
@@ -133,22 +118,11 @@ const groupBuyCampaignSchema = new mongoose.Schema(
   }
 );
 
-// ── Pre-save: Auto-calculate savings ─────────────────────────────────────────
-groupBuyCampaignSchema.pre("save", function (next) {
-  if (this.pricing?.regularPrice >= 0 && this.pricing?.groupBuyPrice >= 0) {
-    this.pricing.savings = Math.max(
-      0,
-      this.pricing.regularPrice - this.pricing.groupBuyPrice
-    );
-  }
-  next();
-});
-
 // ── Indexes ───────────────────────────────────────────────────────────────────
 groupBuyCampaignSchema.index({ unitType: 1, status: 1 });
-groupBuyCampaignSchema.index({ project: 1 });
+groupBuyCampaignSchema.index({ project: 1, status: 1 }); // All campaigns for a project
 groupBuyCampaignSchema.index({ builder: 1, status: 1 });
-groupBuyCampaignSchema.index({ "duration.endDate": 1 });
+groupBuyCampaignSchema.index({ "duration.endDate": 1 }); // For expiry checks
 groupBuyCampaignSchema.index({ createdAt: -1 });
 
 const GroupBuyCampaign = mongoose.model("GroupBuyCampaign", groupBuyCampaignSchema);

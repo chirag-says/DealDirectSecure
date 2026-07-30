@@ -8,9 +8,8 @@
  * 3. User uploads payment proof screenshot
  * 4. Admin verifies in admin panel → sets tokenStatus: paid
  * 5. Campaign memberCount and paidMemberCount increment
- * 6. Milestone checks run post-verification
  *
- * Separate from GroupBuyMember — no negotiation lifecycle states.
+ * Simple and clean — no negotiation states, no milestones.
  */
 import mongoose from "mongoose";
 import GroupBuyCampaign from "./GroupBuyCampaign.js";
@@ -36,7 +35,7 @@ const campaignMemberSchema = new mongoose.Schema(
     },
 
     // ── Token Payment (DealDirect collects via UPI/Netbanking) ────────────────
-    tokenAmount: { type: Number, min: 0 },
+    // Token amount is pulled from project.financials.bookingAmount
     tokenStatus: {
       type: String,
       enum: ["pending", "paid", "refunded"],
@@ -68,7 +67,7 @@ const campaignMemberSchema = new mongoose.Schema(
   }
 );
 
-// ── Post-save: Sync campaign counters and check milestones ────────────────────
+// ── Post-save: Sync campaign counters ─────────────────────────────────────────
 campaignMemberSchema.post("save", async function (doc) {
   try {
     const campaign = await GroupBuyCampaign.findById(doc.campaign);
@@ -83,15 +82,6 @@ campaignMemberSchema.post("save", async function (doc) {
 
     campaign.memberCount = memberCount;
     campaign.paidMemberCount = paidMemberCount;
-
-    // Check milestones against active member count
-    let milestonesUpdated = false;
-    campaign.milestones.forEach((m) => {
-      if (!m.isAchieved && memberCount >= m.buyerCount) {
-        m.isAchieved = true;
-        milestonesUpdated = true;
-      }
-    });
 
     await campaign.save();
   } catch (err) {

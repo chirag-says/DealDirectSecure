@@ -45,6 +45,7 @@ const ALLOWED_PROJECT_FIELDS = new Set([
   "constructionProgressImages", "brochureUrl", "reraCertificateUrl",
   "commencementCertificateUrl", "occupancyCertificateUrl",
   "environmentalClearanceUrl", "approvalDocumentUrls",
+  "amenityImages", // Feature 5
 ]);
 
 const organizeProjectFiles = (req, res, next) => {

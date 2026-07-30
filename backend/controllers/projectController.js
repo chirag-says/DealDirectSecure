@@ -6,27 +6,37 @@
 import Project from "../models/Project.js";
 import Builder from "../models/Builder.js";
 import UnitType from "../models/UnitType.js";
-import { cloudinary } from "../middleware/upload.js";
+import { cloudinary, isCloudinaryConfigured } from "../middleware/upload.js";
 import { Readable } from "stream";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
  * Upload a single buffer to Cloudinary under a project-scoped folder.
- * Applies same transformations as property pipeline for image optimization.
+ *
+ * Key hardening applied here:
+ *  1. `timeout` — Cloudinary will fire the callback with a TimeoutError instead
+ *     of silently hanging, so the Promise rejects cleanly rather than leaking.
+ *  2. `chunk_size` — breaks large files into 6 MB chunks so each HTTP leg
+ *     completes well within the timeout window.
+ *  3. Source `.on('error', reject)` — ensures stream-level errors (e.g. premature
+ *     close, ECONNRESET) route into the Promise reject chain and never reach the
+ *     global unhandled-rejection handler.
  */
 const uploadToCloudinary = (buffer, folder, resourceType = "image") =>
   new Promise((resolve, reject) => {
     const uploadOptions = {
       folder: `dealdirect/projects/${folder}`,
       resource_type: resourceType,
+      timeout: 120_000,      // 2 min: Cloudinary calls cb with TimeoutError if exceeded
+      chunk_size: 6_000_000, // 6 MB chunks — prevents single-shot timeouts on large images
     };
 
-    // Apply image transformations (same as property upload pipeline)
-    // This also prevents transparent PNGs from appearing blank
+    // Resize & optimise images on the Cloudinary side (reduces round-trip bytes).
+    // Capped at 1400 × 900 — sufficient for web/retina, faster transfer than 2 K+.
     if (resourceType === "image") {
       uploadOptions.transformation = [
-        { width: 1200, height: 800, crop: "limit", quality: "auto", fetch_format: "auto" },
+        { width: 1400, height: 900, crop: "limit", quality: "auto", fetch_format: "auto" },
       ];
     }
 
@@ -34,7 +44,9 @@ const uploadToCloudinary = (buffer, folder, resourceType = "image") =>
       uploadOptions,
       (err, result) => (err ? reject(err) : resolve(result.secure_url))
     );
-    Readable.from(buffer).pipe(stream);
+
+    // Route source stream errors → Promise reject (prevents unhandled-rejection).
+    Readable.from(buffer).on("error", reject).pipe(stream);
   });
 
 /**
@@ -47,6 +59,17 @@ const uploadMany = async (files = [], folder, resourceType = "image") =>
 // ── Create Project ────────────────────────────────────────────────────────────
 export const createProject = async (req, res) => {
   try {
+    // FAIL FAST: reject before any DB / Cloudinary work if storage is not configured.
+    // Mirrors the same guard in validateAndUploadToCloudinary (upload.js:379).
+    if (!isCloudinaryConfigured()) {
+      console.error('[projectController.createProject] Cloudinary not configured — rejecting request');
+      return res.status(503).json({
+        success: false,
+        message: 'Image upload service is not configured. Please contact support.',
+        code: 'STORAGE_NOT_CONFIGURED',
+      });
+    }
+
     const body = req.body;
     const files = req.files || {};
 
@@ -59,52 +82,67 @@ export const createProject = async (req, res) => {
       return res.status(400).json({ success: false, message: "Builder is inactive." });
     }
 
-    // ── Media uploads ──────────────────────────────────────────────────────────
+    // ── Media & Document uploads ───────────────────────────────────────────────
     const projectFolder = `${builder._id}`;
-    const [exteriorImages, droneImages, masterPlan, locationMap, constructionProgressImages] =
-      await Promise.all([
-        uploadMany(files.exteriorImages, `${projectFolder}/exterior`),
-        uploadMany(files.droneImages, `${projectFolder}/drone`),
-        uploadMany(files.masterPlan, `${projectFolder}/masterplan`),
-        uploadMany(files.locationMap, `${projectFolder}/locationmap`),
-        uploadMany(files.constructionProgressImages, `${projectFolder}/progress`),
+    let exteriorImages, droneImages, masterPlan, locationMap, constructionProgressImages,
+        brochureUrl = "",
+        reraCertificateUrl, commencementCertificateUrl, occupancyCertificateUrl,
+        environmentalClearanceUrl, approvalDocumentUrls,
+        amenityImages = [];
+
+    try {
+      [exteriorImages, droneImages, masterPlan, locationMap, constructionProgressImages, amenityImages] =
+        await Promise.all([
+          uploadMany(files.exteriorImages, `${projectFolder}/exterior`),
+          uploadMany(files.droneImages, `${projectFolder}/drone`),
+          uploadMany(files.masterPlan, `${projectFolder}/masterplan`),
+          uploadMany(files.locationMap, `${projectFolder}/locationmap`),
+          uploadMany(files.constructionProgressImages, `${projectFolder}/progress`),
+          uploadMany(files.amenityImages, `${projectFolder}/amenities`), // Feature 5
+        ]);
+
+      if (files.brochureUrl?.[0]) {
+        brochureUrl = await uploadToCloudinary(
+          files.brochureUrl[0].buffer,
+          `${projectFolder}/docs`,
+          "raw"
+        );
+      }
+
+      [
+        reraCertificateUrl,
+        commencementCertificateUrl,
+        occupancyCertificateUrl,
+        environmentalClearanceUrl,
+      ] = await Promise.all([
+        files.reraCertificateUrl?.[0]
+          ? uploadToCloudinary(files.reraCertificateUrl[0].buffer, `${projectFolder}/docs`, "raw")
+          : Promise.resolve(""),
+        files.commencementCertificateUrl?.[0]
+          ? uploadToCloudinary(files.commencementCertificateUrl[0].buffer, `${projectFolder}/docs`, "raw")
+          : Promise.resolve(""),
+        files.occupancyCertificateUrl?.[0]
+          ? uploadToCloudinary(files.occupancyCertificateUrl[0].buffer, `${projectFolder}/docs`, "raw")
+          : Promise.resolve(""),
+        files.environmentalClearanceUrl?.[0]
+          ? uploadToCloudinary(files.environmentalClearanceUrl[0].buffer, `${projectFolder}/docs`, "raw")
+          : Promise.resolve(""),
       ]);
 
-    let brochureUrl = "";
-    if (files.brochureUrl?.[0]) {
-      brochureUrl = await uploadToCloudinary(
-        files.brochureUrl[0].buffer,
+      approvalDocumentUrls = await uploadMany(
+        files.approvalDocumentUrls,
         `${projectFolder}/docs`,
         "raw"
       );
+    } catch (uploadErr) {
+      console.error('[projectController.createProject] Upload failed:', uploadErr.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to upload project media/documents to storage.',
+        code: 'UPLOAD_FAILED',
+        ...(process.env.NODE_ENV !== 'production' && { debugInfo: uploadErr.message }),
+      });
     }
-
-    // ── Document uploads ───────────────────────────────────────────────────────
-    const [
-      reraCertificateUrl,
-      commencementCertificateUrl,
-      occupancyCertificateUrl,
-      environmentalClearanceUrl,
-    ] = await Promise.all([
-      files.reraCertificateUrl?.[0]
-        ? uploadToCloudinary(files.reraCertificateUrl[0].buffer, `${projectFolder}/docs`, "raw")
-        : Promise.resolve(""),
-      files.commencementCertificateUrl?.[0]
-        ? uploadToCloudinary(files.commencementCertificateUrl[0].buffer, `${projectFolder}/docs`, "raw")
-        : Promise.resolve(""),
-      files.occupancyCertificateUrl?.[0]
-        ? uploadToCloudinary(files.occupancyCertificateUrl[0].buffer, `${projectFolder}/docs`, "raw")
-        : Promise.resolve(""),
-      files.environmentalClearanceUrl?.[0]
-        ? uploadToCloudinary(files.environmentalClearanceUrl[0].buffer, `${projectFolder}/docs`, "raw")
-        : Promise.resolve(""),
-    ]);
-
-    const approvalDocumentUrls = await uploadMany(
-      files.approvalDocumentUrls,
-      `${projectFolder}/docs`,
-      "raw"
-    );
 
     // ── Build and save ─────────────────────────────────────────────────────────
     // Helper: safely parse JSON from FormData (which sends everything as strings)
@@ -120,12 +158,14 @@ export const createProject = async (req, res) => {
       builder: body.builderId,
       createdBy: req.admin._id,
       basics: {
-        name: body.name,
+        name: emptyToUndef(body.name),
         description: body.description,
-        category: body.category,
-        subType: body.subType,
-        status: body.status,
-        ownershipType: body.ownershipType,
+        // Enum fields: a blank string would fail enum validation, so send undefined
+        // and let the schema default (or nothing) apply.
+        category: emptyToUndef(body.category),
+        subType: emptyToUndef(body.subType),
+        status: emptyToUndef(body.status),
+        ownershipType: emptyToUndef(body.ownershipType),
         isVastuCompliant: body.isVastuCompliant === "true",
         highlights: safeParse(body.highlights),
         reraNumber: emptyToUndef(body.reraNumber),
@@ -133,8 +173,8 @@ export const createProject = async (req, res) => {
       },
       location: {
         country: body.country || "India",
-        state: body.state,
-        city: body.city,
+        state: emptyToUndef(body.state),
+        city: emptyToUndef(body.city),
         locality: emptyToUndef(body.locality),
         microMarket: emptyToUndef(body.microMarket),
         addressLine: emptyToUndef(body.addressLine),
@@ -169,6 +209,7 @@ export const createProject = async (req, res) => {
         brochureUrl,
         walkthroughVideoUrl: emptyToUndef(body.walkthroughVideoUrl),
         constructionProgressImages,
+        amenityImages, // Feature 5 — already uploaded in try/catch block above
       },
       documents: {
         reraCertificateUrl,
@@ -178,25 +219,23 @@ export const createProject = async (req, res) => {
         approvalDocumentUrls,
       },
       legal: {
-        landTitleType: body.landTitleType,
+        landTitleType: emptyToUndef(body.landTitleType),
         titleClear: body.titleClear !== "false",
         encumbrances: emptyToUndef(body.encumbrances),
         litigationStatus: body.litigationStatus || "None",
         litigationDetails: emptyToUndef(body.litigationDetails),
       },
       paymentPlans: safeParse(body.paymentPlans),
-      financials: {
-        bookingAmount: body.bookingAmount ? Number(body.bookingAmount) : undefined,
-        gstPercentage: body.gstPercentage ? Number(body.gstPercentage) : undefined,
-        stampDutyPercentage: body.stampDutyPercentage ? Number(body.stampDutyPercentage) : undefined,
-        registrationCharges: body.registrationCharges ? Number(body.registrationCharges) : undefined,
-      },
+      // NOTE: financials (bookingAmount, gstPercentage, etc.) are no longer written at the project
+      // level. They have moved to UnitType.paymentTerms so they can vary per unit type.
+      // The field is kept in Project.js schema for back-compat reads of legacy records.
       bankApprovals: safeParse(body.bankApprovals),
+      // DealDirect is always the buyer contact — never the builder.
       salesContact: {
-        managerName: emptyToUndef(body.managerName),
-        phone: emptyToUndef(body.salesPhone),
-        whatsapp: emptyToUndef(body.salesWhatsapp),
-        email: emptyToUndef(body.salesEmail),
+        managerName: "DealDirect Admin",
+        phone: "6360122696",
+        whatsapp: "6360122696",
+        email: "admin@dealdirect.in",
       },
     });
 
@@ -211,7 +250,11 @@ export const createProject = async (req, res) => {
       const messages = Object.values(error.errors).map((e) => e.message);
       return res.status(400).json({ success: false, message: messages.join(", ") });
     }
-    return res.status(500).json({ success: false, message: "Server error creating project." });
+    return res.status(500).json({
+      success: false,
+      message: "Server error creating project.",
+      ...(process.env.NODE_ENV !== 'production' && { debugInfo: error.message }),
+    });
   }
 };
 
@@ -220,8 +263,15 @@ export const getProject = async (req, res) => {
   try {
     const isAdmin = req.isAdminViewer === true;
 
+    // Buyers must never receive the builder's direct phone/email — DealDirect is the
+    // sole point of contact. Contact fields are exposed to admin viewers only; the
+    // public payload carries marketing fields (name/company/logo/track record) only.
+    const builderFields = isAdmin
+      ? "name company phone email logoUrl description yearEstablished totalProjectsDelivered"
+      : "name company logoUrl description yearEstablished totalProjectsDelivered";
+
     let query = Project.findById(req.params.id)
-      .populate("builder", "name company phone email logoUrl description yearEstablished totalProjectsDelivered");
+      .populate("builder", builderFields);
 
     // Only expose the creating admin (name/email) to other admins — never publicly.
     if (isAdmin) query = query.populate("createdBy", "name email");
@@ -357,6 +407,7 @@ export const updateProject = async (req, res) => {
         ["masterPlan", "masterplan"],
         ["locationMap", "locationmap"],
         ["constructionProgressImages", "progress"],
+        ["amenityImages", "amenities"], // Feature 5
       ];
 
       for (const [field, subfolder] of mediaFields) {

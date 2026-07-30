@@ -140,7 +140,6 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import rewardsRoutes from './routes/rewardsRoutes.js';
 import hubbleRoutes from './routes/hubbleRoutes.js';
 import blogRoutes from './routes/blogRoutes.js';
-import groupBuyRoutes from './routes/groupBuyRoutes.js';
 import builderRoutes from './routes/builderRoutes.js';
 import projectRoutes from './routes/projectRoutes.js';
 import unitTypeRoutes from './routes/unitTypeRoutes.js';
@@ -795,7 +794,6 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/rewards", rewardsRoutes);
 app.use("/api/rewards/hubble", hubbleRoutes);
 app.use("/api/blogs", blogRoutes);
-app.use("/api/group-buy", groupBuyRoutes);
 app.use("/api/builders", builderRoutes);
 
 // ── Builder Project Flow ──────────────────────────────────────────────────────

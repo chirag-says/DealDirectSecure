@@ -2,11 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
-import { FaBed, FaBath, FaRulerCombined, FaCompass, FaFilePdf, FaPhone, FaWhatsapp } from 'react-icons/fa';
+import { FaBed, FaBath, FaRulerCombined, FaCompass, FaFilePdf, FaPhoneAlt, FaWhatsapp } from 'react-icons/fa';
 import { Shield, Users, Calendar, CheckCircle, Upload, Loader2, X, AlertTriangle, ChevronRight, Home, Tag, TrendingDown } from 'lucide-react';
 import { bookingApi } from '../../../../../utils/api';
 import { useAuth } from '../../../../../context/AuthContext';
 import { toast } from 'react-toastify';
+import ddAdminPfp from '../../../../../assets/clientadminpfp.png';
 
 const fmt = (n) => !n ? null : n >= 1e7 ? `₹${(n/1e7).toFixed(2)} Cr` : `₹${(n/1e5).toFixed(2)} L`;
 const inp = 'w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition';
@@ -25,7 +26,9 @@ function BookingModal({ ut, project, onClose, user }) {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
-  const token = project?.financials?.bookingAmount || 0;
+  // Booking amount now lives on the unit type (paymentTerms); fall back to the
+  // legacy project-level field for older records that predate the move.
+  const token = ut?.paymentTerms?.bookingAmount ?? project?.financials?.bookingAmount ?? 0;
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
   // Payment config — fetched securely from backend
@@ -124,7 +127,7 @@ function BookingModal({ ut, project, onClose, user }) {
               <p className="text-3xl font-bold">₹{token.toLocaleString('en-IN')}</p>
             </div>
             {bookingId && <p className="text-xs text-gray-500 text-center">Booking ref: <span className="font-mono font-bold text-gray-700">#{bookingId.slice(-8).toUpperCase()}</span></p>}
-            {project?.salesContact?.phone && <p className="text-xs text-gray-500 text-center flex items-center justify-center gap-1.5"><FaPhone size={10}/>For queries: +91 {project.salesContact.phone}</p>}
+            <p className="text-xs text-gray-500 text-center flex items-center justify-center gap-1.5"><FaPhoneAlt size={10}/>For queries: +91 6360122696</p>
             <button onClick={()=>setStep(3)} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition">I've Paid — Upload Proof →</button>
             <button onClick={onClose} className="w-full text-xs text-gray-400 hover:text-gray-600 text-center">Upload later in My Bookings</button>
           </>)}
@@ -153,24 +156,31 @@ function BookingModal({ ut, project, onClose, user }) {
 }
 
 /* ── Campaign Card ── */
-function CampaignCard({ c, onBook }) {
-  const active = c.status==='active';
-  const pct = Math.min(100, Math.round(((c.currentBuyers||0)/(c.maxBuyers||1))*100));
-  const savings = c.regularPrice&&c.groupBuyPrice ? Math.round(((c.regularPrice-c.groupBuyPrice)/c.regularPrice)*100) : 0;
-  const ends = c.endDate ? new Date(c.endDate).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : null;
+function CampaignCard({ c, effectivePrice, onBook }) {
+  const active = c.status === 'active';
+  const joined = c.memberCount || 0;
+  const maxBuyers = c.buyerTargets?.maxBuyers;
+  const minBuyers = c.buyerTargets?.minBuyers;
+  const pct = Math.min(100, Math.round((joined / (maxBuyers || minBuyers || 1)) * 100));
+  const discount = c.discountPerBuyer || 0;
+  const groupBuyPrice = effectivePrice ? effectivePrice - discount : null;
+  const savings = effectivePrice && discount ? Math.round((discount / effectivePrice) * 100) : 0;
+  const ends = c.endDate ? new Date(c.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
   return (
-    <div className={`rounded-xl border p-4 ${active&&pct<100?'border-blue-200 bg-blue-50/40':'border-gray-200 bg-white opacity-60'}`}>
+    <div className={`rounded-xl border p-4 ${active && pct < 100 ? 'border-blue-200 bg-blue-50/40' : 'border-gray-200 bg-white opacity-60'}`}>
       <div className="flex items-start justify-between mb-3">
-        <div><p className="font-semibold text-gray-900 text-sm">{c.name}</p>{ends&&<p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1"><Calendar size={10}/>Ends {ends}</p>}</div>
-        {savings>0 && <span className="text-xs font-bold px-2 py-1 bg-green-100 text-green-700 rounded-full flex items-center gap-1"><TrendingDown size={10}/>{savings}% off</span>}
+        <div><p className="font-semibold text-gray-900 text-sm">{c.name}</p>{ends && <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1"><Calendar size={10}/>Ends {ends}</p>}</div>
+        {savings > 0 && <span className="text-xs font-bold px-2 py-1 bg-green-100 text-green-700 rounded-full flex items-center gap-1"><TrendingDown size={10}/>{savings}% off</span>}
       </div>
       <div className="mb-3">
-        <div className="flex justify-between text-xs text-gray-400 mb-1"><span className="flex items-center gap-1"><Users size={10}/>{c.currentBuyers||0}/{c.maxBuyers} joined</span><span className="font-semibold text-blue-600">{pct}% full</span></div>
+        <div className="flex justify-between text-xs text-gray-400 mb-1"><span className="flex items-center gap-1"><Users size={10}/>{joined}/{maxBuyers || minBuyers} joined</span><span className="font-semibold text-blue-600">{pct}% full</span></div>
         <div className="bg-gray-200 rounded-full h-1.5"><div className="bg-blue-500 h-1.5 rounded-full" style={{width:`${pct}%`}}/></div>
       </div>
       <div className="flex items-center justify-between">
-        <div>{c.groupBuyPrice&&<p className="font-bold text-gray-900">{fmt(c.groupBuyPrice)} <span className="text-xs font-normal text-gray-400 line-through">{fmt(c.regularPrice)}</span></p>}</div>
-        {active&&pct<100&&<button onClick={onBook} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold text-xs hover:bg-blue-700 transition">Join Now</button>}
+        <div>
+          {groupBuyPrice && <p className="font-bold text-gray-900">{fmt(groupBuyPrice)} <span className="text-xs font-normal text-gray-400 line-through">{fmt(effectivePrice)}</span></p>}
+        </div>
+        {active && pct < 100 && <button onClick={onBook} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold text-xs hover:bg-blue-700 transition">Join Now</button>}
       </div>
     </div>
   );
@@ -314,10 +324,38 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
           )}
 
           {/* Campaigns */}
-          {campaigns.length>0 && (
+          {campaigns.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-xl p-5">
               <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Tag size={15} className="text-blue-500"/>Group Buy Campaigns</h2>
-              <div className="space-y-3">{campaigns.map(c=><CampaignCard key={c._id} c={c} onBook={handleBookClick}/>)}</div>
+              <div className="space-y-3">{campaigns.map(c => <CampaignCard key={c._id} c={c} effectivePrice={price} onBook={handleBookClick}/>)}</div>
+            </div>
+          )}
+
+          {/* Interior Photo Gallery — Feature 3 */}
+          {ut.photos?.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <h2 className="font-bold text-gray-900 mb-4">Interior Photos</h2>
+              {/* Group by room */}
+              {Object.entries(
+                ut.photos.reduce((acc, ph) => {
+                  const room = ph.room || 'Other';
+                  if (!acc[room]) acc[room] = [];
+                  acc[room].push(ph);
+                  return acc;
+                }, {})
+              ).map(([room, photos]) => (
+                <div key={room} className="mb-4">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{room}</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {photos.map((ph, i) => (
+                      <div key={i} className="relative rounded-lg overflow-hidden border border-gray-100 bg-gray-50">
+                        <img src={ph.url} alt={ph.caption || room} className="w-full h-28 object-cover" onError={(e) => { e.target.onerror = null; e.target.src = 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800'; }} />
+                        {ph.caption && <p className="text-[10px] text-gray-500 px-2 py-1 truncate">{ph.caption}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -355,6 +393,47 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
                     <div className="flex justify-between font-bold text-gray-900 pt-2 border-t border-gray-100"><span>Total</span><span>{fmt(price)}</span></div>
                   </div>
                 )}
+                {/* All-Inclusive Cost Sheet — Feature 2 */}
+                {(() => {
+                  const pt = ut.paymentTerms;
+                  const base = price || 0;
+                  const gst    = pt?.gstPercentage       ? Math.round(base * pt.gstPercentage / 100)       : 0;
+                  const stamp  = pt?.stampDutyPercentage ? Math.round(base * pt.stampDutyPercentage / 100) : 0;
+                  const reg    = pt?.registrationCharges || 0;
+                  const total  = base + gst + stamp + reg;
+                  const booking = pt?.bookingAmount || 0;
+                  if (!base || (!gst && !stamp && !reg && !booking)) return null;
+                  return (
+                    <div className="border-t border-gray-100 pt-3">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">All-Inclusive Cost</p>
+                      <div className="text-sm space-y-1.5">
+                        <div className="flex justify-between text-gray-500"><span>Base Price</span><span>{fmt(base)}</span></div>
+                        {gst > 0 && <div className="flex justify-between text-gray-500"><span>GST ({pt.gstPercentage}%)</span><span>{fmt(gst)}</span></div>}
+                        {stamp > 0 && <div className="flex justify-between text-gray-500"><span>Stamp Duty ({pt.stampDutyPercentage}%)</span><span>{fmt(stamp)}</span></div>}
+                        {reg > 0 && <div className="flex justify-between text-gray-500"><span>Registration</span><span>{fmt(reg)}</span></div>}
+                        <div className="flex justify-between font-bold text-gray-900 pt-2 border-t border-gray-100"><span>Total (All-in)</span><span>{fmt(total)}</span></div>
+                        {booking > 0 && (
+                          <div className="mt-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 flex justify-between">
+                            <span className="text-blue-700 text-xs font-medium">Pay now to book</span>
+                            <span className="text-blue-800 font-bold text-sm">₹{booking.toLocaleString('en-IN')}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Plot Area — Feature 4 */}
+                {ut.area?.plotAreaSqft > 0 && (
+                  <div className="border-t border-gray-100 pt-3 text-sm space-y-1.5">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Plot Details</p>
+                    <div className="flex justify-between"><span className="text-gray-500">Plot Area</span><span className="font-medium">{ut.area.plotAreaSqft.toLocaleString('en-IN')} sqft</span></div>
+                    {ut.area.plotDimensions?.length > 0 && ut.area.plotDimensions?.width > 0 && (
+                      <div className="flex justify-between"><span className="text-gray-500">Dimensions</span><span className="font-medium">{ut.area.plotDimensions.length} × {ut.area.plotDimensions.width} ft</span></div>
+                    )}
+                  </div>
+                )}
+
                 {/* Inventory */}
                 <div className="text-sm space-y-2">
                   {ut.inventory?.availableUnits!=null && <div className="flex justify-between"><span className="text-gray-500">Available</span><span className="font-bold text-green-600">{ut.inventory.availableUnits} units</span></div>}
@@ -375,19 +454,25 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
               </div>
             </div>
 
-            {/* Builder */}
-            {project?.builder && (
-              <div className="bg-white border border-gray-200 rounded-xl p-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center font-bold text-blue-600 text-base">{(project.builder.company||project.builder.name||'B').charAt(0)}</div>
-                  <div><p className="font-semibold text-gray-900 text-sm flex items-center gap-1">{project.builder.company||project.builder.name}<CheckCircle size={12} className="text-blue-500"/></p><p className="text-xs text-gray-400">Verified Developer</p></div>
+            {/* DealDirect Contact */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center font-bold text-indigo-600 text-sm overflow-hidden">
+                  <img src={ddAdminPfp.src} alt="DealDirect Admin" className="w-full h-full object-cover" />
                 </div>
-                <div className="space-y-2">
-                  {project.salesContact?.phone && <a href={`tel:${project.salesContact.phone}`} className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition"><FaPhone size={11}/>Call Sales</a>}
-                  {project.salesContact?.whatsapp && <a href={`https://wa.me/91${project.salesContact.whatsapp}`} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-2 py-2.5 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 transition"><FaWhatsapp size={13}/>WhatsApp</a>}
-                </div>
+                <div><p className="font-semibold text-gray-900 text-sm flex items-center gap-1">DealDirect Admin<CheckCircle size={12} className="text-blue-500"/></p><p className="text-xs text-gray-400">Your Buying Partner</p></div>
               </div>
-            )}
+              {project?.builder && (
+                <div className="bg-gray-50 rounded-lg px-3 py-2 mb-3">
+                  <p className="text-[10px] text-gray-400 font-medium uppercase">Developer</p>
+                  <p className="text-sm font-semibold text-gray-700">{project.builder.company||project.builder.name}</p>
+                </div>
+              )}
+              <div className="space-y-2">
+                <a href="tel:6360122696" className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition"><FaPhoneAlt size={11}/>Call DealDirect</a>
+                <a href="https://wa.me/916360122696" target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-2 py-2.5 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 transition"><FaWhatsapp size={13}/>WhatsApp</a>
+              </div>
+            </div>
           </div>
         </div>
       </div>

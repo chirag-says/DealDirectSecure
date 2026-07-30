@@ -332,8 +332,8 @@ export default function ProjectDetail() {
             ["Ownership", p.basics?.ownershipType || "—"],
             ["Vastu", p.basics?.isVastuCompliant ? "Yes" : "No"],
             ["Litigation", p.legal?.litigationStatus || "—"],
-            ["Sales Manager", p.salesContact?.managerName || "—"],
-            ["Sales Phone", p.salesContact?.phone || "—"],
+            ["Sales Contact", "DealDirect Admin"],
+            ["Sales Phone", "6360122696"],
           ].map(([k, v]) => (
             <div key={k} className="flex justify-between border-b border-gray-50 pb-2">
               <span className="text-gray-500">{k}</span>

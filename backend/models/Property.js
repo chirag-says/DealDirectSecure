@@ -187,15 +187,6 @@ const propertySchema = new mongoose.Schema(
       fireNoc: Boolean
     },
 
-    // ── Group Buying ──────────────────────────────────────────────────────────
-    // Set to true when admin enables Group Buy for this property
-    groupBuyEnabled: { type: Boolean, default: false },
-    // Reference to the active GroupBuyProject for this property (null if none)
-    groupBuyProject: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "GroupBuyProject",
-      default: null,
-    },
 
   },
   { timestamps: true }

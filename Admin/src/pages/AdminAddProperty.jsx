@@ -14,6 +14,11 @@ import "leaflet/dist/leaflet.css";
 import axios from "axios"; // for Nominatim geocoding (public endpoints)
 import adminApi, { builderApi, propertyManagementApi } from "../api/adminApi";
 
+// Dedicated instance for third-party geocoding — must NOT send credentials.
+// The global axios.defaults.withCredentials = true would make browsers reject
+// Nominatim responses (ACAO: *  + credentialed request = CORS error).
+const geo = axios.create({ withCredentials: false });
+
 
 // Fix for default marker icon in react-leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -533,35 +538,12 @@ export default function AdminAddProperty() {
     };
 
     // Validation
+    // Admin-only form: no field is compulsory — the admin decides what a listing
+    // needs and can publish a partial record. The builder link is the one
+    // exception: /api/properties/admin/add rejects the request without it.
     const validateStep = (step) => {
         const f = formData;
-        switch (step) {
-            case 1:
-                if (!f.builderId) return "Please select a builder for this property.";
-                if (!f.propertyCategory || !f.propertyType) return "Please choose category and type.";
-                if (isResidential && !f.bhkType && !f.propertyType.toLowerCase().includes("studio")) return "Please choose BHK.";
-                break;
-            case 2:
-                if (!f.city || !f.locality) return "City and Locality are required.";
-                break;
-            case 3:
-                if (!f.expectedPrice) return "Please enter expected price.";
-                if (!f.builtUpArea && !(isCommercial && f.propertyType.toLowerCase().includes("warehouse"))) return "Built-up area is required.";
-                break;
-            case 4:
-                if (isResidential && !f.bedrooms && !f.bhkType.includes("Studio")) return "Please confirm bedrooms.";
-                break;
-            case 5:
-                const categories = getImageCategories();
-                const exteriorCategory = categories.find(c => ['exterior', 'facade'].includes(c.key));
-
-                if (exteriorCategory) {
-                    const hasExteriorImage = categorizedImages[exteriorCategory.key]?.files?.length > 0;
-                    if (!hasExteriorImage) return `Please upload at least one ${exteriorCategory.label} photo.`;
-                }
-                break;
-            default: break;
-        }
+        if (step === 1 && !f.builderId) return "Please select a builder for this property.";
         return null;
     };
 
@@ -600,12 +582,8 @@ export default function AdminAddProperty() {
     const handleSubmit = async () => {
         setIsLoading(true);
         try {
+            // Price is optional — a listing can be published without one.
             const priceValue = toNumber(formData.expectedPrice);
-            if (priceValue === undefined) {
-                toast.error("Please enter a valid price amount.");
-                setIsLoading(false);
-                return;
-            }
 
             const submitData = new FormData();
             const categoryId = findObjectId(formData.propertyCategory, 'categories');
@@ -616,7 +594,7 @@ export default function AdminAddProperty() {
             submitData.append("categoryName", formData.propertyCategory);
             submitData.append("title", generateTitle());
             submitData.append("description", formData.description || generateShortDescription());
-            submitData.append("price", priceValue);
+            if (priceValue !== undefined) submitData.append("price", priceValue);
             submitData.append("listingType", formData.listingType);
             submitData.append("priceUnit", formData.listingType === "Rent" ? "Monthly" : "Total");
             submitData.append("negotiable", formData.priceNegotiable ? "true" : "false");
@@ -727,7 +705,9 @@ export default function AdminAddProperty() {
         parts.push(formData.propertyType);
         parts.push(formData.listingType === "Rent" ? "for Rent" : "for Sale");
         if (formData.locality) parts.push(`in ${formData.locality}`);
-        return parts.filter(Boolean).join(" ");
+        // Property.title is the one field the schema still needs — fall back so an
+        // otherwise-empty form can still be saved and edited later.
+        return parts.filter(Boolean).join(" ") || "Untitled Property";
     };
 
     const generateShortDescription = () => formData.description || `${generateTitle()} | ${formData.builtUpArea || "Area not specified"} sq.ft`;
@@ -932,7 +912,7 @@ export default function AdminAddProperty() {
     // Reverse geocode to get address from coordinates
     const reverseGeocode = async (lat, lng) => {
         try {
-            const response = await axios.get(
+            const response = await geo.get(
                 `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1&zoom=18`,
                 { headers: { 'Accept-Language': 'en' } }
             );
@@ -983,7 +963,7 @@ export default function AdminAddProperty() {
         if (!query || query.length < 3) return;
         setIsGeocoding(true);
         try {
-            const response = await axios.get("https://nominatim.openstreetmap.org/search", {
+            const response = await geo.get("https://nominatim.openstreetmap.org/search", {
                 params: { format: "json", q: query, addressdetails: 1, limit: 1 },
                 headers: { "Accept-Language": "en" }
             });

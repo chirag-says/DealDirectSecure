@@ -353,7 +353,7 @@ const mixedFileFilter = (req, file, cb) => {
 export const memoryUploadWithDocs = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB per file — builder brochures can be 30-40MB
+    fileSize: 15 * 1024 * 1024, // 15 MB per file — sufficient for any brochure; larger PDFs should be linked externally
     files: 50,
     parts: 100,
   },
@@ -483,8 +483,9 @@ export const validateAndUploadToCloudinary = async (req, res, next) => {
           resource_type: "image",
           transformation: isProfileImage
             ? [{ width: 400, height: 400, crop: "fill", gravity: "face", quality: "auto" }]
-            : [{ width: 1200, height: 800, crop: "limit", quality: "auto" }],
-          timeout: 60000, // Cloudinary SDK timeout
+            : [{ width: 1400, height: 900, crop: "limit", quality: "auto" }],
+          timeout: 120_000,      // 2 min: Cloudinary fires callback with TimeoutError if exceeded
+          chunk_size: 6_000_000, // 6 MB chunks to avoid single-shot 499 timeouts
         };
 
         // Create upload stream
@@ -509,9 +510,10 @@ export const validateAndUploadToCloudinary = async (req, res, next) => {
           }
         );
 
-        // Stream the validated buffer to Cloudinary
-        const readableStream = Readable.from(file.buffer);
-        readableStream.pipe(uploadStream);
+        // Stream the validated buffer to Cloudinary.
+        // .on('error', reject) ensures stream-level errors (ECONNRESET, etc.)
+        // route into the Promise and never become unhandled rejections.
+        Readable.from(file.buffer).on("error", reject).pipe(uploadStream);
       });
     });
 

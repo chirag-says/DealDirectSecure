@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { ChevronDownIcon, Bars3Icon, ArrowLeftStartOnRectangleIcon, KeyIcon } from "@heroicons/react/24/outline";
 import logoSrc from "../assets/dd.jpg";
+import ddAdminPfp from "../assets/dealdirectadminpfp.png";
 import { useAdmin } from "../context/AdminContext";
 
 const Header = ({ toggleSidebar }) => {
@@ -73,8 +74,8 @@ const Header = ({ toggleSidebar }) => {
                         aria-controls="profile-menu"
                     >
                         {/* Profile Avatar */}
-                        <div className="flex-shrink-0 h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-md">
-                            {getAvatarText(adminName)}
+                        <div className="flex-shrink-0 h-9 w-9 sm:h-10 sm:w-10 rounded-full overflow-hidden shadow-md border-2 border-white">
+                            <img src={ddAdminPfp} alt="DD Admin" className="w-full h-full object-cover" />
                         </div>
 
                         {/* Info and Chevron */}

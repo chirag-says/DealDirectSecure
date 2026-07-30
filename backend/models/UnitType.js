@@ -29,9 +29,10 @@ const unitTypeSchema = new mongoose.Schema(
 
     // ── Unit Configuration ────────────────────────────────────────────────────
     config: {
+      // Admin-authored: optional like every other data field. Only the Project /
+      // Builder / Admin references above are enforced.
       name: {
         type: String,
-        required: [true, "Unit type name is required"],
         trim: true,
         maxlength: [100, "Name cannot exceed 100 characters"],
       }, // e.g. "2 BHK Premium"
@@ -46,6 +47,12 @@ const unitTypeSchema = new mongoose.Schema(
       carpetSqft: { type: Number, min: 0 },
       builtUpSqft: { type: Number, min: 0 },
       superBuiltUpSqft: { type: Number, min: 0 },
+      // Feature 4 — plot/land fields (used for Villa Community & Plotted Development)
+      plotAreaSqft: { type: Number, min: 0 },
+      plotDimensions: {
+        length: { type: Number, min: 0 },
+        width:  { type: Number, min: 0 },
+      },
     },
 
     // ── Facing ────────────────────────────────────────────────────────────────
@@ -110,9 +117,17 @@ const unitTypeSchema = new mongoose.Schema(
 
     // ── Floor Plans ───────────────────────────────────────────────────────────
     floorPlans: {
-      twoDUrl: { type: String, trim: true },
-      threeDUrl: { type: String, trim: true },
+      twoDUrl:    { type: String, trim: true },
+      threeDUrl:  { type: String, trim: true },
+      videoUrl:   { type: String, trim: true }, // Feature 8 — per-unit video tour URL
     },
+
+    // ── Interior Photos — Feature 3 ──────────────────────────────────────────────
+    photos: [{
+      url:     { type: String, trim: true, required: true },
+      room:    { type: String, enum: ['Living Room','Bedroom','Kitchen','Bathroom','Balcony','Dining','Exterior','Other'], default: 'Other' },
+      caption: { type: String, trim: true },
+    }],
 
     // ── Pricing ───────────────────────────────────────────────────────────────
     pricing: {
@@ -128,6 +143,17 @@ const unitTypeSchema = new mongoose.Schema(
       floorRisePerSqft: { type: Number, default: 0, min: 0 }, // ₹ per sqft per floor
       viewPremium: { type: Number, default: 0, min: 0 },      // Premium for view-facing
       effectivePrice: { type: Number, min: 0 },               // Auto-calculated
+    },
+
+    // ── Booking / Payment Terms ───────────────────────────────────────────────
+    // Vary per unit type; collected at booking time.
+    // IMPORTANT: kept OUT of the effectivePrice pre-save calc — these are
+    // government taxes / booking fees, not list price components.
+    paymentTerms: {
+      bookingAmount:       { type: Number, min: 0 },
+      gstPercentage:       { type: Number, min: 0, max: 28 },
+      stampDutyPercentage: { type: Number, min: 0, max: 20 },
+      registrationCharges: { type: Number, min: 0 },
     },
 
     // ── Inventory ─────────────────────────────────────────────────────────────

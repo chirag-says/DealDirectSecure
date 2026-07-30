@@ -16,9 +16,81 @@
 import ProjectBooking from "../models/ProjectBooking.js";
 import UnitType from "../models/UnitType.js";
 import Project from "../models/Project.js";
+import GroupBuyCampaign from "../models/GroupBuyCampaign.js";
+import CampaignMember from "../models/CampaignMember.js";
+import User from "../models/userModel.js";
 import { cloudinary } from "../middleware/upload.js";
 import { sendBookingAlert, sendGeneralNotification } from "../utils/emailService.js";
 import { Readable } from "stream";
+
+// ── Helper: Sync a confirmed booking to the Group Buy campaign ────────────────
+// When a booking is confirmed/completed, auto-enroll the buyer as a paid member
+// in the active campaign for that project+unitType (if one exists).
+// This keeps the Group Buy banner's "joined" count in sync with actual bookings.
+const syncBookingToCampaign = async (booking, adminId) => {
+  try {
+    if (!booking.user || !booking.project || !booking.unitType) return;
+
+    const projectId = booking.project._id || booking.project;
+    const unitTypeId = booking.unitType._id || booking.unitType;
+    const userId = booking.user._id || booking.user;
+
+    // Find active campaign for this project+unitType
+    const campaign = await GroupBuyCampaign.findOne({
+      project: projectId,
+      unitType: unitTypeId,
+      status: "active",
+    });
+    if (!campaign) return; // No active campaign — nothing to sync
+
+    // Check if user is already a campaign member
+    const existing = await CampaignMember.findOne({
+      campaign: campaign._id,
+      user: userId,
+    });
+
+    if (existing) {
+      // Already a member — just ensure they're marked as paid
+      if (existing.tokenStatus !== "paid") {
+        existing.tokenStatus = "paid";
+        existing.tokenPaidAt = new Date();
+        existing.paymentRecordedBy = adminId;
+        existing.paymentReference = booking.payment?.utrNumber || existing.paymentReference;
+        await existing.save(); // post-save hook syncs campaign counters
+      }
+      return;
+    }
+
+    // Get user snapshot for the campaign member record
+    const user = await User.findById(userId).select("name email phone").lean();
+
+    // Auto-create as a paid campaign member
+    await CampaignMember.create({
+      campaign: campaign._id,
+      user: userId,
+      status: "active",
+      tokenStatus: "paid",
+      tokenPaidAt: new Date(),
+      paymentRecordedBy: adminId,
+      paymentReference: booking.payment?.utrNumber || "",
+      userSnapshot: {
+        name: user?.name || booking.clientName,
+        email: user?.email || booking.clientEmail,
+        phone: user?.phone || booking.clientPhone,
+      },
+    }); // post-save hook auto-syncs memberCount + paidMemberCount on campaign
+
+    console.log(`[Booking→Campaign] Auto-enrolled user ${userId} as paid member in campaign ${campaign._id}`);
+  } catch (err) {
+    // Non-fatal — log but don't block the booking response
+    if (err.code === 11000) {
+      // Duplicate key — user already in campaign, ignore
+      console.log(`[Booking→Campaign] User already in campaign (duplicate key), skipping.`);
+    } else {
+      console.error("[Booking→Campaign] Sync error:", err.message);
+    }
+  }
+};
 
 // ── Helper: upload buffer to Cloudinary ───────────────────────────────────────
 const uploadToCloudinary = (buffer, options = {}) =>
@@ -155,7 +227,7 @@ export const submitPayment = async (req, res) => {
 export const getMyBookings = async (req, res) => {
   try {
     const bookings = await ProjectBooking.find({ user: req.user._id })
-      .populate("project", "basics.name location.city")
+      .populate("project", "basics.name location.city salesContact")
       .populate("unitType", "config pricing")
       .sort({ createdAt: -1 })
       .lean();
@@ -289,6 +361,9 @@ export const verifyPayment = async (req, res) => {
         ).catch(() => {});
       }
 
+      // 4. Sync to Group Buy campaign — auto-enroll as paid member
+      syncBookingToCampaign(booking, req.admin._id).catch(() => {});
+
     } else {
       // Reject — revert so client can resubmit
       booking.payment.status = "rejected";
@@ -338,19 +413,20 @@ export const updateBookingStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: `Status must be one of: ${allowed.join(", ")}` });
     }
 
-    const booking = await ProjectBooking.findByIdAndUpdate(
-      id,
-      {
-        status,
-        adminNotes,
-        reviewedBy: req.admin._id,
-        reviewedAt: new Date(),
-        $push: { statusHistory: { status, changedBy: "admin", note: adminNotes } },
-      },
-      { new: true }
-    );
-
+    const booking = await ProjectBooking.findById(id);
     if (!booking) return res.status(404).json({ success: false, message: "Booking not found." });
+
+    booking.status = status;
+    if (adminNotes) booking.adminNotes = adminNotes;
+    booking.reviewedBy = req.admin._id;
+    booking.reviewedAt = new Date();
+    booking.statusHistory.push({ status, changedBy: "admin", note: adminNotes });
+    await booking.save();
+
+    // Sync to Group Buy campaign when booking reaches confirmed or completed
+    if (status === "confirmed" || status === "completed") {
+      syncBookingToCampaign(booking, req.admin._id).catch(() => {});
+    }
 
     return res.json({ success: true, data: { status: booking.status } });
   } catch (err) {

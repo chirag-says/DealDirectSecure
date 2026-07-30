@@ -517,43 +517,7 @@ export const builderApi = {
     },
 };
 
-// ============================================
-// GROUP BUY API
-// ============================================
 
-export const groupBuyApi = {
-    // Projects
-    getProjects: async (params = {}) => {
-        const response = await adminApi.get('/api/group-buy/projects', { params });
-        return response.data;
-    },
-    getProject: async (id) => {
-        const response = await adminApi.get(`/api/group-buy/projects/${id}`);
-        return response.data;
-    },
-    createProject: async (data) => {
-        const response = await adminApi.post('/api/group-buy/projects', data);
-        return response.data;
-    },
-    updateProject: async (id, data) => {
-        const response = await adminApi.put(`/api/group-buy/projects/${id}`, data);
-        return response.data;
-    },
-
-    // Members
-    getMembers: async (groupId) => {
-        const response = await adminApi.get(`/api/group-buy/projects/${groupId}/members`);
-        return response.data;
-    },
-    recordPayment: async (memberId, data) => {
-        const response = await adminApi.post(`/api/group-buy/members/${memberId}/record-payment`, data);
-        return response.data;
-    },
-    lockGroup: async (groupId) => {
-        const response = await adminApi.post(`/api/group-buy/projects/${groupId}/lock`);
-        return response.data;
-    },
-};
 
 // ============================================
 // PROJECT API — Builder Project Flow

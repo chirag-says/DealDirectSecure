@@ -222,7 +222,7 @@ export default function BookingModal({ unitType: ut, project: p, tokenAmount, on
                 <p className="text-xs text-slate-400 mt-1">Save this for your records</p>
               </div>
               <div className="text-sm text-slate-500 bg-blue-50 rounded-xl px-4 py-3">
-                📞 For queries, contact sales: <a href={`tel:${p.salesContact?.phone}`} className="text-indigo-600 font-semibold">{p.salesContact?.phone}</a>
+                📞 For queries, contact DealDirect: <a href="tel:6360122696" className="text-indigo-600 font-semibold">6360122696</a>
               </div>
               <button onClick={onClose} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition">Close</button>
             </div>

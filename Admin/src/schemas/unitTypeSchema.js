@@ -1,8 +1,12 @@
 import { z } from "zod";
 
 /**
- * unitTypeSchema — Zod validation for CreateUnitType wizard steps.
- * Mirrors the existing validateStep() contract exactly.
+ * unitTypeSchema — Zod validation for the CreateUnitType wizard.
+ *
+ * ADMIN-ONLY FORM: nothing is compulsory. Every field can be left blank and
+ * filled in later. The rules below only fire on values the admin actually
+ * entered — negative counts, an area smaller than the one it contains, unit
+ * counts that don't add up, tax percentages beyond the legal ceiling.
  *
  * Usage:
  *   import { validateUnitTypeStep } from "../schemas/unitTypeSchema";
@@ -10,113 +14,107 @@ import { z } from "zod";
  */
 
 // ── Reusable primitives ────────────────────────────────────────────────────────
-const positiveArea = z.preprocess(
-  (val) => (val === "" || val === null || val === undefined ? undefined : Number(val)),
-  z.number({ invalid_type_error: "Must be a number" }).positive("Must be greater than 0")
+const blankToUndefined = (val) =>
+  val === "" || val === null || val === undefined ? undefined : Number(val);
+
+const optionalPositive = z.preprocess(
+  blankToUndefined,
+  z.number({ invalid_type_error: "Must be a number" }).positive("Must be greater than 0").optional()
 );
 
-const nonNegativeInt = z.preprocess(
-  (val) => (val === "" || val === null || val === undefined ? undefined : Number(val)),
+const optionalCount = z.preprocess(
+  blankToUndefined,
   z
     .number({ invalid_type_error: "Must be a number" })
     .int("Must be a whole number")
     .min(0, "Cannot be negative")
+    .optional()
+);
+
+const optionalNonNegative = z.preprocess(
+  blankToUndefined,
+  z.number({ invalid_type_error: "Must be a number" }).min(0, "Cannot be negative").optional()
 );
 
 // ── Step schemas ──────────────────────────────────────────────────────────────
 export const step1Schema = z.object({
-  name: z
-    .string()
-    .min(1, "Unit type name is required")
-    .max(100, "Name cannot exceed 100 characters"),
-  // Either bedrooms or bathrooms must have a value
-}).superRefine((data, ctx) => {
-  const hasBedrooms = data.bedrooms !== "" && data.bedrooms !== undefined && data.bedrooms !== null;
-  const hasBathrooms = data.bathrooms !== "" && data.bathrooms !== undefined && data.bathrooms !== null;
-  if (!hasBedrooms && !hasBathrooms) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Specify at least bedrooms or bathrooms",
-      path: ["bedrooms"],
-    });
-  }
+  name: z.string().max(100, "Name cannot exceed 100 characters").optional(),
+  bedrooms: optionalCount,
+  bathrooms: optionalCount,
+  balconies: optionalCount,
 });
 
-export const step2Schema = z.object({
-  carpetSqft: positiveArea,
-}).superRefine((data, ctx) => {
-  const carpet = Number(data.carpetSqft) || 0;
-  const builtUp = Number(data.builtUpSqft) || 0;
-  const superBuiltUp = Number(data.superBuiltUpSqft) || 0;
+export const step2Schema = z
+  .object({
+    carpetSqft: optionalPositive,
+    builtUpSqft: optionalPositive,
+    superBuiltUpSqft: optionalPositive,
+  })
+  .superRefine((data, ctx) => {
+    const carpet = Number(data.carpetSqft) || 0;
+    const builtUp = Number(data.builtUpSqft) || 0;
+    const superBuiltUp = Number(data.superBuiltUpSqft) || 0;
 
-  if (builtUp > 0 && carpet > 0 && builtUp < carpet) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Built-up area must be ≥ carpet area",
-      path: ["builtUpSqft"],
-    });
-  }
-  if (superBuiltUp > 0 && builtUp > 0 && superBuiltUp < builtUp) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Super built-up must be ≥ built-up area",
-      path: ["superBuiltUpSqft"],
-    });
-  }
-});
+    if (builtUp > 0 && carpet > 0 && builtUp < carpet) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Built-up area must be ≥ carpet area",
+        path: ["builtUpSqft"],
+      });
+    }
+    if (superBuiltUp > 0 && builtUp > 0 && superBuiltUp < builtUp) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Super built-up must be ≥ built-up area",
+        path: ["superBuiltUpSqft"],
+      });
+    }
+  });
 
 export const step5Schema = z.object({
-  coveredParking: nonNegativeInt,
-  openParking: nonNegativeInt,
-  evParking: nonNegativeInt,
+  coveredParking: optionalCount,
+  openParking: optionalCount,
+  evParking: optionalCount,
 });
 
 export const step8Schema = z.object({
-  basePrice: z.preprocess(
-    (val) => (val === "" ? undefined : Number(val)),
-    z.number({ required_error: "Base price is required" }).positive("Base price must be greater than 0")
+  basePrice: optionalPositive,
+  floorRisePerSqft: optionalNonNegative,
+  viewPremium: optionalNonNegative,
+  // Payment terms — bounds are statutory ceilings, checked only when filled in.
+  bookingAmount: optionalNonNegative,
+  gstPercentage: z.preprocess(
+    blankToUndefined,
+    z.number().min(0, "Cannot be negative").max(28, "GST cannot exceed 28%").optional()
   ),
-  floorRisePerSqft: z.preprocess(
-    (val) => (val === "" || val === undefined ? 0 : Number(val)),
-    z.number().min(0, "Floor rise cannot be negative")
+  stampDutyPercentage: z.preprocess(
+    blankToUndefined,
+    z.number().min(0, "Cannot be negative").max(20, "Stamp duty cannot exceed 20%").optional()
   ),
-  viewPremium: z.preprocess(
-    (val) => (val === "" || val === undefined ? 0 : Number(val)),
-    z.number().min(0, "View premium cannot be negative")
-  ),
+  registrationCharges: optionalNonNegative,
 });
 
-export const step9Schema = z.object({
-  totalUnits: z.preprocess(
-    (val) => (val === "" ? undefined : Number(val)),
-    z.number({ required_error: "Total units is required" }).positive("Total units must be greater than 0")
-  ),
-  availableUnits: z.preprocess(
-    (val) => (val === "" ? undefined : Number(val)),
-    z.number({ required_error: "Available units is required" }).min(0, "Available units cannot be negative")
-  ),
-  bookedUnits: z.preprocess(
-    (val) => (val === "" || val === undefined ? 0 : Number(val)),
-    z.number().min(0, "Booked units cannot be negative")
-  ),
-  blockedUnits: z.preprocess(
-    (val) => (val === "" || val === undefined ? 0 : Number(val)),
-    z.number().min(0, "Blocked units cannot be negative")
-  ),
-}).superRefine((data, ctx) => {
-  const total = Number(data.totalUnits) || 0;
-  const available = Number(data.availableUnits) || 0;
-  const booked = Number(data.bookedUnits) || 0;
-  const blocked = Number(data.blockedUnits) || 0;
+export const step9Schema = z
+  .object({
+    totalUnits: optionalNonNegative,
+    availableUnits: optionalNonNegative,
+    bookedUnits: optionalNonNegative,
+    blockedUnits: optionalNonNegative,
+  })
+  .superRefine((data, ctx) => {
+    const total = Number(data.totalUnits) || 0;
+    const available = Number(data.availableUnits) || 0;
+    const booked = Number(data.bookedUnits) || 0;
+    const blocked = Number(data.blockedUnits) || 0;
 
-  if (total > 0 && available + booked + blocked > total) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: `Available (${available}) + Booked (${booked}) + Blocked (${blocked}) cannot exceed Total (${total})`,
-      path: ["availableUnits"],
-    });
-  }
-});
+    if (total > 0 && available + booked + blocked > total) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Available (${available}) + Booked (${booked}) + Blocked (${blocked}) cannot exceed Total (${total})`,
+        path: ["availableUnits"],
+      });
+    }
+  });
 
 /**
  * validateUnitTypeStep — runs Zod validation for a given step.
@@ -135,15 +133,8 @@ export function validateUnitTypeStep(stepId, form, files = {}) {
     9: step9Schema,
   };
 
-  // Step 7 — floor plan file upload
-  if (stepId === 7) {
-    const errs = {};
-    if (!files.twoDFloorPlan) errs.twoDFloorPlan = "2D floor plan is required";
-    return errs;
-  }
-
   const schema = schemaMap[stepId];
-  if (!schema) return {}; // Steps 3, 4, 6, 10 have no required fields
+  if (!schema) return {}; // Remaining steps (incl. floor-plan uploads) never block
 
   const result = schema.safeParse(form);
   if (result.success) return {};

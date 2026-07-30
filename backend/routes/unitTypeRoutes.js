@@ -30,8 +30,9 @@ router.post(
   protectAdmin,
   uploadConcurrencyGuard,
   memoryUpload.fields([
-    { name: "twoDFloorPlan", maxCount: 1 },
+    { name: "twoDFloorPlan",  maxCount: 1 },
     { name: "threeDFloorPlan", maxCount: 1 },
+    { name: "unitPhotos",      maxCount: 20 }, // Feature 3 — interior photos
   ]),
   createUnitType
 );
@@ -41,8 +42,9 @@ router.put(
   protectAdmin,
   uploadConcurrencyGuard,
   memoryUpload.fields([
-    { name: "twoDFloorPlan", maxCount: 1 },
+    { name: "twoDFloorPlan",  maxCount: 1 },
     { name: "threeDFloorPlan", maxCount: 1 },
+    { name: "unitPhotos",      maxCount: 20 }, // Feature 3 — interior photos
   ]),
   updateUnitType
 );

@@ -251,6 +251,10 @@ adminSessionSchema.methods.validateFingerprintLenient = function (req) {
     const currentData = this.constructor.generateFingerprintData(req);
     const storedData = this.fingerprintData || {};
 
+    // Declared up-front so the IP-prefix branch below can flag a refresh
+    // without hitting the temporal dead zone (it runs before the MINOR section).
+    let needsRefresh = false;
+
     // ============================================
     // MAJOR ANOMALY CHECKS - Revoke session immediately
     // ============================================
@@ -277,23 +281,21 @@ adminSessionSchema.methods.validateFingerprintLenient = function (req) {
         };
     }
 
-    // 3. IP prefix change (different network) = REVOKE
-    // Rationale: User shouldn't jump between completely different IP ranges
-    // This catches country/ISP changes while allowing DHCP within same network
+    // 3. IP prefix change — ALLOW with refresh (was: hard revoke).
+    // Rationale: CDN edge nodes and corporate proxies routinely rotate the
+    // egress IP between requests on the SAME browser session; revoking here
+    // caused false-positive 401s on every project-create POST while GETs
+    // (which use attachAdminIfPresent with no fingerprint check) kept working.
+    // OS-change and device-type-change (above) are still hard revokes.
     if (storedData.ipPrefix && currentData.ipPrefix &&
         storedData.ipPrefix !== currentData.ipPrefix) {
-        return {
-            valid: false,
-            refreshed: false,
-            reason: `IP range changed from ${storedData.ipPrefix}.x to ${currentData.ipPrefix}.x`,
-        };
+        console.warn(`[AUTH] IP prefix changed from ${storedData.ipPrefix}.x to ${currentData.ipPrefix}.x — allowing with refresh (CDN/proxy rotation)`);
+        needsRefresh = true;
     }
 
     // ============================================
     // MINOR CHANGES - Allow and optionally refresh
     // ============================================
-
-    let needsRefresh = false;
 
     // Browser family change is suspicious but allowed with warning
     // (e.g., user might switch between Chrome and Chrome Canary)

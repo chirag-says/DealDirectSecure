@@ -17,7 +17,7 @@ const STEPS = [
   { id: 5, label: "Amenities" },
   { id: 6, label: "Media" },
   { id: 7, label: "Docs & Legal" },
-  { id: 8, label: "Payment & Sales" },
+  { id: 8, label: "Sales Contact" },
   { id: 9, label: "Review" },
 ];
 
@@ -77,9 +77,7 @@ export default function CreateProject() {
     lat: "", lng: "", distanceToMetro: "", distanceToAirport: "", distanceToRailway: "",
     distanceToBusStop: "", nearbyPlaces: [], launchDate: "", possessionDate: "",
     totalLandArea: "", totalTowers: "", floorsPerTower: "", totalUnits: "",
-    openSpacePercentage: "", amenities: [], paymentPlans: [], bookingAmount: "",
-    gstPercentage: "", stampDutyPercentage: "", registrationCharges: "",
-    managerName: "", salesPhone: "", salesWhatsapp: "", salesEmail: "",
+    openSpacePercentage: "", amenities: [], paymentPlans: [],
     landTitleType: "Freehold", titleClear: true, litigationStatus: "None",
     encumbrances: "", litigationDetails: "", walkthroughVideoUrl: "",
   });
@@ -90,10 +88,13 @@ export default function CreateProject() {
     constructionProgressImages: [], brochureUrl: [], reraCertificateUrl: [],
     commencementCertificateUrl: [], occupancyCertificateUrl: [],
     environmentalClearanceUrl: [], approvalDocumentUrls: [],
+    amenityImages: [], // Feature 5
   });
 
   const [highlightInput, setHighlightInput] = useState("");
   const [nearbyInput, setNearbyInput] = useState({ category: "Education", name: "", distance: "" });
+  // Feature 6 — payment plan builder local state
+  const [planInput, setPlanInput] = useState({ planType: 'CLP', description: '', schedule: [{ stage: '', percentage: '' }] });
 
 
   // Per-step validation — now backed by Zod schemas from projectSchema.js
@@ -230,7 +231,15 @@ export default function CreateProject() {
       clearDraft();
       navigate(`/project/${res.data._id}`);
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to create project.");
+      if (err.response?.status === 401) {
+        // Session expired mid-form. Draft is preserved so the user can re-login and continue.
+        toast.error(
+          "Your session expired. Please log in again — your draft has been saved.",
+          { autoClose: 8000 }
+        );
+      } else {
+        toast.error(err.response?.data?.message || "Failed to create project.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -250,7 +259,7 @@ export default function CreateProject() {
             </div>
           )}
           <div>
-            <label className={lbl}>Project Name *</label>
+            <label className={lbl}>Project Name</label>
             <input
               data-field="name"
               className={inp}
@@ -272,7 +281,7 @@ export default function CreateProject() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={lbl}>Category *</label>
+              <label className={lbl}>Category</label>
               <select
                 data-field="category"
                 className={inp}
@@ -385,10 +394,10 @@ export default function CreateProject() {
           <h2 className="text-lg font-semibold text-gray-800">Project Overview</h2>
           <div className="grid grid-cols-2 gap-4">
             {[
-              ["launchDate","Launch Date *","date"],
-              ["possessionDate","Possession Date *","date"],
-              ["totalLandArea","Total Land Area *","text"],
-              ["totalTowers","Number of Towers *","number"],
+              ["launchDate","Launch Date","date"],
+              ["possessionDate","Possession Date","date"],
+              ["totalLandArea","Total Land Area","text"],
+              ["totalTowers","Number of Towers","number"],
               ["floorsPerTower","Floors per Tower","text"],
               ["totalUnits","Total Units","number"],
               ["openSpacePercentage","Open Space %","number"],
@@ -407,12 +416,72 @@ export default function CreateProject() {
               </div>
             ))}
           </div>
+
+          {/* Feature 6 — Payment Plans builder */}
+          <div className="border-t border-gray-200 pt-4">
+            <h3 className="font-medium text-gray-700 mb-3">Payment Plans (optional)</h3>
+
+            {/* Existing plans */}
+            {form.paymentPlans.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {form.paymentPlans.map((plan, pi) => (
+                  <div key={pi} className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 flex items-start justify-between">
+                    <div>
+                      <p className="font-semibold text-sm text-gray-800">{plan.planType}</p>
+                      {plan.schedule.map((s, si) => (
+                        <p key={si} className="text-xs text-gray-500">{s.stage}: {s.percentage}%</p>
+                      ))}
+                    </div>
+                    <button type="button" onClick={() => set('paymentPlans', form.paymentPlans.filter((_, j) => j !== pi))} className="text-red-400 hover:text-red-600 text-xs">Remove</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Builder */}
+            <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={lbl}>Plan Type</label>
+                  <select className={inp} value={planInput.planType} onChange={e => setPlanInput(p => ({ ...p, planType: e.target.value }))}>
+                    {['CLP','Down Payment','Flexi','Subvention'].map(t => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Description</label>
+                  <input className={inp} value={planInput.description} onChange={e => setPlanInput(p => ({ ...p, description: e.target.value }))} placeholder="Optional note" />
+                </div>
+              </div>
+              <div>
+                <label className={lbl}>Schedule</label>
+                {planInput.schedule.map((s, i) => (
+                  <div key={i} className="flex items-center gap-2 mb-2">
+                    <input className={`${inp} flex-1`} placeholder="Stage (e.g. On Booking)" value={s.stage} onChange={e => setPlanInput(p => { const sc = [...p.schedule]; sc[i] = { ...sc[i], stage: e.target.value }; return { ...p, schedule: sc }; })} />
+                    <input className={`${inp} w-24`} type="number" min="0" max="100" placeholder="%" value={s.percentage} onChange={e => setPlanInput(p => { const sc = [...p.schedule]; sc[i] = { ...sc[i], percentage: e.target.value }; return { ...p, schedule: sc }; })} />
+                    {planInput.schedule.length > 1 && (
+                      <button type="button" onClick={() => setPlanInput(p => ({ ...p, schedule: p.schedule.filter((_, j) => j !== i) }))} className="text-red-400 hover:text-red-600 text-xs shrink-0">✕</button>
+                    )}
+                  </div>
+                ))}
+                <button type="button" onClick={() => setPlanInput(p => ({ ...p, schedule: [...p.schedule, { stage: '', percentage: '' }] }))} className="text-xs text-blue-600 hover:underline">+ Add stage</button>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!planInput.schedule.every(s => s.stage && s.percentage)) return;
+                  set('paymentPlans', [...form.paymentPlans, { ...planInput, schedule: planInput.schedule.map(s => ({ stage: s.stage, percentage: Number(s.percentage) })) }]);
+                  setPlanInput({ planType: 'CLP', description: '', schedule: [{ stage: '', percentage: '' }] });
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+              >Add Plan</button>
+            </div>
+          </div>
         </div>
       );
       case 5: return (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-gray-800">Amenities</h2>
-          <p className="text-xs text-gray-500">Select from presets or add custom amenities. At least one required *</p>
+          <p className="text-xs text-gray-500">Select from presets or add custom amenities.</p>
           {Object.entries(AMENITY_PRESETS).map(([cat, items]) => (
             <div key={cat}>
               <h3 className="font-medium text-gray-700 mb-2">{cat}</h3>
@@ -485,11 +554,12 @@ export default function CreateProject() {
         <div className="space-y-5">
           <h2 className="text-lg font-semibold text-gray-800">Media</h2>
           {[
-            ["exteriorImages","Exterior Images (multiple) *","image/*",true],
+            ["exteriorImages","Exterior Images (multiple)","image/*",true],
             ["droneImages","Drone/Aerial Images","image/*",true],
             ["masterPlan","Master Plan","image/*",true],
             ["locationMap","Location Map","image/*",true],
             ["constructionProgressImages","Construction Progress","image/*",true],
+            ["amenityImages","Amenity Photos (gallery)","image/*",true], // Feature 5
             ["brochureUrl","Project Brochure (PDF)","application/pdf",false],
           ].map(([field,label,accept,multiple]) => {
             const isImage = accept.startsWith("image");
@@ -554,7 +624,7 @@ export default function CreateProject() {
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-gray-800">Documents & Legal</h2>
           {[
-            ["reraCertificateUrl","RERA Certificate *"],
+            ["reraCertificateUrl","RERA Certificate"],
             ["commencementCertificateUrl","Commencement Certificate"],
             ["occupancyCertificateUrl","Occupancy Certificate"],
             ["environmentalClearanceUrl","Environmental Clearance"],
@@ -620,7 +690,7 @@ export default function CreateProject() {
                 }
               }}
             />
-            <label htmlFor="titleClear" className="text-sm text-gray-700">Title Clear *</label>
+            <label htmlFor="titleClear" className="text-sm text-gray-700">Title Clear</label>
           </div>
           {errors.titleClear && <p className="text-xs text-red-500">{errors.titleClear}</p>}
           <div>
@@ -639,48 +709,16 @@ export default function CreateProject() {
       );
       case 8: return (
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-800">Payment & Banking</h2>
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              ["bookingAmount","Booking Amount (₹) *"],
-              ["gstPercentage","GST %"],
-              ["stampDutyPercentage","Stamp Duty %"],
-              ["registrationCharges","Registration Charges (₹)"],
-            ].map(([k,l]) => (
-              <div key={k}>
-                <label className={lbl}>{l}</label>
-                <input
-                  data-field={k}
-                  className={errors[k] ? "w-full border border-red-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" : inp}
-                  type="number"
-                  min="0"
-                  value={form[k]}
-                  onChange={e => set(k, e.target.value)}
-                />
-                {errors[k] && <p className="text-xs text-red-500 mt-1">{errors[k]}</p>}
-              </div>
-            ))}
-          </div>
-
+          <h2 className="text-lg font-semibold text-gray-800">Sales Contact</h2>
+          <p className="text-sm text-gray-500">
+            Booking amounts, GST, stamp duty, and registration charges are now set
+            per unit type (in the Unit Type wizard, Pricing step).
+          </p>
           <h3 className="font-medium text-gray-700 pt-2">Sales Contact</h3>
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              ["managerName","Manager Name"],
-              ["salesPhone","Phone *"],
-              ["salesWhatsapp","WhatsApp"],
-              ["salesEmail","Email *"],
-            ].map(([k,l]) => (
-              <div key={k}>
-                <label className={lbl}>{l}</label>
-                <input
-                  data-field={k}
-                  className={errors[k] ? "w-full border border-red-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" : inp}
-                  value={form[k]}
-                  onChange={e => set(k, e.target.value)}
-                />
-                {errors[k] && <p className="text-xs text-red-500 mt-1">{errors[k]}</p>}
-              </div>
-            ))}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm">
+            <p className="text-blue-800 font-semibold mb-1">DealDirect Admin</p>
+            <p className="text-blue-700">📞 6360122696 &nbsp;·&nbsp; 📧 admin@dealdirect.in</p>
+            <p className="text-blue-600 text-xs mt-1">Auto-applied to all projects. Buyers always contact DealDirect, not the builder.</p>
           </div>
         </div>
       );
@@ -772,9 +810,7 @@ export default function CreateProject() {
               lat: "", lng: "", distanceToMetro: "", distanceToAirport: "", distanceToRailway: "",
               distanceToBusStop: "", nearbyPlaces: [], launchDate: "", possessionDate: "",
               totalLandArea: "", totalTowers: "", floorsPerTower: "", totalUnits: "",
-              openSpacePercentage: "", amenities: [], paymentPlans: [], bookingAmount: "",
-              gstPercentage: "", stampDutyPercentage: "", registrationCharges: "",
-              managerName: "", salesPhone: "", salesWhatsapp: "", salesEmail: "",
+              openSpacePercentage: "", amenities: [], paymentPlans: [],
               landTitleType: "Freehold", titleClear: true, litigationStatus: "None",
               encumbrances: "", litigationDetails: "", walkthroughVideoUrl: "",
             });

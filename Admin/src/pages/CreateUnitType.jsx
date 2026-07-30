@@ -78,11 +78,19 @@ export default function CreateUnitType() {
     },
     basePrice: "", plc: 0, parkingCharges: 0, clubhouse: 0, legal: 0, maintenance: 0,
     floorRisePerSqft: 0, viewPremium: 0,
+    // Booking / payment terms (moved from project level)
+    bookingAmount: "", gstPercentage: "", stampDutyPercentage: "", registrationCharges: "",
     totalUnits: "", availableUnits: "", bookedUnits: 0, blockedUnits: 0,
     towerAllocation: [], highlights: [],
+    // Feature 4 — plot fields
+    plotAreaSqft: "", plotLength: "", plotWidth: "",
+    // Feature 8 — video tour URL
+    videoTourUrl: "",
   });
 
   const [files, setFiles] = useState({ twoDFloorPlan: null, threeDFloorPlan: null });
+  // Feature 3: interior photos
+  const [unitPhotos, setUnitPhotos] = useState([]); // Array of { file, room }
 
   // Per-step validation — backed by Zod from unitTypeSchema.js
   const validateStep = (s) => validateUnitTypeStep(s, form, files);
@@ -147,9 +155,19 @@ export default function CreateUnitType() {
           legal: u.pricing?.additionalCharges?.legal || 0,
           maintenance: u.pricing?.additionalCharges?.maintenance || 0,
           floorRisePerSqft: u.pricing?.floorRisePerSqft || 0, viewPremium: u.pricing?.viewPremium || 0,
+          bookingAmount: u.paymentTerms?.bookingAmount ?? "",
+          gstPercentage: u.paymentTerms?.gstPercentage ?? "",
+          stampDutyPercentage: u.paymentTerms?.stampDutyPercentage ?? "",
+          registrationCharges: u.paymentTerms?.registrationCharges ?? "",
           totalUnits: u.inventory?.totalUnits || "", availableUnits: u.inventory?.availableUnits || "",
           bookedUnits: u.inventory?.bookedUnits || 0, blockedUnits: u.inventory?.blockedUnits || 0,
           towerAllocation: u.inventory?.towerAllocation || [], highlights: u.highlights || [],
+          // Feature 4
+          plotAreaSqft: u.area?.plotAreaSqft || "",
+          plotLength: u.area?.plotDimensions?.length || "",
+          plotWidth: u.area?.plotDimensions?.width || "",
+          // Feature 8
+          videoTourUrl: u.floorPlans?.videoUrl || "",
         });
         // Reset any prior errors when loading a record for edit
         setErrors({});
@@ -212,10 +230,14 @@ export default function CreateUnitType() {
       },
       basePrice: "", plc: 0, parkingCharges: 0, clubhouse: 0, legal: 0, maintenance: 0,
       floorRisePerSqft: 0, viewPremium: 0,
+      bookingAmount: "", gstPercentage: "", stampDutyPercentage: "", registrationCharges: "",
       totalUnits: "", availableUnits: "", bookedUnits: 0, blockedUnits: 0,
       towerAllocation: [], highlights: [],
+      plotAreaSqft: "", plotLength: "", plotWidth: "",
+      videoTourUrl: "",
     });
     setFiles({ twoDFloorPlan: null, threeDFloorPlan: null });
+    setUnitPhotos([]);
     setStep(1);
     setErrors({});
   };
@@ -274,6 +296,11 @@ export default function CreateUnitType() {
       fd.append("towerAllocation", JSON.stringify(towerAllocation));
       if (files.twoDFloorPlan) fd.append("twoDFloorPlan", files.twoDFloorPlan);
       if (files.threeDFloorPlan) fd.append("threeDFloorPlan", files.threeDFloorPlan);
+      // Feature 3: interior photos
+      unitPhotos.forEach((p, i) => {
+        fd.append("unitPhotos", p.file);
+      });
+      fd.append("unitPhotoRooms", JSON.stringify(unitPhotos.map(p => p.room)));
 
       if (editId) await unitTypeApi.update(editId, fd);
       else await unitTypeApi.create(fd);
@@ -299,7 +326,7 @@ export default function CreateUnitType() {
         <div className="space-y-4">
           <h2 className="text-lg font-semibold">Configuration</h2>
           <div>
-            <label className={lbl}>Unit Type Name *</label>
+            <label className={lbl}>Unit Type Name</label>
             <input
               data-field="name"
               className={errors.name ? "w-full border border-red-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" : inp}
@@ -334,7 +361,7 @@ export default function CreateUnitType() {
       case 2: return (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold">Area Details</h2>
-          {[["carpetSqft","Carpet Area (sqft) *"],["builtUpSqft","Built-Up Area (sqft)"],["superBuiltUpSqft","Super Built-Up Area (sqft)"]].map(([k,l]) => (
+          {[["carpetSqft","Carpet Area (sqft)"],["builtUpSqft","Built-Up Area (sqft)"],["superBuiltUpSqft","Super Built-Up Area (sqft)"]].map(([k,l]) => (
             <div key={k}>
               <label className={lbl}>{l}</label>
               <input
@@ -352,6 +379,26 @@ export default function CreateUnitType() {
             <p className="text-sm text-blue-600 bg-blue-50 rounded-lg p-2">
               ₹{Math.round(Number(form.basePrice) / Number(form.carpetSqft)).toLocaleString()} per sqft (carpet)
             </p>
+          )}
+          {/* Feature 4: Plot fields — visible only for villa/plotted sub-types */}
+          {(project?.basics?.subType === 'Villa Community' || project?.basics?.subType === 'Plotted Development') && (
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="font-medium text-gray-700 mb-3">Plot Details</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={lbl}>Plot Area (sqft)</label>
+                  <input className={inp} type="number" min="0" value={form.plotAreaSqft} onChange={e => set('plotAreaSqft', e.target.value)} placeholder="e.g. 1200" />
+                </div>
+                <div>
+                  <label className={lbl}>Plot Length (ft)</label>
+                  <input className={inp} type="number" min="0" value={form.plotLength} onChange={e => set('plotLength', e.target.value)} placeholder="e.g. 40" />
+                </div>
+                <div>
+                  <label className={lbl}>Plot Width (ft)</label>
+                  <input className={inp} type="number" min="0" value={form.plotWidth} onChange={e => set('plotWidth', e.target.value)} placeholder="e.g. 30" />
+                </div>
+              </div>
+            </div>
           )}
         </div>
       );
@@ -492,8 +539,10 @@ export default function CreateUnitType() {
       );
       case 7: return (
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Floor Plans</h2>
-          {[["twoDFloorPlan","2D Floor Plan *"],["threeDFloorPlan","3D Floor Plan"]].map(([field,label]) => (
+          <h2 className="text-lg font-semibold">Floor Plans &amp; Photos</h2>
+
+          {/* 2D / 3D Floor Plans */}
+          {[["twoDFloorPlan","2D Floor Plan"],["threeDFloorPlan","3D Floor Plan"]].map(([field,label]) => (
             <div key={field} className={`border rounded-xl p-4 ${errors[field] ? "border-red-400 bg-red-50/30" : "border-gray-200 bg-gray-50/50"}`}>
               <label className={lbl}>{label}</label>
               <input
@@ -503,12 +552,7 @@ export default function CreateUnitType() {
                 onChange={e => {
                   const f = e.target.files[0];
                   if (f) {
-                    // 10 MB cap to prevent accidental huge uploads
-                    if (f.size > 10 * 1024 * 1024) {
-                      toast.error("File too large (max 10 MB).");
-                      e.target.value = "";
-                      return;
-                    }
+                    if (f.size > 10 * 1024 * 1024) { toast.error("File too large (max 10 MB)."); e.target.value = ""; return; }
                     setFileWithClear(field, f);
                   }
                 }}
@@ -519,21 +563,75 @@ export default function CreateUnitType() {
                 <div>
                   <div className="flex items-center justify-between mt-2">
                     <p className="text-xs text-emerald-600 font-medium">✓ {files[field].name} ({(files[field].size / 1024).toFixed(0)} KB)</p>
-                    <button type="button" onClick={() => setFileWithClear(field, null)}
-                      className="text-xs text-red-400 hover:text-red-600">Remove</button>
+                    <button type="button" onClick={() => setFileWithClear(field, null)} className="text-xs text-red-400 hover:text-red-600">Remove</button>
                   </div>
                   <FloorPlanPreview file={files[field]} />
                 </div>
               )}
             </div>
           ))}
+
+          {/* Video tour URL */}
+          <div>
+            <label className={lbl}>Video Tour URL (optional)</label>
+            <input
+              className={inp}
+              type="url"
+              value={form.videoTourUrl}
+              onChange={e => set('videoTourUrl', e.target.value)}
+              placeholder="https://youtube.com/..."
+            />
+          </div>
+
+          {/* Interior photos with room tags */}
+          <div className="border-t border-gray-100 pt-4">
+            <h3 className="font-medium text-gray-700 mb-1">Interior Photos (optional)</h3>
+            <p className="text-xs text-gray-400 mb-3">Upload up to 20 photos. Tag each with a room.</p>
+            <label className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-sm font-medium cursor-pointer hover:bg-blue-100 transition w-fit">
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={e => {
+                  const added = Array.from(e.target.files).slice(0, 20 - unitPhotos.length);
+                  setUnitPhotos(prev => [...prev, ...added.map(file => ({ file, room: 'Other' }))]);
+                  e.target.value = '';
+                }}
+              />
+              + Add Photos
+            </label>
+            {unitPhotos.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {unitPhotos.map((p, i) => (
+                  <div key={i} className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                    <span className="text-xs text-gray-600 flex-1 truncate">{p.file.name}</span>
+                    <select
+                      className="text-xs border border-gray-200 rounded px-2 py-1 bg-white"
+                      value={p.room}
+                      onChange={e => setUnitPhotos(prev => prev.map((x, j) => j === i ? { ...x, room: e.target.value } : x))}
+                    >
+                      {['Living Room','Bedroom','Kitchen','Bathroom','Balcony','Dining','Exterior','Other'].map(r => (
+                        <option key={r}>{r}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setUnitPhotos(prev => prev.filter((_, j) => j !== i))}
+                      className="text-xs text-red-400 hover:text-red-600 shrink-0"
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       );
       case 8: return (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold">Pricing</h2>
           <div>
-            <label className={lbl}>Base Price (₹) *</label>
+            <label className={lbl}>Base Price (₹)</label>
             <input
               data-field="basePrice"
               className={errors.basePrice ? "w-full border border-red-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" : inp}
@@ -568,13 +666,43 @@ export default function CreateUnitType() {
               {form.carpetSqft && <p className="text-xs text-blue-500 mt-0.5">₹{Math.round(effectivePrice() / Number(form.carpetSqft)).toLocaleString()} / sqft (carpet)</p>}
             </div>
           )}
+
+          {/* ── Booking / Payment Terms ───────────────────────────────── */}
+          <div className="border-t border-gray-200 pt-4">
+            <h3 className="font-medium text-gray-700 mb-1">Booking &amp; Tax Terms</h3>
+            <p className="text-xs text-gray-500 mb-3">
+              These vary per unit type and replace the old project-level payment fields.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                ["bookingAmount", "Booking Amount (₹)", "e.g. 500000"],
+                ["gstPercentage", "GST %", "e.g. 5"],
+                ["stampDutyPercentage", "Stamp Duty %", "e.g. 5"],
+                ["registrationCharges", "Registration Charges (₹)", "e.g. 30000"],
+              ].map(([k, l, ph]) => (
+                <div key={k}>
+                  <label className={lbl}>{l}</label>
+                  <input
+                    data-field={k}
+                    className={errors[k] ? "w-full border border-red-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" : inp}
+                    type="number"
+                    min="0"
+                    value={form[k]}
+                    onChange={e => set(k, e.target.value)}
+                    placeholder={ph}
+                  />
+                  {errors[k] && <p className="text-xs text-red-500 mt-1">{errors[k]}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       );
       case 9: return (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold">Inventory</h2>
           <div className="grid grid-cols-2 gap-4">
-            {[["totalUnits","Total Units *"],["availableUnits","Available Units *"],["bookedUnits","Booked Units"],["blockedUnits","Admin Blocked"]].map(([k,l]) => (
+            {[["totalUnits","Total Units"],["availableUnits","Available Units"],["bookedUnits","Booked Units"],["blockedUnits","Admin Blocked"]].map(([k,l]) => (
               <div key={k}>
                 <label className={lbl}>{l}</label>
                 <input

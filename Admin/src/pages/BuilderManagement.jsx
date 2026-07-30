@@ -121,7 +121,11 @@ function BuilderModal({ builder, onClose, onSaved }) {
             onSaved();
             onClose();
         } catch (err) {
-            toast.error(err.response?.data?.message || "Failed to save builder");
+            if (err.response?.status === 409) {
+                toast.error("A builder with this phone or email already exists. Search for them to edit instead.");
+            } else {
+                toast.error(err.response?.data?.message || "Failed to save builder");
+            }
         } finally {
             setSubmitting(false);
         }

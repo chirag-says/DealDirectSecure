@@ -1,8 +1,9 @@
 'use client';
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { FaMapMarkerAlt, FaPhone, FaWhatsapp, FaEnvelope, FaCheckCircle, FaFilePdf, FaBed, FaBath, FaRulerCombined, FaCompass, FaCouch, FaUsers } from 'react-icons/fa';
-import { Building2, CheckCircle, ChevronLeft, ChevronRight, Layers, Star, Shield, MapPin, Home, Calendar, TreePine, Key, TowerControl, Building, BarChart3 } from 'lucide-react';
+import { FaMapMarkerAlt, FaPhoneAlt, FaWhatsapp, FaEnvelope, FaCheckCircle, FaFilePdf, FaBed, FaBath, FaRulerCombined, FaCompass, FaCouch, FaUsers, FaGift, FaFire } from 'react-icons/fa';
+import { Building2, CheckCircle, ChevronLeft, ChevronRight, Layers, Star, Shield, MapPin, Home, Calendar, TreePine, Key, TowerControl, Building, BarChart3, Users, Zap } from 'lucide-react';
+import ddAdminPfp from '../../../assets/clientadminpfp.png';
 
 const FALLBACK = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800";
 const STATUS_BADGE = { "New Launch": "bg-indigo-600 text-white", "Under Construction": "bg-red-600 text-white", "Ready To Move": "bg-emerald-600 text-white", "Completed": "bg-slate-600 text-white" };
@@ -82,7 +83,7 @@ function UnitTypeCard({ ut, projectId }) {
   );
 }
 
-export default function ProjectDetailContent({ project, unitTypes = [] }) {
+export default function ProjectDetailContent({ project, unitTypes = [], campaigns = [] }) {
   const p = project;
   const status = p.basics?.status || "New Launch";
   const loc = [p.location?.locality, p.location?.microMarket, p.location?.city, p.location?.state].filter(Boolean).join(", ");
@@ -145,27 +146,6 @@ export default function ProjectDetailContent({ project, unitTypes = [] }) {
             </div>
           </div>
 
-          {/* ── CONFIGS + AMENITIES (side by side) ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {unitTypes.length > 0 && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-5">
-                <h2 className="font-bold text-slate-900 mb-4 flex items-center gap-2"><Layers size={16} /> Available Configurations</h2>
-                {unitTypes.map(ut => <UnitTypeCard key={ut._id} ut={ut} projectId={p._id} />)}
-              </div>
-            )}
-            {amenities.length > 0 && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-5">
-                <h2 className="font-bold text-slate-900 mb-4">Amenities</h2>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-                  {amenities.map((a, i) => (
-                    <div key={i} className="flex items-center gap-2.5 text-sm text-slate-700">
-                      <FaCheckCircle className="text-emerald-500 flex-shrink-0" size={13} /> {a.name}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
 
           {/* ── NEARBY INFRASTRUCTURE ── */}
           {p.nearbyPlaces?.length > 0 && (
@@ -184,53 +164,164 @@ export default function ProjectDetailContent({ project, unitTypes = [] }) {
               </div>
             </div>
           )}
-
-          {/* Documents */}
-          {(p.documents?.reraCertificateUrl || p.media?.brochureUrl) && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-5">
-              <h2 className="font-bold text-slate-900 mb-4">Documents</h2>
-              <div className="flex flex-wrap gap-3">
-                {p.media?.brochureUrl && <a href={p.media.brochureUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-700 border border-red-200 rounded-xl text-sm font-medium hover:bg-red-100 transition"><FaFilePdf /> Download Brochure</a>}
-                {p.documents?.reraCertificateUrl && <a href={p.documents.reraCertificateUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 border border-green-200 rounded-xl text-sm font-medium hover:bg-green-100 transition"><Shield size={14} /> RERA Certificate</a>}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* ── RIGHT SIDEBAR ── */}
         <div className="space-y-4">
-          <div className="sticky top-24 space-y-4">
-            {p.builder && (
-              <div className="bg-white border border-slate-200 rounded-2xl p-5">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 text-xl border border-slate-200 overflow-hidden">
+          <div className="space-y-4">
+
+            {/* ── GROUP BUY BANNER ── */}
+            {campaigns.length > 0 && campaigns.map((c) => {
+              const discount = c.discountPerBuyer || 0;
+              const fmtDiscount = discount >= 1e7 ? `₹${(discount/1e7).toFixed(discount % 1e7 === 0 ? 0 : 2)} Cr` : discount >= 1e5 ? `₹${(discount/1e5).toFixed(0)} L` : `₹${discount.toLocaleString('en-IN')}`;
+              const progress = c.buyerTargets?.minBuyers ? Math.min(100, Math.round(((c.memberCount || 0) / c.buyerTargets.minBuyers) * 100)) : 0;
+              const unitName = typeof c.unitType === 'object' ? c.unitType.config?.name : null;
+
+              return (
+                <div key={c._id} className="bg-slate-900 rounded-2xl overflow-hidden">
+                  {/* Header strip */}
+                  <div className="px-5 pt-4 pb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">Group Buy</span>
+                    </div>
+                    {unitName && <span className="text-[10px] text-slate-500 font-medium">{unitName}</span>}
+                  </div>
+
+                  {/* Discount */}
+                  <div className="px-5 pb-4">
+                    <p className="text-3xl font-extrabold text-white tracking-tight leading-none">{fmtDiscount} <span className="text-emerald-400 text-lg font-bold">OFF</span></p>
+                    <p className="text-xs text-slate-400 mt-1.5">per buyer · {c.buyerTargets?.minBuyers}+ buyers needed</p>
+                  </div>
+
+                  {/* Divider + Progress */}
+                  <div className="px-5 pb-4">
+                    <div className="flex justify-between text-[10px] text-slate-500 mb-1.5 font-medium">
+                      <span>{c.memberCount || 0} joined</span>
+                      <span>{c.buyerTargets?.maxBuyers ? `${Math.max(0, c.buyerTargets.maxBuyers - (c.memberCount || 0))} left` : `min ${c.buyerTargets?.minBuyers}`}</span>
+                    </div>
+                    <div className="w-full bg-slate-800 rounded-full h-1">
+                      <div className="h-1 rounded-full bg-emerald-400 transition-all duration-500" style={{ width: `${progress}%` }} />
+                    </div>
+                  </div>
+
+                  {/* Perks */}
+                  {c.perks?.length > 0 && (
+                    <div className="px-5 pb-4 space-y-2">
+                      {c.perks.map((perk, i) => (
+                        <div key={i} className="flex items-center gap-2.5">
+                          <FaCheckCircle size={10} className="text-emerald-400 flex-shrink-0" />
+                          <span className="text-xs text-slate-300">{perk}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* ── DealDirect Contact Card ── */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-5">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-14 h-14 rounded-full bg-indigo-50 flex items-center justify-center font-bold text-indigo-600 text-xl border border-indigo-100 overflow-hidden flex-shrink-0">
+                  <img src={ddAdminPfp.src} alt="DealDirect Admin" className="w-full h-full object-cover" />
+                </div>
+                <div>
+                  <p className="font-bold text-slate-900 flex items-center gap-1.5">DealDirect Admin <FaCheckCircle className="text-blue-500" size={12} /></p>
+                  <p className="text-xs text-slate-400">Your Buying Partner</p>
+                </div>
+              </div>
+
+              {p.builder && (
+                <div className="bg-slate-50 rounded-xl px-4 py-3 mb-4">
+                  <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-1">Developer</p>
+                  <div className="flex items-center gap-2">
                     {p.builder.logoUrl ? (
-                      <img src={p.builder.logoUrl} alt={p.builder.company || p.builder.name} className="w-full h-full object-cover" />
-                    ) : (
-                      (p.builder.company || p.builder.name || "B").charAt(0)
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-bold text-slate-900 flex items-center gap-1.5">{p.builder.company || p.builder.name} <FaCheckCircle className="text-blue-500" size={12} /></p>
-                    <p className="text-xs text-slate-400">Verified Developer</p>
+                      <img src={p.builder.logoUrl} alt={p.builder.company || p.builder.name} className="w-7 h-7 rounded-md object-cover border border-slate-200" />
+                    ) : null}
+                    <p className="font-semibold text-slate-700 text-sm">{p.builder.company || p.builder.name}</p>
                   </div>
                 </div>
-                <h3 className="text-sm font-semibold text-slate-700 mb-3">Contact Sales Team</h3>
-                <div className="space-y-2">
-                  {p.salesContact?.phone && <a href={`tel:${p.salesContact.phone}`} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition"><FaPhone size={12} /> {p.salesContact.phone}</a>}
-                  {p.salesContact?.whatsapp && <a href={`https://wa.me/91${p.salesContact.whatsapp}`} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-green-500 text-white rounded-xl text-sm font-semibold hover:bg-green-600 transition"><FaWhatsapp /> WhatsApp</a>}
-                  {p.salesContact?.email && <a href={`mailto:${p.salesContact.email}`} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-xl text-sm font-semibold hover:bg-slate-50 transition"><FaEnvelope /> Email Us</a>}
+              )}
+
+              <div className="border-t border-slate-100 pt-4">
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Contact DealDirect</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <a href="tel:6360122696" className="flex items-center justify-center gap-2 px-3 py-3 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition"><FaPhoneAlt size={12} /> Call</a>
+                  <a href="https://wa.me/916360122696" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 px-3 py-3 bg-green-500 text-white rounded-xl text-sm font-semibold hover:bg-green-600 transition"><FaWhatsapp /> WhatsApp</a>
                 </div>
-                {p.salesContact?.managerName && <p className="text-xs text-slate-400 text-center mt-3">Ask for: {p.salesContact.managerName}</p>}
+                <a href="mailto:admin@dealdirect.in" className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-slate-500 text-sm font-medium hover:text-indigo-600 transition mt-2">
+                  <FaEnvelope size={12} /> admin@dealdirect.in
+                </a>
+              </div>
+            </div>
+
+            {/* ── CONFIGS ── */}
+            {unitTypes.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2"><Layers size={16} /> Available Configurations</h3>
+                {unitTypes.map(ut => <UnitTypeCard key={ut._id} ut={ut} projectId={p._id} />)}
               </div>
             )}
-            {(p.financials?.bookingAmount || p.financials?.gstPercentage) && (
-              <div className="bg-white border border-slate-200 rounded-2xl p-5">
-                <h3 className="font-bold text-slate-900 mb-3">Pricing Info</h3>
-                <div className="space-y-2.5 text-sm">
-                  {p.financials.bookingAmount && <div className="flex justify-between"><span className="text-slate-500">Booking Amount</span><span className="font-bold text-slate-900">₹{p.financials.bookingAmount.toLocaleString('en-IN')}</span></div>}
-                  {p.financials.gstPercentage && <div className="flex justify-between"><span className="text-slate-500">GST</span><span className="font-bold text-slate-900">{p.financials.gstPercentage}%</span></div>}
-                  {p.financials.stampDutyPercentage && <div className="flex justify-between"><span className="text-slate-500">Stamp Duty</span><span className="font-bold text-slate-900">{p.financials.stampDutyPercentage}%</span></div>}
+
+            {/* ── AMENITIES ── */}
+            {amenities.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                <h3 className="font-bold text-slate-900 mb-3">Amenities</h3>
+                <div className="grid grid-cols-1 gap-y-2.5">
+                  {amenities.map((a, i) => (
+                    <div key={i} className="flex items-center gap-2.5 text-sm text-slate-700">
+                      <FaCheckCircle className="text-emerald-500 flex-shrink-0" size={13} /> {a.name}
+                    </div>
+                  ))}
+                </div>
+                {/* Feature 5 — Amenity photo gallery */}
+                {toArray(p.media?.amenityImages).length > 0 && (
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    {toArray(p.media.amenityImages).map((url, i) => (
+                      <div key={i} className="rounded-xl overflow-hidden border border-slate-100">
+                        <img src={url} alt={`Amenity ${i + 1}`} className="w-full h-24 object-cover" onError={e => { e.target.onerror = null; e.target.src = FALLBACK; }} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── PAYMENT PLANS — Feature 6 ── */}
+            {p.paymentPlans?.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                <h3 className="font-bold text-slate-900 mb-4">Payment Plans</h3>
+                <div className="space-y-4">
+                  {p.paymentPlans.map((plan, pi) => (
+                    <div key={pi} className="border border-slate-100 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-semibold text-slate-800 text-sm">{plan.planType}</span>
+                        {plan.description && <span className="text-xs text-slate-400">{plan.description}</span>}
+                      </div>
+                      {plan.schedule?.length > 0 && (
+                        <div className="space-y-1.5">
+                          {plan.schedule.map((s, si) => (
+                            <div key={si} className="flex justify-between text-sm">
+                              <span className="text-slate-500">{s.stage}</span>
+                              <span className="font-medium text-slate-800">{s.percentage}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── DOCUMENTS (moved from left) ── */}
+            {(p.documents?.reraCertificateUrl || p.media?.brochureUrl) && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                <h3 className="font-bold text-slate-900 mb-3">Documents</h3>
+                <div className="space-y-2">
+                  {p.media?.brochureUrl && <a href={p.media.brochureUrl} target="_blank" rel="noopener noreferrer" className="w-full flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-700 border border-red-200 rounded-xl text-sm font-medium hover:bg-red-100 transition"><FaFilePdf /> Download Brochure</a>}
+                  {p.documents?.reraCertificateUrl && <a href={p.documents.reraCertificateUrl} target="_blank" rel="noopener noreferrer" className="w-full flex items-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 border border-green-200 rounded-xl text-sm font-medium hover:bg-green-100 transition"><Shield size={14} /> RERA Certificate</a>}
                 </div>
               </div>
             )}
