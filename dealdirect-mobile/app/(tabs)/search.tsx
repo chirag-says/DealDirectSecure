@@ -18,6 +18,7 @@ import {
   useSuggestions,
   type SearchFilters,
 } from '@/features/search';
+import { SaveSearchSheet } from '@/features/savedSearches';
 import { gesture, useTheme } from '@/theme';
 import type { PropertySuggestion } from '@/types/backend/property';
 import { Screen, Text } from '@/ui';
@@ -47,6 +48,7 @@ export default function SearchScreen() {
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
   const [editing, setEditing] = useState(true);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [saveSheetOpen, setSaveSheetOpen] = useState(false);
 
   /**
    * Filters arriving from Home.
@@ -197,11 +199,32 @@ export default function SearchScreen() {
             </Text>
           </Pressable>
 
-          {showResults && feed.total > 0 ? (
-            <Text variant="footnote" tone="muted">
-              {feed.total.toLocaleString('en-IN')} results
-            </Text>
-          ) : null}
+          <View className="flex-row items-center gap-md">
+            {/*
+              Offered only once there are results, because saving a search that
+              matched nothing is how a user ends up with an alert they cannot
+              interpret. The sheet takes the term as a NAME rather than as a
+              filter — see SaveSearchSheet for why saving free text as a filter
+              would guarantee the alert never fires.
+            */}
+            {showResults && feed.total > 0 ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Save this search"
+                hitSlop={gesture.hitSlop}
+                onPress={() => setSaveSheetOpen(true)}
+                style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+              >
+                <Ionicons name="bookmark-outline" size={18} color={theme.colors.textSecondary} />
+              </Pressable>
+            ) : null}
+
+            {showResults && feed.total > 0 ? (
+              <Text variant="footnote" tone="muted">
+                {feed.total.toLocaleString('en-IN')} results
+              </Text>
+            ) : null}
+          </View>
         </View>
 
         {/*
@@ -280,6 +303,12 @@ export default function SearchScreen() {
         filters={filters}
         onClose={() => setFilterSheetOpen(false)}
         onApply={applyFilters}
+      />
+
+      <SaveSearchSheet
+        visible={saveSheetOpen}
+        onClose={() => setSaveSheetOpen(false)}
+        seedTerm={filters.query}
       />
     </Screen>
   );

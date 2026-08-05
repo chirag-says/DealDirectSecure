@@ -12,6 +12,7 @@ import {
   Section,
   usePopularListings,
 } from '@/features/home';
+import { useNotifications } from '@/features/notifications';
 import { PropertyRail, type ListingIntent } from '@/features/properties';
 import { ProjectRail, useRecentProjects } from '@/features/projects';
 import { Reveal, RevealScrollView } from '@/lib';
@@ -56,6 +57,16 @@ export default function HomeScreen() {
   const queryClient = useQueryClient();
 
   const [refreshing, setRefreshing] = useState(false);
+
+  /**
+   * The unread badge on the hero's bell.
+   *
+   * Read here rather than inside `Hero` so the hero stays a presentational
+   * component with no data dependency of its own, and so the one notifications
+   * query is owned by the screen that also refreshes it. The hook is a no-op
+   * when signed out.
+   */
+  const { badgeLabel: notificationBadge } = useNotifications();
 
   const openSearch = useCallback(
     (params?: PropertySearchParams & { search?: string; listingType?: ListingIntent }) => {
@@ -103,6 +114,7 @@ export default function HomeScreen() {
           onPostProperty={() => router.push('/owner/property/new')}
           onNotifications={() => router.push('/notifications')}
           onProfile={() => router.push('/profile')}
+          notificationBadge={notificationBadge}
         />
 
         <Reveal placeholder={<SectionPlaceholder />}>

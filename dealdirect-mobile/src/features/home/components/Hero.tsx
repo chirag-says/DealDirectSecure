@@ -159,6 +159,8 @@ export interface HeroProps {
   onPostProperty: () => void;
   onNotifications: () => void;
   onProfile: () => void;
+  /** Unread notifications, capped and formatted by the caller. */
+  notificationBadge?: string | null;
 }
 
 export function Hero({
@@ -167,6 +169,7 @@ export function Hero({
   onPostProperty,
   onNotifications,
   onProfile,
+  notificationBadge,
 }: HeroProps) {
   const insets = useSafeAreaInsets();
 
@@ -268,6 +271,7 @@ export function Hero({
               icon="notifications-outline"
               label="Notifications"
               onPress={onNotifications}
+              badge={notificationBadge}
             />
             <HeroIconButton icon="person-circle-outline" label="Profile" onPress={onProfile} />
           </View>
@@ -376,18 +380,36 @@ function HeroIconButton({
   icon,
   label,
   onPress,
+  badge,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onPress: () => void;
+  /** Unread count, already capped and formatted. Null hides the dot entirely. */
+  badge?: string | null;
 }) {
   return (
     <PressableScale
-      accessibilityLabel={label}
+      // The count is spoken as part of the button rather than as a separate
+      // element, so a screen reader announces "Notifications, 3 unread" in one
+      // breath instead of reading a stray number after it.
+      accessibilityLabel={badge ? `${label}, ${badge} unread` : label}
       onPress={onPress}
       style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
     >
       <Ionicons name={icon} size={26} color={ON_HERO} />
+
+      {badge ? (
+        <View
+          className="absolute rounded-full bg-brand px-xs"
+          style={{ top: 6, right: 4, minWidth: 18, height: 18, justifyContent: 'center' }}
+          pointerEvents="none"
+        >
+          <Text variant="caption" className="text-center text-white">
+            {badge}
+          </Text>
+        </View>
+      ) : null}
     </PressableScale>
   );
 }

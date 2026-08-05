@@ -70,6 +70,23 @@ export const qk = {
 
   suggestions: (query: string) => ['properties', 'suggestions', query] as const,
 
+  /**
+   * The listings the user has expressed interest in.
+   *
+   * Under the `properties` domain because that is what it returns, and because
+   * marking interest must invalidate it. Note this is the SAME data as
+   * `propertyInterest`, seen from the other end: one asks "is this listing in
+   * my list", the other asks "what is in my list". Both are invalidated by the
+   * same toggle.
+   */
+  savedProperties: () => ['properties', 'saved'] as const,
+
+  savedSearches: ['savedSearches'] as const,
+  savedSearchList: () => ['savedSearches', 'mine'] as const,
+
+  notifications: ['notifications'] as const,
+  notificationList: () => ['notifications', 'list'] as const,
+
   projects: ['projects'] as const,
 
   /** `GET /projects`. Separate domain from properties: different collection,
