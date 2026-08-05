@@ -1,3 +1,4 @@
+import { decodeHtmlEntities } from '@/lib';
 import type { SavedSearch } from '@/types/backend/savedSearch';
 import { PRICE_BAND_LABELS, type SavedSearchPriceBand, type SavedSearchSummary } from './types';
 
@@ -7,25 +8,11 @@ import { PRICE_BAND_LABELS, type SavedSearchPriceBand, type SavedSearchSummary }
  * `validateSavedSearchCreate` runs `body('name').escape()`, so a search named
  * `3BHK & Villa` is PERSISTED as `3BHK &amp; Villa`. The website renders into
  * HTML and so never notices; React Native renders text, and would print the
- * entity literally.
- *
- * Only the five characters `.escape()` produces are handled, deliberately. A
- * general HTML-entity decoder would also transform user text that legitimately
- * contains something entity-shaped, which is a different and worse bug.
+ * entity literally. See `decodeHtmlEntities` for why only five characters are
+ * handled, deliberately — the same decoder chat message text uses.
  */
-const ESCAPED = /&(amp|lt|gt|quot|#x27|#39);/g;
-
-const UNESCAPE: Record<string, string> = {
-  amp: '&',
-  lt: '<',
-  gt: '>',
-  quot: '"',
-  '#x27': "'",
-  '#39': "'",
-};
-
 export function decodeSearchName(name: string): string {
-  return name.replace(ESCAPED, (_match, entity: string) => UNESCAPE[entity] ?? _match);
+  return decodeHtmlEntities(name);
 }
 
 function isPriceBand(value: string | undefined): value is SavedSearchPriceBand {

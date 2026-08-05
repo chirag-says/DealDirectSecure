@@ -78,9 +78,16 @@ export interface ConversationSummary extends Conversation {
 
 // --- Requests -------------------------------------------------------------
 
+/**
+ * CORRECTED 2026-08-05 by reading the controller. M0 declared `ownerId` as
+ * required here. The controller (chatController.js:22) destructures only
+ * `propertyId` from the body — `ownerId` is NEVER READ, by explicit design
+ * ("H5 FIX: ownerId is NEVER accepted from the client. Always derived from
+ * the property's actual owner to prevent IDOR/spam"). Sending it is harmless
+ * but pointless; declaring it required was actively misleading.
+ */
 export interface StartConversationRequest {
   propertyId: ObjectId;
-  ownerId: ObjectId;
 }
 
 export interface SendMessageRequest {

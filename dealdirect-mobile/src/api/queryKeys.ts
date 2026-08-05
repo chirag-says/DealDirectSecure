@@ -87,6 +87,23 @@ export const qk = {
   notifications: ['notifications'] as const,
   notificationList: () => ['notifications', 'list'] as const,
 
+  chat: ['chat'] as const,
+  /**
+   * `GET /chat/conversations`. Not paginated, one cache entry for the whole
+   * list. `myUnreadCount` on each row is also where the Messages tab badge is
+   * summed from — there is a dedicated `/chat/unread-count` endpoint, but it
+   * computes the exact same sum server-side, so calling it too would just be
+   * a second query key to keep in sync with this one for no new information.
+   */
+  chatConversations: () => ['chat', 'conversations'] as const,
+
+  /**
+   * A conversation thread's history. `page` is excluded for the same reason
+   * `propertySearch` excludes it: it is the infinite-query page param, not a
+   * cache discriminator.
+   */
+  chatMessages: (conversationId: ObjectId) => ['chat', 'messages', conversationId] as const,
+
   projects: ['projects'] as const,
 
   /** `GET /projects`. Separate domain from properties: different collection,

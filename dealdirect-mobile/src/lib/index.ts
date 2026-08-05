@@ -1,4 +1,5 @@
 export { useDebouncedValue } from './useDebouncedValue';
+export { decodeHtmlEntities } from './htmlEntities';
 export {
   Reveal,
   RevealScrollView,

@@ -16,10 +16,10 @@ which defines milestones M0–M14. This file says where we actually are against 
 | M1 | App shell, navigation, design system | **done** |
 | M2 | Transport + authentication | **done** |
 | M3 | Property discovery (search, filters, infinite scroll) | **done** |
-| M4 | Property detail, gallery, map | **not started** ← next |
-| M5 | Favorites, saved searches, notifications | not started (partly blocked, §3.2) |
-| M6 | Chat | not started |
-| M7 | Profile, settings, rewards | not started |
+| M4 | Property detail, gallery, map | **detail, gallery, attributes done. Map held** (§2.5) |
+| M5 | Favorites, saved searches, notifications | **done** (§2.6) |
+| M6 | Chat | **done** (§2.7) |
+| M7 | Profile, settings, rewards | not started ← next |
 | M8 | Owner mode: listings and uploads | not started |
 | M9 | Leads and analytics | not started |
 | M10 | Agreements | not started |
@@ -28,9 +28,10 @@ which defines milestones M0–M14. This file says where we actually are against 
 | M13 | Push notifications | not started, backend CR needed |
 | M14 | Store readiness and release | not started |
 
-**28 of 39 screens are still `Placeholder` stubs.** Each stub names the
-milestone that replaces it. Working screens today: Home, Search, the four auth
-screens, and the tab shell.
+**Working screens today:** Home, Search, property detail + gallery, Saved
+(interested list + saved searches), Messages (list + thread), notifications,
+the four auth screens, and the tab shell. The property detail locator map,
+M7–M10, M12–M14, and the remaining M11 screens are still `Placeholder` stubs.
 
 ---
 
@@ -48,7 +49,7 @@ screens, and the tab shell.
   elevation, motion (springs, not durations), scrim gradients.
 - `src/ui/` — 22 primitives. Screen, Text, Button, Input, Select, Sheet, Card,
   Badge, Avatar, Image, Skeleton, EmptyState, ErrorState, Chip, PriceLabel,
-  RangeSlider, plus the four added this session (§2.4).
+  RangeSlider, plus four Home-era additions (§2.8).
 - `src/storage/` — three MMKV instances (cache / prefs / drafts) with a
   logout-scoped clear that deliberately spares preferences.
 
@@ -74,7 +75,140 @@ screens, and the tab shell.
 campaigns (join/exit + the 10-per-15-min limiter), bookings, payment-proof
 upload. All five `app/projects/*` screens are still stubs.
 
-### 2.4 Home screen + design system (this session)
+### 2.5 Property detail (M4, done except the map)
+
+`app/property/[id]/index.tsx` and `app/property/[id]/gallery.tsx`, built on
+`features/properties/`:
+
+- `types.ts` / `adapters.ts` — `PropertyDetail` extends `PropertySummary`
+  rather than mirroring the ~80 backend fields; it carries `raw: Property` for
+  the field map to read declaratively (below), and lifts only what needs real
+  decisions: gallery flattening, owner contact, address lines.
+- `fieldMap.ts` + `DetailAttributes.tsx` — the declarative attribute table, 8
+  sections / ~60 fields. **Presence decides what renders, not `categoryName`**:
+  the taxonomy refs are corrupt (§3.4), so a mislabelled listing would render
+  the wrong half of its data if category picked the field set. A section with
+  no fillable rows disappears rather than rendering empty.
+- `DetailHero.tsx` — paged `FlatList` carousel (not a mapped `ScrollView`: a
+  listing can carry up to 65 images across `images[]` and every
+  `categorizedImages` bucket), tapping through to `gallery.tsx`'s full-screen
+  pinch-zoom viewer (`ZoomableImage.tsx`). The gallery route reads through the
+  same cached query the detail screen already populated, so opening it costs
+  no extra request and — this is the one that matters — no extra view count.
+- `hooks.ts`'s `usePropertyDetail` disables every automatic refetch
+  (`staleTime: Infinity`, `refetchOnMount/Reconnect: false`) because
+  `GET /properties/:id` **increments `views` on every call**. `refresh()`
+  stays available for a deliberate pull.
+- `interest.ts` + `DetailActions.tsx` — see §3.2. No heart icon; a labelled
+  button with a consequence line, optimistic with rollback, surfaces the
+  backend's own 400 message (five-listing cap, own listing, already marked)
+  rather than trying to predict it client-side.
+- `ReportSheet.tsx` — preset reasons that satisfy the backend's 10-character
+  minimum, editable.
+
+**Not done:** the locator map (§1.17, C1). Held for a dev-client rebuild —
+`react-native-webview` and `expo-location` are native modules, and Chirag's
+device workflow runs on `expo start --tunnel`, which ships JS only (§5.1).
+Chirag confirmed "keep the locator" for C1 when asked.
+
+**Untested on a device:** the gallery's pinch/pan gesture handoff (pan is
+disabled while at rest so the carousel can still page beneath it; enabled once
+zoomed) and the property detail action bar's layout. Both are reasoned
+through, not observed running.
+
+### 2.6 Saved, saved searches, and notifications (M5, done)
+
+`features/saved/`, `features/savedSearches/`, `features/notifications/`;
+`app/(tabs)/saved.tsx`, `app/notifications.tsx`.
+
+- **Saved is "Interested," not "Favourites."** See §3.2 — one backend list,
+  two names. The tab's first segment is labelled Interested; the count line
+  ("3 of 5 used") is functional, since the cap makes this screen where a user
+  comes to make room, not decoration.
+- **Saved searches only expose city, price band, and rent/sale.** The alert
+  matcher (`propertyController.js:484`) reads five stored filter fields but
+  only three actually match anything, and `availableFor` silently misses every
+  "Sell"-spelled listing when saved as "sale" (§3.4's spelling problem, a
+  second time). Offering a control that quietly fails half the time is worse
+  than not offering it. `isInert` on a saved search (no filter the matcher
+  reads) disables its alert switch and says why, rather than promising alerts
+  that can never fire.
+- **The backend's `isActive` toggle is deliberately wired to nothing.**
+  `GET /saved-searches/mine` filters to `isActive: true`, so flipping a search
+  off would drop it from the only endpoint that can ever list it again — a
+  delete with extra steps. `PUT .../notifyEmail|notifyInApp` is the reversible
+  control actually exposed.
+- **Notifications badge is counted from the list**, not from
+  `GET /notifications/unread-count` — no such endpoint exists; `unreadCount`
+  is summed client-side from the same rows the screen renders, capped at
+  "99+" since the list itself is hard-capped at the 100 most recent. Read
+  routes are PATCH (`/notifications/:id/read`, `/notifications/mark-all/read`)
+  — the website's own helper calls PUT paths that 404.
+
+`src/lib/htmlEntities.ts` — extracted here because chat (§2.7) needed the
+identical decode a second time: two backend code paths (`express-validator`'s
+`.escape()` on saved-search names, `chatController`'s hand-rolled `escapeHtml`
+on message text) both produce the same five HTML entities.
+
+### 2.7 Chat (M6, done)
+
+`src/socket/` (the transport) and `features/chat/`; `app/(tabs)/chat.tsx`,
+`app/chat/[conversationId].tsx`. `socket.io-client@4.8.3` added — pure JS, no
+native module, so this did **not** need a dev-client rebuild.
+
+- **`socketManager.ts` is a plain module, not a hook or context value** — one
+  socket for the whole app, matching architecture plan §1.8. `SocketProvider`
+  (mounted in `app/_layout.tsx`, inside `AuthProvider`) only drives lifecycle:
+  connect on `authenticated` + foreground, disconnect on `guest` + background.
+  Every screen reads the connection through `useSocketStatus` /
+  `useOnlineUserIds` / `useIsUserOnline`, which work with no provider present.
+- **The handshake re-runs on every `connect`, not just the first one.** The
+  socket JWT (`GET /chat/socket-token`) lives 5 minutes, so caching it across a
+  background/foreground cycle would mean authenticating with an almost-certainly-
+  expired token. Socket.IO's own reconnection (capped exponential backoff) is
+  left on for transport drops; the app-level handshake hooks into its
+  `connect` event every time, first or reconnect alike.
+- **`auth_error` gets exactly one retry, then a session failure** — per the
+  plan's "do not retry blindly." A second consecutive failure calls
+  `socket.disconnect()` (which also halts Socket.IO's own reconnect loop) and
+  hands off to `refreshUser()`, the only way to learn whether the real session
+  cookie is still good.
+- **`useMessageThread` merges three sources into one list**: REST history
+  (`GET /chat/messages/:id`, paginated OLDER by increasing page number, each
+  page oldest-first internally — assembling one oldest-first list means
+  reversing PAGE order, not item order), a live tail from `receive_message`
+  scoped by room membership, and this device's own optimistic sends. Send is
+  REST-then-emit exactly per the plan: persist first, then fan out the
+  server's own saved object over the socket — never the other way around.
+- **`visit_request` / `visit_confirmation` render as a distinct card**, not a
+  bubble with a button bolted on (the website's actual treatment). The Accept
+  action also tracks whether a later `visit_confirmation` already exists in
+  the thread and hides itself once one does — the website's own `canAcceptVisit`
+  has no such memory and would offer Accept on the same request forever.
+- **Property detail's "Message owner" now calls `useStartConversation`**,
+  wired into `DetailActions.tsx` from §2.5, closing the loop the plan
+  describes ("M4 for entry from property detail").
+- **Corrected in `types/backend/chat.ts`:** `StartConversationRequest`
+  declared `ownerId` as required; the controller never reads it (derives the
+  owner from the property, by explicit design, to prevent IDOR) — dropped.
+
+**Flagged, not fixed:** `send_message`, `typing`, and `stop_typing` on the
+backend trust client-supplied identity fields (`data.message.sender`,
+`data.userId`) instead of verifying them against the authenticated socket,
+unlike `join_conversation`, which does check DB participation. Blast radius is
+limited to conversations an attacker is already a genuine participant in, but
+within that room they could forge a message appearing to come from the other
+participant. This app only ever emits its own REST-validated data, so it isn't
+exploitable from here — it's a backend hardening item, spun off separately
+rather than fixed in this session.
+
+**Untested on a device:** the whole feature. Socket lifecycle across a real
+background/foreground cycle, the inverted `FlatList`'s footer-is-visually-top
+behaviour, and the keyboard-avoidance offset (`HEADER_HEIGHT` in the thread
+screen is a measured estimate) all need verification on a physical device
+before this is called solid.
+
+### 2.8 Home screen + design system
 
 New UI primitives, all generic and reusable:
 
@@ -186,24 +320,22 @@ through).
 
 ## 4. Recommended order for core logic
 
-M4 first, and not only because the plan says so. **Almost everything else
-depends on it:** it is the screen every card in the app taps into, it is where
-`recordView()` must be called for Recently Viewed to ever populate, and it is
-the entry point M6 (chat) and M10 (agreements) both hang off.
+M4, M5 and M6 are done (§2.5–§2.7), except the property-detail map, which is
+held for a dev-client rebuild (native modules, §5.1) whenever that is
+convenient. What's left, in order:
 
-1. **M4 — property detail, gallery, map.** Biggest single unblock. Note
-   `GET /properties/:id` **increments `views` on every call**, so it must not
-   refetch on focus. Implements `docs/MAP_IMPLEMENTATION.md` (bundled Leaflet in
-   a WebView, matching the website's tiles and markers).
+1. **M7 — profile, settings, rewards.** Next up. Self-contained, no blockers,
+   nothing else in the plan depends on it.
 2. **M11 — finish projects.** The data layer is already done; this is screens
    plus unit types, campaigns and bookings.
-3. **M7 — profile, settings, rewards.** Self-contained, no blockers.
-4. **M5 — favourites and notifications.** Do notifications and saved searches
-   now; favourites waits on §3.2.
-5. **M6 — chat.** Two-step socket handshake, the trickiest transport work left.
-6. **M8 → M9 → M10** — owner mode, then leads, then agreements. M8 is the
+3. **M8 → M9 → M10** — owner mode, then leads, then agreements. M8 is the
    largest and most failure-prone item in the whole plan (10 days) and is the
    first thing that **writes** to production.
+4. **The map phase**, whenever a dev-client rebuild is scheduled: property
+   detail's locator (§2.5) plus M8's add/edit picker, both against
+   `docs/MAP_IMPLEMENTATION.md`.
+5. **M12 → M13 → M14** — offline/perf, push notifications (blocked on a
+   backend change request, §1.16), then store readiness.
 
 ---
 
@@ -284,5 +416,5 @@ none of them blocking:
   fading into solid dark, with the search and buttons on the solid part. Removes
   the scrim entirely, shows ~78% of any image, and means the scrim never needs
   retuning per image. This is the right fix and it is still open.
-- Collections rails are built but not rendered (§2.4).
+- Collections rails are built but not rendered (§2.8).
 - `assets/home/brand/hero.png` (558 KB) is unused; delete or use.

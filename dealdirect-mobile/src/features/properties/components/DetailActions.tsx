@@ -42,14 +42,24 @@ export interface DetailActionsProps {
   property: PropertyDetail;
   interest: InterestState;
   onReport: () => void;
+  /**
+   * Starts (or resumes) a chat and navigates there. Owned by the screen, not
+   * this component, the same way `onReport` is — both need `useRouter` and a
+   * mutation the action bar itself has no business holding. Undefined hides
+   * the action rather than rendering it disabled: M6 wired this in after M4
+   * shipped, and a permanently-disabled icon would be worse than none while a
+   * caller has not been updated yet.
+   */
+  onMessage?: () => void;
 }
 
-export function DetailActions({ property, interest, onReport }: DetailActionsProps) {
+export function DetailActions({ property, interest, onReport, onMessage }: DetailActionsProps) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
 
   const phone = property.owner?.phone?.replace(/[^\d+]/g, '');
   const canCall = !!phone && !interest.requiresAuth;
+  const canMessage = !!onMessage && !interest.requiresAuth;
 
   const handleCall = useCallback(async () => {
     if (!phone) return;
@@ -116,6 +126,9 @@ export function DetailActions({ property, interest, onReport }: DetailActionsPro
           />
         </View>
 
+        {canMessage ? (
+          <IconAction icon="chatbubble-outline" label="Message owner" onPress={onMessage!} />
+        ) : null}
         {canCall ? (
           <IconAction icon="call-outline" label="Call owner" onPress={handleCall} />
         ) : null}

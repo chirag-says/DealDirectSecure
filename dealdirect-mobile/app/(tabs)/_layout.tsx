@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 
+import { useChatUnreadCount } from '@/features/chat';
 import { useTheme } from '@/theme';
 
 /**
@@ -17,6 +18,7 @@ import { useTheme } from '@/theme';
  */
 export default function TabsLayout() {
   const theme = useTheme();
+  const unreadChats = useChatUnreadCount();
 
   return (
     <Tabs
@@ -62,6 +64,9 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="chatbubble-outline" size={size} color={color} />
           ),
+          // 0 would still render a visible "0" pill — react-navigation's
+          // badge only hides on `undefined`, not on a falsy number.
+          tabBarBadge: unreadChats > 0 ? unreadChats : undefined,
         }}
       />
       <Tabs.Screen

@@ -1,7 +1,9 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { Alert, ScrollView, View } from 'react-native';
 
+import { ApiError } from '@/api';
+import { useStartConversation } from '@/features/chat';
 import {
   DetailActions,
   DetailAttributes,
@@ -31,10 +33,10 @@ import { Badge, Chip, EmptyState, ErrorState, PriceLabel, Screen, Skeleton, Text
  * rest is worth reading; then where it is; then the facts strip; then the
  * owner's own words; then amenities. Nothing above the fold repeats itself.
  *
- * STILL TO COME IN M4: the photo carousel and full-screen gallery, the
- * declarative attribute table for the eighty-field residential/commercial
- * split, the Leaflet locator map, and the interest and contact actions. Each
- * has a marked seam below.
+ * STILL TO COME IN M4: the Leaflet locator map, held with the rest of the map
+ * phase pending a dev-client rebuild for its native dependencies. Everything
+ * else in the plan — gallery, attribute table, interest, contact, message,
+ * share, report — is built.
  */
 export default function PropertyDetailScreen() {
   const router = useRouter();
@@ -69,6 +71,27 @@ export default function PropertyDetailScreen() {
     (index: number) => router.push(`/property/${id}/gallery?index=${index}`),
     [router, id]
   );
+
+  const { start } = useStartConversation();
+
+  /**
+   * Starts (or resumes — the backend is idempotent per buyer/property pair)
+   * a chat and navigates there. Failures are real answers, not faults: the
+   * backend 400s for the owner's own listing, and there is no client-side way
+   * to know ownership in advance without a second request, so the server's
+   * own message is surfaced rather than guessed at.
+   */
+  const handleMessage = useCallback(async () => {
+    try {
+      const { conversationId } = await start(id);
+      router.push(`/chat/${conversationId}`);
+    } catch (err) {
+      Alert.alert(
+        'Could not start conversation',
+        err instanceof ApiError ? err.message : 'Please try again.'
+      );
+    }
+  }, [start, id, router]);
 
   if (isLoading) {
     return <PropertyDetailSkeleton />;
@@ -205,6 +228,7 @@ export default function PropertyDetailScreen() {
         property={property}
         interest={interest}
         onReport={() => setReporting(true)}
+        onMessage={handleMessage}
       />
 
       <ReportSheet
