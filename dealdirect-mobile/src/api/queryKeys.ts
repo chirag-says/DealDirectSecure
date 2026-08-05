@@ -1,0 +1,85 @@
+/**
+ * Query keys, in one place.
+ *
+ * Keys are declared centrally rather than inline at each hook so that
+ * invalidation can be reasoned about by reading one file. A key written at its
+ * call site is a key nobody else can safely invalidate.
+ *
+ * Shape: `[domain, operation, ...discriminators]`. The domain segment alone is
+ * a valid prefix, so `queryClient.invalidateQueries({ queryKey: qk.properties })`
+ * drops everything property-shaped without listing the operations.
+ */
+
+import type { PropertySearchParams } from '@/types/backend/property';
+import type { ObjectId } from '@/types/backend/common';
+
+/**
+ * Search params, reduced to a stable key fragment.
+ *
+ * TanStack hashes keys with a key-sorted JSON serialiser, so object key order
+ * is already safe. What is NOT safe is `undefined` versus absent: they hash
+ * identically, but a param whose value is an empty string does not, and would
+ * split the cache into two entries for the same query. So empties are dropped
+ * here, and the same normaliser feeds the request itself.
+ */
+export function normalizeSearchParams(
+  params: PropertySearchParams
+): Record<string, string | number> {
+  const entries = Object.entries(params).filter(
+    ([, value]) => value !== undefined && value !== null && value !== ''
+  ) as [string, string | number][];
+
+  return Object.fromEntries(entries.sort(([a], [b]) => a.localeCompare(b)));
+}
+
+export const qk = {
+  properties: ['properties'] as const,
+
+  /** Infinite feed. `page` is deliberately excluded: it is the page param. */
+  propertySearch: (params: PropertySearchParams) =>
+    ['properties', 'search', normalizeSearchParams(params)] as const,
+
+  /**
+   * A Home collection rail: ONE page, not an infinite feed.
+   *
+   * Deliberately a different key namespace from `propertySearch` even when the
+   * params coincide. TanStack keeps one cache entry per key, and an infinite
+   * query stores `{ pages: [...] }` where a plain query stores the page object
+   * itself. Sharing a key between the two shapes means whichever mounts second
+   * reads the other's structure and throws.
+   *
+   * The collection id is part of the key so that two collections which happen
+   * to resolve to the same params stay independently cacheable and separately
+   * invalidatable.
+   */
+  collection: (id: string, params: PropertySearchParams) =>
+    ['properties', 'collection', id, normalizeSearchParams(params)] as const,
+
+  propertyDetail: (id: ObjectId) => ['properties', 'detail', id] as const,
+
+  /**
+   * Whether the signed-in user has expressed interest in one listing.
+   *
+   * Its own key rather than a field on the detail cache: the detail query is
+   * public and shared by every viewer, while this is per-user and must be
+   * dropped on logout. `AuthProvider` clears the whole client on logout, but
+   * keeping them separate also means an interest toggle does not invalidate
+   * the listing itself and re-spend a view count.
+   */
+  propertyInterest: (id: ObjectId) => ['properties', 'interest', id] as const,
+
+  suggestions: (query: string) => ['properties', 'suggestions', query] as const,
+
+  projects: ['projects'] as const,
+
+  /** `GET /projects`. Separate domain from properties: different collection,
+   *  different endpoint, invalidated independently. */
+  projectList: (params: Record<string, string | number | boolean>) =>
+    ['projects', 'list', params] as const,
+
+  taxonomy: ['taxonomy'] as const,
+  categories: () => ['taxonomy', 'categories'] as const,
+  propertyTypes: () => ['taxonomy', 'propertyTypes'] as const,
+  subcategoriesByCategory: (categoryId: ObjectId) =>
+    ['taxonomy', 'subcategories', categoryId] as const,
+} as const;
