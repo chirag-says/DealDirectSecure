@@ -1771,6 +1771,7 @@ export const searchProperties = async (req, res) => {
       city,
       priceFrom,
       priceTo,
+      listingType,
       page = 1,
       limit = 12,
       sort = "newest",
@@ -1796,6 +1797,27 @@ export const searchProperties = async (req, res) => {
       filter.price = {};
       if (priceFrom) filter.price.$gte = +priceFrom;
       if (priceTo) filter.price.$lte = +priceTo;
+    }
+
+    // Optional listingType filter. Added 2026-08-03 for the mobile client's
+    // rent/sale split; additive and backward-compatible, since omitting the
+    // param leaves the filter exactly as it was and the response shape is
+    // unchanged.
+    //
+    // The schema enum accepts SIX spellings of three meanings
+    // ("Rent|Sell|Sale|rent|sell|sale"), so an equality match would silently
+    // return only the listings that happen to use the caller's casing. Both
+    // intents therefore expand to an $in over every spelling that means them.
+    // An unrecognised value is ignored rather than applied, so a typo returns
+    // the unfiltered list instead of an empty one.
+    if (listingType) {
+      const LISTING_TYPE_ALIASES = {
+        rent: ["Rent", "rent"],
+        sale: ["Sell", "Sale", "sell", "sale"],
+        sell: ["Sell", "Sale", "sell", "sale"],
+      };
+      const aliases = LISTING_TYPE_ALIASES[String(listingType).toLowerCase()];
+      if (aliases) filter.listingType = { $in: aliases };
     }
 
     // Search in multiple fields (excluding ObjectId fields from regex search)
