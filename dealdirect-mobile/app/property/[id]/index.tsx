@@ -1,8 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Pressable, Share, View } from 'react-native';
-import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
+import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { Pressable, Share, View, type LayoutChangeEvent } from 'react-native';
+import Animated, {
+  runOnUI,
+  scrollTo,
+  useAnimatedRef,
+  useAnimatedScrollHandler,
+  useSharedValue,
+} from 'react-native-reanimated';
 
 import { WEB_URL } from '@/config/env';
 import {
@@ -12,6 +18,7 @@ import {
   DetailHeader,
   DetailHero,
   DetailOwner,
+  DetailSectionNav,
   EmiCalculator,
   ExpandableText,
   HERO_HEIGHT,
@@ -22,6 +29,7 @@ import {
   useInterest,
   useRecordPropertyView,
   usePropertyDetail,
+  useSectionRegistry,
 } from '@/features/properties';
 import { RewardReveal } from '@/features/rewards';
 import { useSimilarProperties } from '@/features/search';
@@ -61,8 +69,18 @@ import {
  *
  * Reading order is deliberate: the price first, because it decides whether the
  * rest is worth reading; then where it is; then the facts strip; then the
- * owner's own words; then everything a specific listing happens to carry.
- * Nothing above the fold repeats itself.
+ * owner's own words; then everything a specific listing happens to carry, and
+ * finally somewhere else to go. Nothing above the fold repeats itself.
+ *
+ * ---------------------------------------------------------------------------
+ * GETTING AROUND IT
+ *
+ * The page is long enough that reading it top to bottom is not how anyone uses
+ * it, so `DetailSectionNav` pins a strip of jump links under the nav bar once
+ * the photo has scrolled past. Sections MEASURE themselves into it through
+ * `SectionRegistryContext` rather than being listed anywhere, because which
+ * sections a listing has depends on the listing; see that component for why a
+ * declared list would be worse than no nav at all.
  *
  * ---------------------------------------------------------------------------
  * DEPTH
@@ -108,6 +126,45 @@ export default function PropertyDetailScreen() {
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollY.value = event.contentOffset.y;
   });
+
+  /**
+   * The section nav's plumbing.
+   *
+   * `useAnimatedRef` rather than a plain ref because the jump goes through
+   * Reanimated's `scrollTo`, which runs the scroll on the UI thread. A
+   * `ref.current.scrollTo` would work too and would compete with the scroll
+   * handler above for the same frames.
+   *
+   * `sheetTop` exists because `onLayout` reports a child's offset within its
+   * PARENT, and every section's parent is the content sheet — which itself
+   * starts one hero-height down the scroll content. Measuring the sheet once
+   * and adding it is exact; assuming `HERO_HEIGHT - 20` would be a duplicate of
+   * a constant two files away that nothing would catch when it changed.
+   */
+  const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  const registry = useSectionRegistry();
+  const [sheetTop, setSheetTop] = useState(0);
+
+  const onSheetLayout = useCallback((event: LayoutChangeEvent) => {
+    setSheetTop(event.nativeEvent.layout.y);
+  }, []);
+
+  // `scrollTo` is a worklet and has to run on the UI thread; called from JS it
+  // is a no-op with a warning. `runOnUI` is the documented way across.
+  const jumpTo = useCallback(
+    (y: number) => {
+      runOnUI(() => {
+        'worklet';
+        scrollTo(scrollRef, 0, y, true);
+      })();
+    },
+    [scrollRef]
+  );
+
+  const sectionContext = useMemo(
+    () => ({ register: registry.register, offset: sheetTop }),
+    [registry.register, sheetTop]
+  );
 
   // Declared before the early returns: hooks cannot be called conditionally,
   // and the loading and 404 branches below both return before the action bar.
@@ -239,7 +296,12 @@ export default function PropertyDetailScreen() {
         onShare={handleShare}
       />
 
+      {/* Rendered after the header so it stacks under it, and before the scroll
+          view in reading order because that is where it sits on screen. */}
+      <DetailSectionNav sections={registry.sections} scrollY={scrollY} onJump={jumpTo} />
+
       <Animated.ScrollView
+        ref={scrollRef}
         // A plain style rather than a class: NativeWind's `className` needs a
         // component registered through `cssInterop`, and Reanimated's wrapped
         // ScrollView is not one of them.
@@ -265,7 +327,9 @@ export default function PropertyDetailScreen() {
         <View
           className="rounded-t-2xl bg-background"
           style={{ marginTop: -20, paddingHorizontal: screenPadding, paddingTop: spacing.lg }}
+          onLayout={onSheetLayout}
         >
+         <SectionRegistryContext.Provider value={sectionContext}>
           {/*
             THE HEADER BLOCK.
 
@@ -387,21 +451,33 @@ export default function PropertyDetailScreen() {
             </View>
           ) : null}
 
-          {/* Only listings whose owner wrote a real title reach this. */}
+          {/*
+            Only listings whose owner wrote a real title reach this. It shares
+            "About" in the nav with the description below, because whichever of
+            the two exists is the first prose on the page and the user jumping
+            to "About" wants the top of it — registering the same label twice
+            would put two identical chips on the strip. `useSectionRegistry`
+            keys on the label, so the second registration overwrites the first;
+            they are adjacent, so the offset difference is a few points.
+          */}
           {property.headline ? (
-            <Section title="About this property">
+            <Section title="About this property" navLabel="About">
               <Text variant="body">{property.headline}</Text>
             </Section>
           ) : null}
 
-          {property.description ? (
-            <Section title={property.headline ? 'Description' : 'About this property'}>
+          {property.description && !property.headline ? (
+            <Section title="About this property" navLabel="About">
+              <ExpandableText text={property.description} />
+            </Section>
+          ) : property.description ? (
+            <Section title="Description">
               <ExpandableText text={property.description} />
             </Section>
           ) : null}
 
           {property.amenities.length > 0 ? (
-            <Section title="Amenities">
+            <Section title="Amenities" navLabel="Amenities">
               <View className="flex-row flex-wrap gap-sm">
                 {property.amenities.map((amenity) => (
                   <Tag key={amenity} label={amenity} />
@@ -411,13 +487,13 @@ export default function PropertyDetailScreen() {
           ) : null}
 
           {property.nearby.length > 0 ? (
-            <Section title="Nearby">
+            <Section title="Nearby" navLabel="Nearby">
               <NearbyPlaces places={property.nearby} />
             </Section>
           ) : null}
 
           {property.videoUrl ? (
-            <Section title="Video">
+            <Section title="Video" navLabel="Video">
               <VideoWalkthrough videoUrl={property.videoUrl} />
             </Section>
           ) : null}
@@ -427,12 +503,19 @@ export default function PropertyDetailScreen() {
             field map. Sections it cannot fill do not appear, so this is where
             a residential and a commercial listing visibly diverge without the
             screen ever asking which it is looking at.
+
+            One nav entry for the whole block rather than one per table. It
+            renders between two and six tables depending on the listing, and
+            six more chips would push everything after them off the strip for
+            destinations a user cannot tell apart from the chip alone.
           */}
-          <DetailAttributes property={property} />
+          <NavAnchor label="Details">
+            <DetailAttributes property={property} />
+          </NavAnchor>
 
           {/* Rent has no purchase to finance against. */}
           {property.intent !== 'rent' && property.priceRupees > 0 ? (
-            <Section title="EMI calculator">
+            <Section title="EMI calculator" navLabel="EMI">
               <EmiCalculator priceRupees={property.priceRupees} />
             </Section>
           ) : null}
@@ -440,7 +523,7 @@ export default function PropertyDetailScreen() {
           {/* M4, remaining phase: the locator map. */}
 
           {owner ? (
-            <Section title="Owner">
+            <Section title="Owner" navLabel="Owner">
               <DetailOwner owner={owner} />
             </Section>
           ) : null}
@@ -454,24 +537,30 @@ export default function PropertyDetailScreen() {
             with everything above it.
           */}
           {similar.items.length > 0 ? (
-            <View style={{ marginTop: spacing['2xl'], marginHorizontal: -screenPadding }}>
-              <View
-                style={{
-                  height: 1,
-                  backgroundColor: theme.colors.border,
-                  marginBottom: spacing.lg,
-                  marginHorizontal: screenPadding,
-                }}
-              />
-              <Text variant="title3" className="mb-md" style={{ marginHorizontal: screenPadding }}>
-                Similar properties
-              </Text>
-              <PropertyRail
-                items={similar.items}
-                onSelect={openSimilar}
-                accessibilityLabel="Similar properties"
-              />
-            </View>
+            <NavAnchor label="Similar">
+              <View style={{ marginTop: spacing['2xl'], marginHorizontal: -screenPadding }}>
+                <View
+                  style={{
+                    height: 1,
+                    backgroundColor: theme.colors.border,
+                    marginBottom: spacing.lg,
+                    marginHorizontal: screenPadding,
+                  }}
+                />
+                <Text
+                  variant="title3"
+                  className="mb-md"
+                  style={{ marginHorizontal: screenPadding }}
+                >
+                  Similar properties
+                </Text>
+                <PropertyRail
+                  items={similar.items}
+                  onSelect={openSimilar}
+                  accessibilityLabel="Similar properties"
+                />
+              </View>
+            </NavAnchor>
           ) : null}
 
           {/*
@@ -493,6 +582,7 @@ export default function PropertyDetailScreen() {
               Report this listing
             </Text>
           </Pressable>
+         </SectionRegistryContext.Provider>
         </View>
       </Animated.ScrollView>
 
@@ -538,11 +628,36 @@ export default function PropertyDetailScreen() {
  * three lines above it; a rule above the heading gives each block a top edge
  * without adding a container around it.
  */
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  navLabel,
+  children,
+}: {
+  title: string;
+  /**
+   * The chip's text in the section nav. Absent means the section is not
+   * navigable — the strip has room for perhaps six labels before it stops being
+   * scannable, so short blocks that a user would never jump TO are left out
+   * rather than shortened until they fit.
+   *
+   * Often shorter than the heading: "About this property" is right above the
+   * paragraph and wrong on a chip beside five others.
+   */
+  navLabel?: string;
+  children: React.ReactNode;
+}) {
   const theme = useTheme();
+  const { register, offset } = useContext(SectionRegistryContext);
+
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      if (navLabel) register(navLabel, navLabel, offset + event.nativeEvent.layout.y);
+    },
+    [navLabel, register, offset]
+  );
 
   return (
-    <View style={{ marginTop: spacing['2xl'] }}>
+    <View style={{ marginTop: spacing['2xl'] }} onLayout={handleLayout}>
       <View
         style={{
           height: 1,
@@ -556,6 +671,47 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       {children}
     </View>
   );
+}
+
+/**
+ * How a `Section` reaches the registry without every call site passing it.
+ *
+ * `Section` is used seven times on this screen and the two values it needs —
+ * the register function and the sheet's own offset — are the same for all of
+ * them. Threading both through every call would put two props on each that say
+ * nothing about that section, and a missed one would silently drop it from the
+ * nav rather than failing.
+ *
+ * The default is a no-op, so `Section` still renders correctly outside a
+ * provider. Nothing renders it outside one today; the default exists so that
+ * moving it into a modal or a preview later cannot crash.
+ */
+const SectionRegistryContext = createContext<{
+  register: (id: string, label: string, y: number) => void;
+  offset: number;
+}>({ register: () => undefined, offset: 0 });
+
+/**
+ * A nav destination that is not a `Section`.
+ *
+ * Two blocks on this page own their own heading and layout — the attribute
+ * tables, which render several headings of their own, and the similar-properties
+ * rail, which breaks the column grid to reach the screen edge. Neither can be
+ * wrapped in `Section` without changing how it looks, so this wraps them in a
+ * bare measuring `View` instead: it registers an offset and adds nothing else.
+ *
+ * `View` with only `onLayout` does not affect layout, so this is invisible in
+ * every sense except the strip.
+ */
+function NavAnchor({ label, children }: { label: string; children: React.ReactNode }) {
+  const { register, offset } = useContext(SectionRegistryContext);
+
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => register(label, label, offset + event.nativeEvent.layout.y),
+    [label, register, offset]
+  );
+
+  return <View onLayout={handleLayout}>{children}</View>;
 }
 
 /**

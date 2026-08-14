@@ -26,8 +26,16 @@ export { DetailHero, HERO_HEIGHT, type DetailHeroProps } from './components/Deta
 export {
   DetailHeader,
   HEADER_BAR_HEIGHT,
+  useHeaderProgress,
   type DetailHeaderProps,
 } from './components/DetailHeader';
+export {
+  DetailSectionNav,
+  SECTION_NAV_HEIGHT,
+  useSectionRegistry,
+  type DetailSection,
+  type DetailSectionNavProps,
+} from './components/DetailSectionNav';
 export { ExpandableText, type ExpandableTextProps } from './components/ExpandableText';
 export { DetailFacts, type DetailFactsProps } from './components/DetailFacts';
 export { DetailOwner, type DetailOwnerProps } from './components/DetailOwner';

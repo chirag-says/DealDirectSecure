@@ -62,6 +62,34 @@ export const HEADER_BAR_HEIGHT = 44;
 /** Where the fade starts, measured from the point the photo's bottom lands. */
 const FADE_TRAVEL = 72;
 
+/**
+ * 0 while the bar is over the photo, 1 once it is opaque.
+ *
+ * Exported because the section nav has to appear in step with the bar going
+ * solid, and a second copy of this interpolation would be two constants that
+ * silently drift apart — the strip would slide out from under a bar that had
+ * not finished arriving, or after it had.
+ *
+ * The collapse point is measured WITHOUT parallax on purpose. Parallax holds
+ * the photo behind the bar for longer, and reduced motion turns parallax off
+ * entirely; taking the later of the two points would leave a user on that
+ * setting with white glyphs over white content. Taking the earlier one only
+ * means the bar goes solid while photography is still behind it, which is what
+ * a nav bar ordinarily does.
+ */
+export function useHeaderProgress(scrollY: SharedValue<number>, insetTop: number) {
+  const collapsePoint = HERO_HEIGHT - (insetTop + HEADER_BAR_HEIGHT);
+
+  return useDerivedValue(() =>
+    interpolate(
+      scrollY.value,
+      [collapsePoint - FADE_TRAVEL, collapsePoint],
+      [0, 1],
+      Extrapolation.CLAMP
+    )
+  );
+}
+
 export interface DetailHeaderProps {
   /** Shown only once the bar is opaque, so it never sits over the photo. */
   title: string;
@@ -76,26 +104,7 @@ export function DetailHeader({ title, scrollY, onBack, onShare }: DetailHeaderPr
   const [collapsed, setCollapsed] = useState(false);
 
   const barHeight = insets.top + HEADER_BAR_HEIGHT;
-
-  // The scroll offset at which the photo can no longer be relied on to sit
-  // behind the bar, so the white glyphs must have become dark ones by then.
-  //
-  // Measured WITHOUT parallax on purpose. Parallax holds the photo behind the
-  // bar for longer, and reduced motion turns parallax off entirely; taking the
-  // later of the two points would leave a user on that setting with white
-  // glyphs over white content. Taking the earlier one only means the bar goes
-  // solid while photography is still behind it, which is what a nav bar
-  // ordinarily does.
-  const collapsePoint = HERO_HEIGHT - barHeight;
-
-  const progress = useDerivedValue(() =>
-    interpolate(
-      scrollY.value,
-      [collapsePoint - FADE_TRAVEL, collapsePoint],
-      [0, 1],
-      Extrapolation.CLAMP
-    )
-  );
+  const progress = useHeaderProgress(scrollY, insets.top);
 
   const setCollapsedFromUI = useCallback((next: boolean) => setCollapsed(next), []);
 
