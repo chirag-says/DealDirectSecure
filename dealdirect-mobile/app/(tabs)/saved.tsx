@@ -5,6 +5,7 @@ import { useCallback, useState } from 'react';
 import { Alert, Pressable, RefreshControl, View } from 'react-native';
 
 import { SignInPrompt } from '@/auth';
+import { matchCity } from '@/features/home';
 import { INTEREST_LIMIT, useRemoveInterest, useSavedProperties } from '@/features/saved';
 import {
   SavedSearchRow,
@@ -14,7 +15,7 @@ import {
   type SavedSearchSummary,
 } from '@/features/savedSearches';
 import { PropertyCard, PropertyListSkeleton } from '@/features/properties';
-import { gesture, screenPadding, spacing, tabBarClearance, useTheme } from '@/theme';
+import { gesture, radius, screenPadding, spacing, tabBarClearance, useTheme } from '@/theme';
 import {
   EmptyState,
   ErrorState,
@@ -22,6 +23,7 @@ import {
   Screen,
   ScreenHeader,
   Segmented,
+  Skeleton,
   Text,
   useToast,
 } from '@/ui';
@@ -108,7 +110,10 @@ function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {
         ]
       );
     },
-    [remove]
+    // `toast` is memoised by its provider (`ui/Toast.tsx`), so including it
+    // does not make this callback unstable — it was omitted rather than being
+    // deliberately excluded.
+    [remove, toast]
   );
 
   if (requiresAuth) {
@@ -219,6 +224,32 @@ function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {
   );
 }
 
+/**
+ * Mirrors `SavedSearchRow`'s geometry: a bordered card holding a name, the
+ * composed filter description under it, and a footer row carrying the alert
+ * switch and the delete control.
+ *
+ * Three of them, matching `PropertyListSkeleton`'s count, because that is what
+ * every other list in the app shows while loading and a different number reads
+ * as a different kind of wait.
+ */
+function SavedSearchListSkeleton() {
+  return (
+    <View style={{ paddingHorizontal: screenPadding, gap: spacing.md }}>
+      {[0, 1, 2].map((index) => (
+        <View key={index} className="rounded-xl border border-border bg-surface p-md">
+          <Skeleton width="52%" height={18} />
+          <Skeleton width="74%" height={14} className="mt-sm" />
+          <View className="mt-md flex-row items-center justify-between">
+            <Skeleton width={92} height={14} />
+            <Skeleton width={44} height={24} radius={radius.full} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function SearchesList() {
   const router = useRouter();
   const theme = useTheme();
@@ -228,17 +259,63 @@ function SearchesList() {
   const toast = useToast();
 
   /**
-   * Runs the search. Only the filters this app can express as search params
-   * are carried: the price BAND is a saved-search concept with hard-coded
-   * thresholds, and translating it into priceFrom/priceTo here would invent a
-   * range the alert never used.
+   * Runs the search.
+   *
+   * ---------------------------------------------------------------------------
+   * THIS DID NOTHING UNTIL 2026-08-14
+   *
+   * It pushed `{ city: search.city }` — a param the results screen has never
+   * read. That screen ignores unknown params AND returns early from its route
+   * effect when none of the ones it knows are present, so tapping a saved
+   * search switched to the Properties tab and left whatever was already there.
+   * Silent, because switching tabs looks like something happening.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY THE CITY IS TRANSLATED RATHER THAN PASSED THROUGH
+   *
+   * A saved search stores the city as the STRING the user picked ("Bangalore"),
+   * because that is what the backend's alert matcher compares against. The
+   * results screen's city filter is keyed by `City.id`, which merges the
+   * spellings that string cannot — `address.city` holds both "Bangalore" and
+   * "Bengaluru" in production today. `matchCity` is the bridge.
+   *
+   * A city we have no entry for falls back to free text, which the `search`
+   * regex covers against `address.city` and `address.area`. Narrower than the
+   * alias-matched filter, and much better than dropping the only criterion the
+   * search had.
+   *
+   * ---------------------------------------------------------------------------
+   * THE PRICE BAND IS STILL NOT CARRIED, AND THAT IS STILL DELIBERATE
+   *
+   * A saved search's band is one of three fixed buckets the alert matcher
+   * understands — under ₹50 Lakh, ₹50 Lakh to ₹1.5 Crore, above ₹1.5 Crore —
+   * and none of them line up with the five the results screen filters by. The
+   * nearest fit would silently run a different search from the one the alert
+   * is watching, which is worse than running a wider one: the user would draw
+   * conclusions about their alert from results it was never going to send.
+   *
+   * Running wide is honest and recoverable — the budget pill is right there on
+   * the rail. Running subtly-wrong is neither.
    */
   const run = useCallback(
     (search: SavedSearchSummary) => {
-      router.push({
-        pathname: '/(tabs)/properties',
-        params: search.city ? { city: search.city } : {},
-      });
+      const params: Record<string, string> = {};
+
+      const city = matchCity(search.city);
+      if (city) params.city = city.id;
+      else if (search.city) params.search = search.city;
+
+      // Only "rent" survives the round trip. `availableFor` is compared to a
+      // `listingType` that has three spellings of for-sale in the schema, so a
+      // saved "sale" search is one the matcher mostly misses anyway — see the
+      // field notes at the top of `savedSearches/types.ts`.
+      if (search.availableFor === 'rent') params.listingType = 'rent';
+
+      // Nothing expressible at all still has to produce a results screen
+      // rather than a no-op, so it browses everything.
+      if (Object.keys(params).length === 0) params.browse = '1';
+
+      router.push({ pathname: '/(tabs)/properties', params });
     },
     [router]
   );
@@ -257,7 +334,7 @@ function SearchesList() {
         },
       ]);
     },
-    [remove]
+    [remove, toast]
   );
 
   if (requiresAuth) {
@@ -270,7 +347,11 @@ function SearchesList() {
     );
   }
 
-  if (isLoading) return <PropertyListSkeleton />;
+  // NOT `PropertyListSkeleton`. This tab renders text rows about 90pt tall, and
+  // standing in for them with three 300pt property cards makes the whole list
+  // collapse upward the moment the data lands — a skeleton of the wrong shape
+  // announces loading and then causes the exact jump it exists to prevent.
+  if (isLoading) return <SavedSearchListSkeleton />;
 
   if (error) return <ErrorState title="Could not load your searches" onRetry={refresh} />;
 

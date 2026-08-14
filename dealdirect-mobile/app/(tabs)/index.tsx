@@ -11,6 +11,7 @@ import {
   CtaBanner,
   HOME_COLLECTION_IDS,
   Hero,
+  RecentlyViewed,
   Section,
   TrustStrip,
   findCollection,
@@ -28,8 +29,12 @@ import type { PropertySearchParams } from '@/types/backend/property';
  * Home: discovery, not browsing.
  *
  *   Hero              white header, search, "Find Your Dream Home", Buy/Rent/Post
+ *   Recently viewed   replayed from disk, no request, absent on a first session
  *   Popular Listings  ranked by view count
+ *   Trust strip       three claims about how the product works
  *   Builder Projects  newest builder developments
+ *   Collection rails  three of fifteen, each gated on live counts
+ *   Budget tools      affordability and EMI
  *   Why DealDirect    the pitch, once, as three numbered lines
  *   Explore by City   live counts
  *   CTA
@@ -150,6 +155,18 @@ export default function HomeScreen() {
             onProfile={() => router.push('/profile')}
             notificationBadge={notificationBadge}
           />
+
+          {/*
+            NOT wrapped in `Reveal`, and it is the only row here that is not.
+
+            `Reveal` exists to withhold a section's QUERY until it approaches
+            the viewport, because every rail below is one of twenty requests a
+            minute shared across a carrier NAT. This row makes no request — it
+            replays a snapshot from disk — so there is nothing to defer, and
+            deferring it would cost the one thing it is good at, which is being
+            on screen the instant a returning user opens the app.
+          */}
+          <RecentlyViewed onSelectProperty={openProperty} />
 
           <Reveal placeholder={<SectionPlaceholder />}>
             <PopularListings

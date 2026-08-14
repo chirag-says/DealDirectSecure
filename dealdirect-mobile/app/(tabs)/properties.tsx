@@ -5,6 +5,7 @@ import { Pressable, View } from 'react-native';
 
 import { PropertyList, type ListingIntent, type PropertySummary } from '@/features/properties';
 import {
+  CITY_OPTIONS,
   CompareBar,
   CompareSheet,
   DEFAULT_FILTERS,
@@ -61,6 +62,10 @@ export default function PropertiesScreen() {
      *  computed budget into the band containing it and hands it over, which is
      *  what makes that screen end in a search rather than in a figure. */
     priceBand?: string;
+    /** A `City.id` from `features/home/cities.ts`, NOT a raw city name. The
+     *  saved-search rows are the only caller; see the note on `run` there for
+     *  why the id rather than the string the search was saved with. */
+    city?: string;
     /** `'1'` from affordances that mean "show me everything", like Home's
      *  "View all" and the CTA banner. Carries no criteria of its own. */
     browse?: string;
@@ -119,12 +124,16 @@ export default function PropertiesScreen() {
     // band id that matches nothing would set a filter the sheet cannot show
     // and the user cannot clear.
     const priceBand = findPriceBand(route.priceBand)?.id;
+    // Validated against the table for the same reason as `sort` and
+    // `priceBand`: an id matching no city would set a client-side filter that
+    // excludes every listing, on a screen with no visible control saying why.
+    const city = CITY_OPTIONS.find((option) => option.value === route.city)?.value;
 
     // Nothing at all means the user tapped the tab directly, which must leave
     // their existing search alone.
-    if (!search && !listingType && !sort && !browse && !priceBand) return;
+    if (!search && !listingType && !sort && !browse && !priceBand && !city) return;
 
-    const key = `${search ?? ''}|${listingType ?? ''}|${sort ?? ''}|${priceBand ?? ''}|${browse ? '1' : ''}`;
+    const key = `${search ?? ''}|${listingType ?? ''}|${sort ?? ''}|${priceBand ?? ''}|${city ?? ''}|${browse ? '1' : ''}`;
     if (appliedRouteKey.current === key) return;
     appliedRouteKey.current = key;
 
@@ -134,6 +143,7 @@ export default function PropertiesScreen() {
       query: search ?? '',
       listingType,
       priceBand,
+      city,
       sort: sort ?? DEFAULT_FILTERS.sort,
     });
     setBrowsing(browse);
@@ -144,6 +154,7 @@ export default function PropertiesScreen() {
     route.listingType,
     route.sort,
     route.priceBand,
+    route.city,
     route.browse,
     route.openFilters,
   ]);

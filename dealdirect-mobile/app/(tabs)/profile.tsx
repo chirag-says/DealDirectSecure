@@ -42,7 +42,10 @@ export default function ProfileScreen() {
   if (status !== 'authenticated' || !user) {
     return (
       <Screen edges={['top']}>
-        <ScreenHeader title="Profile" showBack={false} />
+        {/* `tight`, matching the signed-in header below. Without it the title
+            sits 12pt lower here than it does one render later, so signing in
+            visibly shifts the whole screen. */}
+        <ScreenHeader title="Profile" showBack={false} tight />
         <SignInPrompt
           icon="person-circle-outline"
           title="Your account"
@@ -151,6 +154,35 @@ export default function ProfileScreen() {
             onPress={() => router.push('/projects')}
           />
           <ListRow icon="newspaper-outline" label="Blog" onPress={() => router.push('/blog')} />
+        </ListGroup>
+
+        {/*
+          The calculators, listed here as well as on Home.
+
+          Not a duplicate for its own sake. Home's copy sits behind `Reveal`
+          most of a scroll down a long screen, which is right for discovering
+          them once and useless for going back to one — and this screen's whole
+          contract, stated above, is that it is the app's complete index.
+          Anything reachable only by scrolling to find it again is reachable
+          from here too.
+
+          Its own group rather than folded into "Explore": browsing listings
+          and working out a budget are different activities, and a row reading
+          "What can I afford?" under a heading that otherwise means "look at
+          things" is a category error the user has to read past.
+        */}
+        <ListGroup title="Plan your purchase" className="mt-xl">
+          <ListRow
+            icon="wallet-outline"
+            label="What can I afford?"
+            detail="Turn your income and savings into a budget"
+            onPress={() => router.push('/tools/affordability')}
+          />
+          <ListRow
+            icon="calculator-outline"
+            label="EMI calculator"
+            onPress={() => router.push('/tools/emi')}
+          />
         </ListGroup>
 
         <ListGroup title="Account" className="mt-xl">

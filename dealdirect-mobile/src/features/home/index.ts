@@ -26,6 +26,7 @@ export { useCityCounts, type CityCount, type CityCountsResult } from './useCityC
 export { usePopularListings, type PopularListingsResult } from './usePopularListings';
 
 export { Section, type SectionProps } from './components/Section';
+export { RecentlyViewed, type RecentlyViewedProps } from './components/RecentlyViewed';
 export { IntentCards, type IntentCardsProps } from './components/IntentCards';
 export { BrowseRow, PopularSearches, type BrowseRowProps } from './components/BrowseRow';
 export { Hero, type HeroProps } from './components/Hero';
