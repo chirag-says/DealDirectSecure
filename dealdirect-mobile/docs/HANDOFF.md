@@ -1885,3 +1885,49 @@ Highest-risk items to look at first, in order:
    scroll where a large one will not.
 3. The quick-filter rail's width on a small screen, and that the segmented
    control does not squash.
+
+### 10.5 Second pass — Saved and Profile (same day)
+
+Their shortlist and account surfaces are login-gated on all three portals, so
+this pass had no reference to measure against and is not parity work. It is
+what going through the two screens carefully turned up.
+
+**Three defects, all previously invisible:**
+
+1. **Tapping a saved search did nothing.** `run()` pushed `{ city }`, a param
+   `app/(tabs)/properties.tsx` has never read, and that screen returns early
+   from its route effect when none of its known params are present. The tap
+   switched tab and left the previous search in place. Fixed by translating the
+   stored city STRING through `matchCity` into the `City.id` the results
+   filter is keyed by, with a free-text fallback for cities not in the table,
+   plus a new validated `city` route param. **The saved-search price band is
+   still deliberately not carried** — its three buckets do not line up with the
+   results screen's five, and running a subtly different search from the one
+   the alert watches would let a user draw false conclusions about their alert.
+2. **The Searches tab loaded behind `PropertyListSkeleton`** — three 300pt
+   property cards standing in for 90pt text rows, so the list collapsed upward
+   when data arrived. It has `SavedSearchListSkeleton` now.
+3. **Profile's signed-out header was missing `tight`**, so signing in shifted
+   the screen 12pt.
+
+**Two things mounted that already existed:**
+
+- `recentlyViewed.ts` has been complete since M12 and rendered nowhere; its own
+  docstring refers to a Home row that did not exist. It is now the first row on
+  Home and the **only one not wrapped in `Reveal`** — `Reveal` defers a
+  section's query, and this row makes no request, so there is nothing to defer.
+  Read that module before changing it: it stores a snapshot rather than ids
+  specifically because `GET /properties/:id` increments the view counter, and
+  refetching to draw the row would corrupt the one behavioural signal the
+  backend collects.
+- The two calculators are now in Profile's index, which documents itself as the
+  app's only complete index.
+
+**One structural change:** Profile's signed-out state was a full-height sign-in
+wall. Five of the eight destinations it indexes need no account — listings,
+projects, blog, both calculators, help — so a guest now gets a compact prompt
+and the public half of the index. Both branches render the same
+`PublicSections`, so a route added there cannot appear for one kind of user and
+not the other. `SignInPrompt` gained a `compact` prop for this; the other five
+screens that use it have genuinely nothing to show a guest and keep the
+full-height default.

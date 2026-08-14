@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, View } from 'react-native';
+import { Alert, ScrollView, View } from 'react-native';
 
 import { ApiError } from '@/api';
 import { useAuth, SignInPrompt } from '@/auth';
@@ -28,17 +28,28 @@ import {
  * Profile tab.
  *
  * The account hub: identity, the rewards summary, the owner surface (either
- * an entry point if already an owner, or the upgrade CTA if not), and
- * settings. Guests see a sign-in prompt instead of a broken authenticated
- * screen — nothing here has a public reading.
+ * an entry point if already an owner, or the upgrade CTA if not), and settings.
+ *
+ * ---------------------------------------------------------------------------
+ * THE SIGNED-OUT STATE IS NOT A WALL — changed 2026-08-14
+ *
+ * It used to be a full-height sign-in prompt and nothing else, on the grounds
+ * that "nothing here has a public reading". That was wrong, and checkably so:
+ * of the eight destinations this screen indexes, five need no account at all.
+ * Browsing listings, builder projects, the blog, both calculators and the help
+ * page all work signed out.
+ *
+ * So a guest gets the prompt at the top and then the half of the index that
+ * works for them, rather than a dead end covering destinations that were
+ * available the whole time. `PublicSections` is the shared half; both branches
+ * render the same component, so a route added there cannot appear for one kind
+ * of user and not the other.
  */
 export default function ProfileScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { status, user, logout } = useAuth();
 
-  // `EmptyState` rather than a hand-built centred block — this screen was one
-  // of six that reimplemented that component's exact layout by hand.
   if (status !== 'authenticated' || !user) {
     return (
       <Screen edges={['top']}>
@@ -46,11 +57,23 @@ export default function ProfileScreen() {
             sits 12pt lower here than it does one render later, so signing in
             visibly shifts the whole screen. */}
         <ScreenHeader title="Profile" showBack={false} tight />
-        <SignInPrompt
-          icon="person-circle-outline"
-          title="Your account"
-          description="Your profile, rewards and listings live here once you are signed in."
-        />
+
+        <ScrollView
+          contentContainerStyle={{
+            padding: screenPadding,
+            paddingBottom: tabBarClearance,
+          }}
+          showsVerticalScrollIndicator={false}
+        >
+          <SignInPrompt
+            compact
+            icon="person-circle-outline"
+            title="Your account"
+            description="Your profile, rewards and listings live here once you are signed in."
+          />
+
+          <PublicSections />
+        </ScrollView>
       </Screen>
     );
   }
@@ -142,48 +165,7 @@ export default function ProfileScreen() {
           />
         </ListGroup>
 
-        <ListGroup title="Explore" className="mt-xl">
-          <ListRow
-            icon="search-outline"
-            label="Browse properties"
-            onPress={() => router.push('/(tabs)/properties')}
-          />
-          <ListRow
-            icon="business-outline"
-            label="Builder projects"
-            onPress={() => router.push('/projects')}
-          />
-          <ListRow icon="newspaper-outline" label="Blog" onPress={() => router.push('/blog')} />
-        </ListGroup>
-
-        {/*
-          The calculators, listed here as well as on Home.
-
-          Not a duplicate for its own sake. Home's copy sits behind `Reveal`
-          most of a scroll down a long screen, which is right for discovering
-          them once and useless for going back to one — and this screen's whole
-          contract, stated above, is that it is the app's complete index.
-          Anything reachable only by scrolling to find it again is reachable
-          from here too.
-
-          Its own group rather than folded into "Explore": browsing listings
-          and working out a budget are different activities, and a row reading
-          "What can I afford?" under a heading that otherwise means "look at
-          things" is a category error the user has to read past.
-        */}
-        <ListGroup title="Plan your purchase" className="mt-xl">
-          <ListRow
-            icon="wallet-outline"
-            label="What can I afford?"
-            detail="Turn your income and savings into a budget"
-            onPress={() => router.push('/tools/affordability')}
-          />
-          <ListRow
-            icon="calculator-outline"
-            label="EMI calculator"
-            onPress={() => router.push('/tools/emi')}
-          />
-        </ListGroup>
+        <PublicSections />
 
         <ListGroup title="Account" className="mt-xl">
           <ListRow
@@ -191,11 +173,6 @@ export default function ProfileScreen() {
             label="Settings"
             detail="Profile, password and devices"
             onPress={() => router.push('/settings')}
-          />
-          <ListRow
-            icon="help-circle-outline"
-            label="Help & about"
-            onPress={() => router.push('/support')}
           />
         </ListGroup>
 
@@ -214,6 +191,67 @@ export default function ProfileScreen() {
     </Screen>
   );
 
+}
+
+/**
+ * Everything on this screen that works without an account.
+ *
+ * Rendered by BOTH branches, and that is the point rather than a convenience:
+ * the previous version listed these only for signed-in users, so a guest was
+ * shown a wall in front of five destinations that were open the whole time.
+ * Sharing one component means a route added here cannot go missing for one
+ * kind of user.
+ *
+ * The calculators get their own group rather than folding into "Explore".
+ * Browsing listings and working out a budget are different activities, and a
+ * row reading "What can I afford?" under a heading that otherwise means "look
+ * at things" is a category error the reader has to see past. They are listed
+ * here as well as on Home because Home's copy sits behind `Reveal` most of a
+ * scroll down a long screen — right for finding them once, useless for going
+ * back to one.
+ */
+function PublicSections() {
+  const router = useRouter();
+
+  return (
+    <>
+      <ListGroup title="Explore" className="mt-xl">
+        <ListRow
+          icon="search-outline"
+          label="Browse properties"
+          onPress={() => router.push('/(tabs)/properties')}
+        />
+        <ListRow
+          icon="business-outline"
+          label="Builder projects"
+          onPress={() => router.push('/projects')}
+        />
+        <ListRow icon="newspaper-outline" label="Blog" onPress={() => router.push('/blog')} />
+      </ListGroup>
+
+      <ListGroup title="Plan your purchase" className="mt-xl">
+        <ListRow
+          icon="wallet-outline"
+          label="What can I afford?"
+          detail="Turn your income and savings into a budget"
+          onPress={() => router.push('/tools/affordability')}
+        />
+        <ListRow
+          icon="calculator-outline"
+          label="EMI calculator"
+          onPress={() => router.push('/tools/emi')}
+        />
+      </ListGroup>
+
+      <ListGroup title="Help" className="mt-xl">
+        <ListRow
+          icon="help-circle-outline"
+          label="Help & about"
+          onPress={() => router.push('/support')}
+        />
+      </ListGroup>
+    </>
+  );
 }
 
 function RewardsSummaryCard() {

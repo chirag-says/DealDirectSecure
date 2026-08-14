@@ -39,14 +39,37 @@ export interface SignInPromptProps {
   title: string;
   description: string;
   icon?: keyof typeof Ionicons.glyphMap;
+  /**
+   * Sits at the top of a scroll instead of filling and centring the screen.
+   *
+   * The default is right for the five screens where EVERYTHING needs an
+   * account — Saved, Saved searches, Notifications, Rewards, Messages have
+   * literally nothing to show a guest, so the prompt is the screen.
+   *
+   * Profile is the exception, and it is not a styling preference. Half of what
+   * that screen indexes needs no account at all: browsing listings, builder
+   * projects, the blog, the calculators and the help page all work signed out.
+   * A full-height prompt there hides working destinations behind a wall, which
+   * is the same dead end this component was built to stop — just one level up.
+   */
+  compact?: boolean;
 }
 
-export function SignInPrompt({ title, description, icon = 'lock-closed-outline' }: SignInPromptProps) {
+export function SignInPrompt({
+  title,
+  description,
+  icon = 'lock-closed-outline',
+  compact = false,
+}: SignInPromptProps) {
   const router = useRouter();
   const theme = useTheme();
 
   return (
-    <View className="flex-1 items-center justify-center px-xl">
+    <View
+      className={
+        compact ? 'items-center px-xl py-xl' : 'flex-1 items-center justify-center px-xl'
+      }
+    >
       <View
         style={{
           width: 72,
