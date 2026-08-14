@@ -1,24 +1,28 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { View } from 'react-native';
 
 import { palette, radius, spacing } from '@/theme';
-import { Gradient, PressableScale, Text } from '@/ui';
+import { PressableScale, Text } from '@/ui';
 
 /**
  * The closing call to action.
  *
- * Ported from the original screen and kept, against the general rule that
- * marketing blocks belong on the website, because of where it sits. This is the
- * last thing on Home. A scroll that ends by simply running out reads as the app
- * having nothing more; ending on a deliberate full-width statement reads as
- * arrival. People weight the end of an experience out of all proportion to its
- * middle, so the final screenful is worth spending on.
+ * Kept, against the general rule that marketing blocks belong on the website,
+ * because of where it sits. This is the last thing on Home. A scroll that ends
+ * by simply running out reads as the app having nothing more; ending on a
+ * deliberate statement reads as arrival. People weight the end of an
+ * experience out of all proportion to its middle, so the final screenful is
+ * worth spending on.
+ *
+ * Trimmed from the original's full gradient slab. The brief for this redesign
+ * asks for restraint everywhere, including here: a shorter block, a single
+ * flat red rather than a gradient, and copy set left rather than centred so it
+ * reads as one more editorial section instead of a banner interrupting them.
  *
  * What it does NOT do is claim anything. The original said "thousands of
  * verified properties" above a corpus of 36. The copy here is an invitation
  * with no number in it, which needs no maintenance and cannot go stale.
  */
-
-const CTA_GRADIENT = [palette.red600, palette.red700] as const;
 
 export interface CtaBannerProps {
   onPress: () => void;
@@ -26,49 +30,41 @@ export interface CtaBannerProps {
 
 export function CtaBanner({ onPress }: CtaBannerProps) {
   return (
-    <Gradient
-      colors={CTA_GRADIENT}
-      // Diagonal rather than vertical. On a short wide block a vertical fade
-      // reads as a printing error; across the diagonal it reads as light.
-      angle={135}
+    <View
+      className="mx-lg"
       style={{
-        margin: spacing.base,
-        padding: spacing.xl,
+        padding: spacing.lg,
         borderRadius: radius.xl,
-        alignItems: 'center',
+        backgroundColor: palette.red600,
       }}
     >
-      <Text variant="title2" className="text-center" style={{ color: palette.neutral0 }}>
+      <Text variant="title3" style={{ color: palette.neutral0 }}>
         Ready to find your home?
       </Text>
-
-      <Text
-        variant="callout"
-        className="mt-sm text-center"
-        style={{ color: 'rgba(255,255,255,0.86)' }}
-      >
-        Browse every listing, straight from the owner.
+      <Text variant="footnote" className="mt-xs" style={{ color: 'rgba(255,255,255,0.82)' }}>
+        Browse properties directly from owners.
       </Text>
 
       <PressableScale
-        accessibilityLabel="Explore properties"
+        accessibilityLabel="Browse properties"
         onPress={onPress}
         style={{
-          marginTop: spacing.lg,
+          marginTop: spacing.base,
+          alignSelf: 'flex-start',
           flexDirection: 'row',
           alignItems: 'center',
-          gap: spacing.sm,
-          height: 48,
-          paddingHorizontal: spacing.xl,
+          gap: spacing.xs,
+          height: 40,
+          paddingHorizontal: spacing.base,
           borderRadius: radius.full,
           backgroundColor: palette.neutral0,
         }}
       >
-        <Text variant="bodyEmphasis" style={{ color: palette.red600 }}>
-          Explore Properties
+        <Text variant="subhead" style={{ color: palette.red600, fontWeight: '600' }}>
+          Browse Properties
         </Text>
-        <Ionicons name="arrow-forward" size={18} color={palette.red600} />
+        <Ionicons name="arrow-forward" size={15} color={palette.red600} />
       </PressableScale>
-    </Gradient>
+    </View>
   );
 }

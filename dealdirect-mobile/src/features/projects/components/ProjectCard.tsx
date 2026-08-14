@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { memo, useCallback } from 'react';
 import { View } from 'react-native';
 
-import { elevation, radius, spacing, useTheme } from '@/theme';
+import { radius, spacing, useTheme } from '@/theme';
 import { Image, PressableScale, PriceLabel, Scrim, Text } from '@/ui';
 import type { ProjectSummary } from '../types';
 
@@ -63,12 +63,17 @@ function ProjectCardComponent({ project, width, onPress }: ProjectCardProps) {
         width,
         borderRadius: radius.lg,
         backgroundColor: theme.colors.surface,
-        overflow: 'hidden',
+        // Shadow, not a border — matched to `PropertyCard` so the same object
+        // does not change its construction between Home and the browse list.
+        // The page is dark enough now (`palette.canvas`) for a shadow to read;
+        // when this card was written it was not, which is why it outlined
+        // itself instead.
         shadowColor: '#000',
-        shadowOpacity: elevation.card.shadowOpacity,
-        shadowRadius: elevation.card.shadowRadius,
-        shadowOffset: { width: 0, height: elevation.card.shadowOffsetY },
-        elevation: elevation.card.elevation,
+        shadowOpacity: 0.07,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 3,
+        overflow: 'hidden',
       }}
     >
       <View style={{ height: IMAGE_HEIGHT }}>

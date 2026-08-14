@@ -66,6 +66,13 @@ export interface PropertySummary {
   /** Best available area figure, in sqft, across the five area fields. */
   areaSqft?: number;
 
+  /** One of `Unfurnished | Semi-furnished | Fully furnished`, per the add/edit
+   *  form. See `features/search/filters.ts` for the filter that reads it. */
+  furnishing?: string;
+  /** Free text, e.g. "Ready to move". No fixed value set — see
+   *  `features/search/filters.ts`'s CONSTRUCTION STATUS note. */
+  constructionStatus?: string;
+
   /**
    * `null` for a large share of listings: both `address.latitude` and
    * `address.longitude` are optional and the backend only promotes them to the
@@ -158,6 +165,9 @@ export interface PropertyDetail extends PropertySummary {
   state?: string;
   pincode?: string;
   landmark?: string;
+  /** `address.nearby` — landmarks/points of interest the owner listed. Typed
+   *  and carried since M4 but never rendered until M16. */
+  nearby: string[];
 
   availableFrom?: string;
   status?: string;

@@ -45,7 +45,23 @@ const config = {
     edgeToEdgeEnabled: true,
   },
 
-  plugins: ['expo-router', 'expo-secure-store', 'expo-font'],
+  plugins: [
+    'expo-router',
+    'expo-secure-store',
+    'expo-font',
+    [
+      'expo-image-picker',
+      {
+        photosPermission: 'DealDirect needs access to your photos to add listing images.',
+        cameraPermission: 'DealDirect needs access to your camera to photograph a listing.',
+      },
+    ],
+    // Client-side only (M13): local/in-app notifications for new chat
+    // messages while the app is foregrounded. No server-initiated push —
+    // that needs an FCM/APNs device-token pipeline the backend does not have,
+    // tracked separately as a change request. See docs/HANDOFF.md.
+    'expo-notifications',
+  ],
 
   experiments: {
     typedRoutes: true,

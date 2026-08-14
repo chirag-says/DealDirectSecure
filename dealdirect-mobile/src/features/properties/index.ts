@@ -23,6 +23,12 @@ export {
   type PropertyFeed,
 } from './hooks';
 export { DetailHero, HERO_HEIGHT, type DetailHeroProps } from './components/DetailHero';
+export {
+  DetailHeader,
+  HEADER_BAR_HEIGHT,
+  type DetailHeaderProps,
+} from './components/DetailHeader';
+export { ExpandableText, type ExpandableTextProps } from './components/ExpandableText';
 export { DetailFacts, type DetailFactsProps } from './components/DetailFacts';
 export { DetailOwner, type DetailOwnerProps } from './components/DetailOwner';
 export { ZoomableImage, type ZoomableImageProps } from './components/ZoomableImage';
@@ -37,8 +43,18 @@ export {
 } from './fieldMap';
 export { DetailActions, type DetailActionsProps } from './components/DetailActions';
 export { ReportSheet, type ReportSheetProps } from './components/ReportSheet';
+export { VideoWalkthrough, type VideoWalkthroughProps } from './components/VideoWalkthrough';
+export { NearbyPlaces, type NearbyPlacesProps } from './components/NearbyPlaces';
+export { EmiCalculator, type EmiCalculatorProps } from './components/EmiCalculator';
 export { useInterest, type InterestState } from './interest';
-export { PropertyCard, COVER_HEIGHT, type PropertyCardProps } from './components/PropertyCard';
+export {
+  PropertyCard,
+  PropertyRow,
+  COVER_HEIGHT,
+  ROW_HEIGHT,
+  type PropertyCardProps,
+  type PropertyCompareProps,
+} from './components/PropertyCard';
 export { PropertyCardSkeleton, PropertyListSkeleton } from './components/PropertyCardSkeleton';
 export { PropertyList, type PropertyListProps } from './components/PropertyList';
 export { PropertyStrip, type PropertyStripProps } from './components/PropertyStrip';

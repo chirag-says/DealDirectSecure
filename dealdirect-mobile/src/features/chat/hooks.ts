@@ -170,7 +170,7 @@ interface IncomingMessage {
  * the runtime check that stands in for the compile-time type Socket.IO cannot
  * give it, before anything here is trusted enough to adapt and render.
  */
-function isMessageShape(value: unknown): value is IncomingMessage {
+export function isMessageShape(value: unknown): value is IncomingMessage {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
   const sender = v.sender as Record<string, unknown> | undefined;

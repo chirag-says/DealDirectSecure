@@ -40,7 +40,11 @@ export function ErrorState({
         {description}
       </Text>
 
-      {onRetry ? <Button label={retryLabel} onPress={onRetry} className="mt-lg" /> : null}
+      {/* See EmptyState: `align="center"` beats Button's `self-start` default,
+          which would otherwise override this container's `items-center`. */}
+      {onRetry ? (
+        <Button label={retryLabel} align="center" onPress={onRetry} className="mt-lg" />
+      ) : null}
 
       {requestId ? (
         <Text variant="caption" tone="muted" selectable className="mt-lg">

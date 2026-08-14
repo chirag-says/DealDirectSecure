@@ -69,10 +69,21 @@ export const verifyOtpSchema = z.object({
 });
 
 export const forgotPasswordSchema = z.object({
-  email: emailSchema,
+  phone: phoneSchema,
+});
+
+export const resetPasswordSchema = z.object({
+  phone: phoneSchema,
+  otp: otpSchema,
+  newPassword: passwordSchema,
+  confirmPassword: z.string(),
+}).refine(data => data.newPassword === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
 });
 
 export type LoginValues = z.infer<typeof loginSchema>;
 export type RegisterValues = z.infer<typeof registerSchema>;
 export type VerifyOtpValues = z.infer<typeof verifyOtpSchema>;
 export type ForgotPasswordValues = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordValues = z.infer<typeof resetPasswordSchema>;

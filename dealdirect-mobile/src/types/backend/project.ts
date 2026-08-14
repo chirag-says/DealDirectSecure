@@ -166,6 +166,12 @@ export interface JoinCampaignResponse {
 
 export type BookingStatus = string;
 
+/**
+ * `payment.status` on ProjectBooking. Closed enum, unlike `BookingStatus`.
+ * Source: backend/models/ProjectBooking.js.
+ */
+export type BookingPaymentStatus = 'pending' | 'submitted' | 'verified' | 'rejected';
+
 export interface ProjectBooking extends Timestamps {
   _id: ObjectId;
   project?: ObjectId | Pick<Project, '_id' | 'basics'>;
@@ -178,12 +184,24 @@ export interface ProjectBooking extends Timestamps {
   notes?: string;
   status: BookingStatus;
   statusHistory?: unknown[];
+  /**
+   * Corrected 2026-08-13 (defect F6) against `backend/models/ProjectBooking.js`.
+   *
+   * Previously declared `utr` and a `verified` boolean. Neither exists: the
+   * field is `utrNumber`, and verification state is the `status` enum below.
+   * Both old reads were permanently `undefined`, so the booking screen could
+   * never show a verified or rejected payment and re-offered the submit form
+   * forever.
+   */
   payment?: {
     tokenAmount?: number;
-    utr?: string;
+    utrNumber?: string;
     screenshotUrl?: string;
-    verified?: boolean;
-    [key: string]: unknown;
+    submittedAt?: IsoDate;
+    verifiedAt?: IsoDate;
+    verifiedBy?: ObjectId;
+    status?: BookingPaymentStatus;
+    rejectionReason?: string;
   };
 }
 

@@ -25,6 +25,19 @@
  * whole saved list, so it does not try to pre-empt the rejection. The optimistic
  * flip rolls back and the server's own message is shown, which is both accurate
  * and always current if the limit ever changes.
+ *
+ * ---------------------------------------------------------------------------
+ * THE REWARD IS PART OF THE ANSWER
+ *
+ * Marking interest earns points, and the response says how many. Until
+ * 2026-08-13 this hook threw that away and kept only the boolean, so a user
+ * earned points and was never told — the website reveals it
+ * (`PropertyDetailsContent.jsx:917-919`). `lastReward` carries it out to the
+ * screen, which is responsible for showing and then clearing it.
+ *
+ * It is null far more often than not: the backend stops rewarding after five
+ * enquiries in a day, and swallows any reward error so the enquiry itself
+ * still succeeds. A null reward is a normal outcome, never an error.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -33,6 +46,7 @@ import { useCallback, useState } from 'react';
 import { ApiError, call, propertiesEndpoints, qk } from '@/api';
 import { useAuth } from '@/auth';
 import type { ObjectId } from '@/types/backend/common';
+import type { ActionReward } from '@/types/backend/property';
 
 export interface InterestState {
   /** True once the check has confirmed it. Optimistically true mid-flight. */
@@ -47,6 +61,9 @@ export interface InterestState {
   /** Server's explanation of the last rejection, cleared on the next attempt. */
   error: string | null;
   clearError: () => void;
+  /** Points earned by the last successful mark. Null when none were awarded. */
+  lastReward: ActionReward | null;
+  clearReward: () => void;
 }
 
 export function useInterest(
@@ -78,15 +95,36 @@ export function useInterest(
   // last attempt: it must not survive a remount, and nothing else invalidates
   // or reads it.
   const [error, setError] = useState<string | null>(null);
+  const [lastReward, setLastReward] = useState<ActionReward | null>(null);
 
   const mutate = useMutation({
-    mutationFn: (next: boolean) =>
-      call(next ? propertiesEndpoints.markInterested : propertiesEndpoints.removeInterest, {
+    mutationFn: async (next: boolean) => {
+      if (!next) {
+        await call(propertiesEndpoints.removeInterest, { params: { id: propertyId as ObjectId } });
+        return null;
+      }
+      const response = await call(propertiesEndpoints.markInterested, {
         params: { id: propertyId as ObjectId },
-      }),
+      });
+      return response.reward;
+    },
+
+    onSuccess: (reward) => {
+      // Only a positive award is worth interrupting for. `pointsAwarded: 0`
+      // reaches here as null already (the controller maps it), but guarding on
+      // the value too means a future backend that returns the zero directly
+      // does not produce a "You earned 0 points" reveal.
+      if (reward && reward.pointsAwarded > 0) {
+        setLastReward(reward);
+        // The wallet on the rewards screen is now stale by exactly this much.
+        void queryClient.invalidateQueries({ queryKey: qk.rewardsWallet() });
+        void queryClient.invalidateQueries({ queryKey: qk.rewardsTransactions() });
+      }
+    },
 
     onMutate: async (next: boolean) => {
       setError(null);
+      setLastReward(null);
 
       // An in-flight check would land after the optimistic write and undo it.
       await queryClient.cancelQueries({ queryKey: key });
@@ -139,5 +177,7 @@ export function useInterest(
     toggle,
     error,
     clearError: useCallback(() => setError(null), []),
+    lastReward,
+    clearReward: useCallback(() => setLastReward(null), []),
   };
 }

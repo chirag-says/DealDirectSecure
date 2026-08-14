@@ -1,5 +1,11 @@
 import React, { useCallback, useMemo } from 'react';
-import { FlatList, useWindowDimensions, type ListRenderItemInfo } from 'react-native';
+import {
+  FlatList,
+  useWindowDimensions,
+  type ListRenderItemInfo,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 
 import { spacing } from '@/theme';
 
@@ -88,6 +94,16 @@ export interface RailProps<T> {
   /** Gap between cards. Defaults to the `md` step. */
   gap?: number;
   accessibilityLabel?: string;
+  /**
+   * Fires with the settled card index as the row is scrolled.
+   *
+   * Reported on `momentumScrollEnd` rather than per frame: a page indicator
+   * shows which card you LANDED on, and updating it mid-flick makes it flicker
+   * through every card in the throw. This is also why it is a callback rather
+   * than internal state — the indicator is drawn by the section around the
+   * rail, not inside it, and a rail with no indicator pays nothing.
+   */
+  onIndexChange?: (index: number) => void;
 }
 
 export function Rail<T>({
@@ -97,9 +113,19 @@ export function Rail<T>({
   renderItem,
   gap = spacing.md,
   accessibilityLabel,
+  onIndexChange,
 }: RailProps<T>) {
   const itemWidth = useRailItemWidth(size);
   const pitch = itemWidth + gap;
+
+  const handleMomentumEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!onIndexChange) return;
+      const index = Math.round(event.nativeEvent.contentOffset.x / pitch);
+      onIndexChange(Math.max(0, Math.min(data.length - 1, index)));
+    },
+    [onIndexChange, pitch, data.length]
+  );
 
   const render = useCallback(
     ({ item, index }: ListRenderItemInfo<T>) => renderItem(item, itemWidth, index),
@@ -133,6 +159,7 @@ export function Rail<T>({
       snapToInterval={pitch}
       snapToAlignment="start"
       decelerationRate="fast"
+      onMomentumScrollEnd={onIndexChange ? handleMomentumEnd : undefined}
       // On the content container, not the list: the row must scroll UNDER the
       // screen margin rather than being clipped inside it.
       contentContainerStyle={{ paddingHorizontal: spacing.base, gap }}

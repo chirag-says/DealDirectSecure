@@ -11,9 +11,10 @@ import { ApiError, isSessionFatal } from './errors';
  * budget it shares with strangers. Global is 500 per 15 minutes and search is
  * 20 per minute.
  *
- * Cache persistence to MMKV is deliberately NOT wired here. That is the offline
- * strategy, which the plan scopes to M12, and switching it on before the query
- * keys settle would persist a shape we then have to migrate.
+ * Cache persistence to MMKV is NOT wired here — that lives at the provider
+ * level (`app/_layout.tsx`'s `PersistQueryClientProvider`, `src/api/
+ * persistence.ts`), M12. This factory stays persistence-agnostic so a test or
+ * a future non-persisted context can still construct a plain client.
  */
 
 const MAX_RETRIES = 2;

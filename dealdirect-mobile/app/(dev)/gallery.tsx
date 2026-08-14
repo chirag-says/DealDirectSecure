@@ -19,6 +19,7 @@ import {
   Sheet,
   Skeleton,
   SkeletonList,
+  Tag,
   Text,
   formatPrice,
 } from '@/ui';
@@ -33,7 +34,19 @@ import {
  * It doubles as the light/dark check, since the scheme toggle at the top
  * re-renders everything on screen at once.
  *
- * Excluded from production builds along with the rest of src/dev.
+ * ---------------------------------------------------------------------------
+ * PRODUCTION GUARD
+ *
+ * This comment used to claim the route was "excluded from production builds
+ * along with the rest of src/dev". It was not: Expo Router builds its route
+ * tree from the filesystem and nothing filtered this file, so a release build
+ * shipped an internal component gallery, deep-linkable at
+ * `dealdirect://gallery`.
+ *
+ * The claim is now enforced rather than asserted — `__DEV__` is false in
+ * release builds, and the route renders nothing there. Metro still bundles
+ * the module (excluding it properly needs a resolver rule), so this is a
+ * reachability guard, not a size optimisation.
  */
 
 const THEME_OPTIONS: readonly { label: string; value: ThemePreference }[] = [
@@ -60,6 +73,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function GalleryScreen() {
+  // Hooks still run above this: a conditional return before them would break
+  // the rules of hooks. The guard sits after state is declared and before
+  // anything is painted.
   const { preference, setPreference } = useThemePreference();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sort, setSort] = useState<string>('newest');
@@ -70,6 +86,8 @@ export default function GalleryScreen() {
     setChips((current) =>
       current.includes(label) ? current.filter((c) => c !== label) : [...current, label]
     );
+
+  if (!__DEV__) return null;
 
   return (
     <Screen>
@@ -150,6 +168,15 @@ export default function GalleryScreen() {
                 onPress={() => toggleChip(label)}
               />
             ))}
+          </View>
+        </Section>
+
+        {/* The chips above are controls; these are labels. Same family, no role. */}
+        <Section title="Tags">
+          <View className="flex-row flex-wrap gap-sm">
+            <Tag label="Lift" />
+            <Tag label="Power backup" />
+            <Tag label="Metro station" icon="location-outline" />
           </View>
         </Section>
 

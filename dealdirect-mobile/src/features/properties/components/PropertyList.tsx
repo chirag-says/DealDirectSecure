@@ -1,13 +1,14 @@
+import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import React, { useCallback } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, View, type ListRenderItemInfo } from 'react-native';
+import { ActivityIndicator, RefreshControl, View } from 'react-native';
 
 import { ApiError } from '@/api';
-import { spacing, useTheme } from '@/theme';
+import { spacing, tabBarClearance, useTheme } from '@/theme';
 import { EmptyState, ErrorState, Text } from '@/ui';
 import type { PropertyFeed } from '../hooks';
 import type { PropertySummary } from '../types';
-import { PropertyCard } from './PropertyCard';
+import { PropertyCard, PropertyRow, type PropertyCompareProps } from './PropertyCard';
 import { PropertyListSkeleton } from './PropertyCardSkeleton';
 
 /**
@@ -17,16 +18,31 @@ import { PropertyListSkeleton } from './PropertyCardSkeleton';
  * re-implements them and neither can forget one. A screen decides WHICH
  * properties; this decides how a list of them behaves.
  *
- * Still `FlatList` rather than `FlashList`: the migration is scoped to M12 and
- * `@shopify/flash-list` is not yet a dependency. `keyExtractor`, memoised rows
- * and a stable `onPress` are here already, so the swap is a one-line change to
- * the component name.
+ * `FlashList` (M12) rather than `FlatList` — this list is the single longest
+ * scroll in the app (search results, unbounded) and the one virtualization
+ * mattered most for. FlashList v2 (New Architecture only, which this app runs)
+ * auto-sizes rows, so the old `initialNumToRender`/`maxToRenderPerBatch`/
+ * `windowSize`/`removeClippedSubviews` tuning FlatList needed is gone rather
+ * than carried over as dead props.
  */
 
 export interface PropertyListProps {
   feed: PropertyFeed;
   /** Rendered above the first card and scrolls with the list. */
   header?: React.ReactElement;
+  /** Rendered below the pagination footer, e.g. a "Related properties" rail
+   *  when the list itself came up short. Scrolls with the list. */
+  footer?: React.ReactElement;
+  /** When present, every card renders a compare-selection chip built from
+   *  this. Undefined (the default) renders no chip — every screen other than
+   *  search results leaves this unset. */
+  getCompareProps?: (item: PropertySummary) => PropertyCompareProps;
+  /**
+   * `card` is the full-width photo; `row` is the compact horizontal shape.
+   * The Properties screen exposes this as a toggle — see `PropertyRow` for
+   * why both exist rather than one being simply better.
+   */
+  density?: 'card' | 'row';
   emptyTitle?: string;
   emptyDescription?: string;
   emptyActionLabel?: string;
@@ -39,21 +55,38 @@ const keyExtractor = (item: PropertySummary) => item.id;
  * Module-level so the reference is stable. An inline object here would be a new
  * prop on every render of the parent, which defeats FlatList's own bail-outs.
  */
-const CONTENT_CONTAINER_STYLE = {
-  // Cards carry no border or shadow, so the gap between them IS the separation.
-  // At 16 they read as one continuous column; 24 is what makes each card a
-  // distinct object without adding any chrome to do it.
-  gap: spacing.xl,
+/**
+ * Two spacings, because the two densities need different ones.
+ *
+ * A full card is a large object and needs a real gap to read as separate from
+ * the next one. A compact row is small enough that the same gap would scatter
+ * the list into unrelated fragments — rows want to read as a column.
+ *
+ * `paddingBottom` clears the floating dock (`tabBarClearance`); the list would
+ * otherwise end with its last card behind the pill.
+ */
+const CARD_CONTENT_STYLE = {
+  gap: spacing.base,
   paddingHorizontal: spacing.base,
-  paddingBottom: spacing['2xl'],
+  paddingBottom: tabBarClearance,
   // Lets the empty state centre itself. Without it the container collapses to
   // content height and "No matches" sits jammed under the header.
+  flexGrow: 1,
+} as const;
+
+const ROW_CONTENT_STYLE = {
+  gap: spacing.md,
+  paddingHorizontal: spacing.base,
+  paddingBottom: tabBarClearance,
   flexGrow: 1,
 } as const;
 
 export function PropertyList({
   feed,
   header,
+  footer,
+  getCompareProps,
+  density = 'card',
   emptyTitle = 'No properties yet',
   emptyDescription = 'Nothing matches this view right now.',
   emptyActionLabel,
@@ -68,10 +101,17 @@ export function PropertyList({
   );
 
   const renderItem = useCallback(
-    ({ item }: ListRenderItemInfo<PropertySummary>) => (
-      <PropertyCard property={item} onPress={openProperty} />
-    ),
-    [openProperty]
+    ({ item }: ListRenderItemInfo<PropertySummary>) =>
+      density === 'row' ? (
+        <PropertyRow property={item} onPress={openProperty} />
+      ) : (
+        <PropertyCard
+          property={item}
+          onPress={openProperty}
+          compare={getCompareProps?.(item)}
+        />
+      ),
+    [openProperty, getCompareProps, density]
   );
 
   // First load with nothing on screen. Once there is content, a refresh or a
@@ -107,12 +147,12 @@ export function PropertyList({
   }
 
   return (
-    <FlatList
+    <FlashList
       data={feed.items}
       renderItem={renderItem}
       keyExtractor={keyExtractor}
       ListHeaderComponent={header}
-      contentContainerStyle={CONTENT_CONTAINER_STYLE}
+      contentContainerStyle={density === 'row' ? ROW_CONTENT_STYLE : CARD_CONTENT_STYLE}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       refreshControl={
@@ -138,17 +178,16 @@ export function PropertyList({
         />
       }
       ListFooterComponent={
-        <ListFooter
-          loading={feed.isLoadingMore}
-          exhausted={!feed.hasMore && feed.items.length > 0}
-          count={feed.items.length}
-          total={feed.total}
-        />
+        <>
+          <ListFooter
+            loading={feed.isLoadingMore}
+            exhausted={!feed.hasMore && feed.items.length > 0}
+            count={feed.items.length}
+            total={feed.total}
+          />
+          {footer}
+        </>
       }
-      removeClippedSubviews
-      initialNumToRender={4}
-      maxToRenderPerBatch={6}
-      windowSize={7}
     />
   );
 }

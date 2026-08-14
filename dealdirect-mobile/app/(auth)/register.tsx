@@ -2,11 +2,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { ApiError } from '@/api';
-import { registerSchema, useAuth, type RegisterValues } from '@/auth';
-import { Button, Chip, Input, KeyboardAvoider, Screen, Text } from '@/ui';
+import { AuthShell, registerSchema, useAuth, type RegisterValues } from '@/auth';
+import { gesture } from '@/theme';
+import { Button, Chip, Input, Text } from '@/ui';
 
 /**
  * Registration.
@@ -28,7 +29,7 @@ import { Button, Chip, Input, KeyboardAvoider, Screen, Text } from '@/ui';
  * a rule they will break.
  */
 export default function RegisterScreen() {
-  const { register } = useAuth();
+  const { register, registerDirect } = useAuth();
   const [formError, setFormError] = useState<string | null>(null);
 
   const { control, handleSubmit, formState, watch, setValue, getValues } =
@@ -50,15 +51,26 @@ export default function RegisterScreen() {
     setFormError(null);
 
     try {
-      await register({
-        ...values,
-        referralCode: values.referralCode?.trim() || undefined,
-      });
-
-      router.push({
-        pathname: '/(auth)/verify-otp',
-        params: { email: getValues('email') },
-      });
+      if (values.role === 'owner') {
+        await register({
+          ...values,
+          referralCode: values.referralCode?.trim() || undefined,
+        });
+        router.push({
+          pathname: '/(auth)/verify-otp',
+          params: {
+            email: getValues('email'),
+            phone: getValues('phone'),
+            referralCode: getValues('referralCode') || undefined,
+          },
+        });
+      } else {
+        await registerDirect({
+          ...values,
+          referralCode: values.referralCode?.trim() || undefined,
+        });
+        router.replace('/(tabs)');
+      }
     } catch (error) {
       if (!(error instanceof ApiError)) {
         setFormError('Something went wrong. Please try again.');
@@ -77,154 +89,151 @@ export default function RegisterScreen() {
   });
 
   return (
-    <Screen>
-      <KeyboardAvoider>
-        <ScrollView
-          contentContainerStyle={{ padding: 24, flexGrow: 1 }}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Text variant="display" className="mt-xl">
-            Create account
+    <AuthShell
+      title="Create account"
+      subtitle={
+        role === 'owner'
+          ? 'You will receive a 6-digit code by SMS to verify your number.'
+          : 'Takes a minute. No verification code needed.'
+      }
+      // The longest form in the app. Centring it would push the title above
+      // the top of the scroll view, out of reach.
+      center={false}
+      footer={
+        <View className="flex-row items-center justify-center">
+          <Text variant="callout" tone="secondary">
+            Already have an account?{' '}
           </Text>
-          <Text variant="callout" tone="secondary" className="mb-xl mt-sm">
-            You will receive a 6-digit code to verify your number.
-          </Text>
+          <Link href="/(auth)/login" asChild>
+            <Pressable hitSlop={gesture.hitSlop}>
+              <Text variant="bodyEmphasis" tone="accent">
+                Log in
+              </Text>
+            </Pressable>
+          </Link>
+        </View>
+      }
+    >
+      <Text variant="subhead" tone="secondary" className="mb-sm">
+        I want to
+      </Text>
+      <View className="mb-lg flex-row gap-sm">
+        <Chip
+          label="Buy or rent"
+          selected={role === 'user'}
+          onPress={() => setValue('role', 'user')}
+        />
+        <Chip
+          label="List a property"
+          selected={role === 'owner'}
+          onPress={() => setValue('role', 'owner')}
+        />
+      </View>
 
-          <Text variant="subhead" tone="secondary" className="mb-sm">
-            I want to
-          </Text>
-          <View className="mb-lg flex-row gap-sm">
-            <Chip
-              label="Buy or rent"
-              selected={role === 'user'}
-              onPress={() => setValue('role', 'user')}
-            />
-            <Chip
-              label="List a property"
-              selected={role === 'owner'}
-              onPress={() => setValue('role', 'owner')}
-            />
-          </View>
-
-          <Controller
-            control={control}
-            name="name"
-            render={({ field, fieldState }) => (
-              <Input
-                label="Full name"
-                placeholder="Your name"
-                autoComplete="name"
-                textContentType="name"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={fieldState.error?.message}
-              />
-            )}
+      <Controller
+        control={control}
+        name="name"
+        render={({ field, fieldState }) => (
+          <Input
+            label="Full name"
+            placeholder="Your name"
+            autoComplete="name"
+            textContentType="name"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            error={fieldState.error?.message}
           />
+        )}
+      />
 
-          <Controller
-            control={control}
-            name="email"
-            render={({ field, fieldState }) => (
-              <Input
-                label="Email"
-                placeholder="you@example.com"
-                autoCapitalize="none"
-                autoComplete="email"
-                keyboardType="email-address"
-                textContentType="emailAddress"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={fieldState.error?.message}
-              />
-            )}
+      <Controller
+        control={control}
+        name="email"
+        render={({ field, fieldState }) => (
+          <Input
+            label="Email"
+            placeholder="you@example.com"
+            autoCapitalize="none"
+            autoComplete="email"
+            keyboardType="email-address"
+            textContentType="emailAddress"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            error={fieldState.error?.message}
           />
+        )}
+      />
 
-          <Controller
-            control={control}
-            name="phone"
-            render={({ field, fieldState }) => (
-              <Input
-                label="Mobile number"
-                placeholder="10-digit number"
-                keyboardType="number-pad"
-                maxLength={10}
-                autoComplete="tel"
-                textContentType="telephoneNumber"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={fieldState.error?.message}
-                hint="The verification code is sent here"
-              />
-            )}
+      <Controller
+        control={control}
+        name="phone"
+        render={({ field, fieldState }) => (
+          <Input
+            label="Mobile number"
+            placeholder="10-digit number"
+            keyboardType="number-pad"
+            maxLength={10}
+            autoComplete="tel"
+            textContentType="telephoneNumber"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            error={fieldState.error?.message}
+            hint="The verification code is sent here"
           />
+        )}
+      />
 
-          <Controller
-            control={control}
-            name="password"
-            render={({ field, fieldState }) => (
-              <Input
-                label="Password"
-                placeholder="Choose a password"
-                secureTextEntry
-                autoCapitalize="none"
-                autoComplete="new-password"
-                textContentType="newPassword"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={fieldState.error?.message}
-                hint="At least 8 characters, with upper and lower case, a number and a symbol"
-              />
-            )}
+      <Controller
+        control={control}
+        name="password"
+        render={({ field, fieldState }) => (
+          <Input
+            label="Password"
+            placeholder="Choose a password"
+            secureTextEntry
+            autoCapitalize="none"
+            autoComplete="new-password"
+            textContentType="newPassword"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            error={fieldState.error?.message}
+            hint="At least 8 characters, with upper and lower case, a number and a symbol"
           />
+        )}
+      />
 
-          <Controller
-            control={control}
-            name="referralCode"
-            render={({ field, fieldState }) => (
-              <Input
-                label="Referral code (optional)"
-                placeholder="Enter a code if you have one"
-                autoCapitalize="characters"
-                value={field.value ?? ''}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={fieldState.error?.message}
-              />
-            )}
+      <Controller
+        control={control}
+        name="referralCode"
+        render={({ field, fieldState }) => (
+          <Input
+            label="Referral code (optional)"
+            placeholder="Enter a code if you have one"
+            autoCapitalize="characters"
+            value={field.value ?? ''}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            error={fieldState.error?.message}
           />
+        )}
+      />
 
-          {formError ? (
-            <Text variant="footnote" tone="danger" className="mb-md">
-              {formError}
-            </Text>
-          ) : null}
+      {formError ? (
+        <Text variant="footnote" tone="danger" className="mb-md">
+          {formError}
+        </Text>
+      ) : null}
 
-          <Button
-            label="Create account"
-            fullWidth
-            loading={formState.isSubmitting}
-            onPress={() => void onSubmit()}
-          />
-
-          <View className="mt-xl flex-row items-center justify-center">
-            <Text variant="callout" tone="secondary">
-              Already have an account?{' '}
-            </Text>
-            <Link href="/(auth)/login" asChild>
-              <Pressable>
-                <Text variant="bodyEmphasis" tone="accent">
-                  Log in
-                </Text>
-              </Pressable>
-            </Link>
-          </View>
-        </ScrollView>
-      </KeyboardAvoider>
-    </Screen>
+      <Button
+        label="Create account"
+        fullWidth
+        loading={formState.isSubmitting}
+        onPress={() => void onSubmit()}
+      />
+    </AuthShell>
   );
 }

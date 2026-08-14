@@ -20,12 +20,27 @@ import type { IsoDate, ObjectId, Timestamps } from './common';
  */
 export type UserRole = 'user' | 'buyer' | 'owner';
 
+/** `address` on the user document — home address, not a property's. */
+export interface UserAddress {
+  line1?: string;
+  line2?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+}
+
+export type UserGender = 'Male' | 'Female' | 'Other' | '';
+
 /** The sanitised user object returned by login, register and profile reads. */
 export interface User extends Timestamps {
   _id: ObjectId;
   name: string;
   email: string;
   phone?: string;
+  alternatePhone?: string;
+  address?: UserAddress;
+  dateOfBirth?: IsoDate;
+  gender?: UserGender;
   role: UserRole;
   profileImage?: string;
   bio?: string;
@@ -35,6 +50,7 @@ export interface User extends Timestamps {
   referralCode?: string;
   preferences?: {
     emailNotifications?: boolean;
+    smsNotifications?: boolean;
     [key: string]: unknown;
   };
   lastLogin?: IsoDate;
@@ -70,6 +86,8 @@ export interface RegisterRequest {
 export interface VerifyOtpRequest {
   email: string;
   otp: string;
+  /** Carried from the register form so referral attribution is not lost. */
+  referralCode?: string;
 }
 
 export interface ResendOtpRequest {
@@ -82,12 +100,16 @@ export interface LoginRequest {
 }
 
 export interface ForgotPasswordRequest {
-  email: string;
+  phone: string;
+  /** Accepted as fallback if phone is not provided. */
+  email?: string;
 }
 
 export interface ResetPasswordRequest {
-  token: string;
-  password: string;
+  phone?: string;
+  email?: string;
+  otp: string;
+  newPassword: string;
 }
 
 export interface ChangePasswordRequest {

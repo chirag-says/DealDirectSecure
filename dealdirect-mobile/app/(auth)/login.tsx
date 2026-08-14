@@ -2,11 +2,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { ApiError } from '@/api';
-import { loginSchema, useAuth, type LoginValues } from '@/auth';
-import { Button, Input, KeyboardAvoider, Screen, Text } from '@/ui';
+import { AuthShell, loginSchema, useAuth, type LoginValues } from '@/auth';
+import { gesture } from '@/theme';
+import { Button, Input, Text } from '@/ui';
 
 /**
  * Login.
@@ -74,98 +75,90 @@ export default function LoginScreen() {
   });
 
   return (
-    <Screen>
-      <KeyboardAvoider>
-        <ScrollView
-          contentContainerStyle={{ padding: 24, flexGrow: 1, justifyContent: 'center' }}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Text variant="display">Welcome back</Text>
-          <Text variant="callout" tone="secondary" className="mb-xl mt-sm">
-            Log in to manage your listings and conversations.
+    <AuthShell
+      title="Welcome back"
+      subtitle="Log in to manage your listings and leads."
+      footer={
+        <View className="flex-row items-center justify-center">
+          <Text variant="callout" tone="secondary">
+            New to DealDirect?{' '}
           </Text>
-
-          {endedReason ? (
-            <View className="mb-base rounded-lg bg-warning-muted p-md">
-              <Text variant="footnote">{endedReason}</Text>
-            </View>
-          ) : null}
-
-          <Controller
-            control={control}
-            name="email"
-            render={({ field, fieldState }) => (
-              <Input
-                label="Email"
-                placeholder="you@example.com"
-                autoCapitalize="none"
-                autoComplete="email"
-                keyboardType="email-address"
-                textContentType="emailAddress"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={fieldState.error?.message}
-              />
-            )}
-          />
-
-          <Controller
-            control={control}
-            name="password"
-            render={({ field, fieldState }) => (
-              <Input
-                label="Password"
-                placeholder="Your password"
-                secureTextEntry
-                autoCapitalize="none"
-                autoComplete="current-password"
-                textContentType="password"
-                returnKeyType="go"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                onSubmitEditing={() => void onSubmit()}
-                error={fieldState.error?.message}
-              />
-            )}
-          />
-
-          {formError ? (
-            <Text variant="footnote" tone="danger" className="mb-md">
-              {formError}
-            </Text>
-          ) : null}
-
-          <Button
-            label="Log in"
-            fullWidth
-            loading={formState.isSubmitting}
-            onPress={() => void onSubmit()}
-          />
-
-          <Link href="/(auth)/forgot-password" asChild>
-            <Pressable className="mt-base self-center">
-              <Text variant="callout" tone="accent">
-                Forgot password?
+          <Link href="/(auth)/register" asChild>
+            <Pressable hitSlop={gesture.hitSlop}>
+              <Text variant="bodyEmphasis" tone="accent">
+                Create an account
               </Text>
             </Pressable>
           </Link>
+        </View>
+      }
+    >
+      {endedReason ? (
+        <View className="mb-base rounded-lg bg-warning-muted p-md">
+          <Text variant="footnote">{endedReason}</Text>
+        </View>
+      ) : null}
 
-          <View className="mt-xl flex-row items-center justify-center">
-            <Text variant="callout" tone="secondary">
-              New to DealDirect?{' '}
-            </Text>
-            <Link href="/(auth)/register" asChild>
-              <Pressable>
-                <Text variant="bodyEmphasis" tone="accent">
-                  Create an account
-                </Text>
-              </Pressable>
-            </Link>
-          </View>
-        </ScrollView>
-      </KeyboardAvoider>
-    </Screen>
+      <Controller
+        control={control}
+        name="email"
+        render={({ field, fieldState }) => (
+          <Input
+            label="Email"
+            placeholder="you@example.com"
+            autoCapitalize="none"
+            autoComplete="email"
+            keyboardType="email-address"
+            textContentType="emailAddress"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            error={fieldState.error?.message}
+          />
+        )}
+      />
+
+      <Controller
+        control={control}
+        name="password"
+        render={({ field, fieldState }) => (
+          <Input
+            label="Password"
+            placeholder="Your password"
+            secureTextEntry
+            autoCapitalize="none"
+            autoComplete="current-password"
+            textContentType="password"
+            returnKeyType="go"
+            value={field.value}
+            onChangeText={field.onChange}
+            onBlur={field.onBlur}
+            onSubmitEditing={() => void onSubmit()}
+            error={fieldState.error?.message}
+          />
+        )}
+      />
+
+      {formError ? (
+        <Text variant="footnote" tone="danger" className="mb-md">
+          {formError}
+        </Text>
+      ) : null}
+
+      <Button
+        label="Log in"
+        fullWidth
+        loading={formState.isSubmitting}
+        onPress={() => void onSubmit()}
+      />
+
+      <Link href="/(auth)/forgot-password" asChild>
+        <Pressable className="mt-base self-center" hitSlop={gesture.hitSlop}>
+          <Text variant="callout" tone="accent">
+            Forgot password?
+          </Text>
+        </Pressable>
+      </Link>
+    </AuthShell>
   );
 }

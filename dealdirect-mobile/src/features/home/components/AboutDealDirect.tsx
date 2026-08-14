@@ -1,7 +1,6 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { View } from 'react-native';
 
-import { radius, spacing, useTheme } from '@/theme';
+import { spacing, useTheme } from '@/theme';
 import { Text } from '@/ui';
 
 /**
@@ -29,28 +28,39 @@ import { Text } from '@/ui';
  * this screen ported from the production app carried both, against a live
  * corpus of 36 listings. Copy that makes no quantitative claim cannot go stale
  * and cannot be disproved by the rail above it.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS NUMBERED PROSE AND NOT A GREY CARD OF ICON ROWS
+ *
+ * The previous version sat inside a `surfaceMuted` rounded rectangle — a
+ * single grey box holding three icon-and-text rows. It read as a settings
+ * panel, which is exactly backwards for the one section on Home that is pure
+ * persuasion rather than navigation. Dropping the container and setting each
+ * point as a numbered line lets typography and whitespace carry the
+ * hierarchy instead of a background fill, which is the editorial register the
+ * rest of the redesign is built in.
  */
 
 interface Point {
-  icon: keyof typeof Ionicons.glyphMap;
+  number: string;
   title: string;
   body: string;
 }
 
 const POINTS: readonly Point[] = [
   {
-    icon: 'pricetag-outline',
+    number: '01',
     title: 'No brokerage',
     body: 'You deal with the owner, so there is no commission in the middle.',
   },
   {
-    icon: 'chatbubbles-outline',
+    number: '02',
     title: 'Talk to the owner',
     body: 'Message and negotiate directly. No agent relaying answers.',
   },
   {
-    icon: 'shield-checkmark-outline',
-    title: 'Checked before listing',
+    number: '03',
+    title: 'Verified listings',
     body: 'Every listing is reviewed by our team before it appears here.',
   },
 ];
@@ -59,45 +69,37 @@ export function AboutDealDirect() {
   const theme = useTheme();
 
   return (
-    <View
-      style={{
-        marginHorizontal: spacing.base,
-        padding: spacing.lg,
-        borderRadius: radius.xl,
-        // The one recessed surface on Home. Everything above is a card sitting
-        // above the page; this sits INTO it, which is what marks it as
-        // editorial rather than as another thing to tap.
-        backgroundColor: theme.colors.surfaceMuted,
-      }}
-    >
-      <Text variant="title3">Why DealDirect</Text>
-      <Text variant="footnote" tone="secondary" className="mt-xs">
+    <View className="px-lg">
+      <Text variant="title2">Why DealDirect</Text>
+      <Text variant="callout" tone="secondary" className="mt-xs">
         Property, straight from the people who own it.
       </Text>
 
-      <View className="mt-lg" style={{ gap: spacing.base }}>
-        {POINTS.map((point) => (
-          <View key={point.title} className="flex-row" style={{ gap: spacing.md }}>
-            <View
-              className="items-center justify-center"
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: radius.md,
-                backgroundColor: theme.colors.surface,
-              }}
-            >
-              <Ionicons name={point.icon} size={19} color={theme.colors.brand} />
-            </View>
-
-            <View className="flex-1">
-              <Text variant="subhead" style={{ fontWeight: '600' }}>
+      <View className="mt-xl" style={{ gap: spacing.xl }}>
+        {POINTS.map((point, index) => (
+          <View key={point.title}>
+            <View className="flex-row items-baseline" style={{ gap: spacing.md }}>
+              <Text
+                variant="title2"
+                style={{ color: theme.colors.brand, fontVariant: ['tabular-nums'] }}
+              >
+                {point.number}
+              </Text>
+              <Text variant="title3" className="flex-1">
                 {point.title}
               </Text>
-              <Text variant="footnote" tone="secondary" className="mt-xs">
-                {point.body}
-              </Text>
             </View>
+
+            <Text variant="callout" tone="secondary" className="mt-xs" style={{ marginLeft: 44 }}>
+              {point.body}
+            </Text>
+
+            {index < POINTS.length - 1 ? (
+              <View
+                className="mt-lg"
+                style={{ height: 1, backgroundColor: theme.colors.border, marginLeft: 44 }}
+              />
+            ) : null}
           </View>
         ))}
       </View>

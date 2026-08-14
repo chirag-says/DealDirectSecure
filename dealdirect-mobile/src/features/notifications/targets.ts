@@ -24,6 +24,8 @@ import type { AppNotification } from '@/types/backend/notification';
 export type NotificationTarget =
   | { kind: 'property'; id: string }
   | { kind: 'savedSearches' }
+  | { kind: 'leads' }
+  | { kind: 'dealReward'; verificationId: string }
   | null;
 
 function readId(value: unknown): string | undefined {
@@ -46,6 +48,23 @@ function propertyIdFromActionUrl(value: unknown): string | undefined {
 
 export function resolveNotificationTarget(notification: AppNotification): NotificationTarget {
   const data = notification.data ?? {};
+
+  // "New Interest on Your Property" (`type: "interest"`, propertyController.js:1599)
+  // carries `propertyId`, not a lead id — there is no leadId on this
+  // notification at all. Routing an owner to the PUBLIC property page for
+  // their own listing is the wrong destination for this specific type; the
+  // leads list is what they actually came to check.
+  if (notification.type === 'interest') return { kind: 'leads' };
+
+  // `type: "deal_reward"` (created when admin approves a close-deal
+  // verification) carries `verificationId`, not a property id. Without this
+  // case the notification would resolve to `null` — no `propertyId` on this
+  // type at all — and be permanently unnavigable, since there is no "my
+  // verifications" list screen this could otherwise be reached from.
+  if (notification.type === 'deal_reward') {
+    const verificationId = readId(data.verificationId);
+    if (verificationId) return { kind: 'dealReward', verificationId };
+  }
 
   const propertyId = readId(data.propertyId) ?? propertyIdFromActionUrl(data.actionUrl);
   if (propertyId) return { kind: 'property', id: propertyId };

@@ -8,7 +8,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { gesture, spring, timing, touchTarget } from '@/theme';
+import { gesture, spring, timing, touchTarget, useTheme } from '@/theme';
 import { Text } from './Text';
 
 /**
@@ -44,6 +44,13 @@ const labelTone: Record<ButtonVariant, 'onAccent' | 'primary' | 'accent'> = {
   danger: 'onAccent',
 };
 
+const alignClass: Record<'start' | 'center' | 'end' | 'stretch', string> = {
+  start: 'self-start',
+  center: 'self-center',
+  end: 'self-end',
+  stretch: 'self-stretch',
+};
+
 const sizeClass: Record<ButtonSize, string> = {
   sm: 'px-md py-sm rounded-md',
   md: 'px-base py-md rounded-lg',
@@ -58,9 +65,39 @@ export interface ButtonProps extends Omit<PressableProps, 'children' | 'style'> 
   size?: ButtonSize;
   loading?: boolean;
   fullWidth?: boolean;
+  /**
+   * Cross-axis alignment.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY THIS PROP EXISTS — it was a real, visible bug
+   *
+   * This component used to hard-code `self-start` whenever `fullWidth` was
+   * false, with no way to override it. `alignSelf` BEATS the parent's
+   * `alignItems`, so every button inside a centred container was silently
+   * dragged to the leading edge — including the sign-in button on every guest
+   * gate, the retry button on every error, and the action on every empty
+   * state. Those are the most-seen screens in the app for a signed-out user,
+   * and all of them looked broken.
+   *
+   * `self-start` is still the default, because a button with no alignment at
+   * all inherits RN's `alignItems: 'stretch'` and grows to fill its row, which
+   * is worse. But it is a default now, not a decree.
+   */
+  align?: 'start' | 'center' | 'end' | 'stretch';
   /** Rendered before the label. */
   leading?: React.ReactNode;
   className?: string;
+}
+
+/** Matches `labelTone`, resolved at render since these are theme values. */
+function useSpinnerColors(): Record<ButtonVariant, string> {
+  const theme = useTheme();
+  return {
+    primary: theme.colors.textOnAccent,
+    secondary: theme.colors.textPrimary,
+    ghost: theme.colors.accent,
+    danger: theme.colors.textOnAccent,
+  };
 }
 
 export function Button({
@@ -69,6 +106,7 @@ export function Button({
   size = 'md',
   loading = false,
   fullWidth = false,
+  align,
   leading,
   disabled,
   className = '',
@@ -78,6 +116,7 @@ export function Button({
 }: ButtonProps) {
   const pressed = useSharedValue(0);
   const reduceMotion = useReducedMotion();
+  const spinnerColor = useSpinnerColors();
   const isInert = disabled || loading;
 
   const handlePressIn = useCallback<NonNullable<PressableProps['onPressIn']>>(
@@ -96,7 +135,19 @@ export function Button({
     [pressed, onPressOut]
   );
 
+  /**
+   * `isInert` is read HERE rather than left to the `opacity-50` class.
+   *
+   * This animated style is passed via `style`, which merges AFTER NativeWind's
+   * compiled `className` styles — so the unconditional `opacity: 1` it used to
+   * return silently overrode `isInert ? 'opacity-50' : ''` and every disabled
+   * button in the app rendered at full strength. A disabled control that looks
+   * enabled is worse than no disabled state at all: the user taps it, nothing
+   * happens, and the app reads as broken.
+   */
   const animatedStyle = useAnimatedStyle(() => {
+    if (isInert) return { opacity: 0.45 };
+
     const opacity = withTiming(pressed.value ? 0.85 : 1, { duration: timing.instant });
 
     if (reduceMotion) {
@@ -114,7 +165,7 @@ export function Button({
         },
       ],
     };
-  }, [reduceMotion]);
+  }, [reduceMotion, isInert]);
 
   return (
     <AnimatedPressable
@@ -129,14 +180,15 @@ export function Button({
         'flex-row items-center justify-center',
         containerVariant[variant],
         sizeClass[size],
-        fullWidth ? 'self-stretch' : 'self-start',
-        isInert ? 'opacity-50' : '',
+        alignClass[align ?? (fullWidth ? 'stretch' : 'start')],
         className,
       ].join(' ')}
       {...rest}
     >
       {loading ? (
-        <ActivityIndicator size="small" />
+        // Tinted to the label it replaces. The default spinner is mid-grey,
+        // which all but disappears on a filled accent or danger button.
+        <ActivityIndicator size="small" color={spinnerColor[variant]} />
       ) : (
         <>
           {leading ? <View className="mr-sm">{leading}</View> : null}

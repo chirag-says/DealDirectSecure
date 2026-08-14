@@ -23,6 +23,8 @@ export {
 
 export { typography, type TextStyleToken, type TypographyToken } from './typography';
 
+export { dmSans, type DMSansWeight } from './fonts';
+
 export {
   spring,
   timing,
@@ -37,6 +39,9 @@ export {
   spacing,
   radius,
   touchTarget,
+  screenPadding,
+  scrollBottomPadding,
+  tabBarClearance,
   elevation,
   type SpacingToken,
   type RadiusToken,

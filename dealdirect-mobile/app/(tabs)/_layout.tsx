@@ -1,81 +1,57 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 
-import { useChatUnreadCount } from '@/features/chat';
-import { useTheme } from '@/theme';
+import { useAuth } from '@/auth';
+import { TabBar } from '@/ui';
 
 /**
  * Tab shell.
  *
- * Five destinations, named for what they contain rather than for a vague
- * umbrella. Specific labels create predictability: a user who wants a saved
- * listing looks for "Saved", not "Home".
+ * The bar itself is `ui/TabBar` — four destinations either side of a raised
+ * Post action. See that file for why posting is not a tab.
  *
- * The owner surface (listings, leads, agreements) is NOT a tab. It is reached
- * from Profile, because it applies only to accounts with the `owner` role and a
- * permanently disabled tab would be worse than no tab. The role-aware entry
- * point arrives with auth in M2.
+ * `chat` stays REGISTERED here, with `href: null`, even though messaging is
+ * unmounted product-wide (HANDOFF §9.1 D2). Expo Router builds its route tree
+ * from the filesystem, so `app/(tabs)/chat.tsx` existing means the route
+ * exists whether or not it is declared; declaring it with `href: null` is what
+ * keeps it out of the bar. Deleting the declaration would put Messages back in
+ * the tab bar, which is the opposite of what is wanted.
+ *
+ * Nothing in the app navigates to it. The screen and the whole chat feature
+ * remain on disk, dormant, matching how the website carries its own unmounted
+ * chat implementation.
+ *
+ * The owner surface (listings, leads) is NOT a tab. It is reached from
+ * Profile, because it applies only to accounts with the `owner` role and a
+ * permanently disabled tab would be worse than no tab.
  */
 export default function TabsLayout() {
-  const theme = useTheme();
-  const unreadChats = useChatUnreadCount();
+  const router = useRouter();
+  const { status } = useAuth();
+
+  /**
+   * The Post action used to push straight to the owner form for anyone,
+   * including guests, who would then hit a wall inside a multi-step form.
+   * Guests go to login; the form itself handles the buyer-to-owner upgrade
+   * prompt, which is a role decision rather than a session one.
+   */
+  const handlePost = () => {
+    if (status !== 'authenticated') {
+      router.push('/(auth)/login');
+      return;
+    }
+    router.push('/owner/property/new');
+  };
 
   return (
     <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: theme.colors.accent,
-        tabBarInactiveTintColor: theme.colors.textMuted,
-        tabBarStyle: {
-          backgroundColor: theme.colors.surface,
-          borderTopColor: theme.colors.border,
-        },
-        tabBarLabelStyle: {
-          fontSize: theme.typography.caption.fontSize,
-          letterSpacing: theme.typography.caption.letterSpacing,
-        },
-      }}
+      screenOptions={{ headerShown: false }}
+      tabBar={(props) => <TabBar {...props} onPost={handlePost} />}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="search"
-        options={{
-          title: 'Search',
-          tabBarIcon: ({ color, size }) => <Ionicons name="search-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="saved"
-        options={{
-          title: 'Saved',
-          tabBarIcon: ({ color, size }) => <Ionicons name="heart-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: 'Messages',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubble-outline" size={size} color={color} />
-          ),
-          // 0 would still render a visible "0" pill — react-navigation's
-          // badge only hides on `undefined`, not on a falsy number.
-          tabBarBadge: unreadChats > 0 ? unreadChats : undefined,
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
-        }}
-      />
+      <Tabs.Screen name="index" options={{ title: 'Home' }} />
+      <Tabs.Screen name="properties" options={{ title: 'Properties' }} />
+      <Tabs.Screen name="saved" options={{ title: 'Saved' }} />
+      <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
+      <Tabs.Screen name="chat" options={{ href: null }} />
     </Tabs>
   );
 }

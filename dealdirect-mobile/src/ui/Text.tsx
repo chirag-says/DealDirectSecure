@@ -1,6 +1,7 @@
+import { createContext, useContext } from 'react';
 import { Text as RNText, type TextProps as RNTextProps } from 'react-native';
 
-import type { TypographyToken } from '@/theme';
+import { typography, type TextStyleToken, type TypographyToken } from '@/theme';
 
 /**
  * Typographic primitive.
@@ -42,6 +43,23 @@ const toneClass: Record<TextTone, string> = {
   onAccent: 'text-text-on-accent',
 };
 
+/**
+ * Per-weight font family override, read by every `Text` in the subtree.
+ *
+ * Every screen leaves this unset and gets the platform system face (see
+ * `theme/typography.ts` for why). The Home redesign is the one place in the
+ * app that commits to a single custom typeface — DM Sans — throughout, so
+ * rather than threading a font prop through Hero, Section, PropertyRailCard,
+ * ProjectCard and everything else Home renders (several of which,
+ * `PropertyRailCard` and `ProjectCard` among them, are also used OUTSIDE Home
+ * and must keep the system face there), the override is provided once at
+ * Home's screen root and every `Text` beneath it picks it up automatically.
+ * See `theme/fonts.ts`.
+ */
+export type FontOverride = Record<TextStyleToken['fontWeight'], string>;
+const FontOverrideContext = createContext<FontOverride | null>(null);
+export const FontOverrideProvider = FontOverrideContext.Provider;
+
 export interface TextProps extends RNTextProps {
   variant?: TextVariant;
   tone?: TextTone;
@@ -52,7 +70,17 @@ export function Text({
   variant = 'body',
   tone = 'primary',
   className = '',
+  style,
   ...rest
 }: TextProps) {
-  return <RNText className={`${variantClass[variant]} ${toneClass[tone]} ${className}`} {...rest} />;
+  const override = useContext(FontOverrideContext);
+  const fontFamily = override?.[typography[variant].fontWeight];
+
+  return (
+    <RNText
+      className={`${variantClass[variant]} ${toneClass[tone]} ${className}`}
+      style={fontFamily ? [{ fontFamily }, style] : style}
+      {...rest}
+    />
+  );
 }

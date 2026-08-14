@@ -76,6 +76,7 @@ export default {
         'accent-pressed': semanticColor('accent-pressed'),
         'accent-muted': semanticColor('accent-muted'),
         brand: semanticColor('brand'),
+        'brand-muted': semanticColor('brand-muted'),
         success: semanticColor('success'),
         'success-muted': semanticColor('success-muted'),
         warning: semanticColor('warning'),

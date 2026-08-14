@@ -20,6 +20,7 @@ export {
   useDeleteConversation,
   useMessageThread,
   useIsParticipantOnline,
+  isMessageShape,
   type ConversationListState,
   type MessageThreadState,
 } from './hooks';
@@ -27,6 +28,7 @@ export { ConversationRow, type ConversationRowProps } from './components/Convers
 export { MessageBubble, type MessageBubbleProps } from './components/MessageBubble';
 export { TypingIndicator } from './components/TypingIndicator';
 export { ChatComposer, type ChatComposerProps } from './components/ChatComposer';
+export { setActiveConversationId, getActiveConversationId } from './activeConversation';
 export type {
   ChatMessage,
   ChatMessageStatus,

@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 
-import { Avatar, Text } from '@/ui';
+import { Avatar, Card, Text } from '@/ui';
 import type { PropertyOwnerContact } from '../types';
 
 /**
@@ -32,10 +32,10 @@ export function DetailOwner({ owner }: DetailOwnerProps) {
   if (!owner) return null;
 
   return (
-    <View className="flex-row items-center rounded-xl border border-border bg-surface p-md">
+    <Card bordered={false} radius="xl" className="flex-row items-center p-base">
       <Avatar uri={owner.profileImage} name={owner.name} size="md" />
 
-      <View className="ml-md flex-1">
+      <View className="ml-base flex-1">
         <Text variant="caption" tone="muted">
           Posted by
         </Text>
@@ -43,6 +43,6 @@ export function DetailOwner({ owner }: DetailOwnerProps) {
           {owner.name ?? 'Owner'}
         </Text>
       </View>
-    </View>
+    </Card>
   );
 }

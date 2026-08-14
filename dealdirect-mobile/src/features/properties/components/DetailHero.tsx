@@ -8,8 +8,13 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  type SharedValue,
+} from 'react-native-reanimated';
 
+import { useTheme } from '@/theme';
 import { Image, Scrim, Text } from '@/ui';
 import type { GalleryImage } from '../types';
 
@@ -17,9 +22,7 @@ import type { GalleryImage } from '../types';
  * The photo carousel at the top of a listing.
  *
  * Full-bleed and running under the status bar, so the screen that hosts it
- * must not reserve a top inset. That is why this owns its own inset for the
- * back button rather than letting `Screen` handle it: the chrome needs to
- * clear the notch, the photograph does not.
+ * must not reserve a top inset.
  *
  * Chrome is dark-translucent rather than surface-coloured. A pale control
  * disappears against a bright sky and a dark one disappears against a shadowed
@@ -28,9 +31,39 @@ import type { GalleryImage } from '../types';
  * only requirement here. Same reasoning as the intent chip on `PropertyCard`.
  *
  * The `hero` scrim is the right variant rather than the card default: it
- * darkens the top as well as the bottom, which keeps the back button legible
+ * darkens the top as well as the bottom, which keeps the nav controls legible
  * over a bright sky, where the card variant holds near-zero for its whole
  * upper half.
+ *
+ * ---------------------------------------------------------------------------
+ * THE BACK BUTTON IS NOT HERE ANY MORE
+ *
+ * It used to be, floated over the photo, and it went off the top of the screen
+ * with the photo. On a listing with four attribute sections and an EMI
+ * calculator that is several thousand pixels with no way back, which is the
+ * one control a detail screen may never lose. It now belongs to
+ * `DetailHeader`, which stays put and changes appearance as the photo leaves.
+ *
+ * ---------------------------------------------------------------------------
+ * PARALLAX AND STRETCH
+ *
+ * `scrollY` is the host scroll view's offset, shared from the UI thread. Two
+ * behaviours come off it, and both are the physical reading of the same fact:
+ * the photo sits BEHIND the content rather than being the first item in it.
+ *
+ *   scrolling up   the photo drifts at a fraction of the content's speed, so
+ *                  the sheet of content reads as sliding over it
+ *   pulling down   the photo is pinned to the top edge and scales from its top
+ *                  origin, so it grows into the slack instead of leaving a
+ *                  band of background above it
+ *
+ * The content block below is opaque and paints after this one, so the grown
+ * photo passes underneath it and needs no clipping container. A container with
+ * `overflow: hidden` would clip away the stretch that is the whole point.
+ *
+ * Under reduced motion both are dropped. Parallax is textbook vestibular
+ * motion, and unlike a press there is nothing here that needs acknowledging —
+ * the scroll itself is the feedback.
  *
  * ---------------------------------------------------------------------------
  * WHY A PAGED FlatList AND NOT A MAPPED ScrollView
@@ -50,19 +83,24 @@ import type { GalleryImage } from '../types';
 
 export const HERO_HEIGHT = 320;
 
+/** How much slower than the content the photo travels. 0 pins it, 1 is none. */
+const PARALLAX_FACTOR = 0.4;
+
 export interface DetailHeroProps {
   images: GalleryImage[];
   /** Fallback for listings whose only image never reached the gallery list. */
   fallbackUri?: string;
-  onBack: () => void;
   /** Opens the full-screen viewer at the photo currently on screen. */
   onOpenGallery?: (index: number) => void;
+  /** Host scroll offset. Drives the parallax and the overscroll stretch. */
+  scrollY?: SharedValue<number>;
 }
 
-export function DetailHero({ images, fallbackUri, onBack, onOpenGallery }: DetailHeroProps) {
-  const insets = useSafeAreaInsets();
+export function DetailHero({ images, fallbackUri, onOpenGallery, scrollY }: DetailHeroProps) {
   const { width } = useWindowDimensions();
+  const theme = useTheme();
   const [index, setIndex] = useState(0);
+  const reduceMotion = useReducedMotion();
 
   // Read in the scroll handler, which must not re-subscribe on every page
   // change, so it is held in a ref rather than in the closure.
@@ -79,10 +117,28 @@ export function DetailHero({ images, fallbackUri, onBack, onOpenGallery }: Detai
 
   const handlePress = useCallback(() => onOpenGallery?.(index), [onOpenGallery, index]);
 
-  const current = items[index];
+  const parallaxStyle = useAnimatedStyle(() => {
+    const y = scrollY?.value ?? 0;
+
+    if (reduceMotion) {
+      return { transform: [{ translateY: 0 }, { scale: 1 }] };
+    }
+
+    // Pulled down. Cancel the content's own displacement so the top edge stays
+    // welded to the screen edge, then grow downward from that origin.
+    if (y < 0) {
+      return {
+        transform: [{ translateY: y }, { scale: 1 + -y / HERO_HEIGHT }],
+      };
+    }
+
+    return { transform: [{ translateY: y * PARALLAX_FACTOR }, { scale: 1 }] };
+  }, [reduceMotion]);
 
   return (
-    <View style={{ height: HERO_HEIGHT }}>
+    <Animated.View
+      style={[{ height: HERO_HEIGHT, transformOrigin: 'top' }, parallaxStyle]}
+    >
       {items.length > 0 ? (
         <FlatList
           data={items}
@@ -118,7 +174,7 @@ export function DetailHero({ images, fallbackUri, onBack, onOpenGallery }: Detai
           className="items-center justify-center bg-surface-muted"
           style={{ width: '100%', height: HERO_HEIGHT }}
         >
-          <Ionicons name="image-outline" size={32} color="#94a3b8" />
+          <Ionicons name="image-outline" size={32} color={theme.colors.textMuted} />
           <Text variant="footnote" tone="muted" className="mt-sm">
             No photo
           </Text>
@@ -127,26 +183,15 @@ export function DetailHero({ images, fallbackUri, onBack, onOpenGallery }: Detai
 
       <Scrim variant="hero" />
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Go back"
-        onPress={onBack}
-        hitSlop={12}
-        className="absolute left-md h-11 w-11 items-center justify-center rounded-full bg-black/55"
-        style={{ top: insets.top + 8 }}
-      >
-        <Ionicons name="chevron-back" size={22} color="#ffffff" />
-      </Pressable>
-
       {/*
         The room this photo shows, when it came from a categorised bucket.
         Absent for the flat `images[]` array, which carries no room, so the
         label does not reserve space it cannot always fill.
       */}
-      {current?.label ? (
-        <View className="absolute bottom-md left-md rounded-full bg-black/65 px-sm py-xs">
+      {items[index]?.label ? (
+        <View className="absolute bottom-base left-lg rounded-full bg-black/55 px-md py-xs">
           <Text variant="caption" className="text-white">
-            {current.label}
+            {items[index].label}
           </Text>
         </View>
       ) : null}
@@ -157,8 +202,8 @@ export function DetailHero({ images, fallbackUri, onBack, onOpenGallery }: Detai
           accessibilityLabel={`View all ${items.length} photos`}
           onPress={handlePress}
           disabled={!onOpenGallery}
-          hitSlop={8}
-          className="absolute bottom-md right-md flex-row items-center rounded-full bg-black/65 px-sm py-xs"
+          hitSlop={12}
+          className="absolute bottom-base right-lg flex-row items-center rounded-full bg-black/55 px-md py-xs"
         >
           <Ionicons name="images-outline" size={13} color="#ffffff" />
           <Text variant="caption" className="ml-xs text-white">
@@ -166,6 +211,6 @@ export function DetailHero({ images, fallbackUri, onBack, onOpenGallery }: Detai
           </Text>
         </Pressable>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }

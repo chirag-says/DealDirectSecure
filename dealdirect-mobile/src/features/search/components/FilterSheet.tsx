@@ -3,7 +3,11 @@ import { ScrollView, View } from 'react-native';
 
 import { Button, Chip, Sheet, Text } from '@/ui';
 import {
+  CATEGORY_OPTIONS,
+  CITY_OPTIONS,
+  CONSTRUCTION_STATUS_OPTIONS,
   DEFAULT_FILTERS,
+  FURNISHING_OPTIONS,
   PRICE_BANDS,
   SORT_OPTIONS,
   countActiveFilters,
@@ -23,10 +27,13 @@ import {
  * recognition instead of recall, and a tap is one gesture rather than
  * open-scroll-pick-close.
  *
- * Two groups, and only two, because those are the filters the backend can
- * actually honour against real data. `../filters.ts` records what was tried,
- * what was measured, and why each rejected filter is absent. Read it before
- * adding a third group — the missing ones are missing on purpose.
+ * Six groups. Price and Sort go straight to `/properties/search` params. City,
+ * Category, Furnishing and Construction Status do not — they switch the
+ * results screen into a bounded fetch-and-filter mode instead of infinite
+ * scroll. `../filters.ts` explains why that split exists and why each of
+ * these four is safe to offer now when it wasn't before. Read it before
+ * adding a seventh group; some filters (property size, buildingType) are
+ * still absent on purpose because the schema field they'd need doesn't exist.
  */
 
 export interface FilterSheetProps {
@@ -50,7 +57,7 @@ export function FilterSheet({ visible, filters, onClose, onApply }: FilterSheetP
   const isDefault = activeCount === 0 && draft.sort === DEFAULT_FILTERS.sort;
 
   return (
-    <Sheet visible={visible} onClose={onClose} title="Filters" heightRatio={0.62}>
+    <Sheet visible={visible} onClose={onClose} title="Filters" heightRatio={0.85}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <FilterGroup title="Price">
           {PRICE_BANDS.map((band) => (
@@ -62,6 +69,71 @@ export function FilterSheet({ visible, filters, onClose, onApply }: FilterSheetP
                 setDraft((current) => ({
                   ...current,
                   priceBand: current.priceBand === band.id ? undefined : band.id,
+                }))
+              }
+            />
+          ))}
+        </FilterGroup>
+
+        <FilterGroup title="City">
+          {CITY_OPTIONS.map((option) => (
+            <Chip
+              key={option.value}
+              label={option.label}
+              selected={draft.city === option.value}
+              onPress={() =>
+                setDraft((current) => ({
+                  ...current,
+                  city: current.city === option.value ? undefined : option.value,
+                }))
+              }
+            />
+          ))}
+        </FilterGroup>
+
+        <FilterGroup title="Property type">
+          {CATEGORY_OPTIONS.map((option) => (
+            <Chip
+              key={option.value}
+              label={option.label}
+              selected={draft.categoryName === option.value}
+              onPress={() =>
+                setDraft((current) => ({
+                  ...current,
+                  categoryName: current.categoryName === option.value ? undefined : option.value,
+                }))
+              }
+            />
+          ))}
+        </FilterGroup>
+
+        <FilterGroup title="Furnishing">
+          {FURNISHING_OPTIONS.map((option) => (
+            <Chip
+              key={option.value}
+              label={option.label}
+              selected={draft.furnishing === option.value}
+              onPress={() =>
+                setDraft((current) => ({
+                  ...current,
+                  furnishing: current.furnishing === option.value ? undefined : option.value,
+                }))
+              }
+            />
+          ))}
+        </FilterGroup>
+
+        <FilterGroup title="Possession">
+          {CONSTRUCTION_STATUS_OPTIONS.map((option) => (
+            <Chip
+              key={option.value}
+              label={option.label}
+              selected={draft.constructionStatus === option.value}
+              onPress={() =>
+                setDraft((current) => ({
+                  ...current,
+                  constructionStatus:
+                    current.constructionStatus === option.value ? undefined : option.value,
                 }))
               }
             />

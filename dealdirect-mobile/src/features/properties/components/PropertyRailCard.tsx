@@ -2,8 +2,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { memo, useCallback } from 'react';
 import { View } from 'react-native';
 
-import { elevation, radius, spacing, useTheme } from '@/theme';
-import { Image, PressableScale, PriceLabel, Scrim, Text } from '@/ui';
+import { radius, spacing, useTheme } from '@/theme';
+import { Image, PressableScale, PriceLabel, Text } from '@/ui';
 import type { PropertySummary } from '../types';
 
 /**
@@ -12,33 +12,43 @@ import type { PropertySummary } from '../types';
  * Distinct from `PropertyCard`, which is the full-width one on the browse
  * screen. They are genuinely different problems: the browse card has the whole
  * screen width and sits in a vertical list where the photo alone separates one
- * row from the next, so it needs no container. This one sits in a rail on a
- * tinted page, where a container is what makes a card feel like an object you
- * could pick up.
+ * row from the next, so it needs no container. This one sits in a rail, where
+ * a container is what makes a card feel like an object you could pick up.
  *
- * That container only works because the page background moved off pure white
- * (see `theme/colors.ts`). On the old `#FFFFFF` page this same card needed a
- * grey border to be visible at all, which is what the ported original did, and
- * a screenful of hairline rectangles is what made it read as an admin panel.
- * Now the surface is simply brighter than the page and a soft shadow finishes
- * it. Same card, no border.
+ * A shadow rather than a hairline border — changed 2026-08-14. This carried a
+ * border for most of its life and the reasoning was sound at the time: on a
+ * near-white page a soft shadow under every card in a rail of eight is cost
+ * without effect, so an outline did the job for less. The page has since moved
+ * to `palette.canvas`, several steps down the ramp, and a shadow now reads
+ * properly. It matches `PropertyCard`, which matters more than either choice
+ * on its own: the same object should not be built differently depending on
+ * which screen it appears on.
  *
  * ---------------------------------------------------------------------------
- * NO FAVOURITE BUTTON, AND THAT IS DELIBERATE
+ * THERE IS NO HEART ON THIS CARD, AND THERE SHOULD NOT BE ONE
  *
- * The card this is ported from has a heart in the top-right corner. It calls
- * `POST /api/users/save-property`. That route does not exist — not in
- * `userRoutes.js`, not anywhere in the backend. The call fails into a
- * `console.error` and the heart silently never sticks, so the control is a
- * promise the product cannot keep.
+ * Removed 2026-08-14 by Chirag's decision, after being opt-in and mounted by
+ * Home. Recording the reasoning here because a heart on a property card is
+ * such an obvious thing to add back.
  *
- * A control whose appearance contradicts its behaviour is the worst thing on a
- * screen: everything else has to be re-examined once the user finds one. So
- * there is no heart here until there is an endpoint behind it. Adding it back
- * is one prop and one mutation on the day that ships.
+ * The only "save" this backend has is `POST /properties/interested/:id`. It
+ * pushes the user into the listing's `interestedUsers`, CREATES A LEAD FOR THE
+ * OWNER, and EMAILS THEM the user's name, email and phone. It is also capped
+ * at FIVE across the whole app, and the sixth is rejected with a 400.
+ *
+ * A heart means private, free, unlimited and quietly undoable. This action is
+ * none of those, and putting it behind a heart meant a user could spend one of
+ * five enquiries — and hand a stranger their phone number — with a thumb
+ * brushing the corner of a photo, on the app's busiest screen.
+ *
+ * Every surface that offers this action now offers it the same way: a labelled
+ * button with a consequence line under it, on the detail screen where there is
+ * room to say what happens. See `features/properties/interest.ts` and
+ * `DetailActions.tsx`. A rail card has no room for that sentence, which is the
+ * real reason it should not carry the control.
  */
 
-const IMAGE_HEIGHT = 168;
+const IMAGE_HEIGHT = 180;
 
 /**
  * The fields this card actually draws, and nothing more.
@@ -58,7 +68,12 @@ export type RailProperty = Pick<
   PropertySummary,
   'id' | 'title' | 'priceRupees' | 'intent' | 'coverImage' | 'locationLabel'
 > &
-  Partial<Pick<PropertySummary, 'bhk' | 'bedrooms' | 'propertyTypeName' | 'subcategoryName'>>;
+  Partial<
+    Pick<
+      PropertySummary,
+      'bhk' | 'bedrooms' | 'propertyTypeName' | 'subcategoryName' | 'areaSqft' | 'bathrooms'
+    >
+  >;
 
 export interface PropertyRailCardProps {
   property: RailProperty;
@@ -67,28 +82,49 @@ export interface PropertyRailCardProps {
   onPress: (id: string) => void;
 }
 
-/** "3 BHK · Apartment / Flat", absent parts dropped rather than blanked. */
-function specLine(property: RailProperty): string {
-  const parts: string[] = [];
-
-  if (property.bhk) {
-    parts.push(/bhk/i.test(property.bhk) ? property.bhk : `${property.bhk} BHK`);
-  } else if (property.bedrooms) {
-    parts.push(`${property.bedrooms} BHK`);
-  }
+/** "3 BHK Apartment", the card's second-most scanned fact after price. */
+function typeLine(property: RailProperty): string | undefined {
+  const bhk = property.bhk
+    ? (/bhk/i.test(property.bhk) ? property.bhk : `${property.bhk} BHK`)
+    : property.bedrooms
+      ? `${property.bedrooms} BHK`
+      : undefined;
 
   // `propertyTypeName` and never the populated `propertyType` ref: the
   // denormalised string is correct on every live listing, the ref is null or
   // points at the wrong document on all of them.
   const type = property.propertyTypeName ?? property.subcategoryName;
-  if (type) parts.push(type);
 
-  return parts.join('  ·  ');
+  return [bhk, type].filter(Boolean).join(' ') || undefined;
 }
 
-function PropertyRailCardComponent({ property, width, onPress }: PropertyRailCardProps) {
+/** One icon-and-label pair on the card's bottom row. */
+function MetaFact({
+  icon,
+  label,
+  theme,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  theme: ReturnType<typeof useTheme>;
+}) {
+  return (
+    <View className="flex-row items-center" style={{ gap: spacing.xs + 1 }}>
+      <Ionicons name={icon} size={13} color={theme.colors.textMuted} />
+      <Text variant="caption" tone="muted" numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function PropertyRailCardComponent({
+  property,
+  width,
+  onPress,
+}: PropertyRailCardProps) {
   const theme = useTheme();
-  const specs = specLine(property);
+  const type = typeLine(property);
   const handlePress = useCallback(() => onPress(property.id), [onPress, property.id]);
 
   return (
@@ -99,21 +135,24 @@ function PropertyRailCardComponent({ property, width, onPress }: PropertyRailCar
         width,
         borderRadius: radius.lg,
         backgroundColor: theme.colors.surface,
-        overflow: 'hidden',
+        // Shadow, not a border — matched to `PropertyCard` so the same object
+        // does not change its construction between Home and the browse list.
+        // The page is dark enough now (`palette.canvas`) for a shadow to read;
+        // when this card was written it was not, which is why it outlined
+        // itself instead.
         shadowColor: '#000',
-        shadowOpacity: elevation.card.shadowOpacity,
-        shadowRadius: elevation.card.shadowRadius,
-        shadowOffset: { width: 0, height: elevation.card.shadowOffsetY },
-        elevation: elevation.card.elevation,
+        shadowOpacity: 0.07,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 3,
+        overflow: 'hidden',
       }}
     >
       <View style={{ height: IMAGE_HEIGHT }}>
         {property.coverImage ? (
           <Image uri={property.coverImage} size="thumb" style={{ width: '100%', height: '100%' }} />
         ) : (
-          <View
-            className="h-full w-full items-center justify-center bg-surface-muted"
-          >
+          <View className="h-full w-full items-center justify-center bg-surface-muted">
             <Ionicons name="image-outline" size={26} color={theme.colors.textMuted} />
             <Text variant="caption" tone="muted" className="mt-xs">
               No photo
@@ -122,34 +161,31 @@ function PropertyRailCardComponent({ property, width, onPress }: PropertyRailCar
         )}
 
         {/*
-          A gradient rather than a solid chip behind the badge. Listing photos
-          are unretouched owner uploads: a bright sky, a white wall and a night
-          shot all appear in the same rail, and a fixed-opacity chip tuned for
-          the worst of those is far too heavy on the rest.
+          Near-black rather than a colour-coded fill. An earlier version tinted
+          this green for sale and blue for rent, which spent two more hues on a
+          screen where red is the only accent. The label carries the
+          distinction; the fill exists only so it survives whatever the owner
+          photographed behind it, and dark is the one value that works over a
+          bright sky and a white wall alike.
         */}
-        {property.intent ? <Scrim variant="tile" /> : null}
-
         {property.intent ? (
           <View
-            className="absolute flex-row items-center"
+            className="absolute"
             style={{
               left: spacing.md,
-              bottom: spacing.md,
+              top: spacing.md,
               paddingHorizontal: spacing.sm + 2,
               paddingVertical: spacing.xs,
-              borderRadius: radius.full,
-              // Intent is the one attribute that changes what the price MEANS
-              // (monthly versus total), so it is the one badge that earns
-              // colour rather than a neutral fill.
-              backgroundColor:
-                property.intent === 'rent' ? theme.colors.accent : theme.colors.success,
+              borderRadius: radius.sm,
+              backgroundColor: 'rgba(10,10,10,0.78)',
             }}
           >
-            <Text variant="overline" style={{ color: theme.colors.textOnAccent }}>
+            <Text variant="overline" style={{ color: '#FFFFFF' }}>
               {property.intent === 'rent' ? 'FOR RENT' : 'FOR SALE'}
             </Text>
           </View>
         ) : null}
+
       </View>
 
       <View style={{ padding: spacing.md }}>
@@ -164,6 +200,12 @@ function PropertyRailCardComponent({ property, width, onPress }: PropertyRailCar
           suffix={property.intent === 'rent' ? '/mo' : undefined}
         />
 
+        {type ? (
+          <Text variant="bodyEmphasis" numberOfLines={1} className="mt-xs">
+            {type}
+          </Text>
+        ) : null}
+
         <View className="mt-xs flex-row items-center" style={{ gap: spacing.xs }}>
           <Ionicons name="location-outline" size={13} color={theme.colors.brand} />
           <Text variant="footnote" tone="secondary" numberOfLines={1} className="flex-1">
@@ -171,10 +213,42 @@ function PropertyRailCardComponent({ property, width, onPress }: PropertyRailCar
           </Text>
         </View>
 
-        {specs ? (
-          <Text variant="caption" tone="muted" numberOfLines={1} className="mt-sm">
-            {specs}
-          </Text>
+        {/*
+          Each fact gets its own glyph rather than sharing one line of text,
+          because area and bathrooms are scanned independently — a buyer
+          filtering on size never reads the bath count and vice versa. Absent
+          fields drop out entirely rather than rendering a dash, so a listing
+          that never captured its area does not advertise the omission.
+        */}
+        {property.areaSqft || property.bathrooms ? (
+          <View className="mt-sm flex-row items-center" style={{ gap: spacing.md }}>
+            {property.areaSqft ? (
+              <MetaFact
+                icon="expand-outline"
+                label={`${property.areaSqft.toLocaleString('en-IN')} sq.ft`}
+                theme={theme}
+              />
+            ) : null}
+
+            {property.areaSqft && property.bathrooms ? (
+              <View
+                style={{
+                  width: 3,
+                  height: 3,
+                  borderRadius: radius.full,
+                  backgroundColor: theme.colors.textMuted,
+                }}
+              />
+            ) : null}
+
+            {property.bathrooms ? (
+              <MetaFact
+                icon="water-outline"
+                label={`${property.bathrooms} Bath${property.bathrooms === 1 ? '' : 's'}`}
+                theme={theme}
+              />
+            ) : null}
+          </View>
         ) : null}
       </View>
     </PressableScale>

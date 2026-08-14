@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import { Text } from '@/ui';
+import { useTheme } from '@/theme';
+import { Card, Text } from '@/ui';
 import { resolveFieldSections } from '../fieldMap';
 import type { PropertyDetail } from '../types';
 
@@ -28,6 +29,8 @@ export interface DetailAttributesProps {
 }
 
 export function DetailAttributes({ property }: DetailAttributesProps) {
+  const theme = useTheme();
+
   // Recomputed only when the listing changes: this walks roughly eighty
   // specs, and the screen re-renders on every carousel page turn.
   const sections = useMemo(() => resolveFieldSections(property.raw), [property.raw]);
@@ -37,31 +40,44 @@ export function DetailAttributes({ property }: DetailAttributesProps) {
   return (
     <View>
       {sections.map((section) => (
-        <View key={section.id} className="mt-xl">
-          <Text variant="title3" className="mb-sm">
+        <View key={section.id} className="mt-2xl">
+          <Text variant="title3" className="mb-md">
             {section.title}
           </Text>
 
-          <View className="overflow-hidden rounded-xl border border-border bg-surface">
+          <Card bordered={false} radius="xl" className="overflow-hidden">
             {section.rows.map((row, index) => (
               <View
                 key={row.label}
-                className={`flex-row px-md py-sm ${index > 0 ? 'border-t border-border' : ''}`}
+                className="flex-row px-base py-md"
+                // Inset from the leading edge rather than run full-bleed, so
+                // the rule reads as separating two rows of one list instead of
+                // ruling a table. The inset matches the row's own padding.
+                style={
+                  index > 0
+                    ? {
+                        borderTopWidth: StyleSheet.hairlineWidth,
+                        borderTopColor: theme.colors.border,
+                        marginLeft: 16,
+                        paddingLeft: 0,
+                      }
+                    : undefined
+                }
               >
                 <Text
-                  variant="footnote"
+                  variant="subhead"
                   tone="muted"
                   style={{ width: '45%' }}
                   numberOfLines={2}
                 >
                   {row.label}
                 </Text>
-                <Text variant="footnote" className="flex-1">
+                <Text variant="subhead" className="flex-1">
                   {row.value}
                 </Text>
               </View>
             ))}
-          </View>
+          </Card>
         </View>
       ))}
     </View>

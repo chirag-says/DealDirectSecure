@@ -1,11 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useCallback } from 'react';
-import { Alert, Linking, Pressable, Share, View } from 'react-native';
+import { Alert, Linking, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { WEB_URL } from '@/config/env';
-import { useTheme } from '@/theme';
-import { Button, formatPrice, Text } from '@/ui';
+import { screenPadding, spacing, useTheme } from '@/theme';
+import { Button, PressableScale, Text } from '@/ui';
 import type { InterestState } from '../interest';
 import type { PropertyDetail } from '../types';
 
@@ -15,6 +14,16 @@ import type { PropertyDetail } from '../types';
  * Pinned rather than placed inline because it is the only thing on this screen
  * the user is meant to DO, and the screen is long enough that an inline button
  * would sit several scrolls below where the decision is actually made.
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT IS NOT IN HERE ANY MORE
+ *
+ * Share and Report were. Both are rare, neither is what the screen is for, and
+ * a bar of four equal-weight icons next to the primary action reads as a
+ * toolbar of options rather than as one decision. Share belongs in the nav bar,
+ * which is where a user reaches for it; Report belongs at the foot of the page,
+ * after the thing being reported. What survives here is the primary action and
+ * the two ways to reach a human about it.
  *
  * ---------------------------------------------------------------------------
  * WHY THE PRIMARY ACTION IS A LABELLED BUTTON AND NOT A HEART
@@ -41,25 +50,21 @@ import type { PropertyDetail } from '../types';
 export interface DetailActionsProps {
   property: PropertyDetail;
   interest: InterestState;
-  onReport: () => void;
   /**
-   * Starts (or resumes) a chat and navigates there. Owned by the screen, not
-   * this component, the same way `onReport` is — both need `useRouter` and a
-   * mutation the action bar itself has no business holding. Undefined hides
-   * the action rather than rendering it disabled: M6 wired this in after M4
-   * shipped, and a permanently-disabled icon would be worse than none while a
-   * caller has not been updated yet.
+   * Reports the painted height, so the scroll view above can end its content
+   * clear of the bar. A hard-coded constant here would be wrong on the first
+   * device with a different bottom inset, and wrong again the moment the
+   * consequence line wraps to two lines at a large text size.
    */
-  onMessage?: () => void;
+  onHeightChange?: (height: number) => void;
 }
 
-export function DetailActions({ property, interest, onReport, onMessage }: DetailActionsProps) {
+export function DetailActions({ property, interest, onHeightChange }: DetailActionsProps) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
 
   const phone = property.owner?.phone?.replace(/[^\d+]/g, '');
   const canCall = !!phone && !interest.requiresAuth;
-  const canMessage = !!onMessage && !interest.requiresAuth;
 
   const handleCall = useCallback(async () => {
     if (!phone) return;
@@ -69,6 +74,11 @@ export function DetailActions({ property, interest, onReport, onMessage }: Detai
 
     // A simulator and some tablets have no dialler. Failing with an
     // explanation beats a press that does nothing at all.
+    //
+    // Stays an `Alert` rather than becoming a toast, unlike the other passive
+    // errors in this pass: it carries the number the user now has to dial by
+    // hand, and a toast that vanishes after 2.6 seconds is not long enough to
+    // read and transcribe ten digits.
     if (!supported) {
       Alert.alert('Cannot place calls', `Owner's number: ${phone}`);
       return;
@@ -77,26 +87,32 @@ export function DetailActions({ property, interest, onReport, onMessage }: Detai
     await Linking.openURL(url);
   }, [phone]);
 
-  const handleShare = useCallback(() => {
-    const parts = [
-      property.title,
-      formatPrice(property.priceRupees),
-      property.locationLabel,
-    ].filter(Boolean);
-
-    // The link is included only when a web origin is configured. A share that
-    // carries a guessed domain produces a dead link, which is worse than a
-    // share that carries only the facts.
-    const link = WEB_URL ? `${WEB_URL}/properties/${property.id}` : undefined;
-    const message = link ? `${parts.join(' — ')}\n${link}` : parts.join(' — ');
-
-    void Share.share({ message, ...(link ? { url: link } : {}) });
-  }, [property]);
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => onHeightChange?.(event.nativeEvent.layout.height),
+    [onHeightChange]
+  );
 
   return (
     <View
-      className="border-t border-border bg-surface px-lg pt-md"
-      style={{ paddingBottom: insets.bottom + 12 }}
+      onLayout={handleLayout}
+      className="bg-surface"
+      style={{
+        paddingHorizontal: screenPadding,
+        paddingTop: spacing.md,
+        paddingBottom: insets.bottom + spacing.md,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: theme.colors.border,
+        // An UPWARD shadow. This bar is chrome floating over content that
+        // keeps scrolling beneath it, and a hairline alone does not say that —
+        // it says "the page ends here". The shadow is what makes the last row
+        // of the attribute table read as passing under the bar rather than
+        // being cut off by it.
+        shadowColor: '#000',
+        shadowOpacity: 0.1,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: -4 },
+        elevation: 16,
+      }}
     >
       {interest.error ? (
         <Text variant="footnote" tone="danger" className="mb-sm">
@@ -126,19 +142,26 @@ export function DetailActions({ property, interest, onReport, onMessage }: Detai
           />
         </View>
 
-        {canMessage ? (
-          <IconAction icon="chatbubble-outline" label="Message owner" onPress={onMessage!} />
-        ) : null}
         {canCall ? (
           <IconAction icon="call-outline" label="Call owner" onPress={handleCall} />
         ) : null}
-        <IconAction icon="share-outline" label="Share listing" onPress={handleShare} />
-        <IconAction icon="flag-outline" label="Report listing" onPress={onReport} />
       </View>
     </View>
   );
 }
 
+/**
+ * A secondary action beside the primary one.
+ *
+ * Filled rather than outlined, so it sits in the same visual family as the
+ * button it stands next to instead of being an empty box beside a solid one,
+ * and pressed with `PressableScale` rather than an opacity fade — dimming a
+ * control on touch is the same signal as disabling it.
+ *
+ * The fill paints at 48pt, which is the primary button's height at the default
+ * size (12pt padding either side of a 24pt line box) and is above the 44pt
+ * minimum on both axes, so there is nothing to make up with hit slop.
+ */
 function IconAction({
   icon,
   label,
@@ -151,15 +174,15 @@ function IconAction({
   const theme = useTheme();
 
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      hitSlop={6}
-      className="ml-sm h-12 w-12 items-center justify-center rounded-xl border border-border"
-      style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+      style={{ marginLeft: 8 }}
     >
-      <Ionicons name={icon} size={20} color={theme.colors.textSecondary} />
-    </Pressable>
+      <View className="h-12 w-12 items-center justify-center rounded-lg bg-surface-muted">
+        <Ionicons name={icon} size={22} color={theme.colors.textPrimary} />
+      </View>
+    </PressableScale>
   );
 }

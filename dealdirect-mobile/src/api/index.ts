@@ -1,6 +1,7 @@
 export { apiClient, uploadClient, setResponseObserver } from './client';
 export { call, type CallOptions } from './request';
 export { createQueryClient } from './queryClient';
+export { queryPersister, shouldPersistQuery, PERSIST_MAX_AGE } from './persistence';
 export { qk, normalizeSearchParams } from './queryKeys';
 export {
   ApiError,

@@ -30,8 +30,19 @@ export const usersEndpoints = {
     envelope: 'keyed',
     rateLimit: 'auth',
     note:
-      'Creates an UNVERIFIED user and sends an OTP by SMS and email. Body capped at 20KB. ' +
-      'Does not establish a session; verify-otp does that.',
+      'Creates an UNVERIFIED user and sends an OTP by SMS. Body capped at 20KB. ' +
+      'Does not establish a session; verify-otp does that. For owner registration only.',
+  }),
+
+  registerDirect: defineEndpoint<RegisterRequest, AuthResponse>({
+    method: 'POST',
+    path: '/users/register-direct',
+    auth: 'public',
+    envelope: 'keyed',
+    rateLimit: 'auth',
+    note:
+      'Creates a VERIFIED buyer account and ESTABLISHES THE SESSION via Set-Cookie. ' +
+      'No OTP required. For buyer (role: "user") registration only.',
   }),
 
   verifyOtp: defineEndpoint<VerifyOtpRequest, AuthResponse>({
@@ -87,8 +98,9 @@ export const usersEndpoints = {
     envelope: 'ok',
     rateLimit: 'auth',
     note:
-      'Emails a reset link pointing at the WEBSITE. The app opens it in the system browser; ' +
-      'there is no in-app reset screen because the token never reaches the app.',
+      'Sends a 6-digit OTP to the user\'s phone via SMS. Body is `{ phone }` ' +
+      '(email accepted as fallback). Returns 404 if no account matches. ' +
+      'There is no email link and no token.',
   }),
 
   resetPassword: defineEndpoint<ResetPasswordRequest, OkEnvelope>({
@@ -97,6 +109,9 @@ export const usersEndpoints = {
     auth: 'public',
     envelope: 'ok',
     rateLimit: 'auth',
+    note:
+      'Verifies the SMS OTP and sets the new password. Full password-strength ' +
+      'rules apply. Revokes all sessions on success. Body: `{ phone | email, otp, newPassword }`.',
   }),
 
   /** Alias of `/users/profile`. Used for the cold-start session probe. */

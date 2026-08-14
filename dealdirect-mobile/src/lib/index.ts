@@ -1,4 +1,5 @@
 export { useDebouncedValue } from './useDebouncedValue';
+export { useIsOffline } from './useNetworkStatus';
 export { decodeHtmlEntities } from './htmlEntities';
 export {
   Reveal,

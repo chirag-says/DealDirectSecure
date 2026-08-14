@@ -42,7 +42,9 @@ interface AuthContextValue {
   isReady: boolean;
   login: (values: LoginValues) => Promise<User>;
   register: (values: RegisterValues) => Promise<void>;
-  verifyOtp: (email: string, otp: string) => Promise<User>;
+  /** Buyer registration — creates account and session in one call, no OTP. */
+  registerDirect: (values: RegisterValues) => Promise<User>;
+  verifyOtp: (email: string, otp: string, referralCode?: string) => Promise<User>;
   resendOtp: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -140,16 +142,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [fetchMe, endSession]);
 
+  /**
+   * Turns a just-issued session into a CONFIRMED one.
+   *
+   * A 200 from `/users/login` is not proof that this app is authenticated. The
+   * session arrives only as a `Set-Cookie` that the native jar has to accept,
+   * and if it did not, every later request 401s while the login screen has
+   * already navigated away. To the user that is indistinguishable from "login
+   * silently does nothing" — the screen succeeds, the app is logged out, and
+   * nothing anywhere says why.
+   *
+   * So the session is proven rather than assumed: mirror the cookie, then make
+   * one real authenticated request. `/users/me` is the same probe the cold-start
+   * path uses and it returns the fresh user, so the cost is one round trip and
+   * the failure becomes legible on the screen that caused it.
+   *
+   * `fallbackUser` is the user object the issuing endpoint already returned. It
+   * is used only when the probe fails for a reason that says nothing about the
+   * cookie — see below.
+   */
+  const establishSession = useCallback(
+    async (fallbackUser: User): Promise<User> => {
+      const mirrored = await captureSessionCookie();
+
+      let confirmed: User;
+      try {
+        confirmed = await fetchMe();
+      } catch (error) {
+        // Only a REJECTED session means the credential did not take. A network
+        // drop or a 5xx between the two calls is not evidence against the
+        // cookie, and refusing a login that actually worked would be the worse
+        // failure of the two — so those fall through to the user the issuing
+        // endpoint already gave us.
+        if (error instanceof ApiError && isSessionFatal(error)) {
+          await endSession(null);
+          throw new ApiError({
+            kind: 'session',
+            message:
+              'Signed in, but this device could not keep you signed in. ' +
+              'Please try again.',
+          });
+        }
+        confirmed = fallbackUser;
+      }
+
+      // The mirror is only what survives a COLD START. Losing it is degraded,
+      // not broken: this run is fully authenticated and only the next launch
+      // would ask for a password again. Not worth failing a working login over,
+      // but worth a line in the log, because it is the signal that the native
+      // cookie jar and secure storage have stopped agreeing.
+      if (!mirrored) {
+        console.warn(
+          '[auth] session established but not mirrored to secure storage; ' +
+            'the next cold start will require logging in again'
+        );
+      }
+
+      setUser(confirmed);
+      setEndedReason(null);
+      setStatus('authenticated');
+      return confirmed;
+    },
+    [fetchMe, endSession]
+  );
+
   const login = useCallback(
     async (values: LoginValues): Promise<User> => {
       const response = await call(usersEndpoints.login, { data: values });
-      await captureSessionCookie();
-      setUser(response.user);
-      setEndedReason(null);
-      setStatus('authenticated');
-      return response.user;
+      return establishSession(response.user);
     },
-    []
+    [establishSession]
   );
 
   const register = useCallback(async (values: RegisterValues): Promise<void> => {
@@ -158,16 +220,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await call(usersEndpoints.register, { data: values });
   }, []);
 
-  const verifyOtp = useCallback(async (email: string, otp: string): Promise<User> => {
-    // Returns 201 AND sets the session cookie. Following this with a login call
-    // would be wrong, and would burn one of the five attempts on the auth limiter.
-    const response = await call(usersEndpoints.verifyOtp, { data: { email, otp } });
-    await captureSessionCookie();
-    setUser(response.user);
-    setEndedReason(null);
-    setStatus('authenticated');
-    return response.user;
-  }, []);
+  const registerDirect = useCallback(async (values: RegisterValues): Promise<User> => {
+    // Creates a VERIFIED buyer account and ESTABLISHES THE SESSION via Set-Cookie.
+    // Goes through establishSession to confirm the cookie took, same as login.
+    const response = await call(usersEndpoints.registerDirect, { data: values });
+    return establishSession(response.user);
+  }, [establishSession]);
+
+  const verifyOtp = useCallback(
+    async (email: string, otp: string, referralCode?: string): Promise<User> => {
+      const response = await call(usersEndpoints.verifyOtp, {
+        data: { email, otp, referralCode },
+      });
+      return establishSession(response.user);
+    },
+    [establishSession]
+  );
 
   const resendOtp = useCallback(async (email: string): Promise<void> => {
     await call(usersEndpoints.resendOtp, { data: { email } });
@@ -200,6 +268,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isReady: status !== 'restoring',
       login,
       register,
+      registerDirect,
       verifyOtp,
       resendOtp,
       logout,
@@ -207,7 +276,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       endedReason,
       clearEndedReason: () => setEndedReason(null),
     }),
-    [status, user, login, register, verifyOtp, resendOtp, logout, refreshUser, endedReason]
+    [status, user, login, register, registerDirect, verifyOtp, resendOtp, logout, refreshUser, endedReason]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

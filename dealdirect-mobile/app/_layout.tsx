@@ -1,41 +1,92 @@
 import '../global.css';
 import 'react-native-gesture-handler';
 
-import { QueryClientProvider } from '@tanstack/react-query';
+import {
+  DMSans_400Regular,
+  DMSans_500Medium,
+  DMSans_600SemiBold,
+  DMSans_700Bold,
+} from '@expo-google-fonts/dm-sans';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { createQueryClient } from '@/api';
+import { createQueryClient, PERSIST_MAX_AGE, queryPersister, shouldPersistQuery } from '@/api';
 import { AuthProvider } from '@/auth';
-import { SocketProvider } from '@/socket';
-import { ThemeProvider } from '@/theme';
+import { dmSans, ThemeProvider } from '@/theme';
+import { FontOverrideProvider, OfflineBanner, ToastProvider } from '@/ui';
+
+// Held open until DM Sans (loaded for the Home redesign, see `theme/fonts.ts`)
+// is ready, so Home never flashes the system face before swapping to it.
+void SplashScreen.preventAutoHideAsync();
 
 /**
  * Root layout and provider stack.
  *
  * Order matters:
- *   GestureHandlerRootView  must wrap anything using a gesture
- *   SafeAreaProvider        must sit above anything reading insets
- *   QueryClientProvider     must sit above AuthProvider, which clears the cache
- *   AuthProvider            must sit above every screen that reads the session
- *   SocketProvider          must sit below AuthProvider, which it reads `status` from
+ *   GestureHandlerRootView    must wrap anything using a gesture
+ *   SafeAreaProvider          must sit above anything reading insets
+ *   PersistQueryClientProvider must sit above AuthProvider, which clears the cache
+ *   AuthProvider              must sit above every screen that reads the session
+ *
+ * `SocketProvider` and `PushBridge` were removed 2026-08-13. Both existed
+ * solely to serve chat, which is unmounted product-wide (HANDOFF §9.1 D2).
+ * Leaving them mounted would hold a live socket connection open and ask for
+ * notification permission on behalf of a feature with no UI. Both modules
+ * remain on disk for whenever messaging returns.
  *
  * The query client is created in state rather than at module scope so a Fast
  * Refresh does not swap it for a new one mid-session and drop the cache.
+ *
+ * M12: `PersistQueryClientProvider` replaces the plain `QueryClientProvider`
+ * and rehydrates the cache from MMKV (`src/api/persistence.ts`) before first
+ * paint, so a cold start with no connectivity still shows the last-known
+ * properties/projects/leads/etc. rather than a blank loading screen. Chat is
+ * excluded — see `shouldPersistQuery`'s doc comment for why.
  */
 export default function RootLayout() {
   const [queryClient] = useState(createQueryClient);
+  const [fontsLoaded] = useFonts({
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMSans_600SemiBold,
+    DMSans_700Bold,
+  });
+
+  const onLayout = useCallback(() => {
+    if (fontsLoaded) void SplashScreen.hideAsync();
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) return null;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1 }} onLayout={onLayout}>
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
+        <PersistQueryClientProvider
+          client={queryClient}
+          persistOptions={{
+            persister: queryPersister,
+            maxAge: PERSIST_MAX_AGE,
+            dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
+          }}
+        >
           <ThemeProvider>
             <AuthProvider>
-              <SocketProvider>
+              {/*
+                DM Sans for the whole app. This used to be mounted at Home's
+                root only, which made every other screen render in the platform
+                system face — see `theme/fonts.ts`. One provider here, and every
+                `Text` in the tree resolves its own weight.
+              */}
+              <FontOverrideProvider value={dmSans}>
+                {/* Above the Stack so a toast raised by any screen paints over
+                    it, and inside the theme so it can read colours. */}
+                <ToastProvider>
                 <StatusBar style="auto" />
                 {/*
                   Only routes needing non-default options are declared. Every
@@ -58,10 +109,12 @@ export default function RootLayout() {
                   <Stack.Screen name="(auth)" />
                   <Stack.Screen name="(tabs)" />
                 </Stack>
-              </SocketProvider>
+                <OfflineBanner />
+                </ToastProvider>
+              </FontOverrideProvider>
             </AuthProvider>
           </ThemeProvider>
-        </QueryClientProvider>
+        </PersistQueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

@@ -11,10 +11,29 @@
  *
  * Binding both schemes here is what makes light/dark a single swap: no screen
  * carries a `dark:` prefix, and no component branches on scheme.
+ *
+ * ---------------------------------------------------------------------------
+ * THEY WERE OUT OF SYNC, AND IT WAS THE REASON THE APP LOOKED FLAT
+ *
+ * Fixed 2026-08-13. `--color-background` and `--color-surface` were BOTH bound
+ * to pure white here, while `colors.ts` had already dropped the page a step
+ * down the ramp and written a long comment explaining why that mattered. Only
+ * the `useTheme()` side ever got the fix.
+ *
+ * `Screen` renders `className="bg-background"`, so it read this file, not that
+ * one: every screen in the app was a white card on a white page. That is
+ * exactly the failure `colors.ts` describes — cards had to carry borders to
+ * exist at all, and a screen of outlined rectangles reads as an admin panel.
+ *
+ * The warning above about staying in sync was already there. It was not
+ * enough. If you change a role, change it in BOTH files, and check the one you
+ * did not open.
  */
 @layer base {
   :root {
-    --color-background: 255 255 255;
+    /* `palette.canvas`. Deeper than it looks it should be: this is what lets a
+       white card separate from the page without an outline. */
+    --color-background: 241 242 246;
     --color-surface: 255 255 255;
     --color-surface-muted: 245 245 245;
     --color-border: 229 229 229;
@@ -30,6 +49,7 @@
     --color-accent-muted: 219 234 254;
 
     --color-brand: 220 38 38;
+    --color-brand-muted: 254 226 226;
 
     --color-success: 22 163 74;
     --color-success-muted: 220 252 231;
@@ -56,6 +76,7 @@
     --color-accent-muted: 23 37 84;
 
     --color-brand: 239 68 68;
+    --color-brand-muted: 59 10 10;
 
     --color-success: 34 197 94;
     --color-success-muted: 5 46 22;

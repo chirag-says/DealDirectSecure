@@ -183,6 +183,9 @@ export function adaptProperty(property: Property): PropertySummary {
     bathrooms: property.bathrooms,
     areaSqft: resolveArea(property),
 
+    furnishing: property.furnishing,
+    constructionStatus: property.constructionStatus,
+
     coordinates: resolveCoordinates(property),
 
     // The only behavioural signal this backend records. Incremented by
@@ -346,6 +349,7 @@ export function adaptPropertyDetail(property: Property): PropertyDetail {
     state: property.address?.state,
     pincode: property.address?.pincode,
     landmark: property.address?.landmark,
+    nearby: (property.address?.nearby ?? []).map((n) => n?.trim()).filter((n): n is string => !!n),
 
     availableFrom: property.availableFrom,
     status: property.status,

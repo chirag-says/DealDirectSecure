@@ -110,10 +110,40 @@ export const qk = {
    *  different endpoint, invalidated independently. */
   projectList: (params: Record<string, string | number | boolean>) =>
     ['projects', 'list', params] as const,
+  projectDetail: (id: ObjectId) => ['projects', 'detail', id] as const,
+  unitTypesByProject: (projectId: ObjectId) => ['projects', 'unitTypes', projectId] as const,
+  unitTypeDetail: (id: ObjectId) => ['projects', 'unitType', id] as const,
+  campaignsByUnitType: (unitTypeId: ObjectId) => ['projects', 'campaigns', 'unitType', unitTypeId] as const,
+  campaignDetail: (id: ObjectId) => ['projects', 'campaign', id] as const,
+  myBookings: () => ['projects', 'bookings', 'mine'] as const,
+  paymentConfig: ['projects', 'bookings', 'paymentConfig'] as const,
 
   taxonomy: ['taxonomy'] as const,
   categories: () => ['taxonomy', 'categories'] as const,
   propertyTypes: () => ['taxonomy', 'propertyTypes'] as const,
   subcategoriesByCategory: (categoryId: ObjectId) =>
     ['taxonomy', 'subcategories', categoryId] as const,
+
+  sessions: ['profile', 'sessions'] as const,
+
+  rewards: ['rewards'] as const,
+  rewardsWallet: () => ['rewards', 'wallet'] as const,
+  rewardsTransactions: () => ['rewards', 'transactions'] as const,
+  rewardsReferralCode: () => ['rewards', 'referralCode'] as const,
+  rewardsReferrals: () => ['rewards', 'referrals'] as const,
+  rewardsStore: () => ['rewards', 'store'] as const,
+
+  /** Owner's own listing(s). Separate from `properties.saved`: this is what the
+   *  signed-in owner is SELLING, not what they marked interest in. */
+  myProperties: () => ['properties', 'mine'] as const,
+
+  leads: ['leads'] as const,
+  leadList: (params: Record<string, string | number | undefined>) =>
+    ['leads', 'list', params] as const,
+  leadAnalytics: (days: number) => ['leads', 'analytics', days] as const,
+
+  blogs: ['blogs'] as const,
+  /** Empty string is the unfiltered feed, so both share one prefix. */
+  blogList: (category: string) => ['blogs', 'list', category] as const,
+  blogPost: (slug: string) => ['blogs', 'post', slug] as const,
 } as const;

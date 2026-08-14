@@ -9,7 +9,30 @@
 
 export { adaptProject } from './adapters';
 export { fetchProjects, type ProjectPage } from './api';
-export { useRecentProjects, type RecentProjectsResult } from './hooks';
+export { useRecentProjects, useProjectFeed, type RecentProjectsResult, type ProjectFeed } from './hooks';
 export { ProjectCard, type ProjectCardProps } from './components/ProjectCard';
 export { ProjectRail, type ProjectRailProps } from './components/ProjectRail';
+export { ProjectList, type ProjectListProps } from './components/ProjectList';
+export { ProjectListCard, type ProjectListCardProps } from './components/ProjectListCard';
 export type { ProjectSummary } from './types';
+
+export {
+  useProjectDetail,
+  useUnitTypesForProject,
+  useUnitTypeDetail,
+} from './projectDetail';
+
+export {
+  useCampaignsForUnitType,
+  useCampaignDetail,
+  useJoinCampaign,
+  useExitCampaign,
+  useUploadPaymentProof,
+} from './campaigns';
+
+export {
+  useMyBookings,
+  useCreateBooking,
+  usePaymentConfig,
+  useSubmitBookingPayment,
+} from './bookings';

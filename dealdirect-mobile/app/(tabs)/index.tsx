@@ -7,9 +7,13 @@ import { qk } from '@/api';
 import {
   AboutDealDirect,
   CityGrid,
+  CollectionRail,
   CtaBanner,
+  HOME_COLLECTION_IDS,
   Hero,
   Section,
+  TrustStrip,
+  findCollection,
   usePopularListings,
 } from '@/features/home';
 import { useNotifications } from '@/features/notifications';
@@ -22,16 +26,21 @@ import type { PropertySearchParams } from '@/types/backend/property';
 /**
  * Home: discovery, not browsing.
  *
- *   Hero              full-bleed photograph, greeting, search, Buy/Rent/Post
+ *   Hero              white header, search, "Find Your Dream Home", Buy/Rent/Post
  *   Popular Listings  ranked by view count
  *   Builder Projects  newest builder developments
- *   Why DealDirect    the pitch, once, in three lines
+ *   Why DealDirect    the pitch, once, as three numbered lines
  *   Explore by City   live counts
  *   CTA
  *
  * Nothing here paginates and nothing here filters. Every affordance routes to
  * the one canonical results screen with a filter prefilled, so the app has a
  * single infinite scroll, a single filter sheet and a single sort.
+ *
+ * Home used to mount `FontOverrideProvider` itself, which is what made it the
+ * only screen in DM Sans. That provider now lives at the root layout and
+ * covers the whole app, so this screen no longer does anything special with
+ * type — see `theme/fonts.ts`.
  *
  * ---------------------------------------------------------------------------
  * DEFERRED MOUNTING
@@ -43,12 +52,14 @@ import type { PropertySearchParams } from '@/types/backend/property';
  * paints before any request resolves, so the screen is never blank.
  *
  * ---------------------------------------------------------------------------
- * THE COLLECTIONS ENGINE IS STILL HERE, JUST NOT RENDERED
+ * THE COLLECTIONS RAILS
  *
+ * Mounted 2026-08-13, having sat built-but-unrendered since M3.
  * `features/home/collections.ts` holds fifteen curated rails (Luxury, Starter
- * Homes, Sea View and so on), each gated on live result counts. This layout
- * does not use them. They are one `COLLECTIONS.map()` away if the magazine
- * treatment is wanted later, and the registry costs nothing sitting idle.
+ * Homes, Sea View and so on), each gated on live result counts — but only the
+ * three in `HOME_COLLECTION_IDS` are rendered, because fifteen more queries
+ * would put one scroll of this screen over the search limiter. That constant's
+ * doc comment is where to change the selection.
  */
 
 export default function HomeScreen() {
@@ -68,11 +79,32 @@ export default function HomeScreen() {
    */
   const { badgeLabel: notificationBadge } = useNotifications();
 
+  /**
+   * Every Home affordance lands on the Search tab, which owns results,
+   * pagination, filters and compare. Home never fetches a feed of its own.
+   *
+   * `browse: '1'` is how an affordance says "show everything" — the Search tab
+   * treats an absence of criteria as a real results state only when told to,
+   * otherwise tapping the tab directly would wipe whatever the user had.
+   */
   const openSearch = useCallback(
-    (params?: PropertySearchParams & { search?: string; listingType?: ListingIntent }) => {
-      router.push({ pathname: '/search', params: (params ?? {}) as Record<string, string> });
+    (
+      params?: PropertySearchParams & {
+        search?: string;
+        listingType?: ListingIntent;
+        browse?: string;
+        openFilters?: string;
+      }
+    ) => {
+      router.push({ pathname: '/properties', params: (params ?? {}) as Record<string, string> });
     },
     [router]
+  );
+
+  /** A committed term from the hero field. Empty means browse everything. */
+  const submitSearch = useCallback(
+    (term: string) => openSearch(term ? { search: term } : { browse: '1' }),
+    [openSearch]
   );
 
   const openProperty = useCallback((id: string) => router.push(`/property/${id}`), [router]);
@@ -97,50 +129,82 @@ export default function HomeScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      <RevealScrollView
-        contentContainerStyle={{ paddingBottom: spacing['2xl'] }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={theme.colors.brand}
-            colors={[theme.colors.brand]}
+        <RevealScrollView
+          contentContainerStyle={{ paddingBottom: spacing['2xl'] }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.colors.brand}
+              colors={[theme.colors.brand]}
+            />
+          }
+        >
+          <Hero
+            onSearch={submitSearch}
+            onOpenFilters={() => openSearch({ browse: '1', openFilters: '1' })}
+            onIntent={(listingType) => openSearch({ listingType })}
+            onPostProperty={() => router.push('/owner/property/new')}
+            onNotifications={() => router.push('/notifications')}
+            onProfile={() => router.push('/profile')}
+            notificationBadge={notificationBadge}
           />
-        }
-      >
-        <Hero
-          onSearch={() => openSearch()}
-          onIntent={(listingType) => openSearch({ listingType })}
-          onPostProperty={() => router.push('/owner/property/new')}
-          onNotifications={() => router.push('/notifications')}
-          onProfile={() => router.push('/profile')}
-          notificationBadge={notificationBadge}
-        />
 
-        <Reveal placeholder={<SectionPlaceholder />}>
-          <PopularListings onViewAll={openSearch} onSelectProperty={openProperty} />
-        </Reveal>
+          <Reveal placeholder={<SectionPlaceholder />}>
+            <PopularListings
+              onViewAll={openSearch}
+              onSelectProperty={openProperty}
+            />
+          </Reveal>
 
-        <Reveal placeholder={<SectionPlaceholder />}>
-          <BuilderProjects onSelectProject={openProject} onViewAll={() => router.push('/projects')} />
-        </Reveal>
+          <Reveal placeholder={<SectionPlaceholder height={96} />}>
+            <View className="pt-2xl">
+              <TrustStrip />
+            </View>
+          </Reveal>
 
-        <Reveal placeholder={<SectionPlaceholder height={280} />}>
-          <View className="pt-2xl">
-            <AboutDealDirect />
-          </View>
-        </Reveal>
+          <Reveal placeholder={<SectionPlaceholder />}>
+            <BuilderProjects onSelectProject={openProject} onViewAll={() => router.push('/projects')} />
+          </Reveal>
 
-        <Reveal placeholder={<SectionPlaceholder height={300} />}>
-          <Section title="Explore by City" subtitle="Every count below is live inventory">
-            <CityGrid onSelect={(search) => openSearch({ search })} />
-          </Section>
-        </Reveal>
+          {/*
+            The editorial rails. Each is revealed separately, so its query
+            fires only as it approaches the viewport — and each unmounts itself
+            if it cannot meet its own `minResults`. See `HOME_COLLECTION_IDS`
+            for why this is three rows and not the full registry of fifteen.
+          */}
+          {HOME_COLLECTION_IDS.map((id) => {
+            const collection = findCollection(id);
+            if (!collection) return null;
+            return (
+              <Reveal key={id} placeholder={<SectionPlaceholder />}>
+                <CollectionRail
+                  collection={collection}
+                  onViewAll={openSearch}
+                  onSelectProperty={openProperty}
+                />
+              </Reveal>
+            );
+          })}
 
-        <Reveal>
-          <CtaBanner onPress={() => openSearch()} />
-        </Reveal>
-      </RevealScrollView>
+          <Reveal placeholder={<SectionPlaceholder height={280} />}>
+            <View className="pt-3xl">
+              <AboutDealDirect />
+            </View>
+          </Reveal>
+
+          <Reveal placeholder={<SectionPlaceholder height={300} />}>
+            <Section title="Explore by City" subtitle="Every count below is live inventory">
+              <CityGrid onSelect={(search) => openSearch({ search })} />
+            </Section>
+          </Reveal>
+
+          <Reveal>
+            <View className="pt-3xl">
+              <CtaBanner onPress={() => openSearch({ browse: '1' })} />
+            </View>
+          </Reveal>
+        </RevealScrollView>
     </View>
   );
 }
@@ -158,7 +222,7 @@ function PopularListings({
   onViewAll,
   onSelectProperty,
 }: {
-  onViewAll: (params: PropertySearchParams) => void;
+  onViewAll: (params: PropertySearchParams & { browse?: string }) => void;
   onSelectProperty: (id: string) => void;
 }) {
   const { items, isLoading, isComplete } = usePopularListings();
@@ -168,15 +232,16 @@ function PopularListings({
   return (
     <Section
       title="Popular Listings"
-      subtitle={isComplete ? 'The most viewed homes right now' : 'Most viewed among our newest listings'}
+      subtitle={isComplete ? 'Most viewed homes right now' : 'Most viewed among our newest listings'}
       actionLabel="View all"
-      onAction={() => onViewAll({ sort: 'newest' })}
+      onAction={() => onViewAll({ sort: 'newest', browse: '1' })}
     >
       <PropertyRail
         items={items}
         loading={isLoading}
         onSelect={onSelectProperty}
         accessibilityLabel="Popular listings"
+        showIndicator
       />
     </Section>
   );

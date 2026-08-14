@@ -1,8 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { useTheme } from '@/theme';
-import { Text } from '@/ui';
+import { Card, Text } from '@/ui';
 import type { PropertyDetail } from '../types';
 
 /**
@@ -96,21 +96,28 @@ export function DetailFacts({ property }: DetailFactsProps) {
   if (facts.length === 0) return null;
 
   return (
-    <View className="flex-row rounded-xl border border-border bg-surface px-sm py-md">
+    <Card bordered={false} radius="xl" className="flex-row px-sm py-base">
       {facts.map((fact, index) => (
         <View
           key={fact.label}
-          className={`flex-1 items-center ${index > 0 ? 'border-l border-border' : ''}`}
+          className="flex-1 items-center px-xs"
+          // A hairline, not a 1px border. A device-pixel rule reads as a
+          // division; a full point reads as a table.
+          style={
+            index > 0
+              ? { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: theme.colors.border }
+              : undefined
+          }
         >
-          <Ionicons name={fact.icon} size={17} color={theme.colors.textMuted} />
-          <Text variant="bodyEmphasis" className="mt-xs" numberOfLines={1}>
+          <Ionicons name={fact.icon} size={18} color={theme.colors.textMuted} />
+          <Text variant="bodyEmphasis" className="mt-sm text-center" numberOfLines={1}>
             {fact.value}
           </Text>
-          <Text variant="caption" tone="muted" numberOfLines={1}>
+          <Text variant="caption" tone="muted" className="mt-xs" numberOfLines={1}>
             {fact.label}
           </Text>
         </View>
       ))}
-    </View>
+    </Card>
   );
 }

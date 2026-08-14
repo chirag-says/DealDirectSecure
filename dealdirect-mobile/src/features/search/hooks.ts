@@ -1,16 +1,30 @@
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { qk } from '@/api';
-import { fetchSuggestions } from '@/features/properties';
+import {
+  fetchPropertyPage,
+  fetchSuggestions,
+  usePropertyFeed,
+  type PropertyFeed,
+  type PropertySummary,
+} from '@/features/properties';
 import { useDebouncedValue } from '@/lib';
 import type { PropertySuggestion } from '@/types/backend/property';
+import {
+  hasClientOnlyFilters,
+  matchesClientFilters,
+  toSearchParams,
+  type SearchFilters,
+} from './filters';
 import {
   addRecentSearch,
   clearRecentSearches,
   readRecentSearches,
   removeRecentSearch,
 } from './recent';
+import { RELATED_POOL_SIZE, RELATED_THRESHOLD, selectRelatedProperties } from './related';
+import { canAddToCompare } from './compare';
 
 /**
  * Autocomplete.
@@ -77,4 +91,143 @@ export function useRecentSearches() {
   }, []);
 
   return { items, add, remove, clear };
+}
+
+/** Matches `usePopularListings`' ceiling: the live corpus fits in one page. */
+const CLIENT_FILTER_PAGE_SIZE = 100;
+
+/**
+ * The search results feed, filter-aware.
+ *
+ * Two modes, chosen by `hasClientOnlyFilters`, both built ONLY on
+ * `/properties/search` — never `/property-list` or `/filter`:
+ *
+ *   - No city/category/furnishing/construction-status filter set: delegates
+ *     straight to `usePropertyFeed`, unchanged, with real server-side infinite
+ *     scroll exactly as before this file existed.
+ *   - Any of those filters set: fetches one bounded page
+ *     (`CLIENT_FILTER_PAGE_SIZE`) and filters it client-side via
+ *     `matchesClientFilters`. No further pages are requested — see
+ *     `filters.ts`'s TAXONOMY/CITY/FURNISHING/CONSTRUCTION STATUS block for
+ *     why this is bounded rather than paginated, same ceiling
+ *     `usePopularListings` already documents.
+ *
+ * Both branches are always evaluated (React's rules of hooks forbid calling
+ * one conditionally); only one is ever `enabled`, so only one ever fetches.
+ */
+export function usePropertySearchFeed(
+  filters: SearchFilters,
+  options: { enabled?: boolean } = {}
+): PropertyFeed {
+  const enabled = options.enabled ?? true;
+  const clientMode = hasClientOnlyFilters(filters);
+  const params = useMemo(() => toSearchParams(filters), [filters]);
+
+  const paginated = usePropertyFeed(params, { enabled: enabled && !clientMode });
+
+  const bounded = useQuery({
+    queryKey: qk.collection('search-filtered', { ...params, limit: CLIENT_FILTER_PAGE_SIZE }),
+    queryFn: ({ signal }) =>
+      fetchPropertyPage({ ...params, limit: CLIENT_FILTER_PAGE_SIZE, page: 1 }, signal),
+    enabled: enabled && clientMode,
+    staleTime: 2 * 60_000,
+  });
+
+  const boundedItems = useMemo(
+    () => (bounded.data?.items ?? []).filter((item) => matchesClientFilters(item, filters)),
+    [bounded.data, filters]
+  );
+
+  if (clientMode) {
+    return {
+      items: boundedItems,
+      total: boundedItems.length,
+      isInitialLoading: bounded.isPending,
+      isRefreshing: bounded.isRefetching,
+      isLoadingMore: false,
+      hasMore: false,
+      loadMore: () => {},
+      refresh: () => void bounded.refetch(),
+      error: bounded.error,
+      retry: () => void bounded.refetch(),
+    };
+  }
+
+  return paginated;
+}
+
+export interface RelatedPropertiesResult {
+  items: PropertySummary[];
+  isLoading: boolean;
+}
+
+/**
+ * "Related properties" — see `related.ts` for the scoring and the honest
+ * ceiling this pool is subject to.
+ *
+ * `enabled` is the caller's call, not this hook's: the screen knows whether
+ * the current result count actually cleared `RELATED_THRESHOLD` and whether
+ * there is any real criteria to score against, both of which live in state
+ * this hook does not have visibility into.
+ */
+export function useRelatedProperties(
+  filters: SearchFilters,
+  excludeIds: readonly string[],
+  enabled: boolean
+): RelatedPropertiesResult {
+  const query = useQuery({
+    queryKey: qk.collection('related-pool', { limit: RELATED_POOL_SIZE, sort: 'newest' }),
+    queryFn: ({ signal }) =>
+      fetchPropertyPage({ limit: RELATED_POOL_SIZE, sort: 'newest' }, signal),
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+
+  const excludeSet = useMemo(() => new Set(excludeIds), [excludeIds]);
+
+  const items = useMemo(() => {
+    if (!enabled || !query.data) return [];
+    return selectRelatedProperties(query.data.items, filters, excludeSet);
+  }, [enabled, query.data, filters, excludeSet]);
+
+  return { items, isLoading: enabled && query.isPending };
+}
+
+export { RELATED_THRESHOLD };
+
+// --- Compare properties -----------------------------------------------
+
+export interface CompareSelection {
+  items: PropertySummary[];
+  isSelected: (id: string) => boolean;
+  /** False once `MAX_COMPARE` is reached AND the item isn't already selected,
+   *  or once a second property type is already anchoring the selection. */
+  canToggle: (property: PropertySummary) => boolean;
+  toggle: (property: PropertySummary) => void;
+  clear: () => void;
+}
+
+export function useCompareSelection(): CompareSelection {
+  const [items, setItems] = useState<PropertySummary[]>([]);
+
+  const isSelected = useCallback((id: string) => items.some((item) => item.id === id), [items]);
+
+  const canToggle = useCallback(
+    (property: PropertySummary) => canAddToCompare(items, property),
+    [items]
+  );
+
+  const toggle = useCallback((property: PropertySummary) => {
+    setItems((current) => {
+      if (current.some((item) => item.id === property.id)) {
+        return current.filter((item) => item.id !== property.id);
+      }
+      if (!canAddToCompare(current, property)) return current;
+      return [...current, property];
+    });
+  }, []);
+
+  const clear = useCallback(() => setItems([]), []);
+
+  return { items, isSelected, canToggle, toggle, clear };
 }

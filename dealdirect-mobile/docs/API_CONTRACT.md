@@ -21,6 +21,21 @@ Neither the backend nor the website is modified.
 
 Paths below omit the `/api` prefix, which `EXPO_PUBLIC_API_URL` already carries.
 
+> **Which backend?** Corrected 2026-08-09. This repository's `backend/` is not
+> what is deployed. Production runs `origin/main`; `main` is 4 commits ahead of
+> it and 13 backend files are uncommitted on top of that. Three surfaces the app
+> depends on differ between the two:
+>
+> | Surface | `origin/main` (live) | working tree |
+> |---|---|---|
+> | `/agreements/*` | mounted | **unmounted** (`server.js:869`) |
+> | `/rewards/store`, `/rewards/redeem` | live | **deleted** |
+> | `listingType` on `/properties/search` | absent | present |
+>
+> Every claim in this document should be read as describing the working tree
+> unless it says otherwise. Full detail in
+> [`HANDOFF_AUDIT_2026-08-09.md`](HANDOFF_AUDIT_2026-08-09.md) §0.
+
 ---
 
 ## 1. Authentication model
@@ -69,11 +84,40 @@ The app compiles in one constant per platform, containing no version number:
 App version travels in `X-App-Version`, which the fingerprint ignores.
 Implemented in M2 (`src/api/userAgent.ts`).
 
-### 1.2 CSRF
+### 1.2 CSRF — the app is exempt, and that exemption is load-bearing
 
-`validateCsrfToken` is **commented out** at `backend/server.js:763`. No route
-enforces CSRF. The app must not build CSRF plumbing; it would be dead code that
-later reads as load-bearing.
+Corrected 2026-08-09. The original wording ("no route enforces CSRF") was true
+of `origin/main` and is no longer true of this repository.
+
+`validateCsrfToken` is indeed commented out (`backend/server.js:768`). But the
+working tree adds a second guard, `requireCsrf`
+(`backend/middleware/csrfProtection.js:246`), applied to **eleven named routes**
+(`server.js:804-829`), including:
+
+```
+POST /properties/add          PUT  /properties/my-properties/:id
+POST /properties/interested/:id    POST /properties/:id/report
+POST /campaigns/:id/join      POST /campaigns/:id/exit
+POST /chat/message/send       POST /chat/conversation/start
+POST /contact                 POST /rewards/admin/adjust-points
+```
+
+The app still builds no CSRF plumbing, and that is still correct — but for a
+different reason than "nothing enforces it." `requireCsrf` returns `next()`
+immediately when the request carries **no `Origin` header**
+(`csrfProtection.js:256-259`), on the explicit grounds that CSRF is a
+browser-only attack and a native client has no ambient credentials to forge.
+React Native's networking sends no `Origin`.
+
+> **Constraint that follows:** no DealDirect API call may ever originate from a
+> WebView, from `react-native-web`, or from any client that attaches `Origin`.
+> Those eleven writes would 403 with `CSRF_ORIGIN_REJECTED`. This matters for
+> the pending `react-native-webview` work (M4/M16 locator map, and any Hubble
+> rewards WebView): map tiles and Nominatim are fine — different hosts, no
+> cookie — but a WebView must not call this API. Fetch in the app, pass the
+> result in.
+
+An emergency off-switch exists: `CSRF_ENFORCE=false`.
 
 ---
 
@@ -100,10 +144,28 @@ response as a failure. Branch on the declared envelope, not on a guess.
 | Tier | Budget | Applies to |
 |---|---|---|
 | global | 500 / 15 min | everything except `/health` |
-| auth | 5 / 15 min, successes not counted | login, register, forgot-password |
+| auth (express-rate-limit) | 5 / 15 min, successes **not** counted | `/users/login`, `/users/register`, `/users/forgot-password`, `/admin/login` |
+| **auth (in-memory, second limiter)** | **10 / 15 min, successes ARE counted, one shared budget** | **`/users/register`, `/register-direct`, `/verify-otp`, `/resend-otp`, `/login`, `/forgot-password`, `/reset-password`** |
 | search | 20 / min | `/properties/search`, `/suggestions`, `/filter` |
 | transactional | 20 / hour | `/agreements/generate` |
-| group buy | 10 / 15 min | campaign join, campaign exit |
+| ~~group buy~~ | ~~10 / 15 min~~ | **does not apply — see below** |
+
+Corrected 2026-08-09, two rows:
+
+**The second auth limiter was missing.** `authRateLimit`
+(`backend/middleware/authUser.js:512-546`) is a hand-rolled in-memory `Map`
+keyed `auth:${ip}`, applied per-route in `backend/routes/userRoutes.js:59-70`. It
+allows **10 requests per IP per 15 minutes across all seven public auth routes
+combined**, and unlike `authLimiter` it counts successful requests. In practice
+it is the stricter of the two. A test session that registers, resends an OTP
+twice, verifies and logs in three times has already spent 7 of 10. It returns
+429 with `retryAfter` in the body, which `src/api/errors.ts` reads.
+
+**The group-buy limiter does not reach campaigns.** It is mounted at
+`/api/group-buy/projects/:id/join` and `.../exit` (`backend/server.js:705-706`).
+Campaigns are mounted at `/api/campaigns` (`:880`). No `/api/group-buy` path
+exists anywhere in the app, so campaign join/exit fall under the global tier
+only.
 
 Keyed on **IP, not user**. On Indian carrier NAT many subscribers share one
 address, so these budgets are effectively shared between unrelated users. The
@@ -121,14 +183,15 @@ Declared in `src/api/endpoints/`. `auth` column: `pub` = none, `opt` = optional,
 
 | Method | Path | Auth | Envelope | Notes |
 |---|---|---|---|---|
-| POST | `/users/register` | pub | keyed | 20 KB cap. Creates **unverified** user, sends OTP. No session. |
-| POST | `/users/verify-otp` | pub | keyed | 201. **Establishes the session.** Do not call login after. |
-| POST | `/users/resend-otp` | pub | ok | |
-| POST | `/users/login` | pub | keyed | 10 KB cap. 401 bad creds / 423 `ACCOUNT_LOCKED` / 403 `ACCOUNT_BLOCKED` / 400 `EMAIL_NOT_VERIFIED` |
+| POST | `/users/register` | pub | keyed | 20 KB cap. Creates **unverified** user, sends OTP **by SMS only**. No session. **Ignores `referralCode`.** The website uses this for **owners only**. |
+| POST | `/users/register-direct` | pub | keyed | **Added 2026-08-09 — was missing.** The path the website uses for **buyers**: no OTP, `isVerified: true`, session created immediately, 201 with the user. Reads `referralCode`. `userController.js:333-409`. |
+| POST | `/users/verify-otp` | pub | keyed | 201. **Establishes the session.** Do not call login after. **This is where `referralCode` is attributed** (`:456-458`) — send it here, not to `/register`. |
+| POST | `/users/resend-otp` | pub | ok | SMS, not email. |
+| POST | `/users/login` | pub | keyed | 10 KB cap. Body is exactly `{ email, password }`. 401 bad creds / 423 `ACCOUNT_LOCKED` / 403 `ACCOUNT_BLOCKED` / 400 `EMAIL_NOT_VERIFIED` |
 | POST | `/users/logout` | user | ok | |
 | POST | `/users/logout-all` | user | ok | revokes the calling device too |
-| POST | `/users/forgot-password` | pub | ok | emails a **website** link; app opens it externally |
-| POST | `/users/reset-password` | pub | ok | |
+| POST | `/users/forgot-password` | pub | ok | **Corrected 2026-08-09.** Sends a 6-digit OTP **by SMS**. Body `{ phone }` (`{ email }` accepted as a lookup fallback, but delivery is still SMS). No email, no link, no token. Returns **404** when no account matches — it enumerates. `userController.js:670-743`. |
+| POST | `/users/reset-password` | pub | ok | **Corrected 2026-08-09.** Body `{ phone \| email, otp, newPassword }`. Full password-strength rules apply. Revokes every session on success. `userController.js:782-868`. |
 | GET | `/users/me` | user | keyed | cold-start session probe; 401 is the normal guest result |
 | GET | `/users/profile` | user | keyed | alias of `/me` |
 | PUT | `/users/profile` | user | keyed | multipart, file field `profileImage` |
@@ -151,7 +214,7 @@ Declared in `src/api/endpoints/`. `auth` column: `pub` = none, `opt` = optional,
 | POST | `/properties/add` | user | data | owners only. multipart `images` (15) + `categorizedImages` (50) |
 | PUT | `/properties/my-properties/:id` | user | data | owners only |
 | DELETE | `/properties/:id` | user | ok | |
-| GET | `/properties/saved` | user | data | private bookmark |
+| GET | `/properties/saved` | user | data | **NOT a private bookmark** — corrected 2026-08-09 to match `HANDOFF.md` §3.2, which this table predates. `getSavedProperties` queries `{ "interestedUsers.user": userId }`, the same array `markInterested` pushes to. Saved and Interested are one list under two names, capped at 5. |
 | DELETE | `/properties/saved/:id` | user | ok | |
 | POST | `/properties/interested/:id` | user | keyed | **creates a Lead and notifies the owner.** Not a bookmark. |
 | GET | `/properties/interested/:id/check` | user | keyed | |
@@ -161,8 +224,13 @@ Declared in `src/api/endpoints/`. `auth` column: `pub` = none, `opt` = optional,
 | POST | `/properties/claim-deal-reward/:verificationId` | user | keyed | after admin approval |
 
 `search` params: `search, category, subcategory, propertyType, buildingType,
-size, city, priceFrom, priceTo, page, limit, sort`. `sort` ∈ `newest |
-priceAsc | priceDesc`. `city=All` means no filter.
+size, city, priceFrom, priceTo, listingType, page, limit, sort`. `sort` ∈
+`newest | priceAsc | priceDesc`. `city=All` means no filter.
+
+`listingType` was added by commit `ab5ec1b` and expands `rent` / `sale` across
+all six schema spellings. It is **committed but not deployed** — `main` is ahead
+of `origin/main`, which is what Hostinger imports. Against the live API the
+param is ignored. See `HANDOFF.md` §3.1.
 
 **Excluded on purpose** (see section 7): `/properties/property-list`,
 `/properties/filter`.
@@ -250,6 +318,11 @@ deduped then sliced. Verified live 2026-08-03.
 
 ### Chat — `/chat` (all `user`)
 
+> **Product status (2026-08-13):** messages/chat is unmounted from the mobile
+> UI (HANDOFF §9.1 D2), matching the website, which mounts no chat anywhere.
+> The endpoints below remain live on the backend and the client code remains
+> on disk, dormant. This table stays for when/if the feature returns.
+
 | Method | Path | Envelope | Notes |
 |---|---|---|---|
 | GET | `/chat/socket-token` | keyed | JWT, **5-minute** life. Fetch per socket connect. Never cache. |
@@ -285,6 +358,13 @@ by user id.
 | GET | `/leads/export` | bare | **binary xlsx**; authenticated, so same User-Agent rule applies |
 
 ### Agreements — `/agreements`
+
+> **WITHDRAWN from the product** (client decision 2026-08-01, confirmed
+> 2026-08-13, HANDOFF §9.1 D1). The backend mount is commented out in the
+> working tree (`server.js:869`); after the next deploy every route below
+> 404s. The website's page already returns 404 and its navbar links are
+> commented out. Do not build a client for these. The table stays only so the
+> withdrawal is legible.
 
 | Method | Path | Auth | Envelope | Notes |
 |---|---|---|---|---|
@@ -324,12 +404,19 @@ Every saved Notification also emails the user via a `post('save')` hook, unless
 
 | Method | Path | Auth | Envelope | Notes |
 |---|---|---|---|---|
-| GET | `/rewards/store` | pub | keyed | |
-| GET | `/rewards/wallet` | user | keyed | |
-| GET | `/rewards/transactions` | user | keyed | controller spreads a service result; shape pinned in M7 |
+| GET | `/rewards/store` | pub | keyed | **DEAD — removed in working tree**; live only until the next deploy. The website has zero callers. Do not build against it. |
+| GET | `/rewards/wallet` | user | keyed | see the shape warning below |
+| GET | `/rewards/transactions` | user | keyed | key confirmed: `{ transactions, pagination }` (`rewardService.js:340-346`) |
 | GET | `/rewards/referral-code` | user | keyed | `referralLink` points at the **website** |
-| GET | `/rewards/referrals` | user | keyed | also a spread result |
-| POST | `/rewards/redeem` | user | keyed | business failure returns **400**, not 200 |
+| GET | `/rewards/referrals` | user | keyed | full shape: `{ totalReferred, signups, firstActions, dealClosures, totalPointsEarned, referrals[] }` (`rewardService.js:466-489`) |
+| POST | `/rewards/redeem` | user | keyed | **DEAD — removed in working tree**, same as `/store`. Redemption is Hubble-only now; that is a separate workstream (HANDOFF §9.1 D3). |
+
+**Wallet shape — corrected 2026-08-13.** `getWallet` returns
+`{ totalPoints, availablePoints, tier, tierMultiplier, nextTierProgress,
+recentTransactions }` (`rewardService.js:314-329`). There is **no `balance`
+key**. The website renders `availablePoints`
+(`RewardsDashboardContent.jsx:183`); mobile's `wallet.balance ?? 0` read is
+defect F1 in HANDOFF §9.3 and shows every user zero points.
 
 ### Projects vertical
 
@@ -347,7 +434,7 @@ Every saved Notification also emails the user via a `post('save')` hook, unless
 | POST | `/campaigns/:id/exit` | user | ok | 10/15 min |
 | POST | `/campaigns/:id/payment-proof` | user | ok | multipart `paymentProof`; no record echoed back |
 | POST | `/bookings` | user | data | login required; needs `projectId, unitTypeId, clientName, clientPhone` |
-| POST | `/bookings/:id/payment` | user | keyed | multipart `screenshot` + UTR |
+| POST | `/bookings/:id/payment` | user | keyed | multipart: file field `screenshot`, text field **`utrNumber`** (not `utr` — defect F5). Backend accepts **either** one (`bookingController.js:164-166`). `payment` on the model is `{ utrNumber, screenshotUrl, submittedAt, verifiedAt, verifiedBy, status: pending\|submitted\|verified\|rejected, rejectionReason }` (`ProjectBooking.js:80-94`) — there is no `utr`, no `verified` boolean (defect F6). |
 | GET | `/bookings/my` | user | data | |
 | GET | `/bookings/payment-config` | user | data | UPI id + QR |
 
@@ -472,6 +559,13 @@ neither side is modified.
 | 3 | `notificationApi.markAllRead` calls `PUT /notifications/read-all` | route is **PATCH `/notifications/mark-all/read`** | uses the mounted path |
 | 4 | `ChatContext` falls back to emitting `user_online` | handler **removed** from the server | never emits it |
 | 5 | `normalizePrice(price, priceUnit)` multiplies by 1e5 on `priceUnit: "Lac"` | `priceUnit` holds the schema default on rupee-denominated rows | treats `price` as rupees, matching the website's own `formatPrice` display path |
+| 6 | `authApi.forgotPassword(email)` posts `{ email }`; `authApi.resetPassword(token, password)` posts `{ token, password }` | `forgotPassword` wants `{ phone }` and sends an **SMS OTP**; `resetPassword` wants `{ phone, otp, newPassword }` and reads neither `token` nor `password` | **was wrong — mobile copied these two helpers instead of the page.** Being fixed; see audit §1.3 |
+| 7 | `AuthContext.verifyMfa` posts `/users/verify-mfa`; `changePasswordOnLogin` posts `/users/change-password-required` | **neither route exists** anywhere in `backend/`. `loginUser` never returns `requiresMfa` or `passwordChangeRequired`, so the branches never fire | implements neither, correctly. Do not "close this gap" — audit §1.7 |
+| 8 | `LoginContent.jsx` requires a valid 10-digit Indian phone before submitting | `loginUser` destructures only `{ email, password }`; the phone is never transmitted | sends `{ email, password }`, which is the real contract. Audit §1.1 |
+
+Rows 6–8 added 2026-08-09. Row 8's effect on the live site is a genuine lockout:
+any account without a `[6-9]\d{9}` mobile number cannot log in through the
+website, while the same credentials work through the API.
 
 Effect of #1 on the live site: the search helper returns unfiltered, paginated
 results rather than filtered ones. Worth telling the website owner about, as a

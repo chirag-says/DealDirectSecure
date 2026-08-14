@@ -231,6 +231,32 @@ export const COLLECTIONS: readonly Collection[] = [
 ];
 
 /**
+ * Which collections Home actually renders, in order.
+ *
+ * NOT all fifteen, and the reason is the limiter, not taste. `/properties/search`
+ * allows 20 requests per minute per IP, shared across everyone behind a carrier
+ * NAT (HANDOFF §5.2). Home already spends three on popular listings, projects
+ * and city counts; mounting the full registry would add fifteen more and put a
+ * single unhurried scroll over budget, which fails as a 429 on the results
+ * screen the user opens next.
+ *
+ * Three is what fits. They are chosen to frame the corpus from different
+ * angles rather than to rank it — `rentals` is the product thesis (deal
+ * directly, no broker), `city-apartments` is what most of the inventory
+ * actually is, and `luxury` is the aspirational end. Each still obeys its own
+ * `minResults` and unmounts if it cannot fill itself, so a thin corpus degrades
+ * to fewer rows rather than to empty ones.
+ *
+ * The other twelve are not dead: `findCollection` still resolves them, and this
+ * list is the only thing to edit if the budget changes or a rail proves itself.
+ */
+export const HOME_COLLECTION_IDS: readonly string[] = [
+  'rentals',
+  'city-apartments',
+  'luxury',
+];
+
+/**
  * Localities.
  *
  * Free text, not the `city` param, and the reason is in the data: `city` is an

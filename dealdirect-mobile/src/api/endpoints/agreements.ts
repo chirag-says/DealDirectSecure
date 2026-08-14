@@ -1,11 +1,29 @@
 /**
- * Agreement endpoints. Mounted at `/api/agreements`
- * (backend/routes/agreementRoutes.js).
+ * ⚠️ AGREEMENTS ARE WITHDRAWN FROM THE PRODUCT. DO NOT BUILD AGAINST THIS.
  *
- * ROLE GATE: the protected routes require `requireUserRole('owner', 'user')`.
- * An account whose role is literally `buyer` gets a 403 here, even though
- * authUser.js accepts `buyer` as a valid role elsewhere. Hide the entry point
- * for that role and explain the 403 rather than showing a generic failure.
+ * Client decision 2026-08-01, reconfirmed 2026-08-13 (HANDOFF §9.1 D1). The
+ * website's `/agreements` page returns 404 and its three navbar links are
+ * commented out; the backend mount is commented out too
+ * (`backend/server.js:869`), so after the next deploy every route below 404s.
+ * The mobile placeholder screens were deleted in the same pass.
+ *
+ * This file is kept, unregistered and uncalled, for two reasons: the typing
+ * work is done if the feature is ever restored, and its absence would leave
+ * nothing to explain WHY there is no agreements client. Six typed endpoints
+ * sitting in the registry read as an invitation without this header.
+ *
+ * If it is ever restored, note the precondition recorded at
+ * `backend/server.js:860-863`: `POST /agreements/webhook/payment` skips HMAC
+ * verification entirely when `PAYMENT_WEBHOOK_SECRET` is unset. That must be
+ * fixed before the mount returns, and this app must never be the reason it
+ * returns early.
+ *
+ * ---------------------------------------------------------------------------
+ * ROLE GATE (for whenever it comes back): the protected routes require
+ * `requireUserRole('owner', 'user')`. An account whose role is literally
+ * `buyer` gets a 403 here, even though authUser.js accepts `buyer` as a valid
+ * role elsewhere. Hide the entry point for that role and explain the 403
+ * rather than showing a generic failure.
  */
 
 import type {

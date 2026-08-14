@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Alert, FlatList, RefreshControl, View } from 'react-native';
 
 import {
@@ -8,8 +8,9 @@ import {
   useDeleteConversation,
   type ConversationSummary,
 } from '@/features/chat';
-import { useTheme } from '@/theme';
-import { EmptyState, ErrorState, Screen, Skeleton, Text } from '@/ui';
+import { requestNotificationPermissionOnce } from '@/notifications';
+import { tabBarClearance, useTheme } from '@/theme';
+import { EmptyState, ErrorState, Screen, Skeleton, Text, useToast } from '@/ui';
 
 /**
  * Messages.
@@ -24,6 +25,14 @@ export default function ChatListScreen() {
 
   const { items, isLoading, isRefreshing, error, refresh, requiresAuth } = useChatConversations();
   const { remove } = useDeleteConversation();
+  const toast = useToast();
+
+  // Asked here, not at launch: a permission prompt only makes sense once the
+  // user has shown intent to use messaging. Asks at most once ever — see
+  // `requestNotificationPermissionOnce`'s doc comment.
+  useEffect(() => {
+    if (!requiresAuth) void requestNotificationPermissionOnce();
+  }, [requiresAuth]);
 
   const openConversation = useCallback(
     (id: string) => router.push(`/chat/${id}`),
@@ -37,7 +46,14 @@ export default function ChatListScreen() {
         `You will stop seeing messages with ${conversation.otherParticipant?.name ?? 'this user'} about "${conversation.propertyTitle}". They can still message you again.`,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Archive', style: 'destructive', onPress: () => remove(conversation.id) },
+          {
+            text: 'Archive',
+            style: 'destructive',
+            onPress: async () => {
+              await remove(conversation.id);
+              toast.show('Conversation archived.');
+            },
+          },
         ]
       );
     },
@@ -66,7 +82,7 @@ export default function ChatListScreen() {
           title="No conversations yet"
           description="Message an owner from any listing to start one."
           actionLabel="Browse listings"
-          onAction={() => router.push('/(tabs)/search')}
+          onAction={() => router.push('/(tabs)/properties')}
         />
       ) : (
         <FlatList
@@ -81,7 +97,7 @@ export default function ChatListScreen() {
               progressBackgroundColor={theme.colors.surface}
             />
           }
-          contentContainerStyle={{ paddingBottom: 32 }}
+          contentContainerStyle={{ paddingBottom: tabBarClearance }}
           renderItem={({ item }) => (
             <ConversationRow
               conversation={item}
@@ -97,7 +113,7 @@ export default function ChatListScreen() {
 
 function ChatListSkeleton() {
   return (
-    <View className="px-lg pt-sm">
+    <View className="px-base pt-sm">
       {[0, 1, 2, 3, 4, 5].map((row) => (
         <View key={row} className="flex-row items-center py-md">
           <Skeleton width={44} height={44} radius={9999} />

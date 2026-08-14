@@ -1,12 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { ActivityIndicator, FlatList, Pressable, View } from 'react-native';
 
 import {
   ChatComposer,
   MessageBubble,
   TypingIndicator,
+  setActiveConversationId,
   useConversation,
   useIsParticipantOnline,
   useMessageThread,
@@ -64,6 +65,14 @@ export default function ChatThreadScreen() {
     notifyTyping,
     notifyStopTyping,
   } = useMessageThread(conversationId);
+
+  // Suppresses the M13 local-notification bridge for a message in the thread
+  // the user is already looking at. Cleared on unmount so navigating away
+  // (not just closing the app) lets notifications for this thread resume.
+  useEffect(() => {
+    setActiveConversationId(conversationId);
+    return () => setActiveConversationId(null);
+  }, [conversationId]);
 
   const handleBack = useCallback(() => {
     if (router.canGoBack()) router.back();

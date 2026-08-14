@@ -11,9 +11,28 @@ import { sessionHeaders } from './userAgent';
  * fail fast, while a 10 MB image upload over Indian cellular legitimately takes
  * minutes and a 30-second ceiling would break listing creation.
  *
- * Notably absent: CSRF. `validateCsrfToken` is commented out at
- * backend/server.js:763 and no route enforces it. Building that plumbing would
- * be dead code that a later reader mistakes for load-bearing.
+ * ---------------------------------------------------------------------------
+ * NOTABLY ABSENT: CSRF. And the reason matters — corrected 2026-08-13.
+ *
+ * This used to say "no route enforces it", which was true of the deployed
+ * backend and is no longer true of the source. `validateCsrfToken` is indeed
+ * commented out, but `requireCsrf` (`middleware/csrfProtection.js`) is applied
+ * to twelve named write routes, including `POST /properties/add`,
+ * `POST /properties/interested/:id` and `PUT /properties/my-properties/:id`.
+ *
+ * This client still builds no CSRF plumbing, and that is still correct — but
+ * because it is EXEMPT, not because nothing enforces it. `requireCsrf` returns
+ * `next()` immediately for a request carrying no `Origin` header, on the
+ * grounds that CSRF is a browser-only attack and a native client has no
+ * ambient credentials to forge. React Native's networking sends no `Origin`.
+ *
+ * THE CONSTRAINT THAT FOLLOWS: no DealDirect API call may ever originate from
+ * a WebView, from `react-native-web`, or from anything else that attaches an
+ * `Origin` header — those twelve writes would 403 with
+ * `CSRF_ORIGIN_REJECTED`. This binds the pending map work
+ * (`react-native-webview`) and any future Hubble rewards WebView: map tiles
+ * and Nominatim are fine, being different hosts carrying no cookie, but a
+ * WebView must not call THIS API. Fetch in the app, pass the result in.
  */
 
 /** Correlates a client-side report with a backend log line. */

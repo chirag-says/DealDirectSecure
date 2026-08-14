@@ -1,7 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 
-import { Button } from './Button';
+import { Button, type ButtonVariant } from './Button';
 import { Text } from './Text';
 
 /**
@@ -19,6 +19,16 @@ export interface EmptyStateProps {
   actionLabel?: string;
   onAction?: () => void;
   icon?: React.ReactNode;
+  /**
+   * Secondary by default: an empty LIST is a state the user can ignore, and a
+   * filled button there competes with the content that arrives later.
+   *
+   * Pass `primary` when this component is the whole screen and the action is
+   * the only way forward — the auth flow's terminal states ("Code sent",
+   * "Password updated") are exactly that, and an outlined button as the sole
+   * control on a screen reads as tentative.
+   */
+  actionVariant?: ButtonVariant;
 }
 
 export function EmptyState({
@@ -27,6 +37,7 @@ export function EmptyState({
   actionLabel,
   onAction,
   icon,
+  actionVariant = 'secondary',
 }: EmptyStateProps) {
   return (
     <View className="flex-1 items-center justify-center px-xl py-2xl">
@@ -42,8 +53,17 @@ export function EmptyState({
         </Text>
       ) : null}
 
+      {/* `align="center"` is load-bearing: without it the button inherits
+          Button's default `self-start`, which overrides this container's
+          `items-center` and pins the action to the left edge. */}
       {actionLabel && onAction ? (
-        <Button label={actionLabel} variant="secondary" onPress={onAction} className="mt-lg" />
+        <Button
+          label={actionLabel}
+          variant={actionVariant}
+          align="center"
+          onPress={onAction}
+          className="mt-lg"
+        />
       ) : null}
     </View>
   );

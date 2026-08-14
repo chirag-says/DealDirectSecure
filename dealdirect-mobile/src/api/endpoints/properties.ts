@@ -10,7 +10,11 @@
  */
 
 import type {
+  AddPropertyResponse,
+  ClaimDealRewardResponse,
+  CloseDealResponse,
   InterestCheckResponse,
+  MarkInterestedResponse,
   Property,
   PropertyDetailResponse,
   PropertyListResponse,
@@ -83,7 +87,7 @@ export const propertiesEndpoints = {
     envelope: 'counted',
   }),
 
-  add: defineEndpoint<FormData, DataEnvelope<Property>>({
+  add: defineEndpoint<FormData, AddPropertyResponse>({
     method: 'POST',
     path: '/properties/add',
     auth: 'user',
@@ -92,7 +96,9 @@ export const propertiesEndpoints = {
       'Owners only (ownerOnlyListingAccess). multipart/form-data with file fields `images` ' +
       '(max 15) and `categorizedImages` (max 50). 10MB per file, images only ' +
       '(jpeg/jpg/png/gif/webp), magic-byte validated. Rejected with 503 when more than 10 ' +
-      'uploads are in flight server-wide.',
+      'uploads are in flight server-wide. ' +
+      'Also carries a `reward` object for listing the property (propertyController.js:530-559); ' +
+      'surface it the way the website does.',
   }),
 
   updateMine: defineEndpoint<FormData, DataEnvelope<Property>, { id: ObjectId }>({
@@ -144,7 +150,7 @@ export const propertiesEndpoints = {
 
   // --- Interested (creates a Lead, notifies the owner) ---------------------
 
-  markInterested: defineEndpoint<void, OkEnvelope, { id: ObjectId }>({
+  markInterested: defineEndpoint<void, MarkInterestedResponse, { id: ObjectId }>({
     method: 'POST',
     path: ({ id }) => `/properties/interested/${id}`,
     auth: 'user',
@@ -153,7 +159,9 @@ export const propertiesEndpoints = {
       'NOT a private bookmark. Creates a Lead for the property owner and notifies them. ' +
       'The UI must not present this as a quiet save. THE BACKEND CAPS THIS AT 5 LISTINGS ' +
       'PER USER and returns 400 with an explanatory message on the sixth. Also 400 for ' +
-      'your own listing and for one you already marked.',
+      'your own listing and for one you already marked. ' +
+      'Carries a `reward` object when the enquiry earned points — null past the ' +
+      'daily cap of 5 rewarded enquiries. Surface it; the website does.',
   }),
 
   checkInterested: defineEndpoint<void, InterestCheckResponse, { id: ObjectId }>({
@@ -188,20 +196,26 @@ export const propertiesEndpoints = {
       'also 400. Returns 201, and awards the reporter 100 reward points.',
   }),
 
-  closeDeal: defineEndpoint<FormData, OkEnvelope, { id: ObjectId }>({
+  closeDeal: defineEndpoint<FormData, CloseDealResponse, { id: ObjectId }>({
     method: 'POST',
     path: ({ id }) => `/properties/${id}/close-deal`,
     auth: 'user',
     envelope: 'keyed',
     note:
-      'multipart/form-data with a `documents` file field (max 5). Submits proof for admin ' +
-      'verification; the reward is claimed separately after approval.',
+      'multipart/form-data: `buyerId` (must be in the listing\'s interestedUsers), ' +
+      '`closingType` (`sold`|`rented`), and a `documents` file field (max 5, at least one ' +
+      'required). Submits proof for admin verification and sets the property to ' +
+      '`pending_verification`; the reward is claimed separately after approval, via ' +
+      '`claimDealReward`.',
   }),
 
-  claimDealReward: defineEndpoint<void, OkEnvelope, { verificationId: ObjectId }>({
+  claimDealReward: defineEndpoint<void, ClaimDealRewardResponse, { verificationId: ObjectId }>({
     method: 'POST',
     path: ({ verificationId }) => `/properties/claim-deal-reward/${verificationId}`,
     auth: 'user',
     envelope: 'keyed',
+    note:
+      'Owner or buyer on the verification, once admin has set it to `approved`. Returns ' +
+      '`alreadyClaimed: true` (still 200) on a repeat call rather than an error.',
   }),
 } as const;

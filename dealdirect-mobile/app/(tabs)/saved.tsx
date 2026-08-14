@@ -1,7 +1,10 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, View } from 'react-native';
 
+import { SignInPrompt } from '@/auth';
 import { INTEREST_LIMIT, useRemoveInterest, useSavedProperties } from '@/features/saved';
 import {
   SavedSearchRow,
@@ -11,8 +14,17 @@ import {
   type SavedSearchSummary,
 } from '@/features/savedSearches';
 import { PropertyCard, PropertyListSkeleton } from '@/features/properties';
-import { useTheme } from '@/theme';
-import { EmptyState, ErrorState, Screen, Text } from '@/ui';
+import { gesture, screenPadding, spacing, tabBarClearance, useTheme } from '@/theme';
+import {
+  EmptyState,
+  ErrorState,
+  ProgressBar,
+  Screen,
+  ScreenHeader,
+  Segmented,
+  Text,
+  useToast,
+} from '@/ui';
 
 /**
  * Saved.
@@ -42,26 +54,16 @@ export default function SavedScreen() {
   const [segment, setSegment] = useState<Segment>('listings');
 
   return (
-    <Screen>
-      <View className="px-lg pt-md">
-        <Text variant="title1">Saved</Text>
+    <Screen edges={['top']}>
+      {/* A root tab has nowhere to go back TO, so no back affordance. */}
+      <ScreenHeader title="Saved" showBack={false} tight />
 
-        <View className="mt-md flex-row rounded-xl bg-surface-muted p-xs">
-          <SegmentButton
-            label="Interested"
-            active={segment === 'listings'}
-            onPress={() => setSegment('listings')}
-          />
-          <SegmentButton
-            label="Searches"
-            active={segment === 'searches'}
-            onPress={() => setSegment('searches')}
-          />
-        </View>
+      <View style={{ paddingHorizontal: screenPadding, paddingVertical: spacing.md }}>
+        <Segmented options={SEGMENTS} value={segment} onChange={setSegment} />
       </View>
 
       {segment === 'listings' ? (
-        <InterestedList onOpenSearch={() => router.push('/(tabs)/search')} />
+        <InterestedList onOpenSearch={() => router.push('/(tabs)/properties')} />
       ) : (
         <SearchesList />
       )}
@@ -69,28 +71,12 @@ export default function SavedScreen() {
   );
 }
 
-function SegmentButton({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="tab"
-      accessibilityState={{ selected: active }}
-      onPress={onPress}
-      className={`flex-1 items-center rounded-lg py-sm ${active ? 'bg-surface' : ''}`}
-    >
-      <Text variant={active ? 'bodyEmphasis' : 'body'} tone={active ? 'primary' : 'muted'}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
+const SEGMENTS = [
+  // "Interested", not "Favourites": adding to this list emails the owner and
+  // creates a lead. See `features/properties/interest.ts`.
+  { label: 'Interested', value: 'listings' as const },
+  { label: 'Searches', value: 'searches' as const },
+];
 
 function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {
   const router = useRouter();
@@ -98,6 +84,7 @@ function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {
   const { items, isLoading, isRefreshing, error, refresh, used, remaining, requiresAuth } =
     useSavedProperties();
   const { remove } = useRemoveInterest();
+  const toast = useToast();
 
   const openProperty = useCallback((id: string) => router.push(`/property/${id}`), [router]);
 
@@ -110,7 +97,14 @@ function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {
         `You will be removed from the interested list for "${title}". The owner keeps the enquiry you already sent.`,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Remove', style: 'destructive', onPress: () => remove(id) },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: async () => {
+              await remove(id);
+              toast.show('Removed from your interested list.');
+            },
+          },
         ]
       );
     },
@@ -119,11 +113,10 @@ function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {
 
   if (requiresAuth) {
     return (
-      <EmptyState
-        title="Sign in to see your list"
-        description="Listings you show interest in appear here."
-        actionLabel="Sign in"
-        onAction={() => router.push('/(auth)/login')}
+      <SignInPrompt
+        icon="heart-outline"
+        title="Your interested list"
+        description="Listings you tell an owner you are interested in appear here."
       />
     );
   }
@@ -144,10 +137,14 @@ function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {
   }
 
   return (
-    <FlatList
+    <FlashList
       data={items}
       keyExtractor={(item) => item.id}
-      contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 32, gap: 28 }}
+      contentContainerStyle={{
+        paddingHorizontal: screenPadding,
+        paddingBottom: tabBarClearance,
+        gap: spacing.base,
+      }}
       refreshControl={
         <RefreshControl
           refreshing={isRefreshing}
@@ -157,26 +154,62 @@ function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {
           progressBackgroundColor={theme.colors.surface}
         />
       }
+      /*
+        THE CAP IS THE HEADER, AND IT IS A METER RATHER THAN A SENTENCE.
+
+        The backend refuses a sixth interest anywhere in the app, so this
+        screen is where a user comes to make room. A line of grey text saying
+        "3 of 5 used" states that; a filled bar shows it, and shows how close
+        to the wall they are without them having to do the subtraction.
+
+        It turns danger-toned at the cap, because at that point it has stopped
+        being information and started being the reason their next tap will
+        fail.
+      */
       ListHeaderComponent={
-        <Text variant="footnote" tone="muted">
-          {used} of {INTEREST_LIMIT} used
-          {remaining === 0
-            ? '. Remove one to show interest in another listing.'
-            : `. ${remaining} left.`}
-        </Text>
+        <View className="mb-xs">
+          <View className="mb-sm flex-row items-baseline justify-between">
+            <Text variant="footnote" tone="secondary">
+              {used} of {INTEREST_LIMIT} enquiries used
+            </Text>
+            <Text variant="caption" tone={remaining === 0 ? 'danger' : 'muted'}>
+              {remaining === 0 ? 'Limit reached' : `${remaining} left`}
+            </Text>
+          </View>
+          <ProgressBar
+            value={used / INTEREST_LIMIT}
+            tone={remaining === 0 ? 'brand' : 'accent'}
+            size="sm"
+            label={`${used} of ${INTEREST_LIMIT} enquiries used`}
+          />
+          {remaining === 0 ? (
+            <Text variant="caption" tone="muted" className="mt-sm">
+              Remove one below to show interest in another listing.
+            </Text>
+          ) : null}
+        </View>
       }
       renderItem={({ item }) => (
         <View>
           <PropertyCard property={item} onPress={openProperty} />
+
+          {/*
+            The remove control sits UNDER the card rather than on it. Putting
+            it over the photo would make it compete with the card's own press
+            target for the same pixels, and this is a destructive action on a
+            list capped at five — it should take a deliberate second look, not
+            a thumb brushing past the corner of an image.
+          */}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Remove interest in ${item.title}`}
             onPress={() => confirmRemove(item.id, item.title)}
-            hitSlop={8}
-            className="mt-sm self-start"
+            hitSlop={gesture.hitSlop}
+            className="mt-sm flex-row items-center self-start"
             style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
           >
-            <Text variant="footnote" tone="danger">
+            <Ionicons name="close-circle-outline" size={15} color={theme.colors.danger} />
+            <Text variant="footnote" tone="danger" className="ml-xs">
               Remove
             </Text>
           </Pressable>
@@ -192,6 +225,7 @@ function SearchesList() {
   const { items, isLoading, isRefreshing, error, refresh, requiresAuth } = useSavedSearches();
   const { setAlerts } = useUpdateSavedSearchAlerts();
   const { remove } = useDeleteSavedSearch();
+  const toast = useToast();
 
   /**
    * Runs the search. Only the filters this app can express as search params
@@ -202,7 +236,7 @@ function SearchesList() {
   const run = useCallback(
     (search: SavedSearchSummary) => {
       router.push({
-        pathname: '/(tabs)/search',
+        pathname: '/(tabs)/properties',
         params: search.city ? { city: search.city } : {},
       });
     },
@@ -213,7 +247,14 @@ function SearchesList() {
     (search: SavedSearchSummary) => {
       Alert.alert('Delete this search?', `"${search.name}" will stop alerting you.`, [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => remove(search.id) },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await remove(search.id);
+            toast.show('Saved search deleted.');
+          },
+        },
       ]);
     },
     [remove]
@@ -221,11 +262,10 @@ function SearchesList() {
 
   if (requiresAuth) {
     return (
-      <EmptyState
-        title="Sign in to save searches"
-        description="Saved searches alert you when a new listing matches."
-        actionLabel="Sign in"
-        onAction={() => router.push('/(auth)/login')}
+      <SignInPrompt
+        icon="bookmark-outline"
+        title="Your saved searches"
+        description="Save a search and we will alert you when a new listing matches it."
       />
     );
   }
@@ -240,16 +280,20 @@ function SearchesList() {
         title="No saved searches"
         description="Run a search, then save it to be alerted when new listings match."
         actionLabel="Search listings"
-        onAction={() => router.push('/(tabs)/search')}
+        onAction={() => router.push('/(tabs)/properties')}
       />
     );
   }
 
   return (
-    <FlatList
+    <FlashList
       data={items}
       keyExtractor={(item) => item.id}
-      contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 32, gap: 12 }}
+      contentContainerStyle={{
+        paddingHorizontal: screenPadding,
+        paddingBottom: tabBarClearance,
+        gap: spacing.md,
+      }}
       refreshControl={
         <RefreshControl
           refreshing={isRefreshing}
