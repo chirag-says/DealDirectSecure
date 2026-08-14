@@ -19,6 +19,7 @@ import {
 import { useNotifications } from '@/features/notifications';
 import { PropertyRail, type ListingIntent } from '@/features/properties';
 import { ProjectRail, useRecentProjects } from '@/features/projects';
+import { ToolsRow } from '@/features/tools';
 import { Reveal, RevealScrollView } from '@/lib';
 import { spacing, useTheme } from '@/theme';
 import type { PropertySearchParams } from '@/types/backend/property';
@@ -186,6 +187,20 @@ export default function HomeScreen() {
               </Reveal>
             );
           })}
+
+          {/*
+            The research tools, between the inventory and the pitch. Housing's
+            home carries six of these; we carry the two that have something
+            behind them. `ToolsRow` explains both the placement and the count.
+          */}
+          <Reveal placeholder={<SectionPlaceholder height={220} />}>
+            <Section
+              title="Work out your budget"
+              subtitle="Before you fall for something you cannot buy"
+            >
+              <ToolsRow onOpen={(route) => router.push(route)} />
+            </Section>
+          </Reveal>
 
           <Reveal placeholder={<SectionPlaceholder height={280} />}>
             <View className="pt-3xl">

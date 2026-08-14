@@ -15,6 +15,7 @@ import {
   RelatedProperties,
   SearchBar,
   SuggestionList,
+  findPriceBand,
   hasAnyCriteria,
   usePropertySearchFeed,
   useCompareSelection,
@@ -56,6 +57,10 @@ export default function PropertiesScreen() {
     search?: string;
     listingType?: string;
     sort?: string;
+    /** A `PriceBand.id`. The affordability tool is the only caller — it turns a
+     *  computed budget into the band containing it and hands it over, which is
+     *  what makes that screen end in a search rather than in a figure. */
+    priceBand?: string;
     /** `'1'` from affordances that mean "show me everything", like Home's
      *  "View all" and the CTA banner. Carries no criteria of its own. */
     browse?: string;
@@ -110,12 +115,16 @@ export default function PropertiesScreen() {
         : undefined;
     const sort = SORT_VALUES.find((value) => value === route.sort);
     const browse = route.browse === '1';
+    // Validated against the table rather than trusted, same rule as `sort`: a
+    // band id that matches nothing would set a filter the sheet cannot show
+    // and the user cannot clear.
+    const priceBand = findPriceBand(route.priceBand)?.id;
 
     // Nothing at all means the user tapped the tab directly, which must leave
     // their existing search alone.
-    if (!search && !listingType && !sort && !browse) return;
+    if (!search && !listingType && !sort && !browse && !priceBand) return;
 
-    const key = `${search ?? ''}|${listingType ?? ''}|${sort ?? ''}|${browse ? '1' : ''}`;
+    const key = `${search ?? ''}|${listingType ?? ''}|${sort ?? ''}|${priceBand ?? ''}|${browse ? '1' : ''}`;
     if (appliedRouteKey.current === key) return;
     appliedRouteKey.current = key;
 
@@ -124,12 +133,20 @@ export default function PropertiesScreen() {
       ...DEFAULT_FILTERS,
       query: search ?? '',
       listingType,
+      priceBand,
       sort: sort ?? DEFAULT_FILTERS.sort,
     });
     setBrowsing(browse);
     setEditing(false);
     if (route.openFilters === '1') setFilterSheetOpen(true);
-  }, [route.search, route.listingType, route.sort, route.browse, route.openFilters]);
+  }, [
+    route.search,
+    route.listingType,
+    route.sort,
+    route.priceBand,
+    route.browse,
+    route.openFilters,
+  ]);
 
   const recent = useRecentSearches();
   const suggestions = useSuggestions(editing ? input : '');

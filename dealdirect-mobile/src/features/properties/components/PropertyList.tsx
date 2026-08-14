@@ -119,7 +119,7 @@ export function PropertyList({
   if (feed.isInitialLoading) {
     return (
       <View className="flex-1 pt-base">
-        {header}
+        <HeaderSlot>{header}</HeaderSlot>
         <PropertyListSkeleton />
       </View>
     );
@@ -131,7 +131,7 @@ export function PropertyList({
 
     return (
       <View className="flex-1">
-        {header}
+        <HeaderSlot>{header}</HeaderSlot>
         <ErrorState
           title={rateLimited ? 'Too many searches' : 'Could not load properties'}
           description={
@@ -190,6 +190,24 @@ export function PropertyList({
       }
     />
   );
+}
+
+/**
+ * Gives the header the same horizontal inset it gets inside the list.
+ *
+ * In the content branch the header sits inside `contentContainerStyle` and
+ * picks up its `paddingHorizontal` for free. The loading and error branches are
+ * plain views, so without this the header jumps to the screen edge for exactly
+ * as long as the fetch takes and then jumps back — which, since the header is
+ * now a result count and two controls rather than nothing, is a visible
+ * sideways shift at the moment the data lands.
+ *
+ * Renders nothing at all when there is no header, rather than an empty padded
+ * view that would add a gap above the skeleton.
+ */
+function HeaderSlot({ children }: { children?: React.ReactElement }) {
+  if (!children) return null;
+  return <View style={{ paddingHorizontal: spacing.base }}>{children}</View>;
 }
 
 function waitMessage(seconds: number | undefined): string {

@@ -189,6 +189,26 @@ export function findPriceBand(id: string | undefined): PriceBand | undefined {
 }
 
 /**
+ * The band a given rupee amount falls in.
+ *
+ * Added for the affordability tool, which produces a budget and has to hand
+ * the results screen something it can filter by. Bands are inclusive at both
+ * ends (see the PRICE note above), so an amount exactly on a boundary matches
+ * the lower band — `find` returns the first, and the lower one is the honest
+ * answer for a budget: someone who can afford exactly ₹1 crore should be shown
+ * the range that ends there, not the one that starts there.
+ */
+export function bandForPrice(rupees: number): PriceBand | undefined {
+  if (!(rupees > 0)) return undefined;
+
+  return PRICE_BANDS.find(
+    (band) =>
+      (band.from === undefined || rupees >= band.from) &&
+      (band.to === undefined || rupees <= band.to)
+  );
+}
+
+/**
  * Filters → query params.
  *
  * Empty values are omitted rather than sent blank, both because the controller

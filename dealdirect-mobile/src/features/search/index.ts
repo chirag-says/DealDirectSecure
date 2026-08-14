@@ -12,6 +12,7 @@ export {
   LISTING_TYPE_OPTIONS,
   PRICE_BANDS,
   SORT_OPTIONS,
+  bandForPrice,
   bhkCount,
   countActiveFilters,
   findPriceBand,
