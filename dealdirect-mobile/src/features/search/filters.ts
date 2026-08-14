@@ -398,8 +398,27 @@ export function hasAnyCriteria(filters: SearchFilters): boolean {
   );
 }
 
+/**
+ * The rent/sale axis, as a segmented control on the results rail.
+ *
+ * "Buy" and "Rent", not "For sale" and "For rent". Three reasons, in order of
+ * weight:
+ *
+ *  1. It is what Home's hero already says. A user who tapped "Buy" there and
+ *     lands on a control reading "For sale" has to work out that the two are
+ *     the same thing.
+ *  2. It is the verb, and this control is the user choosing what they are
+ *     doing rather than describing the listing. Housing and 99acres both label
+ *     it this way for the same reason.
+ *  3. It fits. The three labels sit on a rail with six facet pills after them,
+ *     and "For sale"/"For rent" cost about 60pt more — enough to push Sort and
+ *     Budget entirely off the first screen, which defeats the rail.
+ *
+ * The card and the detail badge still say "For sale" / "For rent", and that is
+ * correct: those DESCRIBE a listing rather than offering a choice.
+ */
 export const LISTING_TYPE_OPTIONS: readonly { label: string; value: ListingIntent | undefined }[] = [
   { label: 'All', value: undefined },
-  { label: 'For rent', value: 'rent' },
-  { label: 'For sale', value: 'sale' },
+  { label: 'Buy', value: 'sale' },
+  { label: 'Rent', value: 'rent' },
 ];
