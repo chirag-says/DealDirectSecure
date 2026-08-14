@@ -14,6 +14,7 @@ export {
   passwordSchema,
   emailSchema,
   phoneSchema,
+  normalizeIndianMobile,
   otpSchema,
   type LoginValues,
   type RegisterValues,

@@ -60,6 +60,19 @@ export type FontOverride = Record<TextStyleToken['fontWeight'], string>;
 const FontOverrideContext = createContext<FontOverride | null>(null);
 export const FontOverrideProvider = FontOverrideContext.Provider;
 
+/**
+ * The face for a given weight, or undefined when no override is provided.
+ *
+ * Exported because `TextInput` is NOT a `Text` and never reads this context on
+ * its own. Until `useTextInputStyle` started calling this, every text field in
+ * the app rendered in the platform system face while every label, heading and
+ * paragraph around it rendered in DM Sans — the one place the app-wide
+ * typeface decision recorded in `theme/fonts.ts` had quietly not reached.
+ */
+export function useFontFamily(weight: TextStyleToken['fontWeight'] = '400'): string | undefined {
+  return useContext(FontOverrideContext)?.[weight];
+}
+
 export interface TextProps extends RNTextProps {
   variant?: TextVariant;
   tone?: TextTone;

@@ -31,11 +31,13 @@ export { ToastProvider, useToast, type ToastTone } from './Toast';
 export {
   Text,
   FontOverrideProvider,
+  useFontFamily,
   type TextProps,
   type TextVariant,
   type TextTone,
   type FontOverride,
 } from './Text';
+export { useTextInputStyle, type TextInputStyleOptions } from './textInputStyle';
 export { Button, type ButtonProps, type ButtonVariant, type ButtonSize } from './Button';
 export { Input, type InputProps } from './Input';
 export { Select, type SelectProps, type SelectOption } from './Select';

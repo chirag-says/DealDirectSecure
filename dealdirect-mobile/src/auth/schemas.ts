@@ -40,6 +40,33 @@ export const phoneSchema = z
   .trim()
   .regex(/^[6-9]\d{9}$/, 'Enter a valid 10-digit mobile number');
 
+/**
+ * A pasted Indian mobile number, reduced to the ten digits `phoneSchema` wants.
+ *
+ * Lives beside the schema because the two encode the same fact from opposite
+ * ends: that regex is what the backend ACCEPTS, and this is what turns what a
+ * user actually supplies into it. Splitting them across the two screens that
+ * take a phone number would let one drift from the other.
+ *
+ * Handles the shapes a number arrives in from a contacts app or a clipboard —
+ * `+91 98765 43210`, `091-98765-43210`, `98765 43210` — by stripping
+ * everything that is not a digit and then dropping a `91` or `0` prefix if
+ * what remains is too long. Rejecting a correct number because of how it was
+ * formatted is the most annoying failure a registration form has.
+ *
+ * A number still wrong after this is left alone for the schema to reject with
+ * a message, rather than being silently truncated into a different
+ * valid-looking number.
+ */
+export function normalizeIndianMobile(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+
+  if (digits.length > 10 && digits.startsWith('91')) return digits.slice(2, 12);
+  if (digits.length > 10 && digits.startsWith('0')) return digits.slice(1, 11);
+
+  return digits.slice(0, 10);
+}
+
 /** Backend generates via crypto.randomInt(100000, 999999): always 6 digits. */
 export const otpSchema = z
   .string()

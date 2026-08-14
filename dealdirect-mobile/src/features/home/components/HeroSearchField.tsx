@@ -5,7 +5,7 @@ import { Pressable, TextInput, View } from 'react-native';
 import { useRecentSearches, useSuggestions } from '@/features/search';
 import { radius, spacing, useTheme } from '@/theme';
 import type { PropertySuggestion } from '@/types/backend/property';
-import { Text } from '@/ui';
+import { Text, useTextInputStyle } from '@/ui';
 
 /**
  * The Home search field. A REAL input, not a button that looks like one.
@@ -51,6 +51,7 @@ export interface HeroSearchFieldProps {
 
 export function HeroSearchField({ onSubmit, onOpenFilters }: HeroSearchFieldProps) {
   const theme = useTheme();
+  const inputStyle = useTextInputStyle();
   const inputRef = useRef<TextInput>(null);
 
   const [value, setValue] = useState('');
@@ -104,13 +105,14 @@ export function HeroSearchField({ onSubmit, onOpenFilters }: HeroSearchFieldProp
           autoCapitalize="none"
           autoCorrect={false}
           accessibilityLabel="Search properties"
-          style={{
-            flex: 1,
-            marginLeft: spacing.md,
-            fontSize: 16,
-            color: theme.colors.textPrimary,
-            padding: 0,
-          }}
+          /*
+            Was a hand-set `fontSize: 16`, which was the same size `body`
+            declares but arrived at separately — one of four different
+            definitions of what an input's text looks like. It also meant this
+            field rendered in the system face while the headline directly above
+            it rendered in DM Sans.
+          */
+          style={[inputStyle, { flex: 1, marginLeft: spacing.md, padding: 0 }]}
         />
 
         {value.length > 0 ? (

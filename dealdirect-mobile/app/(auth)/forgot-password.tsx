@@ -8,6 +8,7 @@ import {
   AuthResult,
   AuthShell,
   forgotPasswordSchema,
+  normalizeIndianMobile,
   type ForgotPasswordValues,
 } from '@/auth';
 import { Button, Input, Text } from '@/ui';
@@ -76,15 +77,17 @@ export default function ForgotPasswordScreen() {
         render={({ field, fieldState }) => (
           <Input
             label="Mobile number"
-            placeholder="10-digit number"
+            prefix="+91"
+            placeholder="9876543210"
             keyboardType="number-pad"
             maxLength={10}
             autoComplete="tel"
             textContentType="telephoneNumber"
             value={field.value}
-            onChangeText={field.onChange}
+            onChangeText={(text) => field.onChange(normalizeIndianMobile(text))}
             onBlur={field.onBlur}
             error={fieldState.error?.message}
+            hint="The number on your account"
           />
         )}
       />

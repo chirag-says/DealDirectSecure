@@ -5,7 +5,13 @@ import { Controller, useForm } from 'react-hook-form';
 import { Pressable, View } from 'react-native';
 
 import { ApiError } from '@/api';
-import { AuthShell, registerSchema, useAuth, type RegisterValues } from '@/auth';
+import {
+  AuthShell,
+  normalizeIndianMobile,
+  registerSchema,
+  useAuth,
+  type RegisterValues,
+} from '@/auth';
 import { gesture } from '@/theme';
 import { Button, Chip, Input, Text } from '@/ui';
 
@@ -166,22 +172,39 @@ export default function RegisterScreen() {
         )}
       />
 
+      {/*
+        THE COUNTRY CODE IS SHOWN, NEVER SENT.
+
+        The backend validates `/^[6-9]\d{9}$/` — ten digits, no country code —
+        so "+91" is a fixed label rather than part of the value. Showing it is
+        not decoration: without it a user has to guess whether a mobile number
+        field wants 9876543210, 09876543210 or +919876543210, and two of those
+        three are rejected by a regex that cannot explain itself. Every Indian
+        portal prints the code beside the field for exactly this reason.
+
+        Digits are stripped on the way in rather than only validated on the way
+        out. `number-pad` stops most non-digits being typed, but a pasted
+        number carries spaces, hyphens or a leading +91 — and rejecting a
+        correct number because of how it was formatted is the most annoying
+        possible failure on a registration form.
+      */}
       <Controller
         control={control}
         name="phone"
         render={({ field, fieldState }) => (
           <Input
             label="Mobile number"
-            placeholder="10-digit number"
+            prefix="+91"
+            placeholder="9876543210"
             keyboardType="number-pad"
             maxLength={10}
             autoComplete="tel"
             textContentType="telephoneNumber"
             value={field.value}
-            onChangeText={field.onChange}
+            onChangeText={(text) => field.onChange(normalizeIndianMobile(text))}
             onBlur={field.onBlur}
             error={fieldState.error?.message}
-            hint="The verification code is sent here"
+            hint="We send your verification code here"
           />
         )}
       />

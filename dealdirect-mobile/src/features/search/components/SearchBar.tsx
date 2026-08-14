@@ -2,8 +2,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { forwardRef } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
-import { gesture, useTheme } from '@/theme';
-import { Text } from '@/ui';
+import { gesture, spacing, touchTarget, useTheme } from '@/theme';
+import { Text, useTextInputStyle } from '@/ui';
 
 /**
  * Search field.
@@ -42,9 +42,13 @@ export const SearchBar = forwardRef<TextInput, SearchBarProps>(function SearchBa
   ref
 ) {
   const theme = useTheme();
+  const inputStyle = useTextInputStyle();
 
   return (
-    <View className="flex-row items-center rounded-full border border-border bg-surface-muted px-md">
+    <View
+      className="flex-row items-center rounded-full border border-border bg-surface-muted px-md"
+      style={{ minHeight: touchTarget.min }}
+    >
       <Ionicons name="search" size={18} color={theme.colors.textMuted} />
 
       <TextInput
@@ -61,7 +65,12 @@ export const SearchBar = forwardRef<TextInput, SearchBarProps>(function SearchBa
         autoCorrect={false}
         autoFocus={autoFocus}
         accessibilityLabel="Search properties"
-        className="flex-1 py-md pl-sm text-body text-text-primary"
+        // `text-body` here clipped descenders the same way it did in `Input` —
+        // that class carries a line height, and a line height on a TextInput
+        // is a fixed box the font is not allowed to grow. See
+        // `ui/textInputStyle.ts`.
+        className="flex-1 pl-sm"
+        style={[inputStyle, { paddingVertical: spacing.md }]}
       />
 
       {value.length > 0 ? (
