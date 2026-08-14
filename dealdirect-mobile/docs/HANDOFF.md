@@ -1983,3 +1983,53 @@ those are the reset flows. Chirag's call on 2026-08-14 was to leave login
 email-only for now; forgot-password is the phone-based route into an account.
 Adding mobile login means extending `loginUser` first, then a single
 accepts-either field on the login screen.
+
+### 10.7 Motion audit
+
+Audited against the eight-category bar (purpose/frequency, easing/duration,
+physicality, interruptibility, performance, accessibility, cohesion, missed
+opportunities). **The result was short, and that is the finding**: the motion
+system in `theme/motion.ts` is genuinely good — tokens describe BEHAVIOUR
+rather than fixed timings, anything touchable gets a spring, and reduced-motion
+substitution is defined centrally. `PressableScale`, `Sheet`, `ExpandableText`,
+`DetailHero` and `Image` were all checked and left alone.
+
+Four things changed:
+
+| Location | Was | Now |
+|---|---|---|
+| `DetailSectionNav` | slides `translateY -8 → 0`, and scrolls its rail sideways, with no reduced-motion gate | fade only under reduce-motion; rail jumps rather than glides |
+| `ui/Toast.tsx` | `FadeInDown` / `FadeOutDown`, ungated | plain fade under reduce-motion |
+| `ui/Metrics.tsx` `ProgressBar` | `width: '${pct}%'`, teleports | springs on `scaleX` with `transformOrigin: left` |
+| `tools/affordability`, `tools/emi` | result card popped into existence | rises once on mount |
+
+Two of those are the same bug — a component animating movement without reading
+the OS setting, when eight others in the app already do. `DetailSectionNav` was
+added earlier the same day and simply missed it.
+
+**`ProgressBar` is the one worth reading before changing.** It animates
+`scaleX` rather than `width` deliberately: width re-runs layout every frame on
+the main thread, a transform composites on the UI thread for free. The fill is
+laid out at full width once and scaled down, origin pinned left. It springs
+rather than times because the value can change again mid-flight (removing two
+interests in a row on the Saved screen), and `spring.standard` is critically
+damped because a progress bar that overshoots is briefly showing a number that
+is not true.
+
+**Deliberately NOT animated**, so nobody adds it later thinking it was missed:
+
+- **Quick-filter pills and the segmented control.** Hit tens of times a day.
+  The playbook's own rule for that frequency is remove or reduce, not add.
+- **Search-result rows.** Entrance animations on a virtualised infinite list
+  fire on every scroll-in, which is motion the user did not ask for, repeatedly.
+- **The card/row density swap.** It teleports, and animating a FlashList
+  re-layout costs more than the jump does.
+- **Screen transitions.** Expo Router's native stack already provides the
+  platform animation; overriding it would make the app feel non-native.
+- **Input focus borders.** Feedback on a direct manipulation should be
+  immediate, not eased.
+
+**Unverified by eye.** As with the rest of §10, none of this has been seen
+running. Feel-check on a device: the progress bar under a rapid double-remove
+on Saved (it should retarget, not restart), and the tools card entrance while
+editing an input (it must NOT re-enter on each keystroke).

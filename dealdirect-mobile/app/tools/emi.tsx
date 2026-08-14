@@ -1,8 +1,17 @@
 import { useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown, useReducedMotion } from 'react-native-reanimated';
 
 import { RupeeField, DEFAULT_INTEREST_RATE, DEFAULT_TENURE_YEARS, emiForLoan } from '@/features/tools';
-import { radius, screenPadding, scrollBottomPadding, spacing, useTheme } from '@/theme';
+import {
+  radius,
+  reducedMotion,
+  screenPadding,
+  scrollBottomPadding,
+  spacing,
+  timing,
+  useTheme,
+} from '@/theme';
 import { Input, KeyboardAvoider, Screen, ScreenHeader, Text, formatPrice } from '@/ui';
 
 /**
@@ -34,6 +43,7 @@ import { Input, KeyboardAvoider, Screen, ScreenHeader, Text, formatPrice } from 
  */
 export default function EmiScreen() {
   const theme = useTheme();
+  const reduceMotion = useReducedMotion();
 
   const [amount, setAmount] = useState('');
   const [rate, setRate] = useState(String(DEFAULT_INTEREST_RATE));
@@ -89,7 +99,15 @@ export default function EmiScreen() {
           </View>
 
           {emi > 0 ? (
-            <View
+            <Animated.View
+              // Same entrance as the affordability result, and for the same
+              // reason — see the long note at that call site. Once, on mount;
+              // the figures inside update without the card re-entering.
+              entering={
+                reduceMotion
+                  ? FadeIn.duration(reducedMotion.crossfade)
+                  : FadeInDown.duration(timing.base).springify().damping(20)
+              }
               className="mt-2xl"
               style={{
                 padding: spacing.lg,
@@ -130,7 +148,7 @@ export default function EmiScreen() {
                   </Text>
                 </View>
               </View>
-            </View>
+            </Animated.View>
           ) : null}
 
           <Text variant="caption" tone="muted" className="mt-xl">

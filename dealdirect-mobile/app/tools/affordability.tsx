@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown, useReducedMotion } from 'react-native-reanimated';
 
 import { bandForPrice } from '@/features/search';
 import {
@@ -12,7 +13,15 @@ import {
   RupeeField,
   calculateAffordability,
 } from '@/features/tools';
-import { radius, screenPadding, scrollBottomPadding, spacing, useTheme } from '@/theme';
+import {
+  radius,
+  reducedMotion,
+  screenPadding,
+  scrollBottomPadding,
+  spacing,
+  timing,
+  useTheme,
+} from '@/theme';
 import { Button, Input, KeyboardAvoider, Screen, ScreenHeader, Text, formatPrice } from '@/ui';
 
 /**
@@ -44,6 +53,7 @@ import { Button, Input, KeyboardAvoider, Screen, ScreenHeader, Text, formatPrice
 export default function AffordabilityScreen() {
   const router = useRouter();
   const theme = useTheme();
+  const reduceMotion = useReducedMotion();
 
   const [income, setIncome] = useState('');
   const [obligations, setObligations] = useState('');
@@ -133,7 +143,33 @@ export default function AffordabilityScreen() {
             they can afford nothing before they have said a word.
           */}
           {result.affordablePrice > 0 ? (
-            <View
+            <Animated.View
+              /*
+                An entrance, and one of very few places in this app that gets
+                one.
+
+                The rule the rest of the app follows is that anything seen tens
+                of times a day should not animate — a filter pill, a list row, a
+                tab. This is the opposite case. Someone reaches this card once,
+                after typing their salary into a phone, and it is the answer to
+                the question they opened the screen with. Appearing out of
+                nothing is the jarring change; a short rise into place says
+                where it came from.
+
+                It fires ONCE, on mount, not on every keystroke. The card is
+                mounted the moment the inputs first produce a number and stays
+                mounted while they are edited, so the figures inside it update
+                without the container re-entering — which would make the answer
+                flicker as the user refines the inputs.
+
+                Under reduced motion it is a plain fade: the appearance still
+                needs announcing, the 12pt rise does not.
+              */
+              entering={
+                reduceMotion
+                  ? FadeIn.duration(reducedMotion.crossfade)
+                  : FadeInDown.duration(timing.base).springify().damping(20)
+              }
               className="mt-2xl"
               style={{
                 padding: spacing.lg,
@@ -188,7 +224,7 @@ export default function AffordabilityScreen() {
                   </Text>
                 </View>
               ) : null}
-            </View>
+            </Animated.View>
           ) : null}
 
           {/*

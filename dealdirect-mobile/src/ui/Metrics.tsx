@@ -1,7 +1,14 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 
-import { radius, spacing, useTheme } from '@/theme';
+import { radius, reducedMotion, spacing, spring, useTheme } from '@/theme';
 import { PressableScale } from './PressableScale';
 import { Text } from './Text';
 
@@ -90,12 +97,48 @@ export interface ProgressBarProps {
   label?: string;
 }
 
+/**
+ * ---------------------------------------------------------------------------
+ * IT ANIMATES, AND IT ANIMATES `scaleX` RATHER THAN `width`
+ *
+ * Two separate reasons, and the second is the one that is easy to get wrong.
+ *
+ * **Why it animates at all.** The bar's whole job is showing how close to a
+ * limit you are, and the moment that matters is the one where the number
+ * CHANGES — removing an interest on the Saved screen frees one of five capped
+ * slots. Teleporting to the new width tells you the value; moving to it tells
+ * you the value changed and by how much, which is the question the user asked
+ * by tapping Remove.
+ *
+ * **Why not `width`.** Animating width re-runs layout on every frame, which
+ * runs on the main thread and cannot be offloaded. A transform is composited on
+ * the UI thread and costs nothing per frame. So the fill is laid out at FULL
+ * width once and scaled down, with `transformOrigin` pinned left so it grows
+ * from the start of the track rather than from its middle.
+ *
+ * A spring rather than a timing curve, per `theme/motion.ts`: the value can
+ * change again while the bar is still moving (removing two interests in a row),
+ * and a spring retargets from wherever it currently is instead of snapping.
+ * `spring.standard` is critically damped — a progress bar that overshoots is
+ * briefly showing a number that is not true.
+ */
 export function ProgressBar({ value, tone = 'accent', size = 'md', label }: ProgressBarProps) {
   const theme = useTheme();
+  const reduceMotion = useReducedMotion();
   const pct = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
 
   const fill =
     tone === 'success' ? theme.colors.success : tone === 'brand' ? theme.colors.brand : theme.colors.accent;
+
+  const progress = useSharedValue(pct);
+
+  useEffect(() => {
+    progress.value = reduceMotion
+      ? withTiming(pct, { duration: reducedMotion.crossfade })
+      : withSpring(pct, spring.standard);
+  }, [pct, reduceMotion, progress]);
+
+  const fillStyle = useAnimatedStyle(() => ({ transform: [{ scaleX: progress.value }] }));
 
   return (
     <View
@@ -111,13 +154,20 @@ export function ProgressBar({ value, tone = 'accent', size = 'md', label }: Prog
           overflow: 'hidden',
         }}
       >
-        <View
-          style={{
-            width: `${pct * 100}%`,
-            height: '100%',
-            borderRadius: radius.full,
-            backgroundColor: fill,
-          }}
+        <Animated.View
+          style={[
+            {
+              width: '100%',
+              height: '100%',
+              borderRadius: radius.full,
+              backgroundColor: fill,
+              // Without this the fill scales about its centre, so an empty bar
+              // is a stub floating in the middle of the track rather than
+              // nothing at its start.
+              transformOrigin: 'left',
+            },
+            fillStyle,
+          ]}
         />
       </View>
     </View>

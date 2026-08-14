@@ -1,9 +1,15 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
-import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  FadeOut,
+  FadeOutDown,
+  useReducedMotion,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { radius, spacing, useTheme } from '@/theme';
+import { radius, reducedMotion, spacing, timing, useTheme } from '@/theme';
 import { Text } from './Text';
 
 /**
@@ -70,6 +76,7 @@ const TAB_BAR_ALLOWANCE = 64;
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const reduceMotion = useReducedMotion();
   const [toast, setToast] = useState<ToastState | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nextId = useRef(0);
@@ -107,8 +114,27 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           // silently swapping its text, which reads as the message changing
           // under you.
           key={toast.id}
-          entering={FadeInDown.springify().damping(18)}
-          exiting={FadeOutDown.duration(160)}
+          /*
+            The slide is dropped under reduced motion; the fade is not.
+
+            This is the clearest case in the app for that setting. A toast is
+            AUTONOMOUS motion — it arrives because the app decided to show it,
+            not because the user moved anything — and it enters from off-screen
+            near the bottom edge, which is the largest unrequested travel any
+            element here makes. The fade alone still announces it, and
+            `accessibilityLiveRegion` announces it to a screen reader either way.
+
+            Everything else animated in this app already honours the rule stated
+            in `theme/motion.ts`; this component was the exception.
+          */
+          entering={
+            reduceMotion
+              ? FadeIn.duration(reducedMotion.crossfade)
+              : FadeInDown.springify().damping(18)
+          }
+          exiting={
+            reduceMotion ? FadeOut.duration(timing.fast) : FadeOutDown.duration(timing.fast)
+          }
           pointerEvents="none"
           accessibilityLiveRegion="polite"
           style={{

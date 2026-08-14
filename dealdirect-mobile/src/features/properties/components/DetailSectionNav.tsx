@@ -6,6 +6,7 @@ import Animated, {
   runOnJS,
   useAnimatedReaction,
   useAnimatedStyle,
+  useReducedMotion,
   type SharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -78,6 +79,7 @@ export function DetailSectionNav({ sections, scrollY, onJump }: DetailSectionNav
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const progress = useHeaderProgress(scrollY, insets.top);
+  const reduceMotion = useReducedMotion();
   const railRef = useRef<ScrollView>(null);
 
   const [activeIndex, setActiveIndex] = useState(0);
@@ -154,14 +156,34 @@ export function DetailSectionNav({ sections, scrollY, onJump }: DetailSectionNav
    * has to be roughly right.
    */
   useEffect(() => {
-    railRef.current?.scrollTo({ x: Math.max(0, activeIndex * 104 - 80), animated: true });
-  }, [activeIndex]);
+    railRef.current?.scrollTo({
+      x: Math.max(0, activeIndex * 104 - 80),
+      // Under reduced motion it jumps rather than glides. The chip still has to
+      // end up on screen — that is comprehension, not decoration — but a strip
+      // sliding sideways on its own while the user scrolls vertically is
+      // exactly the kind of unrequested movement the setting exists to stop.
+      animated: !reduceMotion,
+    });
+  }, [activeIndex, reduceMotion]);
 
+  /*
+   * The fade stays under reduced motion; the slide does not.
+   *
+   * `theme/motion.ts` states the rule this follows: reduced motion means a
+   * gentler, non-vestibular equivalent rather than the absence of feedback, so
+   * slides become cross-fades and opacity that carries meaning stays. The
+   * opacity here IS the meaning — it is what says the strip has arrived — and
+   * the 8pt drop is the part someone with a vestibular trigger does not want.
+   *
+   * Read on the JS side rather than inside the worklet: the OS setting cannot
+   * change mid-scroll, so branching per frame would be re-deciding a constant
+   * sixty times a second.
+   */
   const containerStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0.7, 1], [0, 1], Extrapolation.CLAMP),
-    transform: [
-      { translateY: interpolate(progress.value, [0.7, 1], [-8, 0], Extrapolation.CLAMP) },
-    ],
+    transform: reduceMotion
+      ? []
+      : [{ translateY: interpolate(progress.value, [0.7, 1], [-8, 0], Extrapolation.CLAMP) }],
   }));
 
   const handleJump = useCallback(
