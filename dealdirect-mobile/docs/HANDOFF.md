@@ -5,7 +5,9 @@ M10 skipped for now), updated 2026-08-08 (M15-M22 scoped from a feature-parity
 audit against the website, same day M15–M17 were implemented — see §8),
 **updated 2026-08-13 (§9: four product decisions D1–D4, the full defect
 register from a four-way source sweep, and the wave roadmap that supersedes
-§4's and §8's ordering)**.
+§4's and §8's ordering)**, updated 2026-08-14 (§10: the portal-parity UI pass —
+what was measured on Housing.com, Square Yards and 99acres, what changed on
+search, the card, detail and home, and what was deliberately not copied).
 Point a new session at this file first, then
 [`../README.md`](../README.md) and [`API_CONTRACT.md`](API_CONTRACT.md).
 
@@ -1776,3 +1778,110 @@ does.*
   work reads page components, never that file. If a helper and a page
   disagree, the page ships; if both disagree with the controller, the
   controller wins.
+
+---
+
+## 10. 2026-08-14 — The portal-parity UI pass
+
+Scope: `dealdirect-mobile` only. Nothing in `backend/`, `client-next/` or
+`Admin/` was touched, and no endpoint, param or model changed. Every figure the
+new UI shows is either a field already on the row or arithmetic over two of
+them.
+
+### 10.1 What was measured, and how
+
+Housing.com, Square Yards and 99acres were opened in a 375×812 viewport and
+read through the DOM: computed styles, sticky/fixed element geometry, card
+subtree structure, type scale and radius histograms. MagicBricks is blocked by
+browsing policy and was not read. NoBroker serves a no-JS shell to that browser,
+so only its filter taxonomy came through — which was the useful part.
+
+The findings that drove the work:
+
+| | Housing | Square Yards | 99acres |
+|---|---|---|---|
+| Sticky pill rail on results | search + bottom nav | Filters · Sort, 52pt | **Sort · Owner · Budget · BHK · Type · Verified · Ready**, 53pt |
+| Photo count on card | yes | dark pill, r7, bottom-left | yes |
+| ₹/sqft on card | yes | in attribute grid | `₹34,992 /sqyd` |
+| Attribute presentation | — | icon + label + value grid | labelled key-facts row |
+| Social proof | — | — | "3 people already contacted since last week" |
+| Detail sticky CTA | — | 72pt, WhatsApp + Call Back | 54pt, WhatsApp + View Number |
+| Detail section nav | — | **yes**, 14 jump links | — |
+| Similar rail on detail | — | yes | two of them |
+| Research tools on home | **6 calculators** | — | — |
+
+Brand values for reference: Housing `#5E23DC` / Rubik / radii 8·5·10·24;
+99acres `#0056B8` / Inter / pills at 1000px; Square Yards Arial / 8px cards,
+100px pills.
+
+### 10.2 What changed
+
+**Search results** (`app/(tabs)/properties.tsx`, `features/search`)
+
+- `QuickFilterBar` — the 99acres pill rail. Filters, a compact `Segmented` for
+  rent/sale, then facet pills for Sort, Budget, Rooms, Type, Furnishing, and a
+  direct possession toggle. A pill shows its facet NAME unset and its VALUE set.
+- `FacetSheet` — one facet, applied on tap, no Apply button. `FilterSheet` keeps
+  its draft-and-commit model; the note at the top of `FacetSheet` says why the
+  two differ rather than one wrapping the other.
+- **BHK is a filter for the first time.** Client-only, reconciling the string
+  `bhk` and numeric `bedrooms` fields; `'4'` is an open 4-and-up bucket. `1 RK`
+  is matched before the digit scan, or the `1` in it reads as a 1 BHK.
+- The result count moved into the list as its header, so it scrolls. Fixed
+  chrome is still two rows after gaining six facets.
+- The rail is NOT inside the screen's horizontal padding, deliberately — a
+  horizontal scroll view inside one is clipped short of both edges.
+- `priceBand` is now an accepted route param, validated against the table.
+
+**Listing card** (`features/properties/components/PropertyCard.tsx`)
+
+Photo count over the image, ₹/sqft beside the price, an icon fact row replacing
+the dot-joined grey spec line, and a "Posted 3 days ago · 142 views" line. Both
+densities. `formatRatePerSqft` returns null far more often than it returns a
+string — read its guards before loosening them; a wrong rate costs more than a
+missing one.
+
+**Property detail** (`app/property/[id]/index.tsx`)
+
+- ₹/sqft under the price, the provenance line under the facts strip.
+- `DetailSectionNav` — Square Yards' jump strip. Sections MEASURE themselves in
+  through `SectionRegistryContext`; a declared list would scroll people to
+  nothing on the many listings that omit a section. Shares the header's
+  collapse interpolation via the new exported `useHeaderProgress`.
+- A "Similar properties" rail, with its own scorer in `search/related.ts`. It
+  shares the search rail's pool query and key, so a user who searches and then
+  opens a listing pays for one fetch.
+
+**Home** (`app/(tabs)/index.tsx`, new `features/tools`)
+
+Housing's research-tools section, at two calculators rather than six. The
+affordability one models both ceilings Indian lenders apply — FOIR on income and
+the LTV cap on the deposit — reports which one bound the answer, and ends in a
+search rather than a figure.
+
+### 10.3 What was deliberately NOT copied
+
+- **Verified / RERA badges** (99acres, Square Yards). The backend has no
+  verification state for a listing. An unearned trust badge is worse than none.
+  It goes in the day the field does.
+- **Locality reviews, price insights, commute time** (99acres, Square Yards).
+  No data, and the last needs the map phase that is still held on a dev-client
+  rebuild (§5.1).
+- **Eligibility, Valuation, Rent Value, Area calculators** (Housing). Three need
+  a model or data we do not have; Eligibility is Affordability backwards.
+- **A heart on the card.** Unchanged and still correct — see §9.7.
+
+### 10.4 Verification status
+
+`tsc --noEmit` and `eslint` are clean across the app; the 14 remaining warnings
+all predate this work. **Nothing here has been seen running.** There is no test
+runner in this package and no web target (`react-native-web` is not installed),
+so a device or emulator pass is the first thing the next session should do.
+Highest-risk items to look at first, in order:
+
+1. `DetailSectionNav` — offset measurement, the jump landing point, and that it
+   does not eat taps meant for the hero while transparent.
+2. `FacetSheet` heights — derived from an 812pt reference, so a small phone will
+   scroll where a large one will not.
+3. The quick-filter rail's width on a small screen, and that the segmented
+   control does not squash.

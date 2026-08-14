@@ -214,7 +214,15 @@ export default function PropertiesScreen() {
 
   return (
     <Screen edges={['top']}>
-      <View className="gap-md px-base pb-md pt-sm">
+      {/*
+        The search row is inset; the rail below it is NOT, and that difference
+        is deliberate. A horizontally scrolling strip inside a padded container
+        is clipped 16pt short of each screen edge, so its pills stop and start
+        in mid-air rather than sliding off the side. Every portal's filter rail
+        runs edge to edge for the same reason — the cut-off pill at the right
+        margin is what says there is more to scroll to.
+      */}
+      <View className="px-base pt-sm">
         <View className="flex-row items-center gap-sm">
           <View className="flex-1">
             <SearchBar
@@ -249,21 +257,23 @@ export default function PropertiesScreen() {
             </Pressable>
           ) : null}
         </View>
+      </View>
 
-        {/*
-          THE QUICK-FILTER RAIL — 2026-08-14.
+      {/*
+        THE QUICK-FILTER RAIL — 2026-08-14.
 
-          This row used to be Filters plus three rent/sale chips, and every
-          other facet was four taps deep behind Filters. It is now the pill
-          rail the large portals run on their results pages; see
-          `QuickFilterBar` for what was copied from which and why the three
-          kinds of control on it look different.
+        This row used to be Filters plus three rent/sale chips, and every other
+        facet was four taps deep behind Filters. It is now the pill rail the
+        large portals run on their results pages; see `QuickFilterBar` for what
+        was copied from which and why the three kinds of control on it look
+        different.
 
-          Still ONE row. The point of the earlier revision was that three
-          stacked rows of chrome is most of a phone's viewport spent on how to
-          look rather than on what there is, and adding six facets must not
-          undo that — hence a rail that scrolls sideways rather than wraps.
-        */}
+        Still ONE row. The point of the earlier revision was that three stacked
+        rows of chrome is most of a phone's viewport spent on how to look rather
+        than on what there is, and adding six facets must not undo that — hence
+        a rail that scrolls sideways rather than wraps.
+      */}
+      <View className="pb-md pt-md">
         <QuickFilterBar
           filters={filters}
           onChange={applyFilters}

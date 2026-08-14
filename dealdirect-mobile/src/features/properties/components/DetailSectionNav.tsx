@@ -120,13 +120,11 @@ export function DetailSectionNav({ sections, scrollY, onJump }: DetailSectionNav
    * registers — which is what makes the strip correct on first paint rather
    * than only after the user scrolls.
    */
-  // Memoised on the offsets themselves rather than on `sections`: the reaction
-  // below re-registers whenever its dependency identity changes, and a fresh
-  // array on every render would tear down and rebuild a UI-thread subscription
-  // on each one.
-  const offsetKey = sections.map((section) => section.y).join(',');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const offsets = useMemo(() => sections.map((section) => section.y), [offsetKey]);
+  // Memoised because the reaction below re-registers whenever its dependency
+  // identity changes, and a fresh array on every render would tear down and
+  // rebuild a UI-thread subscription on each one. `sections` is stable for the
+  // same reason — see `useSectionRegistry`.
+  const offsets = useMemo(() => sections.map((section) => section.y), [sections]);
   const threshold = barHeight + SECTION_NAV_HEIGHT + ACTIVE_TOLERANCE;
 
   useAnimatedReaction(
