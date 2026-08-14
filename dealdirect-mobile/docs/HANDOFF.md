@@ -1931,3 +1931,55 @@ and the public half of the index. Both branches render the same
 not the other. `SignInPrompt` gained a `compact` prop for this; the other five
 screens that use it have genuinely nothing to show a guest and keep the
 full-height default.
+
+### 10.6 Text fields — a real clipping bug, and phone entry
+
+**Reported:** text cut off along the bottom on login and register.
+
+**Cause, and it was app-wide rather than screen-specific.** `Input` and
+`SearchBar` styled their `TextInput` with `text-body` — the NativeWind class
+every paragraph uses. That class is a SET: size, tracking, weight and **line
+height**. React Native honours a `lineHeight` on a `TextInput` by laying the
+text out in a box of exactly that height and does NOT grow it for the font's
+own ascent and descent. `body` declares 16/24, DM Sans at 16pt needs more than
+24pt to clear its descenders, so `g y p j q` and the comma were sliced off
+everywhere those two components appeared. It is not fixable with padding — the
+clipping happens inside the line box.
+
+**Fix:** `src/ui/textInputStyle.ts`. One hook, used by all four `TextInput`s in
+the app (`Input`, `SearchBar`, `HeroSearchField`, `ChatComposer`), which
+previously held four different ideas of what an input's text looks like. It
+takes size, tracking and weight from a typography token and **deliberately
+omits `lineHeight`**. If you add one back, the bug comes back.
+
+Two things to know before touching that file:
+
+- **`includeFontPadding` is left alone on purpose.** The usual advice for
+  tightening Android text is to disable it. That is exactly backwards here:
+  that padding is derived from the font's ascent and descent and is what stops
+  descenders being clipped. Turning it off is a known way to cause this bug.
+- It also sets `fontFamily`, which fixed a second bug nobody had reported.
+  `FontOverrideProvider` is a context `ui/Text.tsx` reads, and a `TextInput` is
+  not a `Text` — so every field in the app rendered in the platform system face
+  while every label around it rendered in DM Sans. That is the one place the
+  app-wide typeface decision in `theme/fonts.ts` had never reached, and it
+  compounded the clipping, since the declared 24pt box was being measured
+  against whichever face happened to render.
+
+**Phone entry.** Register always had a mobile field. It now shows `+91` as a
+fixed prefix that is never sent — the backend validates `/^[6-9]\d{9}$/`, ten
+digits and no country code, and without the prefix a user has to guess between
+`9876543210`, `09876543210` and `+919876543210`, two of which that regex
+rejects without explaining itself. `normalizeIndianMobile` (beside
+`phoneSchema`, since the two encode the same fact from opposite ends) reduces a
+pasted number to those ten digits instead of failing it for its formatting.
+Forgot-password uses the same helper and prefix. `Input` gained a `prefix` prop
+for this, separated by a hairline so the fixed part reads as fixed.
+
+**Open, and NOT a mobile-app change: login accepts email only.**
+`userController.loginUser` does `User.findOne({ email: normalizedEmail })` and
+there is no phone-login route — lines 683 and 802 look users up by phone, but
+those are the reset flows. Chirag's call on 2026-08-14 was to leave login
+email-only for now; forgot-password is the phone-based route into an account.
+Adding mobile login means extending `loginUser` first, then a single
+accepts-either field on the login screen.
