@@ -135,6 +135,24 @@ export interface SegmentedProps<T extends string> {
   options: readonly SegmentedOption<T>[];
   value: T;
   onChange: (value: T) => void;
+  /**
+   * Sizes each segment to its label instead of dividing the container evenly,
+   * and takes a pill radius rather than the rounded-rectangle one.
+   *
+   * The default shape assumes the control OWNS its row — it fills the width and
+   * divides it equally, which is right when it is switching what a whole screen
+   * shows. The compact shape is for a control sharing a row with other things,
+   * where a full-width track would push everything after it off screen; the
+   * search screen's quick-filter rail is the case that needed it.
+   *
+   * Equal widths are the better default and are kept as one: they give every
+   * option the same target size and stop the control reflowing when a label
+   * changes. Compact trades that away for the horizontal room, which is only
+   * worth it when the room is genuinely scarce.
+   */
+  compact?: boolean;
+  /** Spoken before the selected option, e.g. "Listing type". */
+  accessibilityLabel?: string;
 }
 
 /**
@@ -145,17 +163,30 @@ export interface SegmentedProps<T extends string> {
  * screen reader announcing "button" gives no clue that one of them is already
  * selected. The two implementations this replaces disagreed on exactly this —
  * one used `tab`, the other `button`.
+ *
+ * A segmented control and a row of `Chip`s look similar and mean different
+ * things. Chips are independent — each is on or off, several can be on, and
+ * none-selected is normal. This is ONE value with N spellings: exactly one is
+ * always selected, and choosing another deselects the old one for you. Reach
+ * for this whenever that second sentence is the true one.
  */
-export function Segmented<T extends string>({ options, value, onChange }: SegmentedProps<T>) {
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  compact = false,
+  accessibilityLabel,
+}: SegmentedProps<T>) {
   const theme = useTheme();
 
   return (
     <View
       accessibilityRole="tablist"
+      accessibilityLabel={accessibilityLabel}
       className="flex-row"
       style={{
         padding: spacing.xs,
-        borderRadius: radius.md,
+        borderRadius: compact ? radius.full : radius.md,
         backgroundColor: theme.colors.surfaceMuted,
       }}
     >
@@ -170,11 +201,12 @@ export function Segmented<T extends string>({ options, value, onChange }: Segmen
             onPress={() => onChange(option.value)}
             activeScale={0.98}
             style={{
-              flex: 1,
-              paddingVertical: spacing.sm,
+              ...(compact
+                ? { paddingHorizontal: spacing.md, paddingVertical: 6 }
+                : { flex: 1, paddingVertical: spacing.sm }),
               alignItems: 'center',
               justifyContent: 'center',
-              borderRadius: radius.sm,
+              borderRadius: compact ? radius.full : radius.sm,
               // The selected segment is the RAISED one — it comes forward out
               // of the well, which is what a physical segmented control does.
               backgroundColor: selected ? theme.colors.surface : 'transparent',
@@ -189,7 +221,20 @@ export function Segmented<T extends string>({ options, value, onChange }: Segmen
                 : null),
             }}
           >
-            <Text variant={selected ? 'bodyEmphasis' : 'callout'} tone={selected ? 'primary' : 'secondary'}>
+            <Text
+              variant={
+                compact
+                  ? selected
+                    ? 'subhead'
+                    : 'footnote'
+                  : selected
+                    ? 'bodyEmphasis'
+                    : 'callout'
+              }
+              tone={selected ? 'primary' : 'secondary'}
+              numberOfLines={1}
+              style={compact && selected ? { fontWeight: '600' } : undefined}
+            >
               {option.label}
             </Text>
           </PressableScale>

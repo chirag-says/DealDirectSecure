@@ -3,6 +3,7 @@ import { ScrollView, View } from 'react-native';
 
 import { Button, Chip, Sheet, Text } from '@/ui';
 import {
+  BHK_OPTIONS,
   CATEGORY_OPTIONS,
   CITY_OPTIONS,
   CONSTRUCTION_STATUS_OPTIONS,
@@ -27,13 +28,18 @@ import {
  * recognition instead of recall, and a tap is one gesture rather than
  * open-scroll-pick-close.
  *
- * Six groups. Price and Sort go straight to `/properties/search` params. City,
- * Category, Furnishing and Construction Status do not — they switch the
- * results screen into a bounded fetch-and-filter mode instead of infinite
- * scroll. `../filters.ts` explains why that split exists and why each of
- * these four is safe to offer now when it wasn't before. Read it before
- * adding a seventh group; some filters (property size, buildingType) are
- * still absent on purpose because the schema field they'd need doesn't exist.
+ * Seven groups. Price and Sort go straight to `/properties/search` params.
+ * Configuration, City, Category, Furnishing and Construction Status do not —
+ * they switch the results screen into a bounded fetch-and-filter mode instead
+ * of infinite scroll. `../filters.ts` explains why that split exists and why
+ * each of those five is safe to offer. Read it before adding an eighth group;
+ * some filters (property size, buildingType) are still absent on purpose
+ * because the schema field they'd need doesn't exist.
+ *
+ * This sheet is now the SECOND way to reach most of these. The quick-filter
+ * rail on the results screen (`QuickFilterBar`) exposes the six facets a buyer
+ * changes repeatedly as one-tap pills; this stays as the full surface, for
+ * setting several at once and for the facets the rail has no room for.
  */
 
 export interface FilterSheetProps {
@@ -69,6 +75,28 @@ export function FilterSheet({ visible, filters, onClose, onApply }: FilterSheetP
                 setDraft((current) => ({
                   ...current,
                   priceBand: current.priceBand === band.id ? undefined : band.id,
+                }))
+              }
+            />
+          ))}
+        </FilterGroup>
+
+        {/*
+          Configuration sits directly under price because those are the two a
+          buyer sets first and changes most, which is the order all three of
+          99acres, NoBroker and Housing put them in. See BHK_OPTIONS in
+          `../filters.ts` for why the top bucket is 4-and-up rather than four.
+        */}
+        <FilterGroup title="Configuration">
+          {BHK_OPTIONS.map((option) => (
+            <Chip
+              key={option.value}
+              label={option.label}
+              selected={draft.bhk === option.value}
+              onPress={() =>
+                setDraft((current) => ({
+                  ...current,
+                  bhk: current.bhk === option.value ? undefined : option.value,
                 }))
               }
             />

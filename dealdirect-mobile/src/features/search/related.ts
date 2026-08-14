@@ -17,9 +17,10 @@
  * silent.
  */
 
+import { matchCity } from '@/features/home';
 import type { PropertySummary } from '@/features/properties';
 import type { SearchFilters } from './filters';
-import { findPriceBand } from './filters';
+import { bhkCount, findPriceBand } from './filters';
 
 const MIN_RELEVANCE_SCORE = 15;
 export const RELATED_RESULT_COUNT = 6;
@@ -133,5 +134,107 @@ export function selectRelatedProperties(
     .filter(({ score }) => score >= MIN_RELEVANCE_SCORE)
     .sort((a, b) => b.score - a.score)
     .slice(0, RELATED_RESULT_COUNT)
+    .map(({ item }) => item);
+}
+
+// --- Similar to ONE property ----------------------------------------------
+
+/**
+ * "Similar properties", for the detail screen.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS NOT `selectRelatedProperties` WITH SYNTHESISED FILTERS
+ *
+ * The obvious shortcut is to build a `SearchFilters` out of the property being
+ * viewed and hand it to the function above. It does not work, and the reason is
+ * worth writing down so nobody tries it again: that scorer is measuring
+ * candidates against a QUERY, so several of its terms are shaped by what a
+ * filter can express rather than by what a property is. Its city term scores
+ * "has a city at all" rather than "the same city", because the search filter's
+ * city is an alias id and a candidate's is dirty free text; comparing them
+ * properly was out of scope there. On a detail screen the same city is the
+ * single strongest similarity signal there is, so the shortcut would produce a
+ * rail of Pune flats under a Bengaluru listing.
+ *
+ * It shares the POOL with the search rail — same bounded page, same query key,
+ * so a user who searches and then opens a listing pays for one fetch rather
+ * than two. Only the scoring differs, which is the part that genuinely does.
+ *
+ * ---------------------------------------------------------------------------
+ * THE WEIGHTS
+ *
+ * Ordered by what a buyer would actually accept as an alternative. Location
+ * first: someone looking at a flat in Kondapur will consider another flat in
+ * Kondapur before they consider a cheaper one in another city. Then rent versus
+ * sale, which is not a preference but a hard requirement — nobody browsing
+ * rentals wants a purchase in the list. Then what kind of property, then how
+ * big, then how much.
+ *
+ * Price is scored by RATIO rather than by band. Bands are the right shape for a
+ * filter, where the user picked the bracket, and the wrong one here: a ₹99 lakh
+ * listing and a ₹1.01 crore listing sit in different bands and are two percent
+ * apart, and a rail that treats them as unrelated is visibly wrong to the
+ * person looking at both.
+ */
+const MIN_SIMILARITY_SCORE = 40;
+export const SIMILAR_RESULT_COUNT = 6;
+
+function scoreSimilarity(candidate: PropertySummary, subject: PropertySummary): number {
+  let score = 0;
+
+  // Alias-matched, not string-equal: `address.city` still carries
+  // "Bangalore"/"Bengaluru" duplicates in production. See `features/home/cities.ts`.
+  const subjectCity = matchCity(subject.city);
+  const candidateCity = matchCity(candidate.city);
+  if (subjectCity && candidateCity && subjectCity.id === candidateCity.id) score += 30;
+
+  // A rental is never a substitute for a purchase, so this is scored as a
+  // requirement rather than a bonus: mismatching costs the candidate more than
+  // any other term can give back, which drops it below the threshold on its own.
+  if (subject.intent && candidate.intent) {
+    if (subject.intent === candidate.intent) score += 25;
+    else score -= 40;
+  }
+
+  if (subject.categoryName && candidate.categoryName === subject.categoryName) score += 20;
+  if (subject.propertyTypeName && candidate.propertyTypeName === subject.propertyTypeName) {
+    score += 15;
+  }
+
+  const subjectBhk = bhkCount(subject);
+  const candidateBhk = bhkCount(candidate);
+  if (subjectBhk !== null && candidateBhk !== null) {
+    if (subjectBhk === candidateBhk) score += 15;
+    else if (Math.abs(subjectBhk - candidateBhk) === 1) score += 7;
+  }
+
+  if (subject.priceRupees > 0 && candidate.priceRupees > 0) {
+    const ratio = candidate.priceRupees / subject.priceRupees;
+    if (ratio >= 0.75 && ratio <= 1.25) score += 20;
+    else if (ratio >= 0.5 && ratio <= 1.5) score += 10;
+  }
+
+  return score;
+}
+
+/**
+ * Top `SIMILAR_RESULT_COUNT` listings from `pool` resembling `subject`, with
+ * the subject itself removed.
+ *
+ * Returns empty when nothing clears the threshold. An empty rail is correct
+ * here rather than sad: our corpus is small, and padding the section with the
+ * six newest listings regardless of resemblance would teach users that the
+ * heading means nothing.
+ */
+export function selectSimilarProperties(
+  pool: PropertySummary[],
+  subject: PropertySummary
+): PropertySummary[] {
+  return pool
+    .filter((item) => item.id !== subject.id)
+    .map((item) => ({ item, score: scoreSimilarity(item, subject) }))
+    .filter(({ score }) => score >= MIN_SIMILARITY_SCORE)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, SIMILAR_RESULT_COUNT)
     .map(({ item }) => item);
 }

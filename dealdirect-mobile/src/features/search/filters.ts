@@ -154,7 +154,7 @@ export interface SearchFilters {
   sort: PropertySortOrder;
 
   /**
-   * The four fields below are CLIENT-ONLY. They are never sent as
+   * The five fields below are CLIENT-ONLY. They are never sent as
    * `/properties/search` query params — see the TAXONOMY/CITY/FURNISHING/
    * CONSTRUCTION STATUS block above for why. `toSearchParams` deliberately
    * ignores them; `hasClientOnlyFilters` is what tells the search hook to
@@ -168,6 +168,8 @@ export interface SearchFilters {
   furnishing?: string;
   /** Best-effort keyword match against free-text `constructionStatus`. */
   constructionStatus?: string;
+  /** `BhkOption.value` — `'0'` for 1 RK, `'1'`…`'3'` exact, `'4'` for 4 and up. */
+  bhk?: string;
 }
 
 export const DEFAULT_FILTERS: SearchFilters = {
@@ -220,6 +222,7 @@ export function countActiveFilters(filters: SearchFilters): number {
   if (filters.categoryName) count += 1;
   if (filters.furnishing) count += 1;
   if (filters.constructionStatus) count += 1;
+  if (filters.bhk) count += 1;
   return count;
 }
 
@@ -245,6 +248,68 @@ export const CONSTRUCTION_STATUS_OPTIONS: readonly { label: string; value: strin
   { label: 'Under construction', value: 'construction' },
 ];
 
+/**
+ * Configuration, the facet every Indian property portal leads with.
+ *
+ * 99acres, NoBroker and Housing all put BHK in the first row of quick filters,
+ * ahead of budget on two of the three. We had no equivalent at all, so a buyer
+ * who wanted a 2 BHK had to type it into the free-text field and hope the regex
+ * caught it — which it does, against `title`, but only for listings whose title
+ * happens to spell it the same way.
+ *
+ * Client-only, and it has to be. `/properties/search` has no `bhk` or
+ * `bedrooms` param (see the accepted-params block at the top of this file), and
+ * the two fields it would read are inconsistent in the corpus: `bhk` is a
+ * string written by the add-listing form ("2 BHK", "5+ BHK", "1 RK") and
+ * `bedrooms` is a number that some rows carry instead. `bhkCount` below
+ * reconciles them into one integer so the filter does not have to care which
+ * one a given row used.
+ *
+ * `'4'` is a 4-AND-UP bucket rather than exactly four, matching what NoBroker's
+ * "4+ BHK" and Housing's "4+" chips mean. A user filtering for a large home is
+ * not excluding a five-bedroom one.
+ */
+export const BHK_OPTIONS: readonly { label: string; value: string }[] = [
+  { label: '1 RK', value: '0' },
+  { label: '1 BHK', value: '1' },
+  { label: '2 BHK', value: '2' },
+  { label: '3 BHK', value: '3' },
+  { label: '4+ BHK', value: '4' },
+];
+
+/**
+ * The listing's bedroom count as an integer, or null when it carries neither
+ * field.
+ *
+ * `bhk` is preferred over `bedrooms` because it is what the add-listing form
+ * writes and is present on more rows. "1 RK" is a real configuration in the
+ * data and means zero separate bedrooms, so it is matched before the digit
+ * scan — otherwise the `1` in "1 RK" reads as a 1 BHK, which is a different
+ * (and more expensive) thing.
+ */
+export function bhkCount(item: PropertySummary): number | null {
+  const raw = item.bhk?.trim();
+
+  if (raw) {
+    if (/\brk\b/i.test(raw)) return 0;
+    const digits = raw.match(/\d+/);
+    if (digits) return Number(digits[0]);
+  }
+
+  if (typeof item.bedrooms === 'number') return item.bedrooms;
+
+  return null;
+}
+
+function matchesBhk(item: PropertySummary, bucket: string): boolean {
+  const count = bhkCount(item);
+  if (count === null) return false;
+
+  const wanted = Number(bucket);
+  // The top bucket is open-ended; every other one is exact.
+  return wanted >= 4 ? count >= 4 : count === wanted;
+}
+
 /** `City.id` + label, for the filter sheet's city chips. */
 export const CITY_OPTIONS: readonly { label: string; value: string }[] = CITIES.map(
   (city: City) => ({ label: city.label, value: city.id })
@@ -253,7 +318,11 @@ export const CITY_OPTIONS: readonly { label: string; value: string }[] = CITIES.
 /** True when any filter that requires the bounded fetch-and-filter mode is set. */
 export function hasClientOnlyFilters(filters: SearchFilters): boolean {
   return Boolean(
-    filters.city || filters.categoryName || filters.furnishing || filters.constructionStatus
+    filters.city ||
+      filters.categoryName ||
+      filters.furnishing ||
+      filters.constructionStatus ||
+      filters.bhk
   );
 }
 
@@ -297,6 +366,7 @@ export function matchesClientFilters(item: PropertySummary, filters: SearchFilte
   ) {
     return false;
   }
+  if (filters.bhk && !matchesBhk(item, filters.bhk)) return false;
   return true;
 }
 

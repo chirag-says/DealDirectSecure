@@ -51,7 +51,13 @@ export { ErrorState, type ErrorStateProps } from './ErrorState';
 export { Refreshable, type RefreshableProps } from './Refreshable';
 export { KeyboardAvoider, type KeyboardAvoiderProps } from './KeyboardAvoider';
 export { Chip, type ChipProps } from './Chip';
-export { PriceLabel, formatPrice, formatPriceParts, type PriceLabelProps } from './PriceLabel';
+export {
+  PriceLabel,
+  formatPrice,
+  formatPriceParts,
+  formatRatePerSqft,
+  type PriceLabelProps,
+} from './PriceLabel';
 export { RangeSlider, type RangeSliderProps } from './RangeSlider';
 
 // Discovery surfaces. Added with the Home redesign: photography-led layouts

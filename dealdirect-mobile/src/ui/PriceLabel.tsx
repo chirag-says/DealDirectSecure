@@ -64,6 +64,57 @@ export function formatPrice(rupees: MixedValue | undefined): string {
   return unit ? `${value} ${unit}` : value;
 }
 
+/**
+ * The unit rate: "₹6,800 / sqft".
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS WORTH DERIVING
+ *
+ * It is the number that makes two listings comparable. A ₹1.18 crore flat and a
+ * ₹1.4 crore flat tell you nothing about which is dearer until you know one is
+ * 1,734 sqft and the other 2,230; ₹6,800 and ₹6,280 per sqft answers it
+ * immediately. Every large Indian portal prints it on both the results card and
+ * the detail screen for exactly that reason, and we had it computable from two
+ * fields we already carry and were not showing.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY IT RETURNS NULL SO OFTEN
+ *
+ * A derived number inherits the reliability of the worst field it derives from,
+ * and `areaSqft` is the worst field here: it is the best of five area columns
+ * picked by the adapter, several listings carry none of them, and at least one
+ * production row records an area small enough to be a typo. Dividing by that
+ * unguarded prints "₹1.2 Crore / sqft" on a card, which is not a rounding error
+ * the reader can discount — it is a number that destroys their trust in every
+ * other number on the screen.
+ *
+ * So the guards are deliberately blunt: no area, no price, an implausibly small
+ * area, or an implausible resulting rate all return null and the caller renders
+ * nothing. A missing rate costs a line of useful information. A wrong one costs
+ * the listing.
+ *
+ * The bounds are set to admit every real Indian listing and reject arithmetic
+ * on bad data — ₹100/sqft is below any real sale anywhere in the country, and
+ * ₹5,00,000/sqft is roughly ten times the dearest street in Mumbai.
+ */
+const MIN_PLAUSIBLE_AREA_SQFT = 50;
+const MIN_PLAUSIBLE_RATE = 100;
+const MAX_PLAUSIBLE_RATE = 500_000;
+
+export function formatRatePerSqft(
+  rupees: MixedValue | undefined,
+  areaSqft: number | undefined
+): string | null {
+  const price = Number(rupees) || 0;
+  if (price <= 0) return null;
+  if (!areaSqft || areaSqft < MIN_PLAUSIBLE_AREA_SQFT) return null;
+
+  const rate = Math.round(price / areaSqft);
+  if (rate < MIN_PLAUSIBLE_RATE || rate > MAX_PLAUSIBLE_RATE) return null;
+
+  return `₹${rate.toLocaleString('en-IN')} / sqft`;
+}
+
 export interface PriceLabelProps {
   /** Rupees. Pass the `price` field straight through; do not pre-scale it. */
   price?: MixedValue;

@@ -3,6 +3,7 @@
  */
 
 export {
+  BHK_OPTIONS,
   CATEGORY_OPTIONS,
   CITY_OPTIONS,
   CONSTRUCTION_STATUS_OPTIONS,
@@ -11,6 +12,7 @@ export {
   LISTING_TYPE_OPTIONS,
   PRICE_BANDS,
   SORT_OPTIONS,
+  bhkCount,
   countActiveFilters,
   findPriceBand,
   hasAnyCriteria,
@@ -29,6 +31,7 @@ export {
   useRecentSearches,
   usePropertySearchFeed,
   useRelatedProperties,
+  useSimilarProperties,
   useSuggestions,
   type CompareSelection,
   type RelatedPropertiesResult,
@@ -49,6 +52,8 @@ export {
   type SuggestionListProps,
 } from './components/SuggestionList';
 export { FilterSheet, type FilterSheetProps } from './components/FilterSheet';
+export { FacetSheet, type FacetSheetProps, type FacetOption } from './components/FacetSheet';
+export { QuickFilterBar, type QuickFilterBarProps } from './components/QuickFilterBar';
 export {
   RelatedProperties,
   type RelatedPropertiesProps,

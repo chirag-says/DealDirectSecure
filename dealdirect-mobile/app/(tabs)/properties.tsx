@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { PropertyList, type ListingIntent, type PropertySummary } from '@/features/properties';
 import {
@@ -9,13 +9,12 @@ import {
   CompareSheet,
   DEFAULT_FILTERS,
   FilterSheet,
-  LISTING_TYPE_OPTIONS,
+  QuickFilterBar,
   RecentSearches,
   RELATED_THRESHOLD,
   RelatedProperties,
   SearchBar,
   SuggestionList,
-  countActiveFilters,
   hasAnyCriteria,
   usePropertySearchFeed,
   useCompareSelection,
@@ -53,7 +52,6 @@ import { Button, Screen, Text } from '@/ui';
  * share a 20-request-per-minute limiter keyed on IP.
  */
 export default function PropertiesScreen() {
-  const theme = useTheme();
   const route = useLocalSearchParams<{
     search?: string;
     listingType?: string;
@@ -188,8 +186,6 @@ export default function PropertiesScreen() {
     setEditing(false);
   }, []);
 
-  const activeCount = countActiveFilters(filters);
-
   const getCompareProps = useCallback(
     (item: PropertySummary) => ({
       selected: compare.isSelected(item.id),
@@ -238,147 +234,25 @@ export default function PropertiesScreen() {
         </View>
 
         {/*
-          ONE SCROLLING ROW OF CONTROLS, NOT TWO STACKED ROWS — 2026-08-14.
+          THE QUICK-FILTER RAIL — 2026-08-14.
 
-          Filters used to sit on its own row with the result count opposite,
-          and the rent/sale chips on a third row below that. Three rows of
-          chrome above the first result is most of a phone's viewport spent on
-          how to look rather than on what there is. They are one horizontal
-          strip now, in the order a property search is actually narrowed:
-          intent first (rent or sale, the primary axis), then everything else.
+          This row used to be Filters plus three rent/sale chips, and every
+          other facet was four taps deep behind Filters. It is now the pill
+          rail the large portals run on their results pages; see
+          `QuickFilterBar` for what was copied from which and why the three
+          kinds of control on it look different.
 
-          Filters leads the strip rather than sitting among the chips, because
-          it opens a sheet rather than toggling a value — a different KIND of
-          control, so it is visually separated by the hairline after it.
+          Still ONE row. The point of the earlier revision was that three
+          stacked rows of chrome is most of a phone's viewport spent on how to
+          look rather than on what there is, and adding six facets must not
+          undo that — hence a rail that scrolls sideways rather than wraps.
         */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={FILTER_ROW_STYLE}
-        >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: activeCount > 0 }}
-            accessibilityLabel={activeCount > 0 ? `Filters, ${activeCount} applied` : 'Filters'}
-            hitSlop={gesture.hitSlop}
-            onPress={() => setFilterSheetOpen(true)}
-            className={[
-              'flex-row items-center rounded-full border px-md py-sm',
-              activeCount > 0 ? 'border-accent bg-accent-muted' : 'border-border',
-            ].join(' ')}
-            style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
-          >
-            <Ionicons
-              name="options-outline"
-              size={16}
-              color={activeCount > 0 ? theme.colors.accent : theme.colors.textSecondary}
-            />
-            <Text
-              variant={activeCount > 0 ? 'bodyEmphasis' : 'callout'}
-              tone={activeCount > 0 ? 'accent' : 'secondary'}
-              className="ml-xs"
-            >
-              {activeCount > 0 ? `Filters · ${activeCount}` : 'Filters'}
-            </Text>
-          </Pressable>
-
-          <View
-            style={{
-              width: 1,
-              alignSelf: 'stretch',
-              marginVertical: spacing.xs,
-              backgroundColor: theme.colors.border,
-            }}
-          />
-
-          {LISTING_TYPE_OPTIONS.map((option) => {
-            const selected = filters.listingType === option.value;
-            return (
-              <Pressable
-                key={option.label}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                onPress={() => {
-                  setFilters((current) => ({ ...current, listingType: option.value }));
-                  setEditing(false);
-                }}
-                style={({ pressed }) => (pressed ? { opacity: 0.75 } : undefined)}
-                className={[
-                  'rounded-full border px-md py-sm',
-                  selected ? 'border-accent bg-accent-muted' : 'border-border',
-                ].join(' ')}
-              >
-                <Text
-                  variant={selected ? 'bodyEmphasis' : 'callout'}
-                  tone={selected ? 'accent' : 'secondary'}
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        <QuickFilterBar
+          filters={filters}
+          onChange={applyFilters}
+          onOpenAllFilters={() => setFilterSheetOpen(true)}
+        />
       </View>
-
-      {/*
-        The result bar. Count on the left, the two controls that act on the
-        WHOLE result set on the right.
-
-        Separated from the filter strip above because it describes the answer
-        rather than the question, and it only exists once there is an answer.
-      */}
-      {showResults && feed.total > 0 ? (
-        <View
-          className="flex-row items-center justify-between px-base pb-sm"
-          style={{ paddingTop: spacing.xs }}
-        >
-          <Text variant="footnote" tone="secondary">
-            {feed.total.toLocaleString('en-IN')}{' '}
-            {feed.total === 1 ? 'property' : 'properties'}
-          </Text>
-
-          <View className="flex-row items-center" style={{ gap: spacing.xs }}>
-            {/*
-              Saving is offered only once there are results, because a saved
-              search that matched nothing produces an alert the user cannot
-              interpret. See `SaveSearchSheet` for why the term is saved as a
-              NAME rather than as a filter.
-            */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Save this search"
-              hitSlop={gesture.hitSlop}
-              onPress={() => setSaveSheetOpen(true)}
-              className="h-9 w-9 items-center justify-center rounded-full"
-              style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
-            >
-              <Ionicons name="bookmark-outline" size={18} color={theme.colors.textSecondary} />
-            </Pressable>
-
-            {/*
-              Density. Not decoration: the compact row fits about three times
-              as many results per screen, which matters most to users on large
-              accessibility text who see fewest. See `PropertyRow`.
-            */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                density === 'card' ? 'Switch to compact list' : 'Switch to large cards'
-              }
-              hitSlop={gesture.hitSlop}
-              onPress={() => setDensity((current) => (current === 'card' ? 'row' : 'card'))}
-              className="h-9 w-9 items-center justify-center rounded-full"
-              style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
-            >
-              <Ionicons
-                name={density === 'card' ? 'list-outline' : 'grid-outline'}
-                size={19}
-                color={theme.colors.textSecondary}
-              />
-            </Pressable>
-          </View>
-        </View>
-      ) : null}
 
       {editing ? (
         <View className="flex-1">
@@ -401,6 +275,18 @@ export default function PropertiesScreen() {
       ) : showResults ? (
         <PropertyList
           feed={feed}
+          header={
+            feed.total > 0 ? (
+              <ResultBar
+                total={feed.total}
+                density={density}
+                onToggleDensity={() =>
+                  setDensity((current) => (current === 'card' ? 'row' : 'card'))
+                }
+                onSaveSearch={() => setSaveSheetOpen(true)}
+              />
+            ) : undefined
+          }
           emptyTitle="No matches"
           emptyDescription="Try fewer filters, or search a nearby city or locality instead."
           emptyActionLabel="Clear search"
@@ -447,8 +333,86 @@ export default function PropertiesScreen() {
   );
 }
 
-/** The one control strip: Filters, a rule, then the intent chips. */
-const FILTER_ROW_STYLE = { gap: spacing.sm, alignItems: 'center' } as const;
+/**
+ * The result bar: how many, and the two controls that act on the whole set.
+ *
+ * ---------------------------------------------------------------------------
+ * IT SCROLLS NOW — 2026-08-14.
+ *
+ * This used to be fixed chrome between the filter strip and the list. Adding
+ * the quick-filter rail above it would have made the fixed chrome a search
+ * field, a rail and this, which is around a fifth of a phone's viewport gone
+ * before the first result — the exact problem the rail was collapsing three
+ * rows into one to avoid.
+ *
+ * So it moved into the list as its header. That is not a demotion, it is the
+ * correct place for it: the count and these two controls describe the ANSWER,
+ * and an answer belongs with the results rather than with the question. The
+ * search field and the rail are the question and they stay put, because those
+ * are what a user reaches for while looking at a result they want to change.
+ */
+function ResultBar({
+  total,
+  density,
+  onToggleDensity,
+  onSaveSearch,
+}: {
+  total: number;
+  density: 'card' | 'row';
+  onToggleDensity: () => void;
+  onSaveSearch: () => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <View className="flex-row items-center justify-between pb-sm">
+      <Text variant="footnote" tone="secondary">
+        {total.toLocaleString('en-IN')} {total === 1 ? 'property' : 'properties'}
+      </Text>
+
+      <View className="flex-row items-center" style={{ gap: spacing.xs }}>
+        {/*
+          Saving is offered only once there are results, because a saved
+          search that matched nothing produces an alert the user cannot
+          interpret. See `SaveSearchSheet` for why the term is saved as a
+          NAME rather than as a filter.
+        */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Save this search"
+          hitSlop={gesture.hitSlop}
+          onPress={onSaveSearch}
+          className="h-9 w-9 items-center justify-center rounded-full"
+          style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+        >
+          <Ionicons name="bookmark-outline" size={18} color={theme.colors.textSecondary} />
+        </Pressable>
+
+        {/*
+          Density. Not decoration: the compact row fits about three times as
+          many results per screen, which matters most to users on large
+          accessibility text who see fewest. See `PropertyRow`.
+        */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            density === 'card' ? 'Switch to compact list' : 'Switch to large cards'
+          }
+          hitSlop={gesture.hitSlop}
+          onPress={onToggleDensity}
+          className="h-9 w-9 items-center justify-center rounded-full"
+          style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+        >
+          <Ionicons
+            name={density === 'card' ? 'list-outline' : 'grid-outline'}
+            size={19}
+            color={theme.colors.textSecondary}
+          />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 /** Accepted `sort` route params. Anything else is ignored rather than trusted. */
 const SORT_VALUES = ['newest', 'priceAsc', 'priceDesc'] as const;

@@ -16,6 +16,7 @@ import {
   ExpandableText,
   HERO_HEIGHT,
   NearbyPlaces,
+  PropertyRail,
   ReportSheet,
   VideoWalkthrough,
   useInterest,
@@ -23,12 +24,15 @@ import {
   usePropertyDetail,
 } from '@/features/properties';
 import { RewardReveal } from '@/features/rewards';
+import { useSimilarProperties } from '@/features/search';
+import { relativeDay } from '@/lib';
 import { screenPadding, spacing, useTheme } from '@/theme';
 import {
   Badge,
   EmptyState,
   ErrorState,
   formatPrice,
+  formatRatePerSqft,
   PriceLabel,
   Screen,
   Skeleton,
@@ -79,6 +83,13 @@ import {
  * else in the plan — gallery, attribute table, interest, contact, message,
  * share, report — is built.
  */
+/**
+ * Below this the view count is suppressed. Same threshold and same reasoning as
+ * `PropertyCard`'s — under ten the figure is as likely to be the owner
+ * reloading their own listing as it is to be demand.
+ */
+const MEANINGFUL_VIEW_COUNT = 10;
+
 export default function PropertyDetailScreen() {
   const router = useRouter();
   const theme = useTheme();
@@ -109,6 +120,22 @@ export default function PropertyDetailScreen() {
   // what a view is.
   useRecordPropertyView(property);
 
+  /**
+   * The rail at the foot of the page.
+   *
+   * Every portal we measured ends its detail page this way — 99acres runs two
+   * of them ("Compare with Similar Homes", "Owner Properties"), Square Yards
+   * one ("How does this compare with other top projects?") — because the page
+   * has exactly two useful endings: the user contacts this owner, or they go
+   * look at something else. Without the rail the second ending is the back
+   * button, which loses the search they arrived from.
+   *
+   * Declared here rather than beside the rail because hooks cannot be called
+   * after the early returns below. It self-disables while `property` is
+   * undefined, so the loading and 404 branches cost nothing.
+   */
+  const similar = useSimilarProperties(property);
+
   const handleBack = useCallback(() => {
     // `back()` alone strands a user who arrived from a deep link with nothing
     // to go back to. Falling through to the feed gives that case a destination
@@ -122,6 +149,19 @@ export default function PropertyDetailScreen() {
   const openGallery = useCallback(
     (index: number) => router.push(`/property/${id}/gallery?index=${index}`),
     [router, id]
+  );
+
+  /**
+   * `push`, not `replace`, even though it stacks this route on itself.
+   *
+   * Replacing would be tidier for the stack and wrong for the user: someone
+   * three listings deep in a comparison expects back to walk them out the way
+   * they came, and replace collapses that into a single jump to the search they
+   * left twenty minutes ago. Every portal behaves the way `push` does here.
+   */
+  const openSimilar = useCallback(
+    (similarId: string) => router.push(`/property/${similarId}`),
+    [router]
   );
 
   /*
@@ -185,6 +225,10 @@ export default function PropertyDetailScreen() {
   }
 
   const { owner } = property;
+
+  const rate =
+    property.intent === 'rent' ? null : formatRatePerSqft(property.priceRupees, property.areaSqft);
+  const posted = relativeDay(property.createdAt);
 
   return (
     <Screen unsafe>
@@ -253,6 +297,25 @@ export default function PropertyDetailScreen() {
             ) : null}
           </View>
 
+          {/*
+            The unit rate, directly under the price and subordinate to it.
+
+            This is the figure that makes the price above mean something: ₹1.18
+            crore is a number, ₹6,800 per sqft is a judgement about whether the
+            number is fair. 99acres prints it inside its key-facts row and
+            Square Yards inside its attribute grid; here it goes under the price
+            because it is a restatement OF the price, not a separate fact.
+
+            Sale only, and `formatRatePerSqft` returns null far more often than
+            it returns a string — see its note in `ui/PriceLabel.tsx` for both
+            reasons.
+          */}
+          {rate ? (
+            <Text variant="footnote" tone="muted" className="mt-xs">
+              {rate}
+            </Text>
+          ) : null}
+
           {property.locationLabel ? (
             <View className="mt-sm flex-row items-start">
               <Ionicons
@@ -286,6 +349,43 @@ export default function PropertyDetailScreen() {
           <View className="mt-lg">
             <DetailFacts property={property} />
           </View>
+
+          {/*
+            PROVENANCE, and why it sits below the facts rather than above them.
+
+            "Posted 3 days ago · 142 views" answers two questions a listing page
+            otherwise leaves open: is this still real, and is anyone else
+            looking. 99acres runs both on its detail page — a "Posted today by
+            owner" line above the price and a "3 people viewed this property in
+            last 24 hours" line below the facts.
+
+            We put ours in one place, under the facts, because the reading order
+            this screen is built around is price → place → what it is → who
+            else. Age and interest are the last thing that changes a decision,
+            not the first; a listing nobody has viewed is still worth reading if
+            the price and the size are right.
+
+            The view count is suppressed under `MEANINGFUL_VIEW_COUNT` for the
+            same reason as on the card, with one addition specific to here: the
+            reader's own arrival has ALREADY been counted by the request that
+            produced this page, so a listing showing "1 view" would be showing
+            them themselves.
+          */}
+          {posted || property.views >= MEANINGFUL_VIEW_COUNT ? (
+            <View className="mt-md flex-row items-center">
+              <Ionicons name="time-outline" size={13} color={theme.colors.textMuted} />
+              <Text variant="caption" tone="muted" className="ml-xs">
+                {[
+                  posted ? `Posted ${posted}` : null,
+                  property.views >= MEANINGFUL_VIEW_COUNT
+                    ? `${property.views.toLocaleString('en-IN')} views`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join('  ·  ')}
+              </Text>
+            </View>
+          ) : null}
 
           {/* Only listings whose owner wrote a real title reach this. */}
           {property.headline ? (
@@ -343,6 +443,35 @@ export default function PropertyDetailScreen() {
             <Section title="Owner">
               <DetailOwner owner={owner} />
             </Section>
+          ) : null}
+
+          {/*
+            The rail breaks the page's one-column grid on purpose: it is the
+            only thing here that scrolls sideways, and it has to reach the
+            screen edge for the next card to peek in and say so. The negative
+            margin undoes this container's `screenPadding`; `PropertyRail`
+            re-applies it as content inset, so the first card still lines up
+            with everything above it.
+          */}
+          {similar.items.length > 0 ? (
+            <View style={{ marginTop: spacing['2xl'], marginHorizontal: -screenPadding }}>
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: theme.colors.border,
+                  marginBottom: spacing.lg,
+                  marginHorizontal: screenPadding,
+                }}
+              />
+              <Text variant="title3" className="mb-md" style={{ marginHorizontal: screenPadding }}>
+                Similar properties
+              </Text>
+              <PropertyRail
+                items={similar.items}
+                onSelect={openSimilar}
+                accessibilityLabel="Similar properties"
+              />
+            </View>
           ) : null}
 
           {/*
