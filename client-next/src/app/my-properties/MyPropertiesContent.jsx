@@ -416,6 +416,7 @@ const LeadCard = ({ lead, onUpdateStatus, onContact, onView }) => {
         {lead.userSnapshot?.phone ? (
           <a
             href={`tel:${lead.userSnapshot.phone}`}
+            onClick={() => onContact?.(lead._id, 'call')}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-sm font-medium hover:bg-green-200 transition"
           >
             <PhoneCall className="w-4 h-4" /> Call
@@ -431,6 +432,7 @@ const LeadCard = ({ lead, onUpdateStatus, onContact, onView }) => {
         {lead.userSnapshot?.email ? (
           <a
             href={`mailto:${lead.userSnapshot.email}?subject=Regarding Your Interest in ${encodeURIComponent(lead.propertySnapshot?.title || 'Property')}&body=${encodeURIComponent(`Hi ${lead.userSnapshot?.name || ''},\n\nThank you for showing interest in "${lead.propertySnapshot?.title || 'our property'}". I would love to discuss this further with you.\n\nPlease let me know a convenient time to connect.\n\nBest regards`)}`}
+            onClick={() => onContact?.(lead._id, 'email')}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200 transition"
           >
             <Mail className="w-4 h-4" /> Email
@@ -456,6 +458,7 @@ const LeadCard = ({ lead, onUpdateStatus, onContact, onView }) => {
             })()}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => onContact?.(lead._id, 'whatsapp')}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-200 transition"
           >
             <MessageCircle className="w-4 h-4" /> WhatsApp
@@ -470,7 +473,7 @@ const LeadCard = ({ lead, onUpdateStatus, onContact, onView }) => {
         )}
         <div className="relative ml-auto">
           <button
-            onClick={() => setShowActions(!showActions)}
+            onClick={() => { if (!showActions) onView?.(lead._id); setShowActions(!showActions); }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition"
           >
             Update Status <ChevronDown className="w-4 h-4" />
@@ -838,6 +841,69 @@ export default function MyProperties() {
     setActiveTab("leads");
   };
 
+  /**
+   * Mark a lead as read.
+   *
+   * PUT /leads/:id/viewed has existed and been correct since the lead feature
+   * shipped — it was simply never called from anywhere. So `isViewed` stayed
+   * false on every lead forever, which meant the "new lead" dot never cleared
+   * and `unreadLeads` in the analytics header always equalled the total lead
+   * count. The number was real, it just never went down.
+   *
+   * Fired when the owner opens a lead's actions or contacts them, not on
+   * render: marking every lead in the list read as soon as the page loads
+   * would defeat the point of the indicator.
+   *
+   * Optimistic: the dot and the counter update immediately, and a failure is
+   * silent by design. This is a read-receipt, not something worth interrupting
+   * the owner with — and the next refresh corrects it either way.
+   */
+  const handleMarkLeadViewed = async (leadId) => {
+    const lead = leads.find((l) => l._id === leadId);
+    if (!lead || lead.isViewed) return; // already read — no request
+
+    setLeads((prev) =>
+      prev.map((l) => (l._id === leadId ? { ...l, isViewed: true, viewedAt: new Date().toISOString() } : l))
+    );
+    setLeadAnalytics((prev) =>
+      prev ? { ...prev, unreadLeads: Math.max(0, (prev.unreadLeads || 0) - 1) } : prev
+    );
+
+    try {
+      await api.put(`/leads/${leadId}/viewed`);
+    } catch (err) {
+      console.error('Failed to mark lead viewed:', err);
+    }
+  };
+
+  /**
+   * Record that the owner reached out, via POST /leads/:id/contact.
+   *
+   * Also previously uncalled, so `contactHistory` was empty on every lead.
+   *
+   * Note the server-side side effect, which is existing behaviour and is
+   * deliberately preserved: this endpoint also sets the lead's status to
+   * `contacted`. So using Call / Email / WhatsApp advances the status, which is
+   * what the automatic transition was always meant to do and never did. The
+   * lead status set itself is unchanged — no new statuses, no state machine.
+   */
+  const handleLeadContact = async (leadId, action) => {
+    handleMarkLeadViewed(leadId);
+
+    try {
+      const res = await api.post(`/leads/${leadId}/contact`, { action });
+      const updated = res.data?.data;
+      if (updated) {
+        setLeads((prev) => prev.map((l) => (l._id === leadId ? { ...l, ...updated } : l)));
+      }
+    } catch (err) {
+      console.error('Failed to record contact:', err);
+      // Not surfaced: the dialler/mail client has already opened and the
+      // owner's actual task succeeded. Failing to log it must not read as
+      // "your call did not go through".
+    }
+  };
+
   const handleUpdateLeadStatus = async (leadId, status) => {
     try {
       const res = await api.put(`/leads/${leadId}/status`, { status });
@@ -1141,6 +1207,8 @@ export default function MyProperties() {
                     key={lead._id}
                     lead={lead}
                     onUpdateStatus={handleUpdateLeadStatus}
+                    onContact={handleLeadContact}
+                    onView={handleMarkLeadViewed}
                   />
                 ))}
               </div>
