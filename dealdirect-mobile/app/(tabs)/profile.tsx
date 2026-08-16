@@ -7,7 +7,14 @@ import { ApiError } from '@/api';
 import { useAuth, SignInPrompt } from '@/auth';
 import { useOwnerUpgrade } from '@/features/profile';
 import { useWallet } from '@/features/rewards';
-import { screenPadding, tabBarClearance, useTheme } from '@/theme';
+import {
+  screenPadding,
+  spacing,
+  tabBarClearance,
+  useTheme,
+  useThemePreference,
+  type ThemePreference,
+} from '@/theme';
 import {
   Avatar,
   Badge,
@@ -19,6 +26,7 @@ import {
   Refreshable,
   Screen,
   ScreenHeader,
+  Segmented,
   Sheet,
   Skeleton,
   Text,
@@ -98,10 +106,15 @@ export default function ProfileScreen() {
         }}
       >
         {/*
-          The identity card. A surface rather than bare rows on the page,
-          because this is the one block on the screen that is ABOUT the user
-          rather than a link to somewhere else — and it earns the distinction
-          by being tappable straight through to editing.
+          THE ACCOUNT HEADER.
+
+          A surface rather than bare rows, because this is the one block on the
+          screen that is ABOUT the user rather than a link to somewhere else —
+          and it earns the distinction by being tappable straight through to
+          editing. It reads as premium now for one unglamorous reason: it has
+          padding. `Card` supplied none until 2026-08-15, so the avatar sat
+          flush against the card's top and left edges and the rewards card
+          below it touched this one with no gap at all. See `ui/Card.tsx`.
         */}
         <Card onPress={() => router.push('/settings')} className="flex-row items-center">
           <Avatar uri={user.profileImage} name={user.name} size="lg" />
@@ -127,7 +140,11 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
         </Card>
 
-        <RewardsSummaryCard />
+        {/* 12, not 24: the wallet is part of "about you", so it sits closer to
+            the identity card than the navigation groups sit to each other. */}
+        <View className="mt-md">
+          <RewardsSummaryCard />
+        </View>
 
         {isOwner ? <OwnerCard /> : <UpgradeCard />}
 
@@ -250,7 +267,61 @@ function PublicSections() {
           onPress={() => router.push('/support')}
         />
       </ListGroup>
+
+      <AppearanceGroup />
     </>
+  );
+}
+
+const THEME_OPTIONS: readonly { label: string; value: ThemePreference }[] = [
+  { label: 'System', value: 'system' },
+  { label: 'Light', value: 'light' },
+  { label: 'Dark', value: 'dark' },
+];
+
+/**
+ * The light/dark switch.
+ *
+ * It lives in `PublicSections`, so a signed-out user gets it too. A colour
+ * scheme is a device preference, not account data — `ThemeProvider` already
+ * persists it outside the session for the same reason — and hiding it behind a
+ * sign-in wall would be the one setting in the app a guest cannot reach.
+ *
+ * Three options rather than a two-state switch, because "follow the phone" has
+ * to be expressible. A toggle can only ever say light or dark, so choosing
+ * either would silently opt the user out of their phone's own schedule with no
+ * way back short of reinstalling.
+ *
+ * Inside a `ListGroup` rather than bare on the page: the segmented control
+ * draws its track in `surfaceMuted`, which separates from a card but is within
+ * two percent of the page background in light mode, where it would vanish.
+ */
+function AppearanceGroup() {
+  return (
+    <ListGroup
+      title="Appearance"
+      className="mt-xl"
+      footer="System follows your phone's light or dark setting."
+    >
+      <ThemeSegments />
+    </ListGroup>
+  );
+}
+
+/** Its own component so `ListGroup`'s `isLast` clone has a props bag to land
+ *  in — a bare `View` would forward the unknown prop to the host component. */
+function ThemeSegments() {
+  const { preference, setPreference } = useThemePreference();
+
+  return (
+    <View style={{ padding: spacing.md }}>
+      <Segmented
+        options={THEME_OPTIONS}
+        value={preference}
+        onChange={setPreference}
+        accessibilityLabel="App theme"
+      />
+    </View>
   );
 }
 
@@ -312,7 +383,7 @@ function UpgradeCard() {
 
   return (
     <>
-      <Card className="mt-lg">
+      <Card className="mt-xl">
         <Text variant="bodyEmphasis">List your property on DealDirect</Text>
         <Text variant="footnote" tone="secondary" className="mt-xs mb-base">
           Upgrade to an owner account to post a listing and manage leads directly.

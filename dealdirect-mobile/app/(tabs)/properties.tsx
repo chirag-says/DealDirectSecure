@@ -1,23 +1,24 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { PropertyList, type ListingIntent, type PropertySummary } from '@/features/properties';
+import { EnquirySheet, useSaveToggle } from '@/features/saved';
 import {
   CITY_OPTIONS,
   CompareBar,
   CompareSheet,
   DEFAULT_FILTERS,
   FilterSheet,
+  FiltersButton,
   QuickFilterBar,
   RecentSearches,
   RELATED_THRESHOLD,
   RelatedProperties,
+  ResultsToolbar,
   SearchBar,
   SuggestionList,
   findPriceBand,
-  hasAnyCriteria,
   usePropertySearchFeed,
   useCompareSelection,
   useRecentSearches,
@@ -26,9 +27,9 @@ import {
   type SearchFilters,
 } from '@/features/search';
 import { SaveSearchSheet } from '@/features/savedSearches';
-import { gesture, radius, spacing, useTheme } from '@/theme';
+import { gesture } from '@/theme';
 import type { PropertySuggestion } from '@/types/backend/property';
-import { Button, Screen, Text } from '@/ui';
+import { PressableScale, Screen, Text } from '@/ui';
 
 /**
  * Properties — browse, search and filter the whole corpus.
@@ -41,17 +42,38 @@ import { Button, Screen, Text } from '@/ui';
  *
  * Two modes on one screen, and the mode is explicit rather than inferred:
  *
- *   editing  — the field has focus and the suggestion panel is up. Nothing is
- *              being fetched from `/search`.
- *   results  — a term or a filter has been committed, and the list is live.
+ *   editing  — the field has focus and the suggestion panel is up.
+ *   results  — the list is live.
  *
  * Inferring the mode from "is the field empty" is the usual shortcut and it
  * breaks the moment the user taps back into a field that already holds their
  * last query, wiping the results they were reading.
  *
- * Nothing here fires a property search until a term is committed. Typing costs
- * at most one debounced suggestions call, which matters because both endpoints
- * share a 20-request-per-minute limiter keyed on IP.
+ * ---------------------------------------------------------------------------
+ * THE TAB OPENS ON RESULTS, NOT ON A PROMPT — fixed 2026-08-15
+ *
+ * Reported as "no properties are visible on the All filter", and it was worse
+ * than that: on a fresh install this screen opened completely BLANK below the
+ * search field. It started in `editing` with an empty field, which renders the
+ * recent-searches panel, and that panel returns `null` when there are no
+ * recent searches — which is every user's first visit.
+ *
+ * Two changes, and the second is the one that makes the class of bug go away:
+ *
+ *  1. The screen opens in results mode. `/properties/search` with no criteria
+ *     returns the whole corpus, sorted and paginated, so "browse everything"
+ *     is a real answer rather than the absence of one. A `browsing` flag used
+ *     to carry that distinction; it is gone, because with no way to reach a
+ *     criteria-less non-answer there is nothing left for it to distinguish.
+ *  2. Editing mode only TAKES OVER the screen when it has something to put
+ *     there. Focusing the field with nothing typed and no history now leaves
+ *     the results in place instead of covering them with nothing.
+ *
+ * The old `StartPrompt` went with it. It existed to be shown when there was no
+ * query to run, and there is no such state now.
+ *
+ * Typing still costs at most one debounced suggestions call, which matters
+ * because both endpoints share a 20-request-per-minute limiter keyed on IP.
  */
 export default function PropertiesScreen() {
   const route = useLocalSearchParams<{
@@ -76,17 +98,8 @@ export default function PropertiesScreen() {
 
   const [input, setInput] = useState('');
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
-  const [editing, setEditing] = useState(true);
-  /**
-   * Browse-everything mode.
-   *
-   * `/properties/search` is perfectly happy with no criteria — it returns the
-   * whole corpus, sorted and paginated. So "show me everything" is a real
-   * results state, not an absence of one. Without this flag `hasAnyCriteria`
-   * is false and the screen falls through to `StartPrompt`, which is what made
-   * Home's "View all" and CTA banner land on an empty screen.
-   */
-  const [browsing, setBrowsing] = useState(false);
+  /** False on arrival: the tab opens on the whole corpus. See the module doc. */
+  const [editing, setEditing] = useState(false);
   /**
    * Card or compact row. Screen-local rather than persisted: it is a reading
    * preference for the current search, and a user who switched to compact to
@@ -97,7 +110,18 @@ export default function PropertiesScreen() {
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [saveSheetOpen, setSaveSheetOpen] = useState(false);
   const [compareSheetOpen, setCompareSheetOpen] = useState(false);
+  /**
+   * Compare is a MODE now, off by default.
+   *
+   * It used to be permanently on: every card carried an unlabelled circle in
+   * the corner where a save control belongs, for a feature most sessions never
+   * use. Common path on the surface, rare path one deliberate step deeper —
+   * the toolbar's toggle is the step. Leaving the mode clears the selection,
+   * because a selection you cannot see is a selection you will be surprised by.
+   */
+  const [comparing, setComparing] = useState(false);
   const compare = useCompareSelection();
+  const save = useSaveToggle();
 
   /**
    * Filters arriving from Home.
@@ -146,7 +170,6 @@ export default function PropertiesScreen() {
       city,
       sort: sort ?? DEFAULT_FILTERS.sort,
     });
-    setBrowsing(browse);
     setEditing(false);
     if (route.openFilters === '1') setFilterSheetOpen(true);
   }, [
@@ -162,7 +185,14 @@ export default function PropertiesScreen() {
   const recent = useRecentSearches();
   const suggestions = useSuggestions(editing ? input : '');
 
-  const showResults = !editing && (hasAnyCriteria(filters) || browsing);
+  /**
+   * Editing only covers the screen when the panel underneath has content —
+   * suggestions for what is typed, or a search history to offer. Otherwise the
+   * results stay visible behind the focused field, which is both more useful
+   * and the thing that stops a blank screen being reachable at all.
+   */
+  const showEditingPanel = editing && (input.trim().length >= 2 || recent.items.length > 0);
+  const showResults = !showEditingPanel;
   const feed = usePropertySearchFeed(filters, { enabled: showResults });
 
   // Offered once the direct match count is known and thin — never while the
@@ -181,7 +211,6 @@ export default function PropertiesScreen() {
       if (trimmed.length >= 2) recent.add(trimmed);
       // Committing an empty field is "show me everything", not "show me
       // nothing" — the same state the Home CTA arrives in.
-      setBrowsing(trimmed.length === 0);
       setEditing(false);
     },
     [recent]
@@ -201,11 +230,16 @@ export default function PropertiesScreen() {
     [commit]
   );
 
+  /**
+   * Back to everything, not back to nothing. Clearing used to drop the screen
+   * into editing mode with no criteria, which is the state that rendered
+   * blank; it now lands on the unfiltered corpus, which is what "clear" means
+   * on a browse screen.
+   */
   const clear = useCallback(() => {
     setInput('');
     setFilters(DEFAULT_FILTERS);
-    setBrowsing(false);
-    setEditing(true);
+    setEditing(false);
   }, []);
 
   const applyFilters = useCallback((next: SearchFilters) => {
@@ -223,6 +257,31 @@ export default function PropertiesScreen() {
     [compare]
   );
 
+  const getSaveProps = useCallback(
+    (item: PropertySummary) => ({
+      saved: save.isSaved(item.id),
+      busy: save.isBusy(item.id),
+      onToggle: () => save.toggle(item),
+    }),
+    [save]
+  );
+
+  const toggleCompareMode = useCallback(() => {
+    setComparing((current) => {
+      if (current) {
+        compare.clear();
+        return false;
+      }
+      // Compare selection lives on the card's photo corner, and the compact
+      // row has no free corner to put it in. Entering the mode from the row
+      // view therefore switches back to cards rather than lighting the toggle
+      // over a list with no checkboxes on it — a mode that is on and has no
+      // visible effect is the worst version of a mode.
+      setDensity('card');
+      return true;
+    });
+  }, [compare]);
+
   return (
     <Screen edges={['top']}>
       {/*
@@ -230,8 +289,9 @@ export default function PropertiesScreen() {
         is deliberate. A horizontally scrolling strip inside a padded container
         is clipped 16pt short of each screen edge, so its pills stop and start
         in mid-air rather than sliding off the side. Every portal's filter rail
-        runs edge to edge for the same reason — the cut-off pill at the right
-        margin is what says there is more to scroll to.
+        runs edge to edge for the same reason. The rail draws its own fade at
+        the right edge so the pill under it reads as continuing rather than as
+        chopped — see `QuickFilterBar`.
       */}
       <View className="px-base pt-sm">
         <View className="flex-row items-center gap-sm">
@@ -248,11 +308,11 @@ export default function PropertiesScreen() {
             />
           </View>
 
-          {/* Only offered when there are results to go back TO. Without it,
-              tapping the field to check what you typed strands you in the
-              suggestion panel with no way out but submitting again. */}
-          {editing && (hasAnyCriteria(filters) || browsing) ? (
-            <Pressable
+          {/* Cancel while the panel is up, Filters otherwise. They never both
+              apply: the panel covers the list, and there is nothing to filter
+              while you cannot see it. */}
+          {showEditingPanel ? (
+            <PressableScale
               accessibilityRole="button"
               accessibilityLabel="Back to results"
               hitSlop={gesture.hitSlop}
@@ -260,13 +320,14 @@ export default function PropertiesScreen() {
                 setInput(filters.query);
                 setEditing(false);
               }}
-              style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
             >
               <Text variant="callout" tone="accent">
                 Cancel
               </Text>
-            </Pressable>
-          ) : null}
+            </PressableScale>
+          ) : (
+            <FiltersButton filters={filters} onPress={() => setFilterSheetOpen(true)} />
+          )}
         </View>
       </View>
 
@@ -283,16 +344,18 @@ export default function PropertiesScreen() {
         rows of chrome is most of a phone's viewport spent on how to look rather
         than on what there is, and adding six facets must not undo that — hence
         a rail that scrolls sideways rather than wraps.
+
+        Filters left the rail on 2026-08-15 and now sits beside the search field
+        above. It opens a surface rather than setting a value, so it belongs
+        with the screen's other control, and moving it gave the rail back 93pt —
+        enough that the segmented control and two facet pills are legible before
+        anyone scrolls.
       */}
-      <View className="pb-md pt-md">
-        <QuickFilterBar
-          filters={filters}
-          onChange={applyFilters}
-          onOpenAllFilters={() => setFilterSheetOpen(true)}
-        />
+      <View className="pb-sm pt-md">
+        <QuickFilterBar filters={filters} onChange={applyFilters} />
       </View>
 
-      {editing ? (
+      {showEditingPanel ? (
         <View className="flex-1">
           {input.trim().length >= 2 ? (
             <SuggestionList
@@ -310,18 +373,25 @@ export default function PropertiesScreen() {
             />
           )}
         </View>
-      ) : showResults ? (
+      ) : (
         <PropertyList
           feed={feed}
           header={
             feed.total > 0 ? (
-              <ResultBar
+              <ResultsToolbar
                 total={feed.total}
                 density={density}
                 onToggleDensity={() =>
                   setDensity((current) => (current === 'card' ? 'row' : 'card'))
                 }
+                comparing={comparing}
+                compareCount={compare.items.length}
+                onToggleCompare={toggleCompareMode}
                 onSaveSearch={() => setSaveSheetOpen(true)}
+                // Switching density while comparing would strand the selection
+                // on a view that cannot show it, so the control leaves with the
+                // mode rather than being disabled inside it.
+                showDensity={!comparing}
               />
             ) : undefined
           }
@@ -330,15 +400,18 @@ export default function PropertiesScreen() {
           emptyActionLabel="Clear search"
           onEmptyAction={clear}
           footer={<RelatedProperties items={related.items} />}
-          getCompareProps={density === 'card' ? getCompareProps : undefined}
+          getSaveProps={getSaveProps}
+          // Compare selection is a card-only affordance: the compact row has no
+          // free corner, and comparing is a considered act that belongs with the
+          // photo you are considering.
+          getCompareProps={comparing && density === 'card' ? getCompareProps : undefined}
           density={density}
         />
-      ) : (
-        <StartPrompt onBrowseAll={() => commit('')} />
       )}
 
       {showResults ? (
         <CompareBar
+          active={comparing}
           items={compare.items}
           onRemove={(id) => {
             const item = compare.items.find((i) => i.id === id);
@@ -346,6 +419,7 @@ export default function PropertiesScreen() {
           }}
           onClear={compare.clear}
           onCompare={() => setCompareSheetOpen(true)}
+          onExit={toggleCompareMode}
         />
       ) : null}
 
@@ -367,135 +441,18 @@ export default function PropertiesScreen() {
         items={compare.items}
         onClose={() => setCompareSheetOpen(false)}
       />
+
+      {/* States what an enquiry does before it is sent — see `EnquirySheet`. */}
+      <EnquirySheet
+        visible={save.pending !== null}
+        subtitle={save.pending?.locationLabel || save.pending?.title}
+        remaining={save.remaining}
+        onConfirm={save.confirm}
+        onCancel={save.cancel}
+      />
     </Screen>
-  );
-}
-
-/**
- * The result bar: how many, and the two controls that act on the whole set.
- *
- * ---------------------------------------------------------------------------
- * IT SCROLLS NOW — 2026-08-14.
- *
- * This used to be fixed chrome between the filter strip and the list. Adding
- * the quick-filter rail above it would have made the fixed chrome a search
- * field, a rail and this, which is around a fifth of a phone's viewport gone
- * before the first result — the exact problem the rail was collapsing three
- * rows into one to avoid.
- *
- * So it moved into the list as its header. That is not a demotion, it is the
- * correct place for it: the count and these two controls describe the ANSWER,
- * and an answer belongs with the results rather than with the question. The
- * search field and the rail are the question and they stay put, because those
- * are what a user reaches for while looking at a result they want to change.
- */
-function ResultBar({
-  total,
-  density,
-  onToggleDensity,
-  onSaveSearch,
-}: {
-  total: number;
-  density: 'card' | 'row';
-  onToggleDensity: () => void;
-  onSaveSearch: () => void;
-}) {
-  const theme = useTheme();
-
-  return (
-    <View className="flex-row items-center justify-between pb-sm">
-      <Text variant="footnote" tone="secondary">
-        {total.toLocaleString('en-IN')} {total === 1 ? 'property' : 'properties'}
-      </Text>
-
-      <View className="flex-row items-center" style={{ gap: spacing.xs }}>
-        {/*
-          Saving is offered only once there are results, because a saved
-          search that matched nothing produces an alert the user cannot
-          interpret. See `SaveSearchSheet` for why the term is saved as a
-          NAME rather than as a filter.
-        */}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Save this search"
-          hitSlop={gesture.hitSlop}
-          onPress={onSaveSearch}
-          className="h-9 w-9 items-center justify-center rounded-full"
-          style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
-        >
-          <Ionicons name="bookmark-outline" size={18} color={theme.colors.textSecondary} />
-        </Pressable>
-
-        {/*
-          Density. Not decoration: the compact row fits about three times as
-          many results per screen, which matters most to users on large
-          accessibility text who see fewest. See `PropertyRow`.
-        */}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={
-            density === 'card' ? 'Switch to compact list' : 'Switch to large cards'
-          }
-          hitSlop={gesture.hitSlop}
-          onPress={onToggleDensity}
-          className="h-9 w-9 items-center justify-center rounded-full"
-          style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
-        >
-          <Ionicons
-            name={density === 'card' ? 'list-outline' : 'grid-outline'}
-            size={19}
-            color={theme.colors.textSecondary}
-          />
-        </Pressable>
-      </View>
-    </View>
   );
 }
 
 /** Accepted `sort` route params. Anything else is ignored rather than trusted. */
 const SORT_VALUES = ['newest', 'priceAsc', 'priceDesc'] as const;
-
-/**
- * Shown when the criteria were cleared to nothing, which leaves no query to
- * run.
- *
- * It offers a way OUT rather than only describing the state: the whole corpus
- * is one tap away, and an empty screen whose only instruction is "type
- * something" is a dead end for a user who does not yet know what to type.
- */
-function StartPrompt({ onBrowseAll }: { onBrowseAll: () => void }) {
-  const theme = useTheme();
-
-  return (
-    <View className="flex-1 items-center justify-center px-xl">
-      <View
-        style={{
-          width: 72,
-          height: 72,
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: radius.full,
-          backgroundColor: theme.colors.brandMuted,
-          marginBottom: spacing.lg,
-        }}
-      >
-        <Ionicons name="home-outline" size={30} color={theme.colors.brand} />
-      </View>
-
-      <Text variant="title3" className="text-center">
-        Find your place
-      </Text>
-      <Text variant="callout" tone="secondary" className="mt-sm text-center">
-        Search a city, locality or project — or browse everything on
-        DealDirect right now.
-      </Text>
-
-      <Button
-        label="Browse all properties"
-        align="center"
-        className="mt-xl"
-        onPress={onBrowseAll}
-      />
-    </View>
-  );
-}

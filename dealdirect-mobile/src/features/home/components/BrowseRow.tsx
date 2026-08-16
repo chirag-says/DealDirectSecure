@@ -41,8 +41,7 @@ function BrowseTile({ shortcut, onPress }: { shortcut: BrowseShortcut; onPress: 
       accessibilityRole="button"
       accessibilityLabel={`Browse ${shortcut.label}`}
       onPress={onPress}
-      style={({ pressed }) => (pressed ? { opacity: 0.75 } : undefined)}
-      className="items-center"
+      className="items-center active:opacity-75"
     >
       <View
         className="items-center justify-center border border-border bg-surface-muted"
@@ -66,8 +65,7 @@ export function PopularSearches({ onSelect }: BrowseRowProps) {
           accessibilityRole="button"
           accessibilityLabel={`Search ${term}`}
           onPress={() => onSelect(term)}
-          style={({ pressed }) => (pressed ? { opacity: 0.75 } : undefined)}
-          className="rounded-full border border-border px-md py-sm"
+          className="rounded-full border border-border px-md py-sm active:opacity-75"
         >
           <Text variant="footnote" tone="secondary">
             {term}

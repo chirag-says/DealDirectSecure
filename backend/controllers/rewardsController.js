@@ -5,13 +5,9 @@
 import {
   getWallet,
   getTransactionHistory,
-  redeemPoints,
   getReferralStats,
   awardPoints,
   adminAdjustPoints,
-  getRedemptionRequests,
-  updateRedemptionStatus,
-  REWARDS_STORE,
 } from "../services/rewardService.js";
 import {
   getCategories,
@@ -119,55 +115,14 @@ export const getUserReferrals = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to fetch referrals" });
   }
 };
-
-/**
- * POST /api/rewards/redeem
- * Redeem points for a reward
- * Body: { rewardSlug, bankDetails? }
- */
-export const redeemReward = async (req, res) => {
-  try {
-    const { rewardSlug, bankDetails } = req.body;
-
-    if (!rewardSlug) {
-      return res.status(400).json({ success: false, message: "Reward selection is required" });
-    }
-
-    const result = await redeemPoints(req.user._id, rewardSlug, { bankDetails });
-
-    if (!result.success) {
-      return res.status(400).json({ success: false, message: result.error });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Redemption request submitted successfully!",
-      redemption: result.redemption,
-      newBalance: result.newBalance,
-    });
-  } catch (error) {
-    console.error("[RewardsCtrl] redeemReward error:", error.message);
-    res.status(500).json({ success: false, message: "Redemption failed" });
-  }
-};
-
-/**
- * GET /api/rewards/store
- * Get available rewards for redemption (public)
- */
-export const getRewardsStore = async (req, res) => {
-  try {
-    res.status(200).json({ success: true, rewards: REWARDS_STORE });
-  } catch (error) {
-    console.error("[RewardsCtrl] getRewardsStore error:", error.message);
-    res.status(500).json({ success: false, message: "Failed to fetch rewards store" });
-  }
-};
-
 // ============================================
-// REWARDPORT CATALOGUE ENDPOINTS (Public)
+// PRE-HUBBLE REDEMPTION ENDPOINTS — REMOVED 2026-08-01
+//
+// redeemReward, getRewardsStore, adminGetRedemptions and adminUpdateRedemption
+// served the in-house redemption store, superseded by the Hubble Gift Card SDK.
+// Verified unreachable before removal — see services/rewardService.js.
+// Redemption now runs through POST /api/rewards/hubble/debit.
 // ============================================
-
 /**
  * GET /api/rewards/catalogue/categories
  */
@@ -267,51 +222,8 @@ export const adminAdjust = async (req, res) => {
 };
 
 /**
- * GET /api/rewards/admin/redemptions?status=pending&page=1&limit=20
- */
-export const adminGetRedemptions = async (req, res) => {
-  try {
-    const { status, page, limit } = req.query;
-    const result = await getRedemptionRequests(status, parseInt(page) || 1, parseInt(limit) || 20);
-    res.status(200).json({ success: true, ...result });
-  } catch (error) {
-    console.error("[RewardsCtrl] adminGetRedemptions error:", error.message);
-    res.status(500).json({ success: false, message: "Failed to fetch redemptions" });
-  }
-};
-
-/**
- * PUT /api/rewards/admin/redemptions/:id
- * Body: { status, adminNotes, voucherCode }
- */
-export const adminUpdateRedemption = async (req, res) => {
-  try {
-    const { status, adminNotes, voucherCode } = req.body;
-
-    if (!status) {
-      return res.status(400).json({ success: false, message: "Status is required" });
-    }
-
-    const result = await updateRedemptionStatus(req.params.id, status, adminNotes, voucherCode);
-
-    if (!result.success) {
-      return res.status(400).json({ success: false, message: result.error });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: `Redemption updated to ${status}`,
-      redemption: result.redemption,
-    });
-  } catch (error) {
-    console.error("[RewardsCtrl] adminUpdateRedemption error:", error.message);
-    res.status(500).json({ success: false, message: "Failed to update redemption" });
-  }
-};
-
-/**
  * GET /api/rewards/admin/user/:userId/wallet
- * Admin view of any user's wallet
+ * Admin: inspect a specific user's wallet.
  */
 export const adminGetUserWallet = async (req, res) => {
   try {

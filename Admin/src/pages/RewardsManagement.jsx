@@ -28,10 +28,7 @@ const statusIcons = {
 
 export default function RewardsManagement() {
     const [activeTab, setActiveTab] = useState('overview');
-    const [redemptions, setRedemptions] = useState([]);
     const [rdPagination, setRdPagination] = useState({});
-    const [rdPage, setRdPage] = useState(1);
-    const [statusFilter, setStatusFilter] = useState('');
     const [loading, setLoading] = useState(false);
 
     // User wallet lookup
@@ -58,30 +55,8 @@ export default function RewardsManagement() {
     const [overviewSearch, setOverviewSearch] = useState('');
     const [overviewLoading, setOverviewLoading] = useState(false);
 
-    // Update redemption modal
-    const [editRedemption, setEditRedemption] = useState(null);
-    const [editStatus, setEditStatus] = useState('');
     const [editNotes, setEditNotes] = useState('');
     const [editVoucher, setEditVoucher] = useState('');
-
-    // Fetch redemptions
-    const fetchRedemptions = useCallback(async (page = 1) => {
-        setLoading(true);
-        try {
-            const res = await rewardsManagementApi.getRedemptions({
-                status: statusFilter || undefined, page, limit: 15
-            });
-            if (res.success) {
-                setRedemptions(res.requests || []);
-                setRdPagination(res.pagination || {});
-                setRdPage(page);
-            }
-        } catch (err) {
-            console.error('Failed to load redemptions:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, [statusFilter]);
 
     // Fetch overview
     const fetchOverview = useCallback(async (page = 1) => {
@@ -105,9 +80,8 @@ export default function RewardsManagement() {
     }, [overviewSort, overviewOrder, overviewSearch]);
 
     useEffect(() => {
-        if (activeTab === 'redemptions') fetchRedemptions(1);
         if (activeTab === 'overview') fetchOverview(1);
-    }, [activeTab, fetchRedemptions, fetchOverview]);
+    }, [activeTab, fetchOverview]);
 
     const handleOverviewSort = (field) => {
         if (overviewSort === field) {
@@ -173,31 +147,13 @@ export default function RewardsManagement() {
         }
     };
 
-    // Update redemption
-    const handleUpdateRedemption = async () => {
-        if (!editRedemption || !editStatus) return;
-        try {
-            const res = await rewardsManagementApi.updateRedemption(editRedemption._id, {
-                status: editStatus,
-                adminNotes: editNotes,
-                voucherCode: editVoucher,
-            });
-            if (res.success) {
-                setEditRedemption(null);
-                fetchRedemptions(rdPage);
-            }
-        } catch (err) {
-            alert('Failed to update redemption');
-        }
-    };
-
     return (
         <div className="space-y-6">
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Rewards Management</h1>
-                    <p className="text-sm text-gray-500 mt-1">Manage user points, tiers, and redemption requests</p>
+                    <p className="text-sm text-gray-500 mt-1">Manage user points and tiers</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <Gift className="w-8 h-8 text-amber-500" />
@@ -208,7 +164,6 @@ export default function RewardsManagement() {
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
                 {[
                     { id: 'overview', label: 'Overview' },
-                    { id: 'redemptions', label: 'Redemption Requests' },
                     { id: 'lookup', label: 'User Wallet Lookup' },
                     { id: 'adjust', label: 'Adjust Points' },
                 ].map(tab => (
@@ -360,92 +315,11 @@ export default function RewardsManagement() {
             )}
 
             {/* ===== REDEMPTIONS TAB ===== */}
-            {activeTab === 'redemptions' && (
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                    {/* Filter bar */}
-                    <div className="flex items-center gap-3 p-4 border-b border-gray-100">
-                        <select
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                        >
-                            <option value="">All Statuses</option>
-                            <option value="pending">Pending</option>
-                            <option value="processing">Processing</option>
-                            <option value="fulfilled">Fulfilled</option>
-                            <option value="failed">Failed</option>
-                        </select>
-                        <button onClick={() => fetchRedemptions(1)} className="px-3 py-2 text-sm bg-gray-100 rounded-lg hover:bg-gray-200">
-                            <RefreshCw className="w-4 h-4" />
-                        </button>
-                    </div>
-
-                    {/* Table */}
-                    {loading ? (
-                        <div className="p-8 text-center text-gray-400">Loading...</div>
-                    ) : redemptions.length === 0 ? (
-                        <div className="p-8 text-center text-gray-400">No redemption requests found</div>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead className="bg-gray-50 border-b">
-                                    <tr>
-                                        <th className="text-left p-3 font-medium text-gray-500">User</th>
-                                        <th className="text-left p-3 font-medium text-gray-500">Reward</th>
-                                        <th className="text-left p-3 font-medium text-gray-500">Points</th>
-                                        <th className="text-left p-3 font-medium text-gray-500">Status</th>
-                                        <th className="text-left p-3 font-medium text-gray-500">Date</th>
-                                        <th className="text-left p-3 font-medium text-gray-500">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-50">
-                                    {redemptions.map(rd => (
-                                        <tr key={rd._id} className="hover:bg-gray-50">
-                                            <td className="p-3">
-                                                <p className="font-medium text-gray-800">{rd.user?.name || '-'}</p>
-                                                <p className="text-xs text-gray-400">{rd.user?.email || '-'}</p>
-                                            </td>
-                                            <td className="p-3 text-gray-700">{rd.rewardName}</td>
-                                            <td className="p-3 font-semibold text-amber-600">{rd.pointsSpent}</td>
-                                            <td className="p-3">
-                                                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${statusColors[rd.status] || ''}`}>
-                                                    {statusIcons[rd.status]} {rd.status}
-                                                </span>
-                                            </td>
-                                            <td className="p-3 text-gray-500">{new Date(rd.createdAt).toLocaleDateString('en-IN')}</td>
-                                            <td className="p-3">
-                                                <button
-                                                    onClick={() => { setEditRedemption(rd); setEditStatus(rd.status); setEditNotes(rd.adminNotes || ''); setEditVoucher(rd.voucherCode || ''); }}
-                                                    className="text-blue-600 hover:text-blue-700 text-xs font-medium"
-                                                >
-                                                    Update
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-
-                    {/* Pagination */}
-                    {rdPagination.totalPages > 1 && (
-                        <div className="flex items-center justify-between p-4 border-t border-gray-100">
-                            <span className="text-sm text-gray-500">Page {rdPage} of {rdPagination.totalPages}</span>
-                            <div className="flex gap-2">
-                                <button disabled={rdPage <= 1} onClick={() => fetchRedemptions(rdPage - 1)} className="p-2 border rounded-lg disabled:opacity-40">
-                                    <ChevronLeft className="w-4 h-4" />
-                                </button>
-                                <button disabled={rdPage >= rdPagination.totalPages} onClick={() => fetchRedemptions(rdPage + 1)} className="p-2 border rounded-lg disabled:opacity-40">
-                                    <ChevronRight className="w-4 h-4" />
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* ===== WALLET LOOKUP TAB ===== */}
+            {/* 'Redemption Requests' tab removed 2026-08-01 — it listed
+                RedemptionRequest documents from the pre-Hubble in-house store.
+                That store is gone (verified unreachable: 0 documents ever created,
+                no UI could create one) and its backend endpoints were deleted.
+                Redemption now happens inside the Hubble SDK on the client. */}
             {activeTab === 'lookup' && (
                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-6">
                     <div className="flex gap-3">
@@ -561,37 +435,8 @@ export default function RewardsManagement() {
             )}
 
             {/* ===== UPDATE REDEMPTION MODAL ===== */}
-            {editRedemption && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setEditRedemption(null)}>
-                    <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-                        <h3 className="font-bold text-gray-900">Update Redemption</h3>
-                        <p className="text-sm text-gray-500">{editRedemption.rewardName} — {editRedemption.pointsSpent} pts</p>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                            <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                                <option value="pending">Pending</option>
-                                <option value="processing">Processing</option>
-                                <option value="fulfilled">Fulfilled</option>
-                                <option value="failed">Failed (refunds points)</option>
-                                <option value="cancelled">Cancelled</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Voucher Code (if applicable)</label>
-                            <input type="text" value={editVoucher} onChange={(e) => setEditVoucher(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Admin Notes</label>
-                            <textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} rows={2} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-                        </div>
-                        <div className="flex gap-3 justify-end">
-                            <button onClick={() => setEditRedemption(null)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm">Cancel</button>
-                            <button onClick={handleUpdateRedemption} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">Update</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* 'Update Redemption' modal removed 2026-08-01 with the
+                Redemption Requests tab — see note above. */}
         </div>
     );
 }

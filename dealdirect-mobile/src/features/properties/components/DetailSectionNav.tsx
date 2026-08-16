@@ -231,16 +231,16 @@ export function DetailSectionNav({ sections, scrollY, onJump }: DetailSectionNav
               accessibilityLabel={section.label}
               hitSlop={gesture.hitSlop}
               onPress={() => handleJump(section)}
-              style={({ pressed }) => [
-                {
-                  justifyContent: 'center',
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: 6,
-                  borderRadius: radius.full,
-                  backgroundColor: active ? theme.colors.accentMuted : 'transparent',
-                },
-                pressed ? { opacity: 0.6 } : undefined,
-              ]}
+              // Object, not a function — see `ui/Chip.tsx`. A function-valued
+              // `style` is discarded by NativeWind's interop.
+              className="active:opacity-60"
+              style={{
+                justifyContent: 'center',
+                paddingHorizontal: spacing.md,
+                paddingVertical: 6,
+                borderRadius: radius.full,
+                backgroundColor: active ? theme.colors.accentMuted : 'transparent',
+              }}
             >
               <Text variant="footnote" tone={active ? 'accent' : 'secondary'} numberOfLines={1}>
                 {section.label}

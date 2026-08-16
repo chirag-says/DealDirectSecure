@@ -104,8 +104,7 @@ export function SearchTrigger({ onPress, label }: { onPress: () => void; label?:
       onPress={onPress}
       // Border only, no fill. A grey pill on a white feed reads as a disabled
       // field; a hairline outline reads as an affordance waiting to be used.
-      className="flex-row items-center rounded-full border border-border-strong px-base py-md"
-      style={({ pressed }) => (pressed ? { opacity: 0.85 } : undefined)}
+      className="flex-row items-center rounded-full border border-border-strong px-base py-md active:opacity-85"
     >
       <Ionicons name="search" size={18} color={theme.colors.textSecondary} />
       <Text variant="body" tone={label ? 'primary' : 'secondary'} numberOfLines={1} className="ml-sm flex-1">

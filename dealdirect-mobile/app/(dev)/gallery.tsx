@@ -201,7 +201,7 @@ export default function GalleryScreen() {
         </Section>
 
         <Section title="Card and avatar">
-          <Card className="p-base">
+          <Card>
             <View className="flex-row items-center gap-md">
               <Avatar name="Chirag Sharma" />
               <View className="flex-1">
@@ -211,7 +211,7 @@ export default function GalleryScreen() {
               <Badge label="Owner" tone="accent" />
             </View>
           </Card>
-          <Card raised={false} className="p-base">
+          <Card raised={false}>
             <Text variant="body">Flat card, for grouped rows.</Text>
           </Card>
         </Section>

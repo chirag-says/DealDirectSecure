@@ -51,11 +51,11 @@ export function IntentCards({ onSelect }: IntentCardsProps) {
             accessibilityRole="button"
             accessibilityLabel={`Find a place ${spec.title}`}
             onPress={() => onSelect(spec.intent)}
-            style={({ pressed }) => [
-              { backgroundColor: tint, borderRadius: radius.lg },
-              pressed ? { opacity: 0.85 } : null,
-            ]}
-            className="flex-1 justify-between p-base"
+            // Object, not a function — see `ui/Chip.tsx`. As a function this
+            // was discarded by NativeWind's interop, which is why these two
+            // cards painted with no tint and square corners.
+            style={{ backgroundColor: tint, borderRadius: radius.lg }}
+            className="flex-1 justify-between p-base active:opacity-85"
           >
             <View className="mb-2xl">
               <Text variant="footnote" tone="secondary">

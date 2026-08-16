@@ -127,6 +127,84 @@ export const setAdminOnlyFields = (data, adminFields) => {
 
 const isCloudinaryUrl = (img = "") => typeof img === "string" && img.includes("cloudinary.com");
 
+/**
+ * Extract the Cloudinary public_id from a delivery URL.
+ *
+ * Assets are uploaded into nested folders ("dealdirect/properties/abc123"), so
+ * the public_id is EVERY path segment after `upload/` (minus the optional
+ * version), not just the last one.
+ *
+ * Two broken variants previously existed in this file:
+ *   - deleteMyProperty used `slice(-2)` → produced "properties/abc123",
+ *     dropping the "dealdirect/" prefix, so destroy() silently no-opped and
+ *     owner-deleted images stayed publicly reachable forever.
+ *   - deleteProperty used `slice(uploadIndex + 2)`, which assumes a version
+ *     segment is always present. Cloudinary does not guarantee that; without
+ *     one it silently drops a real folder segment.
+ *
+ * This handles both shapes:
+ *   .../upload/v1712345678/dealdirect/properties/abc.jpg → dealdirect/properties/abc
+ *   .../upload/dealdirect/properties/abc.jpg             → dealdirect/properties/abc
+ *
+ * @returns {string|null} public_id, or null if the URL is not a Cloudinary asset
+ */
+export const extractCloudinaryPublicId = (url) => {
+  if (!isCloudinaryUrl(url)) return null;
+
+  const parts = url.split("?")[0].split("/");
+  const uploadIndex = parts.indexOf("upload");
+  if (uploadIndex === -1) return null;
+
+  let rest = parts.slice(uploadIndex + 1);
+  // Drop the optional version segment (v1712345678) if present.
+  if (rest.length && /^v\d+$/.test(rest[0])) rest = rest.slice(1);
+  if (rest.length === 0) return null;
+
+  // Strip the file extension from the final segment only.
+  return rest.join("/").replace(/\.[^/.]+$/, "");
+};
+
+/**
+ * Destroy every Cloudinary asset belonging to a property (flat images array
+ * plus every categorised bucket). Never throws — deletion of the database
+ * record must not be blocked by a storage failure.
+ *
+ * @returns {{ attempted: number, deleted: number, failed: number }}
+ */
+export const deletePropertyAssets = async (property) => {
+  const urls = [
+    ...(property.images || []),
+    ...Object.values(property.categorizedImages?.residential || {}).flat(),
+    ...Object.values(property.categorizedImages?.commercial || {}).flat(),
+  ].filter(isCloudinaryUrl);
+
+  // The same image can appear in both `images` and a categorised bucket.
+  const publicIds = [...new Set(urls.map(extractCloudinaryPublicId).filter(Boolean))];
+
+  let deleted = 0;
+  let failed = 0;
+
+  for (const publicId of publicIds) {
+    try {
+      const res = await cloudinary.uploader.destroy(publicId);
+      // Cloudinary returns { result: "ok" | "not found" } rather than throwing.
+      if (res?.result === "ok") deleted++;
+      else {
+        failed++;
+        console.warn(`[Cloudinary] destroy("${publicId}") returned "${res?.result}"`);
+      }
+    } catch (err) {
+      failed++;
+      console.error(`[Cloudinary] destroy("${publicId}") failed:`, err.message);
+    }
+  }
+
+  if (publicIds.length) {
+    console.log(`[Cloudinary] property ${property._id}: ${deleted}/${publicIds.length} assets deleted${failed ? `, ${failed} failed` : ""}`);
+  }
+  return { attempted: publicIds.length, deleted, failed };
+};
+
 // Process uploaded files from multer-cloudinary (they already have URLs)
 const extractCloudinaryUrls = (files = []) =>
   files.map((file) => file.path || file.secure_url).filter(Boolean);
@@ -974,24 +1052,10 @@ export const deleteProperty = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Property not found' });
     }
 
-    // Delete images from Cloudinary
-    for (const img of p.images || []) {
-      if (isCloudinaryUrl(img)) {
-        try {
-          // Extract public_id from Cloudinary URL
-          const urlParts = img.split("/");
-          const uploadIndex = urlParts.indexOf("upload");
-          if (uploadIndex !== -1) {
-            // Get everything after upload/v{version}/ and remove extension
-            const publicIdParts = urlParts.slice(uploadIndex + 2);
-            const publicId = publicIdParts.join("/").replace(/\.[^/.]+$/, "");
-            await cloudinary.uploader.destroy(publicId);
-          }
-        } catch (deleteError) {
-          console.error("Failed to delete image from Cloudinary:", deleteError);
-        }
-      }
-    }
+    // Delete every Cloudinary asset — flat images AND categorised buckets.
+    // The previous version only walked `p.images`, so categorised images were
+    // always orphaned even on the admin path.
+    await deletePropertyAssets(p);
 
     await p.deleteOne();
     res.json({ success: true, message: 'Property deleted successfully' });
@@ -1176,26 +1240,11 @@ export const deleteMyProperty = async (req, res) => {
       return res.status(404).json({ success: false, message: "Property not found or you don't have permission to delete it" });
     }
 
-    // Delete images from Cloudinary if they exist
-    const allImages = [
-      ...(property.images || []),
-      ...Object.values(property.categorizedImages?.residential || {}).flat(),
-      ...Object.values(property.categorizedImages?.commercial || {}).flat()
-    ];
-
-    for (const imageUrl of allImages) {
-      if (isCloudinaryUrl(imageUrl)) {
-        try {
-          // Extract public_id from Cloudinary URL
-          const urlParts = imageUrl.split('/');
-          const publicIdWithExtension = urlParts.slice(-2).join('/');
-          const publicId = publicIdWithExtension.replace(/\.[^/.]+$/, '');
-          await cloudinary.uploader.destroy(publicId);
-        } catch (e) {
-          console.error("Error deleting image from Cloudinary:", e);
-        }
-      }
-    }
+    // B6 FIX: this previously derived the public_id with `slice(-2)`, which
+    // dropped the "dealdirect/" folder prefix. destroy() then silently
+    // no-opped and every image survived the deletion, staying publicly
+    // reachable by URL forever. deletePropertyAssets() derives it correctly.
+    await deletePropertyAssets(property);
 
     await Property.findByIdAndDelete(propertyId);
 

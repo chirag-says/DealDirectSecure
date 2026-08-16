@@ -9,6 +9,10 @@
  */
 
 import crypto from 'crypto';
+// Safe to import directly: instrument.js has already called Sentry.init() by
+// the time this module loads. Every call below is guarded on SENTRY_DSN, so
+// this is inert when Sentry is not configured.
+import * as Sentry from '@sentry/node';
 
 // ============================================
 // CUSTOM ERROR CLASS
@@ -383,6 +387,22 @@ export const globalErrorHandler = (err, req, res, next) => {
         error.code = 'RATE_LIMITED';
     }
 
+    // ============================================
+    // CORS rejection → 403, not 500.
+    //
+    // The cors() origin callback signals a disallowed origin by passing an
+    // Error, which previously fell through to the generic 500 branch. Two
+    // problems with that: 500 wrongly implies a server fault when the request
+    // was correctly refused, and — since Sentry now reports 5xx — every bot or
+    // scanner sending a foreign Origin would raise a Sentry issue and bury
+    // real errors.
+    //
+    // Marked isOperational so it is treated as expected traffic.
+    // ============================================
+    if (/not allowed by CORS/i.test(err.message || '')) {
+        error = new AppError('Origin not allowed', 403, 'CORS_REJECTED');
+    }
+
     // Get safe response for client
     const response = getSafeResponse(error, requestId, isProduction);
 
@@ -435,7 +455,17 @@ process.on('uncaughtException', (err) => {
     console.error('Error:', err.name, err.message);
     console.error('Stack:', err.stack);
     console.error('🔴'.repeat(30) + '\n');
-    process.exit(1);
+
+    // Report before dying. Sentry.close() flushes the queue — without it the
+    // event is lost, and a crash is precisely the event worth keeping.
+    // Exit happens in both branches so a Sentry failure can never wedge the
+    // process in a half-dead state.
+    if (process.env.SENTRY_DSN) {
+        Sentry.captureException(err, { level: 'fatal', tags: { handler: 'uncaughtException' } });
+        Sentry.close(2000).then(() => process.exit(1), () => process.exit(1));
+    } else {
+        process.exit(1);
+    }
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -443,6 +473,13 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('UNHANDLED REJECTION! at:', promise);
     console.error('Reason:', reason);
     console.error('🟠'.repeat(30) + '\n');
+
+    if (process.env.SENTRY_DSN) {
+        Sentry.captureException(reason instanceof Error ? reason : new Error(String(reason)), {
+            level: 'error',
+            tags: { handler: 'unhandledRejection' },
+        });
+    }
     // Don't exit - let the app handle it gracefully
 });
 

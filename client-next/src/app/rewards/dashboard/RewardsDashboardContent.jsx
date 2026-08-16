@@ -34,7 +34,6 @@ export default function RewardsDashboardContent() {
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('overview');
-    const [redeemLoading, setRedeemLoading] = useState(null);
     const [copySuccess, setCopySuccess] = useState(false);
     const [txPage, setTxPage] = useState(1);
     const [txPagination, setTxPagination] = useState({});
@@ -121,24 +120,10 @@ export default function RewardsDashboardContent() {
         }
     };
 
-    // Redeem
-    const handleRedeem = async (slug) => {
-        if (redeemLoading) return;
-        setRedeemLoading(slug);
-        try {
-            const res = await rewardsApi.redeem({ rewardSlug: slug });
-            if (res.success) {
-                alert(`✅ ${res.message}`);
-                fetchData();
-            } else {
-                alert(`❌ ${res.message}`);
-            }
-        } catch (err) {
-            alert('Redemption failed. Please try again.');
-        } finally {
-            setRedeemLoading(null);
-        }
-    };
+    // handleRedeem() removed 2026-08-01 — defined but never invoked (no onClick
+    // anywhere), a leftover of the pre-Hubble in-house redemption store. The
+    // Redeem tab renders <HubbleStorefront/>, which handles redemption inside
+    // the Hubble SDK and debits the wallet via POST /api/rewards/hubble/debit.
 
     if (authLoading || loading) {
         return (

@@ -22,7 +22,7 @@ export {
   type PropertyDetailQuery,
   type PropertyFeed,
 } from './hooks';
-export { DetailHero, HERO_HEIGHT, type DetailHeroProps } from './components/DetailHero';
+export { DetailHero, heroHeight, type DetailHeroProps } from './components/DetailHero';
 export {
   DetailHeader,
   HEADER_BAR_HEIGHT,
@@ -57,12 +57,14 @@ export { EmiCalculator, type EmiCalculatorProps } from './components/EmiCalculat
 export { useInterest, type InterestState } from './interest';
 export {
   PropertyCard,
-  PropertyRow,
-  COVER_HEIGHT,
-  ROW_HEIGHT,
+  COVER_ASPECT,
+  CARD_RADIUS,
   type PropertyCardProps,
-  type PropertyCompareProps,
+  type CompareControlProps,
+  type SaveControlProps,
 } from './components/PropertyCard';
+export { PropertyListItem } from './components/PropertyListItem';
+export { SavedPropertyCard, type SavedPropertyCardProps } from './components/SavedPropertyCard';
 export { PropertyCardSkeleton, PropertyListSkeleton } from './components/PropertyCardSkeleton';
 export { PropertyList, type PropertyListProps } from './components/PropertyList';
 export { PropertyStrip, type PropertyStripProps } from './components/PropertyStrip';

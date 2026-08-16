@@ -1,6 +1,11 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ==============================================================
+# DealDirect — Public Site (Next.js 16 App Router)
+#
+# This repo is standalone: nothing above this folder is ignored on
+# its behalf, so everything needed must be listed here.
+# ==============================================================
 
-# dependencies
+# ---------- Dependencies ----------
 /node_modules
 /.pnp
 .pnp.*
@@ -9,61 +14,102 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+!.yarn/sdks
 
-# testing
-/coverage
-
-# next.js
+# ---------- Next.js build output ----------
 /.next/
 /out/
-
-# production
 /build
+.turbo/
+next-env.d.ts
 
-# debug
+# ---------- Secrets ----------
+# .env.local          → dev config + NEXT_PUBLIC_MAPPLES_API_KEY
+# .env.production     → contains a real SENTRY_AUTH_TOKEN (build-time
+#                       credential that can upload source maps and read
+#                       the Sentry project). MUST NOT be committed.
+#
+# Anything NEXT_PUBLIC_* is inlined into the browser bundle and is
+# public by definition — restrict those keys at the provider by
+# domain, never rely on them being secret.
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+.env*.local
+
+# Sentry
+.sentryclirc
+.env.sentry-build-plugin
+
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ---------- Logs ----------
+build.log
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (NEVER COMMIT)
-.env
-.env.local
-.env.production
-.env.development.local
-.env.test.local
-.env.production.local
-.env*.local
+# ---------- Ad-hoc diagnostics ----------
+test-*.js
+__*.js
+*.local.js
+tmp/
+temp/
+*.tmp
 
-# build logs
-build.log
-*.log
+# ---------- Testing / coverage ----------
+/coverage
+.nyc_output/
+/playwright-report/
+/test-results/
 
-# vercel
+# ---------- Deployment ----------
 .vercel
 
-# typescript
+# ---------- TypeScript (if ever added) ----------
 *.tsbuildinfo
-next-env.d.ts
 
-# sentry
-.sentryclirc
-
-# AI assistant
-.gemini/
-
-# misc
-*.pem
-
-# OS files
-.DS_Store
-Thumbs.db
-Desktop.ini
-
-# editor / IDE
-.idea/
+# ---------- Editors & tooling ----------
 .vscode/
-*.sublime-project
-*.sublime-workspace
+!.vscode/extensions.json
+.idea/
 *.swp
 *.swo
+*.sw?
+*~
+.gemini/
+.claude/
+
+# ---------- OS ----------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ==============================================================
+# DELIBERATELY NOT IGNORED
+#
+#   package-lock.json — required for reproducible builds.
+#
+#   src/app/sitemap.js, src/app/robots.js — source files that Next
+#   compiles into /sitemap.xml and /robots.txt. Do not add
+#   "sitemap.xml" or "robots.txt" patterns here; they would not
+#   match these but the confusion is easy to create.
+#
+#   public/ — contains press PDFs and sample agreement PDFs that the
+#   site serves. The backend ignores *.pdf; this app must not.
+# ==============================================================

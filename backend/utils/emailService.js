@@ -20,6 +20,37 @@ const escapeHtml = (str) => {
     .replace(/'/g, '&#x27;');
 };
 
+// ============================================
+// LINK NORMALISATION
+//
+// Email clients have no page context, so a relative href like "/notifications"
+// has no base to resolve against and renders as "http:///notifications" — an
+// invalid URL with an empty host. Every link in an email MUST be absolute.
+//
+// Callers may pass either form: absolute URLs pass through untouched, relative
+// paths are resolved against the public site origin. Keeping relative paths
+// valid at the call site matters because Notification.data.actionUrl is also
+// intended for in-app client-side routing, where a relative path is correct.
+//
+// CLIENT_URL is absent from backend/.env (it is only set in .env.production),
+// hence the explicit fallback rather than an undefined-host URL.
+// ============================================
+const CLIENT_BASE_URL = (process.env.CLIENT_URL || 'https://dealdirect.in').replace(/\/+$/, '');
+
+const toAbsoluteUrl = (url) => {
+  if (!url) return null;
+  const trimmed = String(url).trim();
+  if (!trimmed) return null;
+  // Already absolute (http/https) — leave as-is.
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  // Reject any other scheme (mailto:, javascript:, data:, …) — never emit it.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    console.warn(`[Email] Refusing to render non-http link: ${trimmed.slice(0, 40)}`);
+    return null;
+  }
+  return `${CLIENT_BASE_URL}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+};
+
 // Create SMTP transporter
 const createTransporter = () => {
   // SECURITY: No hardcoded fallbacks for sensitive values
@@ -151,7 +182,11 @@ const emailTemplates = {
       Deal Direct Team
     `
   }),
-  generalNotification: (userName, title, message, actionUrl = null, actionText = 'View Details') => ({
+  generalNotification: (userName, title, message, actionUrl = null, actionText = 'View Details') => {
+    // Emails have no page context — a relative href resolves to an invalid
+    // "http:///path" URL. Always absolutise before rendering.
+    const href = toAbsoluteUrl(actionUrl);
+    return {
     subject: `🔔 Deal Direct: ${title}`,
     html: `
       <!DOCTYPE html>
@@ -179,10 +214,10 @@ const emailTemplates = {
             <div class="message-box">
               <p>${message}</p>
             </div>
-            ${actionUrl ? `
+            ${href ? `
             <center>
-              <a href="${actionUrl}" class="cta-button">
-                ${actionText} →
+              <a href="${escapeHtml(href)}" class="cta-button">
+                ${escapeHtml(actionText)} →
               </a>
             </center>
             ` : ''}
@@ -202,12 +237,13 @@ const emailTemplates = {
       Hi ${userName},
       
       ${message}
-      ${actionUrl ? `\n      ${actionText}: ${actionUrl}` : ''}
-      
+      ${href ? `\n      ${actionText}: ${href}` : ''}
+
       Best regards,
       Deal Direct Team
     `
-  }),
+    };
+  },
   welcomeUser: (userName) => ({
     subject: `Welcome to the Revolution! 🏠 Your journey to a Broker-Free deal starts here.`,
     html: `

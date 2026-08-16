@@ -2033,3 +2033,678 @@ is not true.
 running. Feel-check on a device: the progress bar under a rapid double-remove
 on Saved (it should retarget, not restart), and the tools card entrance while
 editing an input (it must NOT re-enter on each keystroke).
+
+---
+
+### 10.8 The navigator's own background was light in dark mode
+
+Reported from a device: on Saved and Properties in dark mode, a pale band sat
+along the bottom edge under the floating dock. It was on every screen with a
+tab bar, not those two.
+
+**Cause.** React Navigation paints a background behind every navigator, taken
+from `theme.colors.background`. Expo Router mounts its `NavigationContainer`
+with `DefaultTheme` and never consults the colour scheme, so that value was
+`rgb(242, 242, 242)` in both schemes, always.
+
+Nothing showed it while a screen covered it — `ui/Screen` paints
+`bg-background` across the whole scene. But the tab bar is a SIBLING of the
+scene rather than a child: `BottomTabView` lays the screen container and the
+tab bar out in a column. Our dock is a floating pill (§ `ui/TabBar.tsx`) with
+transparent 16pt gutters and a transparent safe-area strip beneath it, so every
+transparent pixel around the pill was showing that grey through a black app.
+The pill's shadow (radius 20) darkened the gutters enough to hide it there,
+which is why it read as a band along the bottom rather than as a frame.
+
+**Fix.** `src/theme/navigationTheme.ts` projects our colour tokens into React
+Navigation's theme shape for both schemes, and `app/_layout.tsx` wraps the
+`Stack` in `ThemeProvider` from `@react-navigation/native`. That also corrects
+the native stack's scene background and the modal backdrop, which were reading
+the same wrong value.
+
+`@react-navigation/native` is imported directly and is deliberately NOT added
+to `package.json`. It arrives as a dependency of `expo-router`, which owns its
+version; declaring it separately would let the two drift.
+
+**Status bar.** `style="auto"` reads the OS appearance, not the app's resolved
+scheme, so forcing Dark on a Light phone gave black glyphs on a black header.
+Both remaining `auto` uses are now driven from `theme.scheme` — the root layout
+and `DetailHeader`'s collapsed state. `gallery.tsx` and `DetailHeader`'s
+expanded state stay hard-forced to `light`: those sit on a photograph, where
+the scheme is irrelevant.
+
+**Not covered.** Android's system navigation bar under `edgeToEdgeEnabled`.
+Setting its button colour needs `expo-navigation-bar`, which is not installed;
+that is a native-module decision, not part of this fix.
+
+### 10.9 Theme switch on Profile
+
+`Appearance` group at the foot of `PublicSections` in `app/(tabs)/profile.tsx`:
+a three-option segmented control, System / Light / Dark, on
+`useThemePreference()`. The runtime already existed and persisted to MMKV; the
+only surface exposing it was the dev-only gallery, so a shipped build had no
+way to reach it.
+
+Three decisions worth keeping:
+
+- **In `PublicSections`, so signed-out users get it too.** A colour scheme is a
+  device preference, not account data — `ThemeProvider` already persists it
+  across logout for that reason.
+- **Three options, not a switch.** A two-state toggle cannot express "follow
+  the phone", so picking either would silently opt the user out of their
+  phone's schedule with no way back.
+- **Inside a `ListGroup`.** `Segmented` draws its track in `surfaceMuted`,
+  which is within 2% of the page background in light mode and would vanish on
+  it; on a card it separates.
+
+---
+
+### 10.10 A function-valued `style` is silently discarded — read this before writing one
+
+The single highest-value finding in this pass, because it fails quietly and it
+had already shipped in several places.
+
+React Native lets a `Pressable` take `style={({ pressed }) => …}`. **This app
+cannot use that form.** `babel.config.js` sets NativeWind's `jsxImportSource`,
+which routes every JSX element through `react-native-css-interop`'s `wrapJSX`;
+that swaps `Pressable` for its interop component whether or not the element has
+a `className`. The interop treats `style` as a source of inline CSS rules: it
+spreads it (`{...style}` — for a function, `{}`), assigns the empty object over
+`props.style`, and renders `{...props, ...computed}` with the computed value
+last. The function is never called.
+
+What that cost, in ascending order of visibility:
+
+| Where | What was lost |
+|---|---|
+| ~20 sites carrying layout in `className` | the pressed fade only — invisible in a screenshot, but every press in the app was unacknowledged |
+| `home/IntentCards` | the two hero cards' background tint and corner radius |
+| `home/HeroSearchField` rows | all layout: row direction and padding |
+| `search/QuickFilterBar` `Pill` | **everything** — padding, border, fill, pill radius, and `flexDirection`, which fell back to `column` |
+
+That last row is what "the filters at the top of the Properties page are not
+properly placed" was. Each pill painted as a bare `View`, so every chevron
+stacked under its own label and the whole rail read as loose text.
+
+**The rule.** Layout goes in a plain style OBJECT or in `className`. The press
+state goes in an `active:` class, or use `ui/PressableScale`, which takes an
+object and is the app's standard press treatment anyway. `eslint.config.js`
+now fails the build on a function-valued `style` in any `app/**` or `src/**`
+`.tsx`, with the explanation attached to the rule.
+
+All 26 sites were converted. Nothing else in the app uses the form.
+
+### 10.11 Properties opened blank, and the rail was rebalanced
+
+**Blank on arrival.** Reported as "no properties visible on the All filter". On
+a fresh install the tab rendered the search field, the filter rail, and nothing
+else. It started in `editing` with an empty field, which renders the
+recent-searches panel, and that panel returns `null` when there is no history —
+true for every first visit.
+
+Fixed in two moves, and the second is what retires the class of bug:
+
+1. The tab opens in results mode. `/properties/search` with no criteria returns
+   the whole corpus, so browsing everything is a real answer. The `browsing`
+   flag that used to distinguish "no criteria on purpose" from "no criteria by
+   accident" is gone, along with `StartPrompt`, because the accidental state is
+   no longer reachable. `clear()` now lands on the unfiltered corpus too.
+2. Editing mode only COVERS the screen when the panel has something in it —
+   suggestions for what is typed, or a history to offer. Focusing an empty
+   field with no history leaves the results visible behind it.
+
+**The rail.** Filters moved off it and now sits beside the search field, as a
+pill carrying the active count. It opens a surface rather than setting a value
+— the module doc always said so — and moving it returned 93pt to a strip that
+had eight controls competing for 393pt. The right edge now fades into the page
+background instead of chopping, so the pill under it reads as continuing rather
+than as broken. The rail still scrolls; eight legible controls will not fit
+across a phone and no arrangement of them will.
+
+### 10.12 Saved — the empty and signed-out states
+
+Both rendered one centred box and nothing else, on the same premise Profile was
+corrected for in §10.5: that a screen about saved things has nothing for a user
+with none. It is false. Recently viewed is device-local, so a guest has one; it
+costs no request, because `recentlyViewed.ts` replays a disk snapshot rather
+than refetching (which would inflate every listing's view counter); and with
+enquiring capped at five and emailing the owner, the listing someone returns
+for is far more often one they merely opened.
+
+So `NothingSavedYet` wraps both branches: the prompt goes `compact` at the top
+of a scroll with the recently-viewed rail under it, and falls back to the old
+full-height centred prompt when the history is empty too. `EmptyState` gained
+the `compact` prop `SignInPrompt` already had, for the same reason and with the
+same meaning.
+
+---
+
+## 11. 2026-08-15 — The card system rebuild
+
+Brief: the property cards, saved-property interactions, list/grid layout,
+spacing and button placement "feel amateur and visually inconsistent". Keep the
+light minimal language; fix the structure. Reviewed against `ios-visual`,
+`ux-foundations` and `interaction-design`.
+
+### 11.1 What was structurally wrong
+
+Not styling. Four architectural facts produced every symptom:
+
+1. **`Card` had no padding.** Of 49 `<Card>`s in the app, 41 supplied none, so
+   their content sat flush against all four edges. The Profile header was the
+   clearest casualty — avatar against the corner, and the rewards card touching
+   it with no gap.
+2. **The compact row was the feed card at a smaller size.** A fixed 108pt
+   square thumbnail inside a text-sized row meant image height and row height
+   varied independently down the list; 108pt was 29% of a 375pt screen and 25%
+   of a 430pt one; the intent chip was absolutely positioned over the *text*
+   column where it cost a line; the photo count sat in the opposite corner from
+   the feed card's.
+3. **The three cards shared no parts.** Each redeclared its own photo
+   container, badge and count chip at different sizes and insets. That is why
+   the list and the feed read as two apps.
+4. **The Saved screen's Remove was a sibling of the card, not part of it.**
+
+### 11.2 The component set
+
+| File | Responsibility |
+|---|---|
+| `properties/components/cardParts.tsx` | **new** — what a signal looks like, once: `Cover`, `IntentBadge`, `PhotoCount`, `SaveControl`, `CompareControl`, `SpecRow`, and the geometry constants |
+| `properties/components/PropertyCard.tsx` | rewritten — the feed card, 3:2 photo, four content groups |
+| `properties/components/PropertyListItem.tsx` | **new** — the compact row, purpose-built |
+| `properties/components/SavedPropertyCard.tsx` | **new** — four lines; `PropertyCard` with the heart wired to remove |
+| `properties/components/PropertyCardSkeleton.tsx` | rewritten — both shapes, derived from `cardParts` |
+| `search/components/ResultsToolbar.tsx` | **new** — count + save-search + compare + density |
+| `saved/components/EnquiryMeter.tsx` | **new** — the 4-of-5 counter as one object |
+
+`PropertyRow`, `COVER_HEIGHT`, `ROW_HEIGHT` and `PropertyCompareProps` are
+gone. `PropertyList` takes `getSaveProps` and `getCompareProps`.
+
+### 11.3 Geometry, stated once
+
+- **Cover is a RATIO (3:2), never a height.** A fixed 210pt cover was 1.72:1 on
+  a 375pt phone and 2.1:1 on a 430pt one. The compact thumbnail is a *share* of
+  row width (32%) at 1:1, and the row is `alignItems: 'stretch'` so the photo
+  takes the row's height rather than the row taking the photo's. That one word
+  is most of the list-view fix.
+- **Radius is a function of surface size**: `xl` (20) for a full-width card and
+  anything sitting in that column, `lg` (14) for a 96pt row. Content padding is
+  16 on both, which makes each inner box concentric with its outer radius.
+- **Overlay corners are assigned, not negotiated**: intent top-left, the one
+  action top-right, photo count bottom-right, bottom-left deliberately empty.
+  `OVERLAY_INSET` is 12 and `CONTROL_INSET` is *computed* from it — a 44pt
+  target around a 34pt disc has to sit 5pt closer to the edge for the two
+  visible objects to line up rather than the two boxes.
+- **The list owns the gap; no card carries a margin.** 16 between cards, 12
+  between rows.
+
+### 13.4 Save/unsave — the heart, and why it is honest now
+
+`features/properties/interest.ts` argued at length that a heart would be a lie
+on this backend: marking interest creates a `Lead`, emails the owner, hands over
+name/email/phone, and is capped at five. Every word still true.
+
+What changed is the resolution. Refusing the control did not make the
+consequence visible — it made the *action* invisible, and left the corner where
+every user looks for a save control occupied by a bare unlabelled circle (the
+compare checkbox). A discoverability failure traded for an honesty one.
+
+The control ships and the **confirmation** carries the truth: the toast says the
+owner can now contact you, states how many of the five remain, and carries an
+**Undo**. `ui/Toast.tsx` gained an optional action for this, and only becomes
+interactive when one is present.
+
+`useSaveToggle` (`features/saved/hooks.ts`) is the single implementation — one
+hook per screen, per-card props derived from it, membership read from the
+shared `useSavedProperties` query rather than one `check` request per card.
+Reading the cache *without* subscribing was tried first and was wrong: on a
+signed-in session that had not opened the Saved tab, every heart rendered empty
+including on already-enquired listings.
+
+Residue, stated rather than hidden: undo frees the slot and removes the user
+from the owner's interested list, but does **not** unsend the email or delete
+the `Lead`. That is why the toast says "can now contact you" rather than
+implying full reversal.
+
+### 11.5 The Saved screen's Remove
+
+Was: card, then a small red "⊗ Remove" in the gap **below** it, then the next
+card — putting the control nearer the listing it does not act on than the one it
+does. Norman's mapping, Cooper's "keep actions near the object they affect", and
+plain Gestalt proximity all say the same thing, and the layout violated all
+three identically. Worst case was not confusion; it was removing the wrong
+listing off a list capped at five.
+
+Now the filled heart on the card, with Undo. The `Alert.alert` confirmation went
+with it: a confirmation dialog is an admission that an action cannot be taken
+back, and four taps to remove one listing on the screen whose job is making room
+is the interaction cost of that admission. Undo is the same safety at a quarter
+of the cost and also covers the case the dialog never did — a mis-tap on the
+feed.
+
+### 11.6 Compare became a mode
+
+It was permanently on: an unlabelled circle over every photo in the feed for a
+feature most sessions never use. It is now behind the toolbar's Compare toggle,
+paid for with three simultaneous signals (filled toggle, checkboxes replace
+hearts, compare bar appears). Entering it forces card density, because the
+compact row has no free corner and a mode that is on with no visible effect is
+the worst kind.
+
+### 11.7 The dock
+
+The reported symptom was that the post button "competes with the navigation". It
+was not the button — it was that nothing distinguished it. The selected tab had
+a `brandMuted` pill with a brand-red icon and label, so the dock held two red
+objects side by side, one a destination and one an action. `colors.ts` already
+says which is which: brand is "not an action colour", accent is "the primary
+action colour". The selected tab now takes the accent, a hairline separates the
+four destinations from the one action, and red means exactly one thing in that
+bar.
+
+### 11.8 Unverified
+
+None of §11 has been seen running. Feel-check on a device, in order: the compact
+list's row heights (every row should now be identical); the heart's 44pt target
+against the card's own press target; the Undo toast's timing (5s) against how
+long it takes to notice one; and whether `Card`'s new default padding
+double-pads anywhere the grep for `p-*`/`px-*`/`py-*` classes missed.
+
+---
+
+## 12. 2026-08-15 — Production correction pass
+
+Device review of §11. Four real defects, one of them semantic.
+
+### 12.1 🔴 The heart was firing an irreversible disclosure, and calling it undoable
+
+**Audited against the controller**, not inferred. `markInterested`
+(`backend/controllers/propertyController.js:1505`), one tap:
+
+| Step | Effect |
+|---|---|
+| 1 | rejects if the user already holds 5 interests app-wide |
+| 2 | rejects their own listing, and duplicates |
+| 3 | pushes to `Property.interestedUsers`, `$inc likes` |
+| 4 | **creates a `Lead`** with a `userSnapshot`: name, email, phone, photo |
+| 5 | creates a `Notification` for the owner |
+| 6 | **sends the owner a WhatsApp** carrying name, email and phone |
+| 7 | awards reward points |
+
+`removeInterest` (`:1660`) reverses **step 3 only**. The lead, the
+notification, the WhatsApp and the points all survive. The quota IS restored,
+because the cap counts `interestedUsers` rather than leads.
+
+No email is sent. The claim in `features/properties/interest.ts` that this
+"notifies them by email" is wrong; it is an in-app document plus WhatsApp.
+
+So §11 shipped two lies at once: a heart icon promising a private, free,
+unlimited, reversible bookmark, and an "Undo" in the toast for an action that
+had already disclosed a phone number to a stranger.
+
+**Fixed without touching the backend.** `features/saved/saveToggle.ts` now
+raises `EnquirySheet` before an add — three lines stating what the owner
+receives, plus the quota — and the Undo is gone. Withdrawing is immediate,
+unconfirmed, and its toast says "Enquiry withdrawn" and nothing more, because
+offering Undo there would re-fire the notification and the WhatsApp, which is
+the opposite of undoing.
+
+A confirmation is normally the wrong answer. Three conditions make it right
+here and all three must hold or it should go back to one tap: the action is
+genuinely irreversible; the consequence cannot be inferred from the control;
+and it is rare (capped at five, so at most five sheets ever).
+
+**The product model the user wants is Save ≠ Enquire, and this backend cannot
+express it.** There is one array. `GET /properties/saved` reads the same
+`interestedUsers` that `POST /properties/interested/:id` writes.
+
+Minimum backend change, NOT made, awaiting a decision:
+
+- `User.savedProperties: [ObjectId]` (or a `SavedProperty` collection)
+- `POST/DELETE /properties/save/:id` — array write only, no lead, no
+  notification, no WhatsApp, no reward, **no cap**
+- `GET /properties/saved` split into `/saved` (the new bookmark) and
+  `/enquiries` (the existing interest list)
+
+UI change that would follow: the heart becomes the bookmark and loses the
+sheet; `Enquire` becomes a labelled button on the card and the detail screen;
+Saved gains a third segment or renames Interested to Enquiries.
+
+### 12.2 🔴 Cards touched because `gap` is inert under FlashList
+
+`contentContainerStyle={{ gap: 16 }}` did nothing. FlashList v2 positions every
+cell absolutely — its own `CellRendererComponent` documentation says `position`
+"will be `absolute` as that's how `FlashList` positions elements" — and flex
+`gap` has no effect on absolutely positioned children. `paddingHorizontal` and
+`paddingBottom` on the same object DO apply, which is what made it look like a
+value that was merely too small.
+
+`ItemSeparatorComponent` is the supported mechanism, is measured into the
+layout, and renders between items only — never above the first or below the
+last. 16 between cards, 12 between rows, matching header gaps via
+`ListHeaderComponentStyle`. No card carries a margin.
+
+### 12.3 🟠 Compare mode had no visible state at zero selected
+
+`CompareBar` returned null at zero items, so entering the mode gave a lit
+toolbar icon, checkboxes where the hearts were, and no explanation or exit. The
+bar now renders on the mode rather than the count, states what to do at zero,
+and always carries the way out. The toolbar toggle carries the count.
+
+### 12.4 🟠 The active filter pill was 2pt taller than its neighbours
+
+The label switched from `footnote` (13) to `subhead` (15) on selection, so a
+set pill stood taller and the rail lost its baseline. Fixed height, constant
+variant, weight and colour carry the state.
+
+### 12.5 🟠 Two hooks returned fresh objects, re-rendering every visible row
+
+`useSaveToggle` and `useCompareSelection` returned object literals, so the
+screens' `useCallback`-wrapped per-card prop builders changed identity on every
+render — including on every keystroke in the search field — which changed
+`renderItem` and re-rendered every visible row. Both memoised.
+
+### 12.6 Unverified
+
+Feel-check on device: the enquiry sheet at the largest accessibility text sizes
+on a 667pt screen (it does not scroll); the busy lock on a slow connection; and
+whether the 36pt filter pill needs its `hitSlop` widened on small phones.
+
+---
+
+## 13. 2026-08-15 — Property Detail and Gallery
+
+Scoped to two screens. Nothing else was touched.
+
+### 13.1 The call button is gone, and what that does and does not achieve
+
+Removed on instruction from `DetailActions`, along with `Linking`, the `tel:`
+handler and the `IconAction` helper. Nothing phone-shaped replaces it; the bar
+carries one action.
+
+**Recorded so nobody restores it thinking it was an oversight.** The button read
+`property.owner.phone`, which arrives from `GET /properties/:id` — a PUBLIC
+endpoint that populates the owner's phone and email into every response. So
+removing the button removes the encouragement, not the exposure: the number is
+still readable by anyone who calls the API directly. If it should not be
+reachable, the fix is what the endpoint returns, not what this bar draws. Not
+changed here — that is a backend decision.
+
+### 13.2 The enquiry now confirms before the side effect
+
+The detail screen's CTA called `interest.toggle()` directly, which posts to
+`/properties/interested/:id` and creates the lead, the notification and the
+WhatsApp message in one tap. It now raises `EnquirySheet` first and only calls
+`toggle` from the sheet's confirm. Withdrawing still goes straight through —
+cheap, frees the slot, nothing to warn about.
+
+`EnquirySheet` took plain props for this rather than being bound to
+`useSaveToggle`. Two hooks reach the same endpoint (`useSaveToggle` on the feed
+and Saved, `useInterest` on detail); binding the sheet to either would have
+meant a second copy for the other, which is how two confirmations end up
+wording the same consequence differently.
+
+The screen reads `useSavedProperties` for the true remaining count — the same
+query the feed's hearts already run, deduplicated, so no extra request. It
+feeds both the sheet's quota line and a disabled CTA with an explanation when
+the cap is reached, instead of a press that gets refused.
+
+### 13.3 Hero
+
+- **Height is `heroHeight(width)`, not a flat 320.** A fixed height is a fixed
+  CROP over a variable width, so the same listing showed more sky on a 430pt
+  phone than on a 375pt one. `HERO_HEIGHT` is gone; `DetailHeader` and the
+  skeleton call the function.
+- **Two indicators that say different things**, never both saying the same one:
+  dots bottom-centre for POSITION (up to 8, then dropped), and a button
+  bottom-right for COUNT and for opening the viewer. Past 8 the button takes
+  the position back as "3 / 24".
+- The old chip was drawn inside the content sheet's 20pt overlap and was
+  visibly clipped. Everything now sits at `20 + lg` from the photo's edge.
+- The counter chip went from `black/55` at caption size to `black/72` at
+  footnote/600 in a 32pt pill with a 44pt hit slop — it was reported as too
+  easy to miss.
+
+**A next-image peek was rejected.** It needs horizontal gutters, and gutters end
+the full-bleed treatment that makes the hero read as a photograph rather than a
+card. On a 375pt screen the peek would be about 16pt: not enough to be legible
+as an image, plenty to look accidentally misaligned.
+
+### 13.4 Gallery: black was not the problem, empty black was
+
+A 3:2 photograph on a 19.5:9 phone leaves roughly 40% of the screen empty, and
+the old layout put a 12pt "1 of 6" in it. Stretching distorts; cropping to fill
+throws away what the owner chose to include. The third answer is to use the
+space.
+
+A **thumbnail filmstrip** occupies the lower band and earns it three times: it
+shows the neighbouring images (§10's ask, without shrinking the current one by a
+point), it makes the set's size visible, and it is a direct jump rather than N
+swipes. The band is reserved out of the pager's height rather than overlaid, so
+the thumbnails can never land on the photograph on a short device.
+
+One pagination system: the selected thumbnail IS the position. "3 of 6" beside
+it is a count, not a second set of dots. The strip is dropped entirely at one
+image — no filmstrip of one, no "1 of 1".
+
+Close button: `white/15` → a 36pt `black/55` disc inside a 44pt target. The old
+fill was invisible against a pale photograph, which is exactly when a close
+button has to be findable.
+
+### 13.5 Unverified
+
+- The filmstrip's `scrollToIndex` on a fast swipe through 60 photos — FlatList
+  can throw `scrollToIndex out of range` if the strip has not rendered that far;
+  `getItemLayout` should prevent it but it has not been seen.
+- `pagerHeight` on a landscape rotation.
+- The enquiry sheet at the largest accessibility text sizes (still not
+  scrollable — carried over from §12.6).
+
+---
+
+## 14. 2026-08-16 — Audit remediation
+
+Implements the confirmed findings of the two-pass source-level audit (§13 and
+the route inventory). Scope was the audit's list; no screen classified 🟢 was
+touched.
+
+### 14.1 🔴 `Card`'s default padding double-padded the attribute table
+
+`DetailAttributes` renders its rows inside a `Card` and each row supplies its
+own `px-base py-md`. When `Card` gained `padded = true` by default (§11), those
+rows went to 16 + 16 = 32pt from the card edge, and the separator's
+`marginLeft: 16` inset — written assuming the row's own 16 was the only one —
+stopped landing under the label it insets to.
+
+My own Card audit in §12 missed it: the grep looked two lines past `<Card` and
+the padded child is four lines down inside a `.map`. Fixed with
+`padded={false}`; a deeper scan found no other real instance (the two other
+hits are inner boxes inside padded cards, which is intentional).
+
+### 14.2 🔴 `projects/[id]`
+
+Three independent defects, all structural:
+
+- **`Dimensions.get('window').width` at module scope** — captured once at
+  import, so every gallery page was sized from the width at app start and never
+  updated on rotation or split-screen. Now `useWindowDimensions`.
+- **Fixed `GALLERY_HEIGHT = 260`** — a fixed height over a variable width is a
+  fixed crop over a variable one. Now `galleryHeight(width)`, same derivation
+  `DetailHero` uses.
+- **Mapped `ScrollView` gallery** — every image mounted and decoded at once,
+  which is exactly what `DetailHero`'s doc argues against. Now a windowed
+  `FlatList` (`windowSize={3}`, `removeClippedSubviews`, `getItemLayout`).
+- **`refreshing={false}` hardcoded** — the pull gesture fired the request and
+  showed nothing. The screen owns the flag now.
+- Amenities moved from `Badge` to `Tag`, matching property detail, where the
+  reason is documented: `Chip`/`Badge`-as-control announces dead buttons.
+
+### 14.3 🔴 `projects/unit/[unitTypeId]` action bar had no safe-area inset
+
+`px-lg py-md` with no `insets.bottom`, so the CTA sat under the home indicator.
+Now inset, `fullWidth`, on `screenPadding`, with its height measured by
+`onLayout` instead of the scroll view clearing it with a hardcoded 100. The
+sold-out disabled state gained the caption that explains it.
+
+### 14.4 🔴 `forgot-password` was an account-enumeration oracle
+
+The file's own docstring said the success state must not confirm whether the
+phone exists, "would turn this endpoint into an account-enumeration oracle" —
+and the error branch printed the backend's `No account found with this phone
+number` verbatim. The protection was worthless: anyone could test any Indian
+mobile, ten digits at a time.
+
+A 404 now lands on the same "code sent" screen as a success. Rate limiting is
+still surfaced, because a user who must wait needs to know how long and it
+reveals nothing about the account.
+
+### 14.5 🔴 Six owner routes had no client-side role guard
+
+`auth/components/OwnerOnly.tsx` — signed out gets `SignInPrompt`, signed-in
+non-owner gets an `EmptyState` routed at Profile, where the buyer-to-owner
+upgrade sheet lives. `restoring` renders through, so a real owner never sees a
+flash of refusal on cold start.
+
+**It is not security and must not be read as one.** Every route stays gated
+server-side. This changes what a legitimate user is TOLD: before it, a buyer
+who deep-linked `/owner/leads` got a titled screen that spun and then said
+"Could not load leads" — an access decision presented as a fault.
+
+### 14.6 🟠 Interaction fixes
+
+| Where | Was | Now |
+|---|---|---|
+| `unit`, `campaign`, `booking/[bookingId]` | `backTo` skipped one or two levels (or defaulted to `/(tabs)`) | back to the screen the user came from |
+| `campaign` Join/Leave | equal-width side by side, Leave always enabled | Join is the only button; Leave demoted below it and offered only once joined, matching how `owner/properties` demoted Delete |
+| `projects/bookings`, `owner/leads/index` rows | `<Pressable><Card>` — no press feedback, no accessible name | `Card`'s own `onPress`, the correction two sibling files already document |
+| `owner/leads/[id]` contact buttons | one `isAddingContact` flag spun all four | per-action pending state |
+| `rewards` referral pill | a `View` with a share glyph that did nothing | the control it looked like |
+| `projects/index` chips | fixed row, clipped at large text sizes | scrolling rail |
+
+### 14.7 🟠 `Card`'s accessible name landed on the wrong node
+
+`Card extends ViewProps`, so a caller's `accessibilityLabel` typechecked and
+then went onto the inner `View` — one node below the `PressableScale` a screen
+reader actually focuses. It read as a correctly labelled control and was not
+one. Hoisted onto the pressable, along with `accessibilityHint`.
+
+### 14.8 🟡 Also fixed
+
+`px-lg` → `screenPadding` in `projects/index`, `projects/[id]`,
+`unit/[unitTypeId]`, `campaign/[campaignId]`, `owner/leads/index` · `key={index}`
+→ a stable key in lead contact history · `rewards` pull-spinner no longer fires
+on first load · chat's online dot got an accessible name (it was colour-only
+state whenever a property title was present) · `projects/index` clear-search
+target raised to `gesture.hitSlop`.
+
+### 14.9 Not done, needs your call
+
+- **`app/property/[id]/map.tsx`** — an M4 `Placeholder` stub on a live but
+  unreachable route. Deleting it was declined as out of scope; it is still
+  there and a deep link still lands on scaffolding.
+- The `Save ≠ Enquire` backend split (§12.1) remains open and untouched.
+
+---
+
+## 15. 2026-08-16 — Owner Analytics and Leads
+
+Two screens taken from "four numbers and a status chart" and "a database list"
+to a CRM an owner can triage from. Scope was these two plus the lead-detail
+consistency they imply; nothing else was touched.
+
+### 15.1 What the analytics endpoint actually returns
+
+Read from `leadController.js:348`. The shape of the screen follows from it, and
+three things were NOT built because of it:
+
+| Field | Period |
+|---|---|
+| `statusStats` | **all time** — the aggregate has no date match |
+| `dailyLeads` | within `days` — the only period-scoped series |
+| `totalLeads`, `convertedLeads`, `conversionRate`, `unreadLeads` | all time |
+| `newLeadsThisWeek` | last 7 days, **hard-coded**, not derived from `days` |
+| `leadsByProperty` | top 10 listings |
+
+**No period selector.** `days` scopes exactly one field. A "Last 30 days"
+control that changes a sparkline while five numbers above it hold still states
+that the numbers are scoped when they are not. Every figure is labelled with
+its own true period instead.
+
+**No trend arrows.** There is no previous-period figure anywhere in the
+response. Computing one would mean inventing it.
+
+**No leads-by-property table.** Real, unused data — but an owner account is
+capped at one listing server-side, so today that table is one row restating the
+total. First thing to add if the cap is lifted.
+
+### 15.2 Analytics composition
+
+Attention → scale → pipeline → activity → bridge.
+
+The old screen was four equal `Stat` cards and an unlabelled bar chart, which
+reads as four equally important facts, so none of them led. Now: an accent
+banner for unread leads (the only actionable figure, hidden entirely at zero),
+one emphasised primary `Stat` for the total, four subordinate ones each
+carrying its own period, then the pipeline, then the chart.
+
+The chart kept its plain-`View` bars — no chart library for fourteen numbers —
+and gained what it was missing: a total, a peak value, first and last dates,
+and a hairline for zero days so a gap reads as "no enquiries" rather than as
+missing data.
+
+### 15.3 🔴 The Leads whitespace was `flexGrow`, not padding
+
+The filter rail was a horizontal `FlatList`. React Native applies
+`baseHorizontal` to those — `{ flexGrow: 1, flexShrink: 1, ... }`
+(`ScrollView.js:1867`) — so in a column parent it claimed every remaining point
+of vertical space and pushed the list off screen. The chips drew at the top of
+that space, which is why it read as a gap beneath them.
+
+Fixed by capping it in a plain `View`, which is exactly what `QuickFilterBar`
+does on Properties. No negative margins.
+
+### 15.4 The lead card
+
+`LeadCard` answers who / what / when / where. What it replaced showed the
+status **twice** — a "New" badge beside the name and a status badge under the
+price — which cost the slot where recency belonged.
+
+Unread is now a left rail plus a heavier name, the convention every mail client
+uses, rather than a second competing pill. That frees the top-right for one
+badge (the stage) and the footer for `relativeDay(createdAt)` plus whether any
+contact has been logged. No scoring, no priority, no "hot" — the backend gives
+`isViewed`, `status`, `createdAt` and `contactHistory`, and the owner ranks.
+
+The three stat pills above the rail became one line in `ScreenHeader`'s
+subtitle. It switches to describing the filtered view when a filter is on,
+because `getLeads` computes `stats` over every lead regardless of the query — a
+subtitle reading "18 leads" above a list of one would be quietly wrong.
+
+### 15.5 The bridge
+
+`LeadPipeline` rows are routes: tapping a stage opens `/owner/leads?status=…`,
+validated against `LEAD_STATUSES` on arrival. Before it, the only way from "4
+negotiating" to those four leads was to leave, open Leads, and find the chip.
+
+Stage order, not count order — sorting by count would reshuffle the pipeline
+whenever a status changed and break the one thing the shape is good at. Counts
+and labels are always text; strip the colour and nothing becomes unreadable.
+
+### 15.6 Lead detail
+
+Not redesigned. Three consistency changes so the row and the detail say the
+same things in the same order: the identity card gained the recency line, the
+listing card gained the price and became a real `Card onPress` (it was a bare
+`Pressable` around the title with no accessible name), and the status block was
+relabelled "Move to stage" — a verb, because it is the editor rather than a
+second statement of a fact the chips already carry.
+
+### 15.7 Two things worth knowing
+
+- `Stat`'s body is `flex: 1`, so it needs a row parent. The primary tile is
+  wrapped in a one-child `StatRow` rather than a plain `View`, where it would
+  collapse to zero height.
+- `Chip`'s selected state swaps `callout` (16) for `bodyEmphasis` (17), so a
+  selected chip is 1pt taller. `alignItems: stretch` in the rail equalises them
+  so nothing jumps, but the rail's own height shifts by a point. Left alone —
+  changing `Chip` is a global change and this pass was scoped to composition.

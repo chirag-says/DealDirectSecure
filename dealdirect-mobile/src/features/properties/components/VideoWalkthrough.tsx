@@ -42,8 +42,7 @@ export function VideoWalkthrough({ videoUrl }: VideoWalkthroughProps) {
       accessibilityRole="button"
       accessibilityLabel="Watch video walkthrough"
       onPress={() => void handlePress()}
-      className="flex-row items-center rounded-xl border border-border bg-surface-muted p-md"
-      style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+      className="flex-row items-center rounded-xl border border-border bg-surface-muted p-md active:opacity-70"
     >
       <View
         className="h-11 w-11 items-center justify-center rounded-full"

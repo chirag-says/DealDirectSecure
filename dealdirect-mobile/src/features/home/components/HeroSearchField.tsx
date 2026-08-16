@@ -264,13 +264,15 @@ function Row({
       accessibilityRole="button"
       accessibilityLabel={subtitle ? `${label}, ${subtitle}` : label}
       onPress={onPress}
-      style={({ pressed }) => ({
+      // Object, not a function — see `ui/Chip.tsx`. As a function this row had
+      // no layout at all: NativeWind's interop discards it.
+      className="active:opacity-60"
+      style={{
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: spacing.base,
         paddingVertical: spacing.md,
-        opacity: pressed ? 0.6 : 1,
-      })}
+      }}
     >
       <Ionicons name={icon} size={17} color={theme.colors.textMuted} />
       <Text variant="body" numberOfLines={1} className="ml-md flex-1">

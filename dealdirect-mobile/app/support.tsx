@@ -125,8 +125,7 @@ function FaqRow({ entry, isLast }: { entry: FaqEntry; isLast: boolean }) {
         accessibilityState={{ expanded: open }}
         accessibilityLabel={entry.q}
         onPress={() => setOpen((current) => !current)}
-        style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
-        className="flex-row items-center py-md"
+        className="flex-row items-center py-md active:opacity-60"
       >
         <Text variant="body" className="flex-1 pr-md">
           {entry.q}

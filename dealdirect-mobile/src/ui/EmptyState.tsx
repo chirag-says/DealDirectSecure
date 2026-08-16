@@ -29,6 +29,15 @@ export interface EmptyStateProps {
    * control on a screen reads as tentative.
    */
   actionVariant?: ButtonVariant;
+  /**
+   * Sits at the top of a scroll instead of filling and centring the screen.
+   *
+   * Mirrors `SignInPrompt.compact`, and exists for the same reason: a screen
+   * that has something ELSE to offer an empty-handed user — Saved shows their
+   * recently viewed listings — cannot hand the whole viewport to the box
+   * explaining why the list is empty.
+   */
+  compact?: boolean;
 }
 
 export function EmptyState({
@@ -38,9 +47,16 @@ export function EmptyState({
   onAction,
   icon,
   actionVariant = 'secondary',
+  compact = false,
 }: EmptyStateProps) {
   return (
-    <View className="flex-1 items-center justify-center px-xl py-2xl">
+    <View
+      className={
+        compact
+          ? 'items-center px-xl py-xl'
+          : 'flex-1 items-center justify-center px-xl py-2xl'
+      }
+    >
       {icon ? <View className="mb-base">{icon}</View> : null}
 
       <Text variant="title3" className="text-center">

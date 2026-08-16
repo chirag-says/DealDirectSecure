@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 
 import { ApiError } from '@/api';
+import { OwnerOnly } from '@/auth';
 import {
   EMPTY_LISTING_FORM,
   ListingForm,
@@ -27,7 +28,7 @@ import { Screen, Text } from '@/ui';
  * rather than silently applied, since a stale abandoned draft overwriting a
  * fresh start would be worse than asking.
  */
-export default function NewPropertyScreen() {
+function NewPropertyScreenContent() {
   const router = useRouter();
   const theme = useTheme();
   const { add, isPending, error } = useAddListing();
@@ -110,5 +111,19 @@ export default function NewPropertyScreen() {
 
       <RewardReveal reward={pendingReward} onDismiss={dismissReward} />
     </Screen>
+  );
+}
+
+/**
+ * Owner-gated. See `auth/components/OwnerOnly.tsx` for why a role the
+ * server already enforces still needs a client-side refusal: without it a
+ * buyer who reaches this route is shown an error state for something that
+ * is not an error.
+ */
+export default function NewPropertyScreen() {
+  return (
+    <OwnerOnly title="Add listing">
+      <NewPropertyScreenContent />
+    </OwnerOnly>
   );
 }

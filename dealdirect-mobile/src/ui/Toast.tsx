@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { Pressable } from 'react-native';
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -9,7 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { radius, reducedMotion, spacing, timing, useTheme } from '@/theme';
+import { gesture, radius, reducedMotion, spacing, timing, touchTarget, useTheme } from '@/theme';
 import { Text } from './Text';
 
 /**
@@ -41,14 +42,41 @@ import { Text } from './Text';
 
 export type ToastTone = 'neutral' | 'success' | 'danger';
 
+export interface ToastAction {
+  /** One word if possible. "Undo" is the case this was built for. */
+  label: string;
+  onPress: () => void;
+}
+
+export interface ToastOptions {
+  tone?: ToastTone;
+  /**
+   * Turns the toast into the reversal path for the action that raised it.
+   *
+   * This is the half of "do, don't ask" that most implementations skip. A
+   * confirmation dialog is an admission that an action cannot be taken back;
+   * the fix is to make it reversible, not to word the dialog better. Removing
+   * a saved listing and marking interest are both routed through here rather
+   * than through `Alert.alert`, so the common case costs one tap and the
+   * mis-tap costs two.
+   *
+   * The toast stops being `pointerEvents="none"` when an action is present,
+   * and only then — a toast with nothing to press must never eat a tap meant
+   * for the screen behind it.
+   */
+  action?: ToastAction;
+}
+
 interface ToastState {
   id: number;
   message: string;
   tone: ToastTone;
+  action?: ToastAction;
 }
 
 interface ToastApi {
-  show: (message: string, tone?: ToastTone) => void;
+  /** The second argument takes a bare tone for the common case, or options. */
+  show: (message: string, options?: ToastTone | ToastOptions) => void;
 }
 
 const ToastContext = createContext<ToastApi | null>(null);
@@ -70,6 +98,10 @@ const NOOP_TOAST: ToastApi = { show: () => {} };
 /** Long enough to read a short sentence, short enough not to linger. */
 const VISIBLE_MS = 2600;
 
+/** An undo the user has to notice, read, and reach for needs longer than one
+ *  they only have to read. */
+const VISIBLE_WITH_ACTION_MS = 5000;
+
 /** Roughly the tab bar's painted height, so a toast clears it. */
 const TAB_BAR_ALLOWANCE = 64;
 
@@ -81,13 +113,28 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nextId = useRef(0);
 
-  const show = useCallback((message: string, tone: ToastTone = 'neutral') => {
+  const show = useCallback((message: string, options?: ToastTone | ToastOptions) => {
+    const resolved: ToastOptions = typeof options === 'string' ? { tone: options } : (options ?? {});
+
     // A second toast replaces the first rather than queueing. A queue means the
     // user reads a stale confirmation for an action two steps ago.
     if (timer.current) clearTimeout(timer.current);
     nextId.current += 1;
-    setToast({ id: nextId.current, message, tone });
-    timer.current = setTimeout(() => setToast(null), VISIBLE_MS);
+    setToast({
+      id: nextId.current,
+      message,
+      tone: resolved.tone ?? 'neutral',
+      action: resolved.action,
+    });
+    timer.current = setTimeout(
+      () => setToast(null),
+      resolved.action ? VISIBLE_WITH_ACTION_MS : VISIBLE_MS
+    );
+  }, []);
+
+  const dismiss = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    setToast(null);
   }, []);
 
   const api = useMemo(() => ({ show }), [show]);
@@ -135,7 +182,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           exiting={
             reduceMotion ? FadeOut.duration(timing.fast) : FadeOutDown.duration(timing.fast)
           }
-          pointerEvents="none"
+          // Only interactive when there is something to press. A toast that
+          // swallows taps for its own benefit is worse than no toast.
+          pointerEvents={toast.action ? 'box-none' : 'none'}
           accessibilityLiveRegion="polite"
           style={{
             position: 'absolute',
@@ -165,6 +214,34 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           >
             {toast.message}
           </Text>
+
+          {toast.action ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={toast.action.label}
+              // The visible label is a word; the target is a thumb.
+              hitSlop={gesture.hitSlop}
+              onPress={() => {
+                const run = toast.action?.onPress;
+                dismiss();
+                run?.();
+              }}
+              className="active:opacity-60"
+              style={{
+                marginLeft: spacing.md,
+                justifyContent: 'center',
+                minHeight: touchTarget.min,
+                paddingHorizontal: spacing.xs,
+              }}
+            >
+              <Text
+                variant="bodyEmphasis"
+                style={{ color: theme.colors.accent }}
+              >
+                {toast.action.label}
+              </Text>
+            </Pressable>
+          ) : null}
         </Animated.View>
       ) : null}
     </ToastContext.Provider>

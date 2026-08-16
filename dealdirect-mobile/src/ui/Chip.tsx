@@ -32,11 +32,14 @@ export function Chip({
       disabled={disabled}
       hitSlop={gesture.hitSlop}
       onPress={onPress}
-      style={({ pressed }) => (pressed ? { opacity: 0.8 } : undefined)}
       className={[
         'self-start rounded-full border px-md py-sm',
         selected ? 'border-accent bg-accent-muted' : 'border-border bg-surface',
-        disabled ? 'opacity-50' : '',
+        // `active:` rather than a `style={({ pressed }) => …}` function: under
+        // NativeWind's JSX pragma a function-valued `style` is spread into an
+        // empty object and discarded, so that form never fired. See
+        // `features/search/components/QuickFilterBar.tsx` for the full story.
+        disabled ? 'opacity-50' : 'active:opacity-80',
         className,
       ].join(' ')}
     >

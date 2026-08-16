@@ -62,8 +62,7 @@ function ConversationRowComponent({ conversation, onPress, onArchive }: Conversa
       accessibilityRole="button"
       accessibilityLabel={`Conversation with ${conversation.otherParticipant?.name ?? 'user'} about ${conversation.propertyTitle}`}
       onPress={handlePress}
-      style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
-      className="flex-row items-center px-lg py-md"
+      className="flex-row items-center px-lg py-md active:opacity-70"
     >
       <View>
         <Avatar

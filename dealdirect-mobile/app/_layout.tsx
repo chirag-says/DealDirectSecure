@@ -7,6 +7,7 @@ import {
   DMSans_600SemiBold,
   DMSans_700Bold,
 } from '@expo-google-fonts/dm-sans';
+import { ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
@@ -18,7 +19,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { createQueryClient, PERSIST_MAX_AGE, queryPersister, shouldPersistQuery } from '@/api';
 import { AuthProvider } from '@/auth';
-import { dmSans, ThemeProvider } from '@/theme';
+import { dmSans, navigationThemes, ThemeProvider, useTheme } from '@/theme';
 import { FontOverrideProvider, OfflineBanner, ToastProvider } from '@/ui';
 
 // Held open until DM Sans (loaded for the Home redesign, see `theme/fonts.ts`)
@@ -87,29 +88,8 @@ export default function RootLayout() {
                 {/* Above the Stack so a toast raised by any screen paints over
                     it, and inside the theme so it can read colours. */}
                 <ToastProvider>
-                <StatusBar style="auto" />
-                {/*
-                  Only routes needing non-default options are declared. Every
-                  other file under app/ is picked up automatically.
-
-                  `property` and `chat` were declared here in M1 and warned on
-                  every render: neither is a route node. Without an
-                  `app/property/_layout.tsx` the children register under their own
-                  full names (`property/[id]/index`, `property/[id]/gallery`,
-                  `property/[id]/map`, `chat/[conversationId]`), so the parent
-                  names matched nothing and their options were discarded. They
-                  also asked for `presentation: 'card'`, which is already the
-                  default, so the declarations were inert even in principle.
-                  Removed rather than propped up with layout files that exist only
-                  to make a no-op valid. M4 can add `app/property/_layout.tsx` if
-                  it wants gallery and map nested under the detail screen.
-                */}
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="index" />
-                  <Stack.Screen name="(auth)" />
-                  <Stack.Screen name="(tabs)" />
-                </Stack>
-                <OfflineBanner />
+                  <Navigation />
+                  <OfflineBanner />
                 </ToastProvider>
               </FontOverrideProvider>
             </AuthProvider>
@@ -117,5 +97,49 @@ export default function RootLayout() {
         </PersistQueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+  );
+}
+
+/**
+ * The navigator, and the two pieces of chrome that have to agree with the
+ * scheme rather than with the OS.
+ *
+ * Split into its own component only because it reads `useTheme()`, which is not
+ * available in `RootLayout` — that is the component rendering the provider.
+ *
+ * `NavigationThemeProvider` is the fix for the light strip under the tab dock;
+ * `theme/navigationTheme.ts` explains what was showing through and why.
+ *
+ * The status bar is set from the resolved scheme rather than left on `auto`.
+ * `auto` reads the OS appearance, so a user who forces Dark on a phone set to
+ * Light got black glyphs on the app's black header.
+ */
+function Navigation() {
+  const theme = useTheme();
+
+  return (
+    <NavigationThemeProvider value={navigationThemes[theme.scheme]}>
+      <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
+      {/*
+        Only routes needing non-default options are declared. Every other file
+        under app/ is picked up automatically.
+
+        `property` and `chat` were declared here in M1 and warned on every
+        render: neither is a route node. Without an `app/property/_layout.tsx`
+        the children register under their own full names
+        (`property/[id]/index`, `property/[id]/gallery`, `property/[id]/map`,
+        `chat/[conversationId]`), so the parent names matched nothing and their
+        options were discarded. They also asked for `presentation: 'card'`,
+        which is already the default, so the declarations were inert even in
+        principle. Removed rather than propped up with layout files that exist
+        only to make a no-op valid. M4 can add `app/property/_layout.tsx` if it
+        wants gallery and map nested under the detail screen.
+      */}
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(tabs)" />
+      </Stack>
+    </NavigationThemeProvider>
   );
 }

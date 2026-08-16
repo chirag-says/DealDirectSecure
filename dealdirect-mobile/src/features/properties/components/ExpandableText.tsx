@@ -111,8 +111,7 @@ export function ExpandableText({
           accessibilityLabel={expanded ? 'Show less of the description' : 'Show the full description'}
           onPress={() => setExpanded((value) => !value)}
           hitSlop={12}
-          className="mt-sm flex-row items-center self-start"
-          style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+          className="mt-sm flex-row items-center self-start active:opacity-60"
         >
           <Text variant="bodyEmphasis" tone="accent">
             {expanded ? 'Show less' : 'Read more'}

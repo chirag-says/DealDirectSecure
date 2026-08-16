@@ -118,8 +118,7 @@ export default function BlogPostScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={item.title}
                   onPress={() => router.push(`/blog/${item.slug}`)}
-                  style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
-                  className="border-b border-border py-md"
+                  className="border-b border-border py-md active:opacity-70"
                 >
                   <Text variant="body" numberOfLines={2}>
                     {item.title}

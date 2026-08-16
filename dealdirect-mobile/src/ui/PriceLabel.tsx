@@ -121,22 +121,40 @@ export interface PriceLabelProps {
   variant?: TextVariant;
   /** Appended after the price, e.g. "/month" for rentals. */
   suffix?: string;
+  /**
+   * Caps every part at one line.
+   *
+   * Off by default, because on a card there is room and a wrapped price is
+   * better than a truncated one. ON in the compact list row, where the row's
+   * height is meant to be identical for every listing and a five-crore price
+   * beside a per-sqft rate is the one thing that could add a line and make the
+   * list jump.
+   */
+  numberOfLines?: number;
   className?: string;
 }
 
-export function PriceLabel({ price, variant = 'title3', suffix, className = '' }: PriceLabelProps) {
+export function PriceLabel({
+  price,
+  variant = 'title3',
+  suffix,
+  numberOfLines,
+  className = '',
+}: PriceLabelProps) {
   const { value, unit } = formatPriceParts(price);
 
   return (
     <View className={`flex-row items-baseline ${className}`}>
-      <Text variant={variant}>{value}</Text>
+      <Text variant={variant} numberOfLines={numberOfLines}>
+        {value}
+      </Text>
       {unit ? (
-        <Text variant="subhead" tone="secondary" className="ml-xs">
+        <Text variant="subhead" tone="secondary" numberOfLines={numberOfLines} className="ml-xs">
           {unit}
         </Text>
       ) : null}
       {suffix ? (
-        <Text variant="footnote" tone="muted" className="ml-xs">
+        <Text variant="footnote" tone="muted" numberOfLines={numberOfLines} className="ml-xs">
           {suffix}
         </Text>
       ) : null}

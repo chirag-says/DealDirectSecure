@@ -54,6 +54,24 @@ import { Text } from './Text';
  * is worth. It is marked as an action rather than a destination by being the
  * only filled, circular, brand-coloured element here, and it never takes the
  * selected state.
+ *
+ * ---------------------------------------------------------------------------
+ * THE ACTION IS RED; THE SELECTED TAB IS NOT — changed 2026-08-15
+ *
+ * That claim above — "the only brand-coloured element here" — stopped being
+ * true when the selected tab was given a `brandMuted` pill and brand-red icon
+ * and label. The dock then held two red objects side by side, one a
+ * destination and one an action, and the reported symptom was that the post
+ * button "competes with the navigation". It was not the button. It was that
+ * nothing distinguished it.
+ *
+ * `colors.ts` already says which is which: brand is "the brand mark colour.
+ * Not an action colour", accent is "the primary action colour". The selected
+ * tab now takes the accent, and red means exactly one thing in this bar.
+ *
+ * The separator before the action is the second half. Four destinations, a
+ * hairline, one action — the grouping is stated rather than inferred from the
+ * fact that the last item happens to look different.
  */
 
 /** Drawn in this order. A registered route absent from this map is skipped. */
@@ -140,13 +158,13 @@ export function TabBar({ state, navigation, onPost }: TabBarProps) {
                   height: ITEM_HEIGHT,
                   paddingHorizontal: focused ? spacing.base : spacing.md,
                   borderRadius: radius.full,
-                  backgroundColor: focused ? theme.colors.brandMuted : 'transparent',
+                  backgroundColor: focused ? theme.colors.accentMuted : 'transparent',
                 }}
               >
                 <Ionicons
                   name={focused ? spec.icon : (`${spec.icon}-outline` as keyof typeof Ionicons.glyphMap)}
                   size={21}
-                  color={focused ? theme.colors.brand : theme.colors.textSecondary}
+                  color={focused ? theme.colors.accent : theme.colors.textSecondary}
                 />
 
                 {focused ? (
@@ -155,7 +173,7 @@ export function TabBar({ state, navigation, onPost }: TabBarProps) {
                     numberOfLines={1}
                     style={{
                       marginLeft: spacing.sm,
-                      color: theme.colors.brand,
+                      color: theme.colors.accent,
                       fontWeight: '600',
                     }}
                   >
@@ -167,8 +185,19 @@ export function TabBar({ state, navigation, onPost }: TabBarProps) {
           );
         })}
 
-        {/* The one action. Circular and filled, so it never reads as a fifth
-            destination — see the module doc. */}
+        {/* Destinations end here. */}
+        <View
+          style={{
+            width: 1,
+            alignSelf: 'stretch',
+            marginLeft: spacing.xs,
+            marginVertical: spacing.md,
+            backgroundColor: theme.colors.border,
+          }}
+        />
+
+        {/* The one action. Circular, filled, and now the only red thing in the
+            dock — see the module doc. */}
         <PressableScale
           accessibilityRole="button"
           accessibilityLabel="Post a property"
@@ -182,6 +211,14 @@ export function TabBar({ state, navigation, onPost }: TabBarProps) {
             alignItems: 'center',
             justifyContent: 'center',
             backgroundColor: theme.colors.brand,
+            // Raised off the dock rather than sitting flush in it. A filled
+            // disc with no depth on a white pill reads as a swatch; a small
+            // shadow is what makes it read as a button on top of a surface.
+            shadowColor: theme.colors.brand,
+            shadowOpacity: 0.35,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 3 },
+            elevation: 4,
           }}
         >
           <Ionicons name="add" size={24} color={theme.colors.textOnAccent} />

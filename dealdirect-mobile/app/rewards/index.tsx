@@ -4,11 +4,12 @@ import { Linking, Share, View } from 'react-native';
 import { useAuth, SignInPrompt } from '@/auth';
 import { useReferral, useTransactions, useWallet } from '@/features/rewards';
 import type { NextTierProgress, RewardTier, RewardTransaction } from '@/types/backend/rewards';
-import { screenPadding, scrollBottomPadding, useTheme } from '@/theme';
+import { screenPadding, scrollBottomPadding, spacing, touchTarget, useTheme } from '@/theme';
 import {
   Badge,
   Button,
   Card,
+  PressableScale,
   ProgressBar,
   Refreshable,
   Screen,
@@ -46,7 +47,10 @@ export default function RewardsScreen() {
     );
   }
 
-  const isRefreshing = wallet.isLoading || transactions.isRefreshing;
+  // `wallet.isLoading` is the FIRST load, not a refresh. Including it made the
+  // pull-to-refresh spinner appear on cold open, over a screen that was already
+  // showing its own skeletons.
+  const isRefreshing = transactions.isRefreshing;
 
   return (
     <Screen>
@@ -60,7 +64,7 @@ export default function RewardsScreen() {
           transactions.refresh();
         }}
       >
-        <Card className="items-center py-lg">
+        <Card padded={false} className="items-center px-base py-lg">
           <Text variant="footnote" tone="secondary">
             Your balance
           </Text>
@@ -222,13 +226,34 @@ function ReferralCard({
           : 'Earn points when someone signs up with your code.'}
       </Text>
 
+      {/*
+        THE PILL IS THE CONTROL NOW, OR IT CARRIES NO ICON.
+
+        It used to be a plain `View` with a share glyph in the corner: the most
+        button-shaped thing in the card, and the only thing in it that did
+        nothing when pressed. The real share was the button underneath. An
+        appearance that contradicts its behaviour is the failure this whole
+        pass keeps finding, so the pill became the control it already looked
+        like — same target, same glyph, and now it shares.
+      */}
       {code ? (
-        <View className="mb-base flex-row items-center justify-between rounded-lg bg-surface-muted px-base py-sm">
-          <Text variant="bodyEmphasis" className="tracking-wide">
-            {code}
-          </Text>
-          <Ionicons name="share-outline" size={18} color={theme.colors.textMuted} />
-        </View>
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={`Share your referral code ${code}`}
+          onPress={handleShare}
+          activeScale={0.98}
+          style={{ marginBottom: spacing.base }}
+        >
+          <View
+            className="flex-row items-center justify-between rounded-lg bg-surface-muted px-base"
+            style={{ minHeight: touchTarget.min }}
+          >
+            <Text variant="bodyEmphasis" className="tracking-wide">
+              {code}
+            </Text>
+            <Ionicons name="share-outline" size={18} color={theme.colors.textMuted} />
+          </View>
+        </PressableScale>
       ) : null}
 
       {totalReferred > 0 ? (

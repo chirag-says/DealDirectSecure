@@ -50,8 +50,7 @@ function SavedSearchRowComponent({
         accessibilityRole="button"
         accessibilityLabel={`Run search ${search.name}`}
         onPress={handlePress}
-        style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
-        className="flex-row items-center px-md pt-md pb-sm"
+        className="flex-row items-center px-md pt-md pb-sm active:opacity-70"
       >
         <View className="flex-1">
           <Text variant="bodyEmphasis" numberOfLines={1}>
@@ -94,8 +93,7 @@ function SavedSearchRowComponent({
           accessibilityLabel={`Delete search ${search.name}`}
           onPress={handleDelete}
           hitSlop={10}
-          className="ml-md"
-          style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+          className="ml-md active:opacity-60"
         >
           <Ionicons name="trash-outline" size={19} color={theme.colors.textMuted} />
         </Pressable>

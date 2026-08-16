@@ -442,16 +442,6 @@ export const rewardsManagementApi = {
         return response.data;
     },
 
-    getRedemptions: async (params = {}) => {
-        const response = await adminApi.get('/api/rewards/admin/redemptions', { params });
-        return response.data;
-    },
-
-    updateRedemption: async (id, data) => {
-        const response = await adminApi.put(`/api/rewards/admin/redemptions/${id}`, data);
-        return response.data;
-    },
-
     getUserWallet: async (userId) => {
         const response = await adminApi.get(`/api/rewards/admin/user/${userId}/wallet`);
         return response.data;

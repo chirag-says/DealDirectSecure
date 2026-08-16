@@ -56,8 +56,7 @@ function NotificationRowComponent({ notification, onPress }: NotificationRowProp
       accessibilityLabel={`${notification.title}. ${notification.message}`}
       accessibilityHint={navigable ? 'Opens the related listing' : undefined}
       onPress={handlePress}
-      style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
-      className="flex-row px-lg py-md"
+      className="flex-row px-lg py-md active:opacity-70"
     >
       <View className="w-4 pt-xs">
         {unread ? <View className="h-2 w-2 rounded-full bg-accent" /> : null}

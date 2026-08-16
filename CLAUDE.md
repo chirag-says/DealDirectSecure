@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ READ THIS FIRST: `AI/MASTER_MEMORY.md`
+
+A complete AI knowledge base lives in **[`AI/`](AI/MASTER_MEMORY.md)** — 16 documents produced by a full-repository audit covering architecture, all 32 database models, both auth systems, every API endpoint, business logic, security, performance, and 20 verified bugs.
+
+**Start every session by reading [`AI/MASTER_MEMORY.md`](AI/MASTER_MEMORY.md)**, then the specific document for your area before changing code. After any architectural change, append an entry to [`AI/CHANGELOG_AI.md`](AI/CHANGELOG_AI.md).
+
+The rest of this file is a quick command reference. Where it disagrees with `AI/`, **`AI/` is more current** — it was written by reading the source.
+
 ## Project Overview
 
 DealDirect is a real estate marketplace platform connecting property owners directly with buyers. It features:
@@ -13,12 +21,14 @@ DealDirect is a real estate marketplace platform connecting property owners dire
 
 ## Repository Structure
 
-This is a monorepo with four independent applications:
+Four independent applications. No monorepo tooling, no shared package — each has its own `package.json` and `node_modules`, and types/enums/validation are duplicated by hand across all four.
 
-- `backend/` - Express.js API server (port 9000)
+- `backend/` - Express 5 API server (port 9000)
 - `client-next/` - Next.js 16 primary frontend (port 3000)
 - `Admin/` - Vite admin dashboard (port 5174)
-- `client/` - Legacy Vite client (no longer exists)
+- `dealdirect-mobile/` - Expo/React Native app — **scaffolding only** (milestones M1–M2 of 14; all feature screens are placeholder stubs)
+
+A legacy `client/` directory is referenced in older docs but no longer exists.
 
 ## Common Commands
 
@@ -69,20 +79,25 @@ curl http://localhost:9000/debug-startup
 5. `documentUpload.js` - Agreement/document uploads
 6. `errorHandler.js` - Global error boundary with no info leakage
 
-### Controllers (14 modules)
-Each controller handles specific business logic:
-- `userController.js` - Registration, login, profile management
-- `propertyController.js` - CRUD, search, image uploads
-- `leadController.js` - Lead lifecycle and analytics
-- `agreementController.js` - AI generation, signatures, PDF export
-- `chatController.js` - Real-time conversations
+### Controllers (19 modules)
+Controllers hold **all** business logic — routes only compose middleware, and there is no service layer for domain logic. The largest:
+- `propertyController.js` (2396 L) - CRUD, search, interest, close-deal, claim-reward
+- `adminController.js` (1665 L) - Admin auth, MFA, dashboard, verifications, audit logs
+- `userController.js` (1447 L) - Registration, OTP, login, reset, profile, exports
+- `agreementController.js` (1365 L) - Gemini generation, signing, payment webhook
+- `leadController.js` (741 L) - Lead lifecycle, analytics, XLSX export
 
-### Database Models (26 schemas)
+Full list in [`AI/FILE_MAP.md`](AI/FILE_MAP.md); every endpoint in [`AI/API_REFERENCE.md`](AI/API_REFERENCE.md).
+
+### Database Models (32 schema files)
 Key relationships:
-- User → Properties, Leads, Agreements
-- Property → Category, Owner, Leads
-- Lead → Property, Buyer, Status
-- Agreement → Property, Signatures, HMAC hash
+- User → Properties, Leads, Agreements, Reward wallet (1:1)
+- Property → Category, **Owner *or* Builder** (mutually exclusive — drives two separate feeds), Leads
+- Lead → Property, Buyer, Status (unique per user+property)
+- Agreement → Property, Signatures, HMAC signature + content hash
+- Builder → Project → UnitType → GroupBuyCampaign → CampaignMember
+
+Full schema reference, indexes, and integrity warnings in [`AI/DATABASE.md`](AI/DATABASE.md).
 
 ### Security Features
 - Multi-tier rate limiting (global: 500/15min, auth: 5/15min, search: 20/min)

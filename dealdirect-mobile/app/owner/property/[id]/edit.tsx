@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { ApiError } from '@/api';
+import { OwnerOnly } from '@/auth';
 import {
   ListingForm,
   existingCategorizedPhotos,
@@ -26,7 +27,7 @@ import { ErrorState, Screen, Skeleton, Text } from '@/ui';
  * An owner account only ever has the one listing, so this list is cheap to
  * search.
  */
-export default function EditPropertyScreen() {
+function EditPropertyScreenContent() {
   const router = useRouter();
   const theme = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -96,5 +97,19 @@ export default function EditPropertyScreen() {
         />
       )}
     </Screen>
+  );
+}
+
+/**
+ * Owner-gated. See `auth/components/OwnerOnly.tsx` for why a role the
+ * server already enforces still needs a client-side refusal: without it a
+ * buyer who reaches this route is shown an error state for something that
+ * is not an error.
+ */
+export default function EditPropertyScreen() {
+  return (
+    <OwnerOnly title="Edit listing">
+      <EditPropertyScreenContent />
+    </OwnerOnly>
   );
 }

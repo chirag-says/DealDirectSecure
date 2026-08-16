@@ -29,10 +29,19 @@ export interface SkeletonProps {
   height?: number;
   /** Defaults to the `md` radius; pass `9999` for a circle. */
   radius?: number;
+  /** For the one thing a width/height pair cannot express: `aspectRatio`, so a
+   *  placeholder can match a card whose photo is a ratio rather than a size. */
+  style?: ViewStyle;
   className?: string;
 }
 
-export function Skeleton({ width = '100%', height = 16, radius = 10, className = '' }: SkeletonProps) {
+export function Skeleton({
+  width = '100%',
+  height,
+  radius = 10,
+  style,
+  className = '',
+}: SkeletonProps) {
   const progress = useSharedValue(0.5);
   const reduceMotion = useReducedMotion();
 
@@ -55,7 +64,7 @@ export function Skeleton({ width = '100%', height = 16, radius = 10, className =
       accessibilityRole="progressbar"
       accessibilityLabel="Loading"
       className={`bg-surface-muted ${className}`}
-      style={[{ width, height, borderRadius: radius }, animatedStyle]}
+      style={[{ width, height: height ?? (style?.aspectRatio ? undefined : 16), borderRadius: radius }, style, animatedStyle]}
     />
   );
 }

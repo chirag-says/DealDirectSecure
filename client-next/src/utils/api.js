@@ -555,15 +555,11 @@ export const rewardsApi = {
         return response.data;
     },
 
-    getStore: async () => {
-        const response = await api.get('/rewards/store');
-        return response.data;
-    },
-
-    redeem: async (data) => {
-        const response = await api.post('/rewards/redeem', data);
-        return response.data;
-    },
+    // getStore() and redeem() removed 2026-08-01 — they called the pre-Hubble
+    // in-house redemption store, which no longer exists on the backend.
+    // Redemption now happens entirely inside the Hubble SDK iframe
+    // (see app/rewards/dashboard/RewardStorefront.jsx), which debits the
+    // wallet server-to-server via POST /api/rewards/hubble/debit.
 
     // RewardPort Catalogue APIs (Legacy — kept for backward compatibility)
     getCatalogueCategories: async () => {

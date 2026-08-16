@@ -20,8 +20,14 @@ import { Button, Input, Text } from '@/ui';
  * There is no email link and no token. The app collects the phone
  * number, triggers the SMS, and then routes to the in-app reset screen.
  *
- * The success state does not confirm whether the phone exists.
- * Doing so would turn this endpoint into an account-enumeration oracle.
+ * NEITHER STATE CONFIRMS WHETHER THE PHONE EXISTS. Doing so would turn this
+ * endpoint into an account-enumeration oracle — anyone could test whether a
+ * given Indian mobile has a DealDirect account, ten digits at a time.
+ *
+ * That was true of the success state from the start and false of the error
+ * state until 2026-08-16, which made the protection worthless: the 404 branch
+ * printed the backend's "No account found with this phone number" verbatim.
+ * A 404 now lands on the same "code sent" screen as a success. See the handler.
  */
 export default function ForgotPasswordScreen() {
   const [formError, setFormError] = useState<string | null>(null);
@@ -38,13 +44,40 @@ export default function ForgotPasswordScreen() {
       await call(usersEndpoints.forgotPassword, { data: values });
       setSent(true);
     } catch (error) {
-      if (error instanceof ApiError) {
-        // Backend returns 404 with "No account found with this phone number"
-        // — show it rather than hiding behind a generic message.
-        setFormError(error.message);
-      } else {
-        setFormError('Something went wrong. Please try again.');
+      /*
+        THE 404 IS SWALLOWED, DELIBERATELY — fixed 2026-08-16.
+
+        This handler used to print `error.message`, and the backend's message
+        for an unknown number is "No account found with this phone number".
+        That is an account-enumeration oracle: anyone can test whether a given
+        Indian mobile has a DealDirect account, ten digits at a time.
+
+        The docstring above this component already said the success state must
+        not confirm whether the phone exists, and it was right — but the error
+        path leaked exactly what the success path was protecting. Both branches
+        now say the same thing, which is the only way the protection holds.
+
+        Rate limiting is still surfaced, because a user who has to wait needs
+        to know how long, and it reveals nothing about the account.
+      */
+      if (error instanceof ApiError && error.status === 404) {
+        setSent(true);
+        return;
       }
+
+      if (error instanceof ApiError && error.kind === 'rateLimited') {
+        const minutes = error.retryAfterSeconds
+          ? Math.ceil(error.retryAfterSeconds / 60)
+          : 15;
+        setFormError(`Too many attempts. Try again in about ${minutes} minutes.`);
+        return;
+      }
+
+      setFormError(
+        error instanceof ApiError
+          ? error.message
+          : 'Something went wrong. Please try again.'
+      );
     }
   });
 

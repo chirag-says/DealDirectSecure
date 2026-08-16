@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { FlatList, Pressable, View } from 'react-native';
+import { FlatList, View } from 'react-native';
 
 import { useMyBookings } from '@/features/projects';
 import type { ProjectBooking } from '@/types/backend/project';
@@ -53,9 +53,19 @@ function BookingRow({ booking, onPress }: { booking: ProjectBooking; onPress: ()
   const projectName = typeof booking.project === 'object' ? booking.project?.basics?.name : undefined;
   const unitName = typeof booking.unitType === 'object' ? booking.unitType?.config?.name : undefined;
 
+  /*
+    `Card`'s own `onPress`, not a wrapping `Pressable`. The bare Pressable this
+    used carried no `style` callback and no accessible label, so the row gave
+    no feedback on touch and announced nothing. `projects/[id]` and
+    `unit/[unitTypeId]` both document this exact correction; this row and the
+    leads list were the two the fix never reached.
+  */
   return (
-    <Pressable accessibilityRole="button" onPress={onPress}>
-      <Card className="mb-base flex-row items-center justify-between">
+    <Card
+      onPress={onPress}
+      accessibilityLabel={[projectName, unitName].filter(Boolean).join(', ')}
+      className="mb-base flex-row items-center justify-between"
+    >
         <View className="flex-1 pr-base">
           <Text variant="bodyEmphasis" numberOfLines={1}>
             {projectName ?? 'Project'}
@@ -71,8 +81,7 @@ function BookingRow({ booking, onPress }: { booking: ProjectBooking; onPress: ()
             </Text>
           ) : null}
         </View>
-        <Badge label={booking.status} tone={booking.status === 'confirmed' ? 'success' : 'neutral'} />
-      </Card>
-    </Pressable>
+      <Badge label={booking.status} tone={booking.status === 'confirmed' ? 'success' : 'neutral'} />
+    </Card>
   );
 }

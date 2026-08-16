@@ -8,22 +8,45 @@ import { Button, Image, Text } from '@/ui';
 import { MIN_COMPARE } from '../compare';
 
 /**
- * Sticky bar shown once at least one property is selected for comparison.
- * Ported from the website's fixed bottom bar (`PropertyListContent.jsx`
- * ~L2221–2274) — thumbnails-with-remove, Clear, Compare Now.
+ * Sticky bar for compare mode. Ported from the website's fixed bottom bar
+ * (`PropertyListContent.jsx` ~L2221-2274) - thumbnails-with-remove, Clear,
+ * Compare Now.
+ *
+ * ---------------------------------------------------------------------------
+ * IT SHOWS WHENEVER THE MODE IS ON, NOT ONCE SOMETHING IS SELECTED
+ *
+ * It used to return null at zero items, which left compare mode with no
+ * on-screen statement of itself at exactly the moment a user has just entered
+ * it and selected nothing: a lit toolbar icon, checkboxes where the hearts
+ * were, and no explanation. A mode with an invisible state is the mode error
+ * every review of this app is meant to catch.
+ *
+ * Now the bar IS the mode indicator. It states what to do at zero, the count
+ * once there is one, and it always carries the way out - which is the other
+ * thing an unmissable mode owes the user.
  */
 export interface CompareBarProps {
   items: readonly PropertySummary[];
+  /** Compare mode is on. The bar renders on this, not on the item count. */
+  active: boolean;
   onRemove: (id: string) => void;
   onClear: () => void;
   onCompare: () => void;
+  onExit: () => void;
 }
 
-export function CompareBar({ items, onRemove, onClear, onCompare }: CompareBarProps) {
+export function CompareBar({
+  items,
+  active,
+  onRemove,
+  onClear,
+  onCompare,
+  onExit,
+}: CompareBarProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
-  if (items.length === 0) return null;
+  if (!active) return null;
 
   return (
     <View
@@ -31,7 +54,9 @@ export function CompareBar({ items, onRemove, onClear, onCompare }: CompareBarPr
       style={{ paddingBottom: insets.bottom + 8 }}
     >
       <Text variant="footnote" tone="secondary">
-        {items.length} {items.length === 1 ? 'property' : 'properties'} selected for comparison
+        {items.length === 0
+          ? 'Select ' + MIN_COMPARE + ' or more properties to compare'
+          : items.length + (items.length === 1 ? ' property' : ' properties') + ' selected for comparison'}
       </Text>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-sm" contentContainerStyle={CHIP_ROW_STYLE}>
@@ -57,7 +82,15 @@ export function CompareBar({ items, onRemove, onClear, onCompare }: CompareBarPr
       </ScrollView>
 
       <View className="mt-sm flex-row items-center gap-sm pb-sm">
-        <Button label="Clear" variant="secondary" onPress={onClear} className="flex-1" />
+        {/* Exit leaves the mode; Clear only empties the selection. Two
+            different things, and collapsing them would mean a user who wants
+            to keep comparing but start over has to re-enter the mode. */}
+        <Button
+          label={items.length === 0 ? 'Exit compare' : 'Clear'}
+          variant="secondary"
+          onPress={items.length === 0 ? onExit : onClear}
+          className="flex-1"
+        />
         <Button
           label="Compare now"
           disabled={items.length < MIN_COMPARE}

@@ -2,11 +2,17 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, RefreshControl, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 
 import { SignInPrompt } from '@/auth';
 import { matchCity } from '@/features/home';
-import { INTEREST_LIMIT, useRemoveInterest, useSavedProperties } from '@/features/saved';
+import {
+  EnquiryMeter,
+  EnquirySheet,
+  useSaveToggle,
+  useSavedProperties,
+  type SaveToggle,
+} from '@/features/saved';
 import {
   SavedSearchRow,
   useDeleteSavedSearch,
@@ -14,14 +20,20 @@ import {
   useUpdateSavedSearchAlerts,
   type SavedSearchSummary,
 } from '@/features/savedSearches';
-import { PropertyCard, PropertyListSkeleton } from '@/features/properties';
+import {
+  PropertyListSkeleton,
+  PropertyRail,
+  SavedPropertyCard,
+  clearRecentlyViewed,
+  useRecentlyViewed,
+} from '@/features/properties';
 import { gesture, radius, screenPadding, spacing, tabBarClearance, useTheme } from '@/theme';
 import {
   EmptyState,
   ErrorState,
-  ProgressBar,
   Screen,
   ScreenHeader,
+  SectionLabel,
   Segmented,
   Skeleton,
   Text,
@@ -73,6 +85,30 @@ export default function SavedScreen() {
   );
 }
 
+/**
+ * Every card on this screen is by definition already saved, so its heart only
+ * ever withdraws and the confirmation sheet is never raised from here. It is
+ * mounted anyway: the sheet belongs to `useSaveToggle`, and a screen that owns
+ * that hook without rendering its sheet is one refactor away from a tap that
+ * silently does nothing.
+ */
+function InterestedSheets({ save }: { save: SaveToggle }) {
+  return (
+    <EnquirySheet
+      visible={save.pending !== null}
+      subtitle={save.pending?.locationLabel || save.pending?.title}
+      remaining={save.remaining}
+      onConfirm={save.confirm}
+      onCancel={save.cancel}
+    />
+  );
+}
+
+/** Module-level so the reference is stable; see `PropertyList`'s note on why
+ *  these are separators rather than a container `gap`. */
+const CardSeparator = () => <View style={{ height: spacing.base }} />;
+const RowSeparator = () => <View style={{ height: spacing.md }} />;
+
 const SEGMENTS = [
   // "Interested", not "Favourites": adding to this list emails the owner and
   // creates a lead. See `features/properties/interest.ts`.
@@ -83,45 +119,24 @@ const SEGMENTS = [
 function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {
   const router = useRouter();
   const theme = useTheme();
-  const { items, isLoading, isRefreshing, error, refresh, used, remaining, requiresAuth } =
+  const { items, isLoading, isRefreshing, error, refresh, used, requiresAuth } =
     useSavedProperties();
-  const { remove } = useRemoveInterest();
-  const toast = useToast();
+  const save = useSaveToggle();
 
   const openProperty = useCallback((id: string) => router.push(`/property/${id}`), [router]);
 
-  const confirmRemove = useCallback(
-    (id: string, title: string) => {
-      // Confirmed because it frees a slot the user may be relying on, and
-      // because the copy is the only place the lead's persistence is stated.
-      Alert.alert(
-        'Remove interest?',
-        `You will be removed from the interested list for "${title}". The owner keeps the enquiry you already sent.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Remove',
-            style: 'destructive',
-            onPress: async () => {
-              await remove(id);
-              toast.show('Removed from your interested list.');
-            },
-          },
-        ]
-      );
-    },
-    // `toast` is memoised by its provider (`ui/Toast.tsx`), so including it
-    // does not make this callback unstable — it was omitted rather than being
-    // deliberately excluded.
-    [remove, toast]
-  );
-
   if (requiresAuth) {
     return (
-      <SignInPrompt
-        icon="heart-outline"
-        title="Your interested list"
-        description="Listings you tell an owner you are interested in appear here."
+      <NothingSavedYet
+        onSelectProperty={openProperty}
+        renderPrompt={(compact) => (
+          <SignInPrompt
+            compact={compact}
+            icon="heart-outline"
+            title="Your interested list"
+            description="Listings you tell an owner you are interested in appear here."
+          />
+        )}
       />
     );
   }
@@ -132,24 +147,50 @@ function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {
 
   if (items.length === 0) {
     return (
-      <EmptyState
-        title="Nothing here yet"
-        description="When you tell an owner you are interested, the listing appears here. You can have up to five at a time."
-        actionLabel="Browse listings"
-        onAction={onOpenSearch}
+      <NothingSavedYet
+        onSelectProperty={openProperty}
+        renderPrompt={(compact) => (
+          <EmptyState
+            compact={compact}
+            icon={
+              <View
+                className="items-center justify-center rounded-full"
+                style={{
+                  width: 72,
+                  height: 72,
+                  backgroundColor: theme.colors.brandMuted,
+                }}
+              >
+                <Ionicons name="heart" size={30} color={theme.colors.brand} />
+              </View>
+            }
+            title="Nothing saved yet"
+            description="Tap the heart on a listing to enquire about it. Saved listings appear here, up to five at a time."
+            actionLabel="Browse properties"
+            onAction={onOpenSearch}
+          />
+        )}
       />
     );
   }
 
   return (
+    <>
     <FlashList
       data={items}
       keyExtractor={(item) => item.id}
       contentContainerStyle={{
         paddingHorizontal: screenPadding,
         paddingBottom: tabBarClearance,
-        gap: spacing.base,
       }}
+      /*
+        A separator, not `gap`: FlashList positions cells absolutely, so flex
+        gap on the content container is inert. See `PropertyList` for the full
+        note. 16, matching the browse feed, so the two screens read as one
+        product at one density.
+      */
+      ItemSeparatorComponent={CardSeparator}
+      ListHeaderComponentStyle={{ marginBottom: spacing.base }}
       refreshControl={
         <RefreshControl
           refreshing={isRefreshing}
@@ -159,68 +200,106 @@ function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {
           progressBackgroundColor={theme.colors.surface}
         />
       }
+      ListHeaderComponent={<EnquiryMeter used={used} />}
       /*
-        THE CAP IS THE HEADER, AND IT IS A METER RATHER THAN A SENTENCE.
+        THE REMOVE ACTION IS ON THE CARD, NOT BETWEEN CARDS.
 
-        The backend refuses a sixth interest anywhere in the app, so this
-        screen is where a user comes to make room. A line of grey text saying
-        "3 of 5 used" states that; a filled bar shows it, and shows how close
-        to the wall they are without them having to do the subtraction.
-
-        It turns danger-toned at the cap, because at that point it has stopped
-        being information and started being the reason their next tap will
-        fail.
+        This list used to render a card, then a small red "Remove" link in the
+        gap beneath it, then the next card — putting the control nearer the
+        listing it does NOT act on than the one it does. See
+        `SavedPropertyCard` for the full reasoning and for why the
+        confirmation dialog went with it.
       */
-      ListHeaderComponent={
-        <View className="mb-xs">
-          <View className="mb-sm flex-row items-baseline justify-between">
-            <Text variant="footnote" tone="secondary">
-              {used} of {INTEREST_LIMIT} enquiries used
-            </Text>
-            <Text variant="caption" tone={remaining === 0 ? 'danger' : 'muted'}>
-              {remaining === 0 ? 'Limit reached' : `${remaining} left`}
-            </Text>
-          </View>
-          <ProgressBar
-            value={used / INTEREST_LIMIT}
-            tone={remaining === 0 ? 'brand' : 'accent'}
-            size="sm"
-            label={`${used} of ${INTEREST_LIMIT} enquiries used`}
-          />
-          {remaining === 0 ? (
-            <Text variant="caption" tone="muted" className="mt-sm">
-              Remove one below to show interest in another listing.
-            </Text>
-          ) : null}
-        </View>
-      }
       renderItem={({ item }) => (
-        <View>
-          <PropertyCard property={item} onPress={openProperty} />
+        <SavedPropertyCard
+          property={item}
+          onPress={openProperty}
+          busy={save.isBusy(item.id)}
+          onRemove={save.toggle}
+        />
+      )}
+      />
 
+      <InterestedSheets save={save} />
+    </>
+  );
+}
+
+/**
+ * The Interested tab with nothing on it — for a guest, and for a signed-in user
+ * who has not enquired about anything yet.
+ *
+ * ---------------------------------------------------------------------------
+ * IT USED TO BE A BOX IN THE MIDDLE OF AN EMPTY SCREEN
+ *
+ * Both states rendered one centred prompt and nothing else, which is the same
+ * dead end `SignInPrompt`'s own docstring describes and Profile was fixed for
+ * on 2026-08-14. The claim behind it — that a screen about saved things has
+ * nothing to show someone with none — was not checked, and it is false.
+ *
+ * Recently viewed is exactly the list this screen should fall back to. It is
+ * device-local history, so it needs no account and it is populated for a guest;
+ * it costs no request, because `recentlyViewed.ts` replays a snapshot from disk
+ * rather than refetching (which would inflate every listing's view counter —
+ * see that module); and it is what someone opening a "Saved" tab with nothing
+ * saved is actually looking for. The listing you meant to come back to is far
+ * more often one you already opened than one you formally enquired about,
+ * especially given enquiring is capped at five and emails the owner.
+ *
+ * When the history is empty too there is genuinely nothing, and the prompt goes
+ * back to filling and centring the screen rather than hanging off the top.
+ */
+function NothingSavedYet({
+  renderPrompt,
+  onSelectProperty,
+}: {
+  /** `compact` is true when something is rendering below the prompt. */
+  renderPrompt: (compact: boolean) => React.ReactNode;
+  onSelectProperty: (id: string) => void;
+}) {
+  const viewed = useRecentlyViewed();
+
+  if (viewed.length === 0) return <>{renderPrompt(false)}</>;
+
+  return (
+    <ScrollView
+      contentContainerStyle={{ paddingBottom: tabBarClearance }}
+      showsVerticalScrollIndicator={false}
+    >
+      {renderPrompt(true)}
+
+      <View style={{ marginTop: spacing.lg }}>
+        <View
+          className="flex-row items-baseline justify-between"
+          style={{ paddingHorizontal: screenPadding, marginBottom: spacing.sm }}
+        >
+          <SectionLabel>Recently viewed</SectionLabel>
           {/*
-            The remove control sits UNDER the card rather than on it. Putting
-            it over the photo would make it compete with the card's own press
-            target for the same pixels, and this is a destructive action on a
-            list capped at five — it should take a deliberate second look, not
-            a thumb brushing past the corner of an image.
+            No confirmation, matching Home's copy of this row. Nothing on the
+            server changes and the way back is to open a listing; a dialog here
+            would be ceremony that teaches users to dismiss the ones that
+            matter. See `home/components/RecentlyViewed.tsx`.
           */}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Remove interest in ${item.title}`}
-            onPress={() => confirmRemove(item.id, item.title)}
+            accessibilityLabel="Clear recently viewed"
             hitSlop={gesture.hitSlop}
-            className="mt-sm flex-row items-center self-start"
-            style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+            onPress={clearRecentlyViewed}
+            className="active:opacity-60"
           >
-            <Ionicons name="close-circle-outline" size={15} color={theme.colors.danger} />
-            <Text variant="footnote" tone="danger" className="ml-xs">
-              Remove
+            <Text variant="footnote" tone="accent">
+              Clear
             </Text>
           </Pressable>
         </View>
-      )}
-    />
+
+        <PropertyRail
+          items={viewed}
+          onSelect={onSelectProperty}
+          accessibilityLabel="Recently viewed properties"
+        />
+      </View>
+    </ScrollView>
   );
 }
 
@@ -373,8 +452,8 @@ function SearchesList() {
       contentContainerStyle={{
         paddingHorizontal: screenPadding,
         paddingBottom: tabBarClearance,
-        gap: spacing.md,
       }}
+      ItemSeparatorComponent={RowSeparator}
       refreshControl={
         <RefreshControl
           refreshing={isRefreshing}

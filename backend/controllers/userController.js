@@ -24,6 +24,7 @@ import { Parser } from "@json2csv/plainjs";
 import PDFDocument from "pdfkit";
 import { sendOtpSms, sendPasswordResetSms, isSmsConfigured } from "../services/smsService.js";
 import { getOrCreateWallet, createReferralFromCode, trackDailyLogin } from "../services/rewardService.js";
+import { deletePropertyAssets } from "./propertyController.js";
 import { sendNewUserWhatsApp } from "../services/whatsappService.js";
 import { sendWelcomeEmail } from "../utils/emailService.js";
 
@@ -1245,19 +1246,44 @@ export const deleteAccount = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    // 1. Delete owned properties
+    // ============================================
+    // B1 FIX: four of these cascades previously queried fields that do not
+    // exist on the target schema, so they matched nothing and silently
+    // deleted nothing while still reporting success:
+    //
+    //   UserSession.deleteMany({ userId })        → field is `user`
+    //   LoginTracker.deleteMany({ user })         → field is `userId`
+    //   Report.deleteMany({ reporter })           → field is `reportedBy`
+    //   Referral.deleteMany({ referredUser })     → field is `referred`
+    //
+    // Sessions surviving account deletion was the most serious: the API
+    // told the user "all associated data have been permanently deleted"
+    // while their session documents remained.
+    //
+    // When adding a cascade here, verify the field name against the model.
+    // ============================================
+
+    // 1. Delete owned properties — and their Cloudinary assets.
+    //    Property.deleteMany alone orphans every uploaded image, leaving them
+    //    publicly reachable by URL after the account is gone.
+    const ownedProperties = await Property.find({ owner: userId })
+      .select("_id images categorizedImages")
+      .lean();
+    for (const property of ownedProperties) {
+      await deletePropertyAssets(property); // never throws
+    }
     await Property.deleteMany({ owner: userId });
 
-    // 2. Clear out all active user sessions and reset tokens
-    await UserSession.deleteMany({ userId });
+    // 2. Sessions and tokens
+    await UserSession.deleteMany({ user: userId });
     await PasswordResetToken.deleteMany({ user: userId });
-    await LoginTracker.deleteMany({ user: userId });
+    await LoginTracker.deleteMany({ userId });
 
-    // 3. Clear communications and history
+    // 3. Communications and history
     await ContactInquiry.deleteMany({ user: userId });
     await SavedSearch.deleteMany({ user: userId });
-    await Report.deleteMany({ reporter: userId });
-    await Notification.deleteMany({ $or: [{ user: userId }, { recipient: userId }] });
+    await Report.deleteMany({ reportedBy: userId });
+    await Notification.deleteMany({ user: userId });
 
     // 4. Chat interactions
     await Message.deleteMany({ sender: userId });
@@ -1271,7 +1297,26 @@ export const deleteAccount = async (req, res) => {
 
     // 5. Rewards and Referrals
     await Reward.deleteMany({ user: userId });
-    await Referral.deleteMany({ $or: [{ referrer: userId }, { referredUser: userId }] });
+    await Referral.deleteMany({ $or: [{ referrer: userId }, { referred: userId }] });
+
+    // ============================================
+    // NOT DELETED — deliberate, needs a product decision before changing.
+    //
+    // These reference the user but also belong to a counterparty or to a
+    // financial/legal record, so removing them silently would destroy another
+    // party's data or an auditable trail:
+    //
+    //   Lead                    — the property OWNER's lead list
+    //   Agreement               — a signed legal document, both parties
+    //   TransactionVerification — deal proof + its Cloudinary documents
+    //   RedemptionRequest       — payout records, may be mid-processing
+    //   CampaignMember          — group-buy commitment, affects campaign counts
+    //   ProjectBooking          — booking + payment record held by admin
+    //
+    // Decide per collection whether to delete, anonymise (strip userSnapshot
+    // and null the ref), or retain for a defined period. Anonymising is
+    // usually the right answer for the counterparty-facing ones.
+    // ============================================
 
     // 6. Finally, delete the User document itself
     const deletedUser = await User.findByIdAndDelete(userId);

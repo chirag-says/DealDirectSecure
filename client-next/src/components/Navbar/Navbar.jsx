@@ -693,9 +693,13 @@ function Navbar() {
                 <Link href="/projects" className={`${navTextClass} hover:text-indigo-600 font-medium text-sm transition-colors whitespace-nowrap`}>
                   Projects
                 </Link>
+                {/* AGREEMENTS — HIDDEN (client decision, 2026-08-01). Restore with the
+                    other two links in this file, app/agreements/page.js, and the route
+                    mount in backend/server.js.
                 <Link href="/agreements" className={`${navTextClass} hover:text-red-600 font-medium text-sm transition-colors whitespace-nowrap`}>
                   Agreements
                 </Link>
+                */}
                 <Link href="/blog" className={`${navTextClass} hover:text-red-600 font-medium text-sm transition-colors whitespace-nowrap`}>
                   Blog
                 </Link>
@@ -815,10 +819,12 @@ function Navbar() {
                         <CalendarCheck className="w-5 h-5 text-gray-500" />
                         <span className="font-medium">My Bookings</span>
                       </Link>
+                      {/* AGREEMENTS — HIDDEN (client decision, 2026-08-01)
                       <Link href="/agreements" onClick={() => setIsUserDropdownOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-gray-700 hover:bg-gray-50 transition-colors">
                         <HiOutlineDocumentText className="w-5 h-5 text-gray-500" />
                         <span className="font-medium">My Agreements</span>
                       </Link>
+                      */}
                       <Link href="/rewards/dashboard" onClick={() => setIsUserDropdownOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-gray-700 hover:bg-gray-50 transition-colors">
                         <AiOutlineGift className="w-5 h-5 text-gray-500" />
                         <span className="font-medium">Rewards</span>
@@ -1084,10 +1090,12 @@ function Navbar() {
                 </button>
               )}
 
+              {/* AGREEMENTS — HIDDEN (client decision, 2026-08-01)
               <Link href="/agreements" onClick={toggleMenu} className="flex items-center gap-3 px-4 py-3 text-slate-700 font-medium rounded-xl hover:bg-red-50 hover:text-red-600 transition">
                 <AiOutlineFileText size={18} />
                 Agreements
               </Link>
+              */}
 
 
 

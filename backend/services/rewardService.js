@@ -13,7 +13,6 @@
  */
 import Reward from "../models/Reward.js";
 import Referral from "../models/Referral.js";
-import RedemptionRequest from "../models/RedemptionRequest.js";
 import User from "../models/userModel.js";
 
 // ============================================
@@ -168,70 +167,22 @@ export const getRandomReward = (category) => {
 };
 
 // ============================================
-// REWARDS STORE — available redemptions
 // ============================================
-
-export const REWARDS_STORE = [
-  // On-Platform Rewards
-  {
-    slug: "featured_listing_500",
-    name: "₹500 off a Featured Listing",
-    pointsCost: 10000,
-    category: "on_platform",
-    rewardType: "listing_boost",
-  },
-  {
-    slug: "premium_listing_30d",
-    name: "30-day Premium Listing Placement",
-    pointsCost: 20000,
-    category: "on_platform",
-    rewardType: "premium_listing",
-  },
-  {
-    slug: "valuation_report",
-    name: "1 Free Property Valuation Report",
-    pointsCost: 10000,
-    category: "on_platform",
-    rewardType: "valuation_report",
-  },
-  {
-    slug: "priority_support_3m",
-    name: "Priority Customer Support (3 months)",
-    pointsCost: 20000,
-    category: "on_platform",
-    rewardType: "priority_support",
-  },
-  // Lifestyle Vouchers
-  {
-    slug: "amazon_250",
-    name: "Amazon ₹250 Gift Voucher",
-    pointsCost: 5000,
-    category: "lifestyle",
-    rewardType: "voucher",
-  },
-  {
-    slug: "swiggy_zomato_300",
-    name: "Swiggy / Zomato ₹300 Voucher",
-    pointsCost: 6000,
-    category: "lifestyle",
-    rewardType: "voucher",
-  },
-  {
-    slug: "starbucks_200",
-    name: "Starbucks ₹200 Gift Card",
-    pointsCost: 4000,
-    category: "lifestyle",
-    rewardType: "voucher",
-  },
-  // Cash
-  {
-    slug: "bank_transfer_1000",
-    name: "₹1,000 Bank Transfer",
-    pointsCost: 20000,
-    category: "cash",
-    rewardType: "cash_transfer",
-  },
-];
+// PRE-HUBBLE REDEMPTION LAYER — REMOVED 2026-08-01
+//
+// REWARDS_STORE, redeemPoints(), getRedemptionRequests() and
+// updateRedemptionStatus() implemented an in-house redemption store. That flow
+// was superseded by the Hubble Gift Card SDK and was verified UNREACHABLE
+// before removal:
+//   - rewardsApi.getStore()  had zero call sites in client-next
+//   - handleRedeem()         was defined but never invoked (no onClick)
+//   - the Redeem tab rendered <HubbleStorefront/> only
+//   - RedemptionRequest collection contained 0 documents in production
+//
+// Redemption now happens inside the Hubble SDK, which debits this wallet via
+// POST /api/rewards/hubble/debit. The EARNING engine, the Reward wallet,
+// tiers and multipliers below are all still live and Hubble depends on them.
+// ============================================
 
 // ============================================
 // CORE SERVICE FUNCTIONS
@@ -357,73 +308,8 @@ export const awardPoints = async (userId, action, metadata = {}, _retryCount = 0
 };
 
 /**
- * Redeem points for a reward from the store
- *
- * @param {string} userId
- * @param {string} rewardSlug - slug from REWARDS_STORE
- * @param {Object} [extraData={}] - bankDetails for cash, etc.
- */
-export const redeemPoints = async (userId, rewardSlug, extraData = {}, _retryCount = 0) => {
-  try {
-    const reward = REWARDS_STORE.find((r) => r.slug === rewardSlug);
-    if (!reward) {
-      return { success: false, error: "Invalid reward selection" };
-    }
-
-    const wallet = await getOrCreateWallet(userId);
-    if (wallet.availablePoints < reward.pointsCost) {
-      return {
-        success: false,
-        error: `Insufficient points. You have ${wallet.availablePoints} pts, need ${reward.pointsCost} pts.`,
-      };
-    }
-
-    // Create redemption request
-    const redemption = await RedemptionRequest.create({
-      user: userId,
-      rewardType: reward.rewardType,
-      rewardName: reward.name,
-      pointsSpent: reward.pointsCost,
-      status: "pending",
-      bankDetails: reward.rewardType === "cash_transfer" ? extraData.bankDetails : undefined,
-      metadata: extraData,
-    });
-
-    // Deduct points
-    wallet.addTransaction({
-      type: "redeem",
-      action: `redeem_${rewardSlug}`,
-      points: -reward.pointsCost,
-      basePoints: reward.pointsCost,
-      multiplier: 1,
-      description: `Redeemed: ${reward.name}`,
-      metadata: { redemptionId: redemption._id },
-    });
-
-    await wallet.save();
-
-    console.log(
-      `[RewardService] -${reward.pointsCost} pts from user ${userId} for ${reward.name}`
-    );
-
-    return {
-      success: true,
-      redemption,
-      newBalance: wallet.availablePoints,
-    };
-  } catch (error) {
-    // C4 FIX: Retry once on optimistic concurrency conflict (VersionError)
-    if (error.name === 'VersionError' && _retryCount < 1) {
-      console.warn(`[RewardService] Concurrency conflict for redeem ${userId}/${rewardSlug}, retrying...`);
-      return redeemPoints(userId, rewardSlug, extraData, _retryCount + 1);
-    }
-    console.error(`[RewardService] redeemPoints error:`, error.message);
-    return { success: false, error: error.message };
-  }
-};
-
-/**
- * Get wallet summary for a user
+ * Get wallet summary for a user — balance, tier, multiplier, next-tier
+ * progress and the 10 most recent transactions.
  */
 export const getWallet = async (userId) => {
   const wallet = await getOrCreateWallet(userId);
@@ -662,73 +548,14 @@ export const adminAdjustPoints = async (userId, points, reason, adminId) => {
 /**
  * Admin: get redemption requests
  */
-export const getRedemptionRequests = async (status, page = 1, limit = 20) => {
-  const filter = status ? { status } : {};
-  const total = await RedemptionRequest.countDocuments(filter);
-  const requests = await RedemptionRequest.find(filter)
-    .populate("user", "name email phone")
-    .sort({ createdAt: -1 })
-    .skip((page - 1) * limit)
-    .limit(limit)
-    .lean();
-
-  return {
-    requests,
-    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
-  };
-};
-
-/**
- * Admin: update redemption status
- */
-export const updateRedemptionStatus = async (redemptionId, status, adminNotes, voucherCode) => {
-  try {
-    const updates = { status };
-    if (adminNotes) updates.adminNotes = adminNotes;
-    if (voucherCode) updates.voucherCode = voucherCode;
-    if (status === "fulfilled") updates.deliveredAt = new Date();
-    if (status === "failed") updates.failureReason = adminNotes || "Failed";
-
-    const redemption = await RedemptionRequest.findByIdAndUpdate(
-      redemptionId,
-      { $set: updates },
-      { new: true }
-    ).populate("user", "name email");
-
-    if (!redemption) return { success: false, error: "Redemption not found" };
-
-    // If failed, refund points
-    if (status === "failed") {
-      const wallet = await getOrCreateWallet(redemption.user._id);
-      wallet.addTransaction({
-        type: "adjustment",
-        action: "redemption_refund",
-        points: redemption.pointsSpent,
-        basePoints: redemption.pointsSpent,
-        multiplier: 1,
-        description: `Refund: ${redemption.rewardName} (failed)`,
-        metadata: { redemptionId },
-      });
-      await wallet.save();
-    }
-
-    return { success: true, redemption };
-  } catch (error) {
-    console.error("[RewardService] updateRedemptionStatus error:", error.message);
-    return { success: false, error: error.message };
-  }
-};
-
 export default {
   POINT_VALUES,
   FIXED_POINTS,
   POINTS_TO_RUPEES,
   REWARD_TIERS,
-  REWARDS_STORE,
   getRandomReward,
   getOrCreateWallet,
   awardPoints,
-  redeemPoints,
   getWallet,
   getTransactionHistory,
   handleReferralMilestone,
@@ -736,6 +563,4 @@ export default {
   getReferralStats,
   trackDailyLogin,
   adminAdjustPoints,
-  getRedemptionRequests,
-  updateRedemptionStatus,
 };

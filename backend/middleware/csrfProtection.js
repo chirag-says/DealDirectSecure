@@ -202,6 +202,104 @@ export const validateCsrfToken = (req, res, next) => {
 };
 
 // ============================================
+// PHASE 1 CSRF GUARD — per-route enforcement
+//
+// WHY A SECOND VALIDATOR RATHER THAN FIXING validateCsrfToken
+//
+// validateCsrfToken above early-returns for every path starting with `/api/`,
+// which is the entire API. It is left untouched so nothing that currently
+// depends on its behaviour changes. This guard is applied deliberately, to a
+// named list of routes (see server.js), which is what "document exactly which
+// routes are protected" requires.
+//
+// TWO INDEPENDENT CHECKS
+//
+// 1. ORIGIN — browsers attach `Origin` to every cross-origin POST, including
+//    plain <form> submissions, and page JavaScript cannot forge or strip it.
+//    A mismatched Origin is therefore conclusive evidence of a cross-site
+//    request and is rejected outright.
+//
+// 2. DOUBLE-SUBMIT TOKEN — the non-HttpOnly `csrf_token` cookie must equal the
+//    `X-CSRF-Token` header. An attacker's page cannot read the cookie
+//    (different origin) and cannot set custom headers on a form submission,
+//    so it cannot satisfy this.
+//
+// WHY REQUESTS WITHOUT AN `Origin` HEADER ARE ALLOWED THROUGH
+//
+// CSRF is a browser-only attack: it depends on the browser automatically
+// attaching cookies to a request the user did not intend. A client with no
+// `Origin` (the Expo mobile app, Next.js SSR, curl, a webhook) is not a
+// browser carrying ambient credentials, so there is nothing to forge. Adding
+// a token requirement there would break the mobile app — whose api/client.ts
+// deliberately omits CSRF plumbing — while defending against nothing.
+//
+// EMERGENCY OFF-SWITCH
+//
+// Set CSRF_ENFORCE=false in the environment to disable this instantly, without
+// a redeploy, if it turns out to block a legitimate flow in production.
+// ============================================
+
+/**
+ * Build the Phase 1 CSRF guard.
+ * @param {string[]} allowedOrigins - the CORS whitelist from server.js
+ */
+export const requireCsrf = (allowedOrigins = []) => {
+    const allowed = new Set(allowedOrigins.filter(Boolean));
+
+    return (req, res, next) => {
+        // Emergency kill switch.
+        if (process.env.CSRF_ENFORCE === 'false') return next();
+
+        // Safe methods never mutate state.
+        if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+
+        const origin = req.headers.origin;
+
+        // No Origin → not a browser request → CSRF does not apply. See above.
+        if (!origin) return next();
+
+        // ── Check 1: Origin must be on the whitelist ──────────────────────
+        if (!allowed.has(origin)) {
+            console.warn(`[CSRF] Blocked ${req.method} ${req.path} — untrusted origin: ${origin}`);
+            return res.status(403).json({
+                success: false,
+                message: 'Request blocked for security reasons.',
+                code: 'CSRF_ORIGIN_REJECTED',
+            });
+        }
+
+        // ── Check 2: double-submit token ──────────────────────────────────
+        const cookieToken = req.cookies?.[CSRF_COOKIE_NAME];
+        const headerToken = req.headers[CSRF_HEADER_NAME];
+
+        if (!cookieToken || !headerToken) {
+            console.warn(
+                `[CSRF] Blocked ${req.method} ${req.path} — missing ${!cookieToken ? 'cookie' : 'header'} (origin: ${origin})`
+            );
+            return res.status(403).json({
+                success: false,
+                message: 'Security token missing. Please refresh the page and try again.',
+                code: !cookieToken ? 'CSRF_MISSING_COOKIE' : 'CSRF_MISSING_HEADER',
+            });
+        }
+
+        // timingSafeEqual throws on length mismatch, so compare lengths first.
+        const a = Buffer.from(String(cookieToken));
+        const b = Buffer.from(String(headerToken));
+        if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+            console.warn(`[CSRF] Blocked ${req.method} ${req.path} — token mismatch (origin: ${origin})`);
+            return res.status(403).json({
+                success: false,
+                message: 'Security token invalid. Please refresh the page and try again.',
+                code: 'CSRF_TOKEN_MISMATCH',
+            });
+        }
+
+        return next();
+    };
+};
+
+// ============================================
 // COMBINED MIDDLEWARE
 // ============================================
 

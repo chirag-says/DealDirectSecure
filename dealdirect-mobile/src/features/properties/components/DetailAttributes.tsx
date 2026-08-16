@@ -45,7 +45,16 @@ export function DetailAttributes({ property }: DetailAttributesProps) {
             {section.title}
           </Text>
 
-          <Card bordered={false} radius="xl" className="overflow-hidden">
+          {/*
+            `padded={false}`, and it is load-bearing. Every row below supplies
+            its own `px-base py-md`, so the card must contribute none — with
+            `Card`'s default padding the rows sat 32pt in from the card edge,
+            and the separator's `marginLeft: 16` inset (which assumes the row's
+            own 16 is the only one) stopped landing under the label it is meant
+            to be inset to. Regression from the 2026-08-15 `Card` default;
+            fixed 2026-08-16.
+          */}
+          <Card bordered={false} radius="xl" padded={false} className="overflow-hidden">
             {section.rows.map((row, index) => (
               <View
                 key={row.label}

@@ -8,16 +8,12 @@ import {
   getUserTransactions,
   getUserReferralCode,
   getUserReferrals,
-  redeemReward,
-  getRewardsStore,
   getCatalogueCategories,
   getCatalogueSubCategories,
   getCatalogueProducts,
   filterCatalogueProducts,
   getCatalogueProductDetails,
   adminAdjust,
-  adminGetRedemptions,
-  adminUpdateRedemption,
   adminGetUserWallet,
   adminGetOverview,
 } from "../controllers/rewardsController.js";
@@ -30,8 +26,6 @@ const router = express.Router();
 // PUBLIC ROUTES
 // ============================================
 
-// Rewards store (available rewards & costs)
-router.get("/store", getRewardsStore);
 
 // ============================================
 // REWARDPORT CATALOGUE (Public browsing)
@@ -51,7 +45,6 @@ router.get("/wallet", authMiddleware, getUserWallet);
 router.get("/transactions", authMiddleware, getUserTransactions);
 router.get("/referral-code", authMiddleware, getUserReferralCode);
 router.get("/referrals", authMiddleware, getUserReferrals);
-router.post("/redeem", authMiddleware, redeemReward);
 
 // ============================================
 // ADMIN ROUTES
@@ -59,8 +52,6 @@ router.post("/redeem", authMiddleware, redeemReward);
 
 router.get("/admin/overview", protectAdmin, adminGetOverview);
 router.post("/admin/adjust-points", protectAdmin, adminAdjust);
-router.get("/admin/redemptions", protectAdmin, adminGetRedemptions);
-router.put("/admin/redemptions/:id", protectAdmin, adminUpdateRedemption);
 router.get("/admin/user/:userId/wallet", protectAdmin, adminGetUserWallet);
 
 export default router;

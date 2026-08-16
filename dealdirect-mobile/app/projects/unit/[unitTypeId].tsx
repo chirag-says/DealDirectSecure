@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { ScrollView, View, type LayoutChangeEvent } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError } from '@/api';
 import { useAuth } from '@/auth';
@@ -10,7 +11,7 @@ import {
   useCreateBooking,
   useUnitTypeDetail,
 } from '@/features/projects';
-import { useTheme } from '@/theme';
+import { screenPadding, spacing, useTheme } from '@/theme';
 import type { GroupBuyCampaign } from '@/types/backend/project';
 import {
   Badge,
@@ -35,7 +36,20 @@ export default function UnitTypeScreen() {
   const { unitType, isLoading, error, refresh } = useUnitTypeDetail(unitTypeId);
   const { campaigns } = useCampaignsForUnitType(unitTypeId);
   const { status } = useAuth();
+  const insets = useSafeAreaInsets();
   const [bookingOpen, setBookingOpen] = useState(false);
+
+  /**
+   * Measured, not assumed. The scroll view used a hardcoded `paddingBottom:
+   * 100` to clear the action bar, which is wrong on the first device with a
+   * different bottom inset and wrong again when the label wraps at a large
+   * text size. Same approach `property/[id]` takes with `DetailActions`.
+   */
+  const [actionBarHeight, setActionBarHeight] = useState(96);
+  const onActionBarLayout = useCallback(
+    (event: LayoutChangeEvent) => setActionBarHeight(event.nativeEvent.layout.height),
+    []
+  );
 
   const isAuthenticated = status === 'authenticated';
 
@@ -74,12 +88,27 @@ export default function UnitTypeScreen() {
   const available = unitType.inventory?.available;
   const floorPlan = unitType.floorPlans?.twoDFloorPlan ?? unitType.floorPlans?.threeDFloorPlan;
   const projectId = typeof unitType.project === 'object' ? unitType.project?._id : unitType.project;
+  const soldOut = typeof available === 'number' && available <= 0;
 
   return (
     <Screen>
-      <ScreenHeader title={unitType.config?.name ?? 'Unit type'} backTo="/projects" />
+      {/*
+        Back to the PROJECT, not the projects list. This screen is only ever
+        reached from a project's unit-type rows, so `/projects` skipped a level
+        and dropped the user two screens back from where they were. Falls back
+        to the list only when the unit type carries no project reference.
+      */}
+      <ScreenHeader
+        title={unitType.config?.name ?? 'Unit type'}
+        backTo={projectId ? `/projects/${projectId}` : '/projects'}
+      />
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+      <ScrollView
+        contentContainerStyle={{
+          padding: screenPadding,
+          paddingBottom: actionBarHeight + spacing.xl,
+        }}
+      >
         {floorPlan ? (
           <Image uri={floorPlan} size="full" style={{ width: '100%', height: 220, borderRadius: 12 }} />
         ) : null}
@@ -129,10 +158,36 @@ export default function UnitTypeScreen() {
         ) : null}
       </ScrollView>
 
-      <View className="border-t border-border px-lg py-md">
+      {/*
+        The action bar. `insets.bottom` was missing entirely, so on any device
+        with a home indicator the button sat underneath it.
+
+        `fullWidth` because this is a sticky action bar with one action in it -
+        a left-aligned button in a full-width bar reads as an orphan.
+      */}
+      <View
+        onLayout={onActionBarLayout}
+        className="border-t border-border bg-surface"
+        style={{
+          paddingHorizontal: screenPadding,
+          paddingTop: spacing.md,
+          paddingBottom: insets.bottom + spacing.md,
+        }}
+      >
+        {/* A disabled control needs to say why. A greyed button with no caption
+            is the most common way an interface makes a user feel stupid - see
+            `DetailActions`, which states its own refusal. */}
+        {soldOut ? (
+          <Text variant="caption" tone="muted" className="mb-sm">
+            Every unit of this type is taken. Other unit types in this project may still be
+            available.
+          </Text>
+        ) : null}
+
         <Button
           label={isAuthenticated ? 'Book this unit' : 'Sign in to book'}
-          disabled={typeof available === 'number' && available <= 0}
+          disabled={soldOut}
+          fullWidth
           onPress={handleBookPress}
         />
       </View>

@@ -16,10 +16,13 @@ export {
   darkColors,
   colorSchemes,
   scrim,
+  withAlpha,
   type ColorScheme,
   type ColorSchemeName,
   type ScrimName,
 } from './colors';
+
+export { navigationThemes } from './navigationTheme';
 
 export { typography, type TextStyleToken, type TypographyToken } from './typography';
 

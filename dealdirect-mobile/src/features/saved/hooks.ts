@@ -125,3 +125,4 @@ export function useRemoveInterest() {
     error: mutation.error,
   };
 }
+

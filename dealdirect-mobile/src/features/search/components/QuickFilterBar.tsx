@@ -1,10 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import type { ListingIntent } from '@/features/properties';
-import { gesture, radius, spacing, useTheme } from '@/theme';
-import { Segmented, Text, type SegmentedOption } from '@/ui';
+import { gesture, radius, spacing, touchTarget, useTheme, withAlpha } from '@/theme';
+import { Gradient, PressableScale, Segmented, Text, type SegmentedOption } from '@/ui';
 import {
   BHK_OPTIONS,
   CATEGORY_OPTIONS,
@@ -42,9 +42,12 @@ import { FacetSheet, type FacetOption } from './FacetSheet';
  * ---------------------------------------------------------------------------
  * THE THREE KINDS OF CONTROL ON ONE RAIL, AND WHY THEY LOOK DIFFERENT
  *
- * 1. **Filters** opens a different surface rather than setting a value. It
- *    leads the rail and is separated by a hairline, the same treatment it had
- *    before, because it is a different KIND of control from everything after it.
+ * 1. **Filters** opens a different surface rather than setting a value, so as
+ *    of 2026-08-15 it is NOT on this rail at all — it sits beside the search
+ *    field, where the screen's other "open something" control lives. It led the
+ *    rail behind a hairline divider until then, which put a control that sets
+ *    nothing at the head of a strip of controls that set things, and cost 93pt
+ *    of the first screenful to do it.
  *
  * 2. **Listing type** is one value with three spellings, so it is a segmented
  *    control rather than three chips — see `ui/Segmented.tsx`. It stays inline
@@ -69,7 +72,6 @@ import { FacetSheet, type FacetOption } from './FacetSheet';
 export interface QuickFilterBarProps {
   filters: SearchFilters;
   onChange: (filters: SearchFilters) => void;
-  onOpenAllFilters: () => void;
 }
 
 /** Which facet sheet is up, or null. */
@@ -155,10 +157,9 @@ function pillLabel(spec: FacetSpec, filters: SearchFilters): { text: string; act
   return { text: match?.label ?? spec.label, active: true };
 }
 
-export function QuickFilterBar({ filters, onChange, onOpenAllFilters }: QuickFilterBarProps) {
+export function QuickFilterBar({ filters, onChange }: QuickFilterBarProps) {
   const theme = useTheme();
   const [openFacet, setOpenFacet] = useState<FacetKey | null>(null);
-  const activeCount = countActiveFilters(filters);
 
   const setIntent = useCallback(
     (value: IntentSegment) =>
@@ -195,60 +196,72 @@ export function QuickFilterBar({ filters, onChange, onOpenAllFilters }: QuickFil
 
   return (
     <>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={RAIL_STYLE}
-        // Without this a tap on a pill while the search field has focus is
-        // swallowed by the keyboard dismissal and has to be repeated.
-        keyboardShouldPersistTaps="handled"
-      >
-        <Pill
-          icon="options-outline"
-          label={activeCount > 0 ? `Filters · ${activeCount}` : 'Filters'}
-          active={activeCount > 0}
-          accessibilityLabel={activeCount > 0 ? `Filters, ${activeCount} applied` : 'Filters'}
-          onPress={onOpenAllFilters}
-        />
+      <View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={RAIL_STYLE}
+          // Without this a tap on a pill while the search field has focus is
+          // swallowed by the keyboard dismissal and has to be repeated.
+          keyboardShouldPersistTaps="handled"
+        >
+          <Segmented
+            compact
+            options={INTENT_SEGMENTS}
+            value={filters.listingType ?? 'all'}
+            onChange={setIntent}
+            accessibilityLabel="Listing type"
+          />
 
-        <View
+          {FACETS.map((spec) => {
+            const { text, active } = pillLabel(spec, filters);
+            return (
+              <Pill
+                key={spec.key}
+                label={text}
+                active={active}
+                chevron
+                accessibilityLabel={active ? `${spec.label}, ${text}` : spec.label}
+                onPress={() => setOpenFacet(spec.key)}
+              />
+            );
+          })}
+
+          <Pill
+            label={possessionLabel}
+            active={Boolean(possession)}
+            accessibilityLabel={possessionLabel}
+            onPress={togglePossession}
+          />
+        </ScrollView>
+
+        {/*
+          THE RIGHT EDGE FADES RATHER THAN CUTS — 2026-08-15.
+
+          Eight controls will not fit across 393pt at a legible size, so this
+          rail scrolls and something is always partly off screen. Reported as
+          "the Furnishing button is cut from the right", and the report was
+          fair: a pill sliced by a hard screen edge reads as a layout bug, not
+          as an invitation to scroll. Under a fade the same pill reads as
+          continuing past the edge, which is what it does.
+
+          `withAlpha` rather than `'transparent'`: that keyword is transparent
+          BLACK, so in light mode the fade would run the pale page through grey
+          on its way out. See `theme/colors.ts`.
+        */}
+        <Gradient
+          pointerEvents="none"
+          angle={90}
+          colors={[withAlpha(theme.colors.background, 0), theme.colors.background]}
           style={{
-            width: 1,
-            alignSelf: 'stretch',
-            marginVertical: spacing.xs,
-            backgroundColor: theme.colors.border,
+            position: 'absolute',
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: spacing['2xl'],
           }}
         />
-
-        <Segmented
-          compact
-          options={INTENT_SEGMENTS}
-          value={filters.listingType ?? 'all'}
-          onChange={setIntent}
-          accessibilityLabel="Listing type"
-        />
-
-        {FACETS.map((spec) => {
-          const { text, active } = pillLabel(spec, filters);
-          return (
-            <Pill
-              key={spec.key}
-              label={text}
-              active={active}
-              chevron
-              accessibilityLabel={active ? `${spec.label}, ${text}` : spec.label}
-              onPress={() => setOpenFacet(spec.key)}
-            />
-          );
-        })}
-
-        <Pill
-          label={possessionLabel}
-          active={Boolean(possession)}
-          accessibilityLabel={possessionLabel}
-          onPress={togglePossession}
-        />
-      </ScrollView>
+      </View>
 
       {activeSpec ? (
         <FacetSheet
@@ -265,10 +278,24 @@ export function QuickFilterBar({ filters, onChange, onOpenAllFilters }: QuickFil
   );
 }
 
+/**
+ * One height for every control on the rail.
+ *
+ * The segmented control sizes itself from its own padding and the pills used to
+ * size themselves from their label, so the two sat at slightly different
+ * heights beside each other. This is the shared value; `Segmented compact`
+ * lands within a point of it, which is close enough that `alignItems: center`
+ * on the rail resolves the rest.
+ */
+const PILL_HEIGHT = 36;
+
 const RAIL_STYLE = {
   gap: spacing.sm,
   alignItems: 'center',
-  paddingHorizontal: spacing.base,
+  paddingLeft: spacing.base,
+  // Clears the fade at the right edge, so the last pill can be scrolled fully
+  // into the clear rather than resting permanently under the gradient.
+  paddingRight: spacing.base + spacing['2xl'],
 } as const;
 
 /**
@@ -277,20 +304,38 @@ const RAIL_STYLE = {
  * A local component rather than `ui/Chip` because the two states differ: a
  * `Chip` is on or off, and a pill here is unset-showing-its-name or
  * set-showing-its-value, which needs a chevron on the first and none on the
- * second kind of control at all. Reusing `Chip` would mean adding an icon slot
- * and a chevron slot to a primitive that has neither use anywhere else.
+ * second kind of control at all. Reusing `Chip` would mean adding a chevron
+ * slot to a primitive that has no use for one anywhere else.
+ *
+ * ---------------------------------------------------------------------------
+ * IT RENDERED WITH NO STYLING AT ALL UNTIL 2026-08-15
+ *
+ * This was a `Pressable` whose entire layout — the row direction, the padding,
+ * the border, the pill radius, the fill — lived in a `style={({ pressed }) =>
+ * [...]}` FUNCTION. NativeWind's JSX pragma replaces every `Pressable` in this
+ * app with its interop component, and that component treats the `style` prop
+ * as a source of inline CSS rules: it spreads it (`{...style}`, which is `{}`
+ * for a function), assigns the result over `props.style`, and the original
+ * function is never called.
+ *
+ * So each pill painted as a bare `<View>`: no padding, no border, no fill, and
+ * `flexDirection` back at its `column` default, which stacked each chevron
+ * under its own label. That is what "the filters at the top are not properly
+ * placed" was.
+ *
+ * `PressableScale` takes a plain style OBJECT, so the whole class of bug is
+ * gone, and it is what every other pressable surface in the app already uses.
+ * See `ui/PressableScale.tsx` for why the press shrinks rather than fades.
  */
 function Pill({
   label,
   active,
-  icon,
   chevron = false,
   accessibilityLabel,
   onPress,
 }: {
   label: string;
   active: boolean;
-  icon?: keyof typeof Ionicons.glyphMap;
   chevron?: boolean;
   accessibilityLabel: string;
   onPress: () => void;
@@ -299,31 +344,35 @@ function Pill({
   const tint = active ? theme.colors.accent : theme.colors.textSecondary;
 
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
       accessibilityLabel={accessibilityLabel}
       hitSlop={gesture.hitSlop}
       onPress={onPress}
-      style={({ pressed }) => [
-        {
-          flexDirection: 'row',
-          alignItems: 'center',
-          borderRadius: radius.full,
-          borderWidth: 1,
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.sm,
-          borderColor: active ? theme.colors.accent : theme.colors.border,
-          backgroundColor: active ? theme.colors.accentMuted : theme.colors.surface,
-        },
-        pressed ? { opacity: 0.7 } : undefined,
-      ]}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        // A FIXED height, and the reason is the bug it fixes: the label used to
+        // switch from `footnote` (13) to `subhead` (15) when the pill became
+        // active, so a set pill stood 2pt taller than its neighbours and the
+        // whole rail lost its baseline. Weight and colour carry the state
+        // instead, which is the house rule anyway - reach for weight before
+        // size, and for size before colour.
+        height: PILL_HEIGHT,
+        borderRadius: radius.full,
+        borderWidth: 1,
+        paddingHorizontal: spacing.md,
+        borderColor: active ? theme.colors.accent : theme.colors.border,
+        backgroundColor: active ? theme.colors.accentMuted : theme.colors.surface,
+      }}
     >
-      {icon ? (
-        <Ionicons name={icon} size={16} color={tint} style={{ marginRight: spacing.xs }} />
-      ) : null}
-
-      <Text variant={active ? 'subhead' : 'footnote'} tone={active ? 'accent' : 'secondary'}>
+      <Text
+        variant="footnote"
+        tone={active ? 'accent' : 'secondary'}
+        numberOfLines={1}
+        style={active ? { fontWeight: '600' } : undefined}
+      >
         {label}
       </Text>
 
@@ -335,6 +384,58 @@ function Pill({
           style={{ marginLeft: spacing.xs, marginTop: 1 }}
         />
       ) : null}
-    </Pressable>
+    </PressableScale>
+  );
+}
+
+/**
+ * The control that opens the full filter sheet.
+ *
+ * Lives beside the search field rather than on the rail — see point 1 of the
+ * module doc. Square and icon-led so it reads as a sibling of the field rather
+ * than as the first of the value pills, and it carries the active count,
+ * because once it is off the rail it is the only thing on screen that can say
+ * how many filters are set.
+ */
+export function FiltersButton({
+  filters,
+  onPress,
+}: {
+  filters: SearchFilters;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  const count = countActiveFilters(filters);
+  const active = count > 0;
+  const tint = active ? theme.colors.accent : theme.colors.textSecondary;
+
+  return (
+    <PressableScale
+      accessibilityRole="button"
+      accessibilityLabel={active ? `Filters, ${count} applied` : 'Filters'}
+      hitSlop={gesture.hitSlop}
+      onPress={onPress}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        // Matches `SearchBar`'s own floor, so the two sit on one baseline
+        // rather than one of them being a couple of points proud.
+        minHeight: touchTarget.min,
+        minWidth: touchTarget.min,
+        paddingHorizontal: spacing.md,
+        borderRadius: radius.full,
+        borderWidth: 1,
+        borderColor: active ? theme.colors.accent : theme.colors.border,
+        backgroundColor: active ? theme.colors.accentMuted : theme.colors.surfaceMuted,
+      }}
+    >
+      <Ionicons name="options-outline" size={19} color={tint} />
+      {active ? (
+        <Text variant="subhead" tone="accent" style={{ marginLeft: spacing.xs }}>
+          {count}
+        </Text>
+      ) : null}
+    </PressableScale>
   );
 }

@@ -65,8 +65,7 @@ function PostRow({ post, onPress }: { post: Blog; onPress: () => void }) {
       accessibilityRole="button"
       accessibilityLabel={post.title}
       onPress={onPress}
-      style={({ pressed }) => (pressed ? { opacity: 0.75 } : undefined)}
-      className="mb-base flex-row"
+      className="mb-base flex-row active:opacity-75"
     >
       {post.coverImage ? (
         <Image

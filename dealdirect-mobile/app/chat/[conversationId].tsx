@@ -134,8 +134,15 @@ export default function ChatThreadScreen() {
             name={conversation?.otherParticipant?.name}
             size="sm"
           />
+          {/* A green dot is colour-only state. The subtitle falls back to
+              "Online" only when there is no property title, so with one present
+              this was the sole online signal and it announced nothing. */}
           {online ? (
-            <View className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-surface bg-success" />
+            <View
+              accessible
+              accessibilityLabel="Online"
+              className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-surface bg-success"
+            />
           ) : null}
         </View>
 

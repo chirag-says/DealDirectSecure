@@ -11,6 +11,11 @@
  * - Production error boundary
  */
 
+// MUST be first: loads env and initialises Sentry before any instrumented
+// library (express, http, mongoose) is imported. See instrument.js for why
+// this cannot live inline in this file.
+import Sentry from "./instrument.js";
+
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -119,7 +124,7 @@ connectDB();
 
 import { globalErrorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { blockRetiredRoles } from "./middleware/roleGuard.js";
-import { setCsrfToken, validateCsrfToken, getCsrfTokenHandler } from "./middleware/csrfProtection.js";
+import { setCsrfToken, validateCsrfToken, getCsrfTokenHandler, requireCsrf } from "./middleware/csrfProtection.js";
 
 // ============================================
 // ROUTE IMPORTS
@@ -776,6 +781,58 @@ app.use("/uploads", express.static("uploads", {
 }));
 
 // ============================================
+// CSRF PROTECTION — PHASE 1
+//
+// Applied to a named list of state-changing routes rather than globally, so
+// the blast radius is known and testable. Each entry below is registered as a
+// middleware-only layer: the guard runs, calls next(), and the request
+// continues to its normal router.
+//
+// SELECTED FOR PHASE 1: endpoints where a forged cross-site request would move
+// money/points, create records attributable to the user, or spam a third party.
+//
+// Requests without an `Origin` header (mobile app, Next.js SSR, webhooks) pass
+// through — CSRF is a browser-only attack. See middleware/csrfProtection.js.
+//
+// EMERGENCY: set CSRF_ENFORCE=false to disable without redeploying.
+//
+// PHASE 2 (after the frontend is regression-tested and automated tests exist):
+// extend to every authenticated POST/PUT/PATCH/DELETE, including account
+// deletion, password change, session revocation, and the admin CRUD surface.
+// ============================================
+
+const csrfGuard = requireCsrf(allowedOrigins);
+
+// — Rewards: an admin can move points, which Hubble converts to gift cards —
+// (/redeem and /admin/redemptions were removed with the pre-Hubble store)
+app.post("/api/rewards/admin/adjust-points", csrfGuard);
+
+// — Property create / edit —
+app.post("/api/properties/add", csrfGuard);
+app.put("/api/properties/my-properties/:id", csrfGuard);
+app.post("/api/properties/admin/add", csrfGuard);
+app.put("/api/properties/edit/:id", csrfGuard);
+
+// — Property interactions attributable to the user —
+app.post("/api/properties/interested/:id", csrfGuard);
+app.post("/api/properties/:id/report", csrfGuard);
+
+// — Group buy: a financial commitment —
+app.post("/api/campaigns/:id/join", csrfGuard);
+app.post("/api/campaigns/:id/exit", csrfGuard);
+
+// — Contact form: spam vector —
+app.post("/api/contact", csrfGuard);
+
+// — Chat: currently hidden in the UI, but the API is live —
+app.post("/api/chat/message/send", csrfGuard);
+app.post("/api/chat/conversation/start", csrfGuard);
+
+// Deliberately not a hard-coded count — the list above changes, and a stale
+// number in the boot log is worse than no number.
+console.log(`🛡️ CSRF Phase 1: ${process.env.CSRF_ENFORCE === 'false' ? 'DISABLED via CSRF_ENFORCE=false' : 'ENABLED (route list in server.js)'}`);
+
+// ============================================
 // API ROUTES
 // ============================================
 
@@ -788,7 +845,28 @@ app.use("/api/properties", propertyRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/contact", contactRoutes);
-app.use("/api/agreements", agreementRoutes);
+// ============================================
+// AGREEMENTS — HIDDEN (client decision, 2026-08-01)
+//
+// The agreement generator is withdrawn for now and will return later. Nothing
+// is deleted: agreementController.js, the Agreement model, and every existing
+// agreement record are intact. Only reachability is removed.
+//
+// Hidden in three places — reverse them together:
+//   1. this mount
+//   2. client-next/src/app/agreements/page.js  (returns 404)
+//   3. client-next/src/components/Navbar/Navbar.jsx  (3 links commented out)
+//
+// Unmounting here also closes POST /api/agreements/webhook/payment, which
+// skips HMAC verification entirely whenever PAYMENT_WEBHOOK_SECRET is unset —
+// see AI/SECURITY.md (H2). BEFORE RE-ENABLING: set that variable, or change
+// the check to fail closed.
+//
+// The express.json({limit:"50kb"}) and rate-limiter lines for /api/agreements
+// earlier in this file are left in place. They are inert with no route mounted
+// and will be correct again on restore.
+// ============================================
+// app.use("/api/agreements", agreementRoutes);
 app.use("/api/saved-searches", savedSearchRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/rewards", rewardsRoutes);
@@ -808,6 +886,28 @@ app.use("/api/bookings", bookingRoutes);
 
 // Handle 404 - Route not found
 app.use(notFoundHandler);
+
+// ============================================
+// SENTRY ERROR CAPTURE
+//
+// Must sit AFTER all routes and BEFORE globalErrorHandler: it reports the
+// error and then passes it along, so globalErrorHandler still produces the
+// sanitised client response exactly as before. Client-facing behaviour is
+// unchanged — this only adds reporting.
+//
+// A no-op when SENTRY_DSN is unset (see instrument.js).
+//
+// 4xx are deliberately not reported: a 401 on an expired session or a 404 from
+// a scanner is normal traffic, not a defect, and would bury real errors.
+// ============================================
+if (process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app, {
+    shouldHandleError(error) {
+      const status = error.statusCode || error.status || 500;
+      return status >= 500;
+    },
+  });
+}
 
 // Global error handler - logs full errors, returns safe messages
 app.use(globalErrorHandler);

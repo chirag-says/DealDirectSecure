@@ -1,6 +1,6 @@
 # ╔══════════════════════════════════════════════════════════╗
 # ║          DealDirect — Master .gitignore                  ║
-# ║  Covers: backend / client / client-next / Admin          ║
+# ║  Covers: backend / client-next / Admin / dealdirect-mobile║
 # ╚══════════════════════════════════════════════════════════╝
 
 # ===========================================================
@@ -55,6 +55,9 @@ client-next/.env.*
 Admin/.env
 Admin/.env.*
 !Admin/.env.example
+dealdirect-mobile/.env
+dealdirect-mobile/.env.*
+!dealdirect-mobile/.env.example
 
 # Secret keys and certificates
 *.pem
@@ -180,6 +183,7 @@ ehthumbs.db
 !.vscode/extensions.json
 !.vscode/settings.json
 .idea/
+**/.idea/
 *.suo
 *.ntvs*
 *.njsproj
@@ -193,9 +197,11 @@ ehthumbs.db
 # 12. AI ASSISTANT / TOOLING METADATA
 # ===========================================================
 .gemini/
+.claude/
 .cursor/
 .copilot/
 .antigravityignore
+CLAUDE.md
 client-next-standalone/
 
 # ===========================================================
@@ -206,8 +212,8 @@ client-next-standalone/
 
 # ===========================================================
 # 14. ROOT PACKAGE-LOCK (empty, no root dependencies)
-#     Sub-project lockfiles (backend/, client/, Admin/) are
-#     intentionally tracked for reproducible builds.
+#     Sub-project lockfiles (backend/, client-next/, Admin/)
+#     are intentionally tracked for reproducible builds.
 # ===========================================================
 /package-lock.json
 
@@ -224,9 +230,36 @@ temp/
 **/.cache/
 
 # ===========================================================
-# 16. MOBILE APP (separate repo)
+# 16. MOBILE APP — EXPO / REACT NATIVE
 # ===========================================================
-mobile/
+# Expo
+.expo/
+**/.expo/
+web-build/
+
+# React Native
+*.hprof
+
+# Android
+dealdirect-mobile/android/app/build/
+dealdirect-mobile/android/.gradle/
+dealdirect-mobile/android/build/
+dealdirect-mobile/android/local.properties
+*.apk
+*.aab
+
+# iOS (if added later)
+dealdirect-mobile/ios/Pods/
+dealdirect-mobile/ios/build/
+*.ipa
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+# EAS Build
+.eas/
+
+# Metro bundler
+.metro-health-check*
 
 # ===========================================================
 # 17. NON-CODE PROJECT FILES
@@ -242,6 +275,9 @@ CLIENT_APP_IMPLEMENTATION_GUIDE.md
 MIGRATION_EXECUTION_PLAN.md
 HOSTINGER_DEPLOYMENT.md
 SMARTPING_SMS_SETUP_GUIDE.md
+MOBILE_APP_ARCHITECTURE_PLAN.md
+PLAN.md
+group_buying_implementation_plan.md
 
 # --- Security & Technical Review Docs ---
 SECURITY_FIXES_SUMMARY.md
@@ -253,7 +289,11 @@ DealDirect_Project_Completion_Report.md.resolved
 DealDirect_Project_Completion_ReportShort.md
 DealDirect_SOA_Report.md
 
-# --- Architecture Diagrams ---
+# --- Flow & Architecture Docs ---
+DEALDIRECT-FLOW-GRAPHS.md
+DEALDIRECT-FLOW-IMPROVEMENT-ROADMAP.md
+DEALDIRECT-FLOW-INVENTORY.md
+DEALDIRECT-SYSTEM-FLOW-AUDIT.md
 DealDirect_SOA_Architecture_Diagram.png
 
 # --- BRD & Task Reports (spreadsheets/CSV) ---
@@ -269,6 +309,10 @@ Infrastructure_Exclusions_Addendum.docx
 # --- Database Analysis ---
 mongodb_vs_postgresql_analysis.md
 
+# --- Admin Fixes & Misc Notes ---
+adminfixes.md
+any.md
+
 # --- Debug / Scratch Dumps ---
 head_check.txt
 page_source_check.txt
@@ -276,8 +320,15 @@ page_source_check.txt
 # --- One-off Utility Scripts ---
 generate_task_sheet.py
 
+# --- WhatsApp & misc images at root ---
+WhatsApp Image*
+
 # --- Catch-all: block common non-code formats at root ---
 /*.docx
 /*.xlsx
 /*.csv
 /*.resolved
+/*.jpeg
+/*.jpg
+/*.png
+!README.md

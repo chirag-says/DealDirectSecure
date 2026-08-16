@@ -96,7 +96,7 @@ export function DetailFacts({ property }: DetailFactsProps) {
   if (facts.length === 0) return null;
 
   return (
-    <Card bordered={false} radius="xl" className="flex-row px-sm py-base">
+    <Card bordered={false} radius="xl" padded={false} className="flex-row px-sm py-base">
       {facts.map((fact, index) => (
         <View
           key={fact.label}

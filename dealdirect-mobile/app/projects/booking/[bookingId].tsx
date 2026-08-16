@@ -78,7 +78,9 @@ export default function BookingScreen() {
 
   return (
     <Screen>
-      <ScreenHeader title="Booking" />
+      {/* Back to the bookings list. With no `backTo`, `ScreenHeader` falls
+          back to `/(tabs)`, which dropped the user out of the flow entirely. */}
+      <ScreenHeader title="Booking" backTo="/projects/bookings" />
 
       {isLoading ? (
         <View className="p-base">
@@ -108,7 +110,7 @@ export default function BookingScreen() {
           </Card>
 
           {paymentStatus === 'verified' ? (
-            <Card className="mt-base items-center py-lg">
+            <Card padded={false} className="mt-base items-center px-base py-lg">
               <Ionicons name="checkmark-circle" size={40} color={theme.colors.success} />
               <Text variant="bodyEmphasis" className="mt-base">
                 Payment verified
@@ -120,7 +122,7 @@ export default function BookingScreen() {
               ) : null}
             </Card>
           ) : awaitingVerification ? (
-            <Card className="mt-base items-center py-lg">
+            <Card padded={false} className="mt-base items-center px-base py-lg">
               <Ionicons name="time-outline" size={40} color={theme.colors.textMuted} />
               <Text variant="bodyEmphasis" className="mt-base">
                 Payment submitted, awaiting verification

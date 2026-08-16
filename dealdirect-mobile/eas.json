@@ -7,6 +7,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "development",
       "env": {
         "EXPO_PUBLIC_API_URL": "http://localhost:9000/api",
         "EXPO_PUBLIC_SOCKET_URL": "http://localhost:9000"
@@ -15,6 +16,7 @@
     "preview": {
       "distribution": "internal",
       "android": { "buildType": "apk" },
+      "channel": "preview",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://backend.dealdirect.in/api",
         "EXPO_PUBLIC_SOCKET_URL": "https://backend.dealdirect.in"
@@ -22,6 +24,7 @@
     },
     "production": {
       "autoIncrement": true,
+      "channel": "production",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://backend.dealdirect.in/api",
         "EXPO_PUBLIC_SOCKET_URL": "https://backend.dealdirect.in"

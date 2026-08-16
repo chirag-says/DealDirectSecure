@@ -35,7 +35,7 @@ function ProjectListCardComponent({ project, onPress }: ProjectListCardProps) {
       accessibilityRole="button"
       accessibilityLabel={project.name}
       onPress={handlePress}
-      style={({ pressed }) => (pressed ? { opacity: 0.92 } : undefined)}
+      className="active:opacity-90"
     >
       <View>
         {project.coverImage ? (

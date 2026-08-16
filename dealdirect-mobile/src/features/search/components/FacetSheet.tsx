@@ -127,18 +127,20 @@ function FacetRow({
       accessibilityState={{ selected }}
       accessibilityLabel={label}
       onPress={onPress}
-      style={({ pressed }) => [
-        {
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          minHeight: ROW_HEIGHT,
-          paddingVertical: spacing.md,
-          borderBottomWidth: StyleSheet.hairlineWidth,
-          borderBottomColor: theme.colors.border,
-        },
-        pressed ? { opacity: 0.6 } : undefined,
-      ]}
+      // A plain object, NOT a `({ pressed }) => …` function: NativeWind's JSX
+      // pragma spreads a function-valued `style` into `{}` and assigns that
+      // over the prop, so the function is never called and the row renders
+      // with no layout at all. `active:` carries the press instead.
+      className="active:opacity-60"
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        minHeight: ROW_HEIGHT,
+        paddingVertical: spacing.md,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: theme.colors.border,
+      }}
     >
       <Text
         variant={selected ? 'bodyEmphasis' : 'body'}

@@ -1,10 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Dimensions, ScrollView, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { FlatList, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useProjectDetail, useUnitTypesForProject } from '@/features/projects';
-import { gesture, spacing, useTheme } from '@/theme';
+import { gesture, screenPadding, scrollBottomPadding, spacing, useTheme } from '@/theme';
 import type { UnitType } from '@/types/backend/project';
 import {
   Avatar,
@@ -17,24 +18,53 @@ import {
   Refreshable,
   Screen,
   Skeleton,
+  Tag,
   Text,
 } from '@/ui';
 
-const GALLERY_HEIGHT = 260;
-const SCREEN_WIDTH = Dimensions.get('window').width;
+/**
+ * The gallery's height, derived from the width rather than fixed.
+ *
+ * Same reasoning as `DetailHero.heroHeight`: a fixed height over a variable
+ * width is a fixed CROP over a variable one, so the same project showed more
+ * sky on a larger phone. Clamped so a tablet-width device does not hand the
+ * photo two thirds of the page.
+ */
+function galleryHeight(width: number): number {
+  return Math.round(Math.min(Math.max(width * 0.72, 240), 360));
+}
 
 export default function ProjectDetailScreen() {
   const router = useRouter();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { project, isLoading, error, refresh } = useProjectDetail(id);
   const { unitTypes, isLoading: unitTypesLoading } = useUnitTypesForProject(id);
 
+  /**
+   * Pull-to-refresh used to pass `refreshing={false}` unconditionally, so the
+   * gesture fired the request and showed nothing — the one thing a refresh
+   * control exists to communicate. `useProjectDetail` exposes no in-flight
+   * flag, so this screen owns one for the duration of the refetch.
+   */
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
+
+  const height = galleryHeight(width);
+
   if (isLoading) {
     return (
       <Screen edges={['bottom']}>
-        <Skeleton height={GALLERY_HEIGHT} radius={0} />
+        <Skeleton height={galleryHeight(width)} radius={0} />
         <View className="p-base">
           <Skeleton height={28} className="mb-base" />
           <Skeleton height={120} radius={12} />
@@ -62,19 +92,37 @@ export default function ProjectDetailScreen() {
 
   return (
     <Screen unsafe>
-      <Refreshable refreshing={false} onRefresh={refresh} contentContainerStyle={{ paddingBottom: 48 }}>
-        <View style={{ height: GALLERY_HEIGHT }}>
+      <Refreshable
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+        contentContainerStyle={{ paddingBottom: scrollBottomPadding }}
+      >
+        <View style={{ height }}>
           {images.length > 0 ? (
-            <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
-              {images.map((uri, index) => (
-                <Image
-                  key={`${uri}-${index}`}
-                  uri={uri}
-                  size="full"
-                  style={{ width: SCREEN_WIDTH, height: GALLERY_HEIGHT }}
-                />
-              ))}
-            </ScrollView>
+            /*
+              A windowed `FlatList`, not a mapped `ScrollView`.
+
+              The ScrollView this replaces mounted every image at once, so a
+              project with a full set of exterior and drone shots decoded all
+              of them before first paint. Three at a time, recycled, is the
+              same choice `DetailHero` documents at length and for the same
+              reason. `size="medium"` rather than `full` for the same budget:
+              this is a 300pt-tall carousel, not a full-screen viewer.
+            */
+            <FlatList
+              data={images}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(uri, index) => `${uri}-${index}`}
+              initialNumToRender={1}
+              windowSize={3}
+              removeClippedSubviews
+              getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
+              renderItem={({ item }) => (
+                <Image uri={item} size="medium" style={{ width, height }} />
+              )}
+            />
           ) : (
             <View className="h-full w-full items-center justify-center bg-surface-muted">
               <Ionicons name="business-outline" size={40} color={theme.colors.textMuted} />
@@ -99,7 +147,7 @@ export default function ProjectDetailScreen() {
           </PressableScale>
         </View>
 
-        <View className="p-base">
+        <View style={{ padding: screenPadding }}>
           {project.basics?.status ? <Badge label={project.basics.status} tone="accent" className="mb-sm" /> : null}
           <Text variant="title1">{project.basics?.name ?? 'Project'}</Text>
 
@@ -156,9 +204,15 @@ export default function ProjectDetailScreen() {
               <Text variant="title3" className="mb-sm">
                 Amenities
               </Text>
-              <View className="flex-row flex-wrap">
+              {/*
+                `Tag`, not `Badge` — and not `Chip`. Matching the property
+                detail screen, where the same decision is documented: `Chip`
+                renders a Pressable with `accessibilityRole="button"`, so a
+                screen reader announces every amenity as a dead control.
+              */}
+              <View className="flex-row flex-wrap gap-sm">
                 {amenities.map((amenity) => (
-                  <Badge key={amenity} label={amenity} className="mb-sm mr-sm" />
+                  <Tag key={amenity} label={amenity} />
                 ))}
               </View>
             </View>

@@ -104,8 +104,7 @@ export function MessageBubble({
               accessibilityRole="button"
               accessibilityLabel="Accept visit request"
               onPress={() => onAccept?.(message)}
-              className="mt-sm self-start rounded-full bg-success px-md py-xs"
-              style={({ pressed }) => (pressed ? { opacity: 0.75 } : undefined)}
+              className="mt-sm self-start rounded-full bg-success px-md py-xs active:opacity-75"
             >
               <Text variant="caption" className="text-white" style={{ fontWeight: '600' }}>
                 Accept visit

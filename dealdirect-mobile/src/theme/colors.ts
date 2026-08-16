@@ -213,6 +213,30 @@ export const darkColors: ColorScheme = {
   chrome: 'rgba(23, 23, 23, 0.72)',
 };
 
+/**
+ * A token colour at partial alpha.
+ *
+ * For the one case a role cannot cover: a gradient that has to fade a colour
+ * into its own transparent form. `'transparent'` is not that — it resolves to
+ * transparent BLACK, so fading a pale surface into it runs through grey and
+ * reads as a smudge rather than a fade.
+ *
+ * Takes the six-digit hex the palette is written in. Anything else is returned
+ * untouched rather than mangled, because a caller passing an `rgba()` string
+ * already has what this function produces.
+ */
+export function withAlpha(color: string, alpha: number): string {
+  const match = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!match) return color;
+
+  const value = parseInt(match[1] as string, 16);
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export const colorSchemes = {
   light: lightColors,
   dark: darkColors,

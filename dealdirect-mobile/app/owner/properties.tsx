@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 
+import { OwnerOnly } from '@/auth';
 import { CloseDealSheet, useDeleteListing, useMyProperties } from '@/features/listings';
 import { adaptProperty } from '@/features/properties';
 import { gesture, screenPadding, spacing, scrollBottomPadding, useTheme } from '@/theme';
@@ -32,7 +33,7 @@ import {
  * card, plural naming aside. Written against the list response anyway, so a
  * future relaxation of that cap needs no change here.
  */
-export default function MyPropertiesScreen() {
+function MyPropertiesScreenContent() {
   const router = useRouter();
   const theme = useTheme();
   const { properties, isLoading, isRefreshing, error, refresh } = useMyProperties();
@@ -101,7 +102,7 @@ export default function MyPropertiesScreen() {
           {properties.map((property) => {
             const summary = adaptProperty(property);
             return (
-              <Card key={property._id} className="mb-base p-0 overflow-hidden">
+              <Card key={property._id} padded={false} className="mb-base overflow-hidden">
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => router.push(`/property/${property._id}`)}
@@ -197,8 +198,7 @@ export default function MyPropertiesScreen() {
                     hitSlop={gesture.hitSlop}
                     disabled={isDeleting}
                     onPress={() => handleDelete(property._id, property.title)}
-                    className="mt-md flex-row items-center self-center"
-                    style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+                    className="mt-md flex-row items-center self-center active:opacity-60"
                   >
                     <Ionicons name="trash-outline" size={14} color={theme.colors.danger} />
                     <Text variant="footnote" tone="danger" className="ml-xs">
@@ -256,5 +256,19 @@ function OwnerStat({ label, value }: { label: string; value: number }) {
         {label}
       </Text>
     </View>
+  );
+}
+
+/**
+ * Owner-gated. See `auth/components/OwnerOnly.tsx` for why a role the
+ * server already enforces still needs a client-side refusal: without it a
+ * buyer who reaches this route is shown an error state for something that
+ * is not an error.
+ */
+export default function MyPropertiesScreen() {
+  return (
+    <OwnerOnly title="My listing">
+      <MyPropertiesScreenContent />
+    </OwnerOnly>
   );
 }

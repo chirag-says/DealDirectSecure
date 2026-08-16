@@ -32,7 +32,7 @@ export function DetailOwner({ owner }: DetailOwnerProps) {
   if (!owner) return null;
 
   return (
-    <Card bordered={false} radius="xl" className="flex-row items-center p-base">
+    <Card bordered={false} radius="xl" className="flex-row items-center">
       <Avatar uri={owner.profileImage} name={owner.name} size="md" />
 
       <View className="ml-base flex-1">

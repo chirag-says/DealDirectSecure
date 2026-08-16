@@ -45,6 +45,23 @@ const config = {
     edgeToEdgeEnabled: true,
   },
 
+  // EAS Update. Set by hand for the same reason the EAS project id below is:
+  // `eas update:configure` patches app.json, and cannot write to a dynamic
+  // config. The url is derived from the project id and is not a credential.
+  updates: {
+    url: 'https://u.expo.dev/9d0ec43d-f62d-4bf2-8c59-549fb239b8a0',
+  },
+
+  // `fingerprint` hashes the native side (packages, plugins, native config) and
+  // uses that as the runtime version, so an update is only ever delivered to a
+  // binary that can actually run it. The alternative, `appVersion`, would let a
+  // JS bundle needing a new native module land on a build without it, which
+  // fails at runtime rather than at publish time. Adding or removing any native
+  // dependency changes the fingerprint and therefore requires a new build.
+  runtimeVersion: {
+    policy: 'fingerprint',
+  },
+
   plugins: [
     'expo-router',
     'expo-secure-store',

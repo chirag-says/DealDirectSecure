@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/theme';
 import { Text } from '@/ui';
-import { HERO_HEIGHT } from './DetailHero';
+import { heroHeight } from './DetailHero';
 
 /**
  * The detail screen's navigation bar.
@@ -78,7 +78,10 @@ const FADE_TRAVEL = 72;
  * a nav bar ordinarily does.
  */
 export function useHeaderProgress(scrollY: SharedValue<number>, insetTop: number) {
-  const collapsePoint = HERO_HEIGHT - (insetTop + HEADER_BAR_HEIGHT);
+  // The hero is a share of the screen width now, not a constant, so the point
+  // it stops covering the bar is per-device too.
+  const { width } = useWindowDimensions();
+  const collapsePoint = heroHeight(width) - (insetTop + HEADER_BAR_HEIGHT);
 
   return useDerivedValue(() =>
     interpolate(
@@ -127,7 +130,12 @@ export function DetailHeader({ title, scrollY, onBack, onShare }: DetailHeaderPr
 
   return (
     <>
-      <StatusBar style={collapsed ? 'auto' : 'light'} />
+      {/* Collapsed, the bar sits on the page background, so the glyphs follow
+          the app's scheme — the RESOLVED one, not `auto`, which reads the OS
+          and would paint black glyphs on a black header for anyone who forced
+          Dark on a Light phone. Expanded, it sits on the hero photograph and is
+          forced light regardless. */}
+      <StatusBar style={collapsed ? (theme.scheme === 'dark' ? 'light' : 'dark') : 'light'} />
 
       <View
         style={{ height: barHeight, paddingTop: insets.top }}

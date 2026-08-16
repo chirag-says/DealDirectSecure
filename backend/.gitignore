@@ -1,15 +1,37 @@
-# Dependencies
-node_modules/
-npm-debug.log
-yarn-error.log
-package-lock.json
+# ==============================================================
+# DealDirect — Backend (Express 5 + Mongoose)
+#
+# This repo is standalone: nothing above this folder is ignored on
+# its behalf, so everything needed must be listed here.
+# ==============================================================
 
-# Environment Variables (CRITICAL - NEVER COMMIT)
+# ---------- Dependencies ----------
+node_modules/
+.npm/
+.pnpm-store/
+jspm_packages/
+
+# ---------- Secrets ----------
+# .env holds MONGO_URI, JWT_SECRET, CLOUDINARY_URL, SMTP_PASS,
+# GEMINI_API_KEY, EQUENCE_*, WAHA_*, HUBBLE_*, SENTRY_DSN.
+# Never commit any variant. .env.example is the documented template.
 .env
 .env.*
 !.env.example
 
-# Seeding Scripts with Secrets
+# Keys and certificates
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+private_key*
+public_key*
+*.gpg
+*.asc
+
+# ---------- Seed / one-off scripts holding credentials ----------
 seed.js
 seedAdmin.js
 seedRbac.js
@@ -19,92 +41,67 @@ scripts/fixAdminRole.js
 scripts/debugRbac.js
 scripts/testAdminLogin.js
 
-# RSA / PEM keys (Hubble SSO, JWT signing — NEVER COMMIT)
-*.pem
-*.key
-private_key*
-public_key*
+# ---------- Runtime output ----------
+# Legacy local upload path. Cloudinary is the real store; anything
+# landing here is transient. .gitkeep preserves the directory.
+uploads/*
+!uploads/.gitkeep
 
-# Generated reports & data exports
-*.xlsx
-*.csv
-generate_report.js
-
-# Internal docs (not for public repo)
-HOSTINGER_SETUP.md
-SECURITY_REFACTOR.md
-
-# Logs
 logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-lerna-debug.log*
 
-# User Uploads (keep folder structure)
-uploads/*
-!uploads/.gitkeep
+# ---------- Generated reports / exports ----------
+# Lead and user exports (PDF/CSV/XLSX) contain personal data.
+*.xlsx
+*.csv
+*.pdf
+generate_report.js
 
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
+# ---------- Ad-hoc diagnostics ----------
+# Throwaway verification scripts (SMTP checks, Sentry smoke tests,
+# DB probes). Useful locally, not application code.
+#
+# Patterns are deliberately broad: an earlier version only had
+# "test-*.js", which missed "testdb.js" and let it reach the remote.
+# Anything starting with "test" or "check", and anything ending in
+# "-test"/"-check", is treated as scratch work.
+test*.js
+check*.js
+verify*.js
+debug*.js
+*-test.js
+*-check.js
+*.test.js
+*.spec.js
+__*.js
+*.local.js
+scratch*.js
+tmp/
+temp/
+*.tmp
+*.temp
+.debug/
 
-# Coverage directory used by tools like istanbul
+# ---------- Testing / coverage ----------
 coverage/
-*.lcov
+.nyc_output/
 
-# NYC coverage
-.nyc_output
-
-# Grunt intermediate storage (http://gruntjs.com/creating-plugins#storing-task-files)
-.grunt
-
-# Bower dependency directory (https://bower.io/)
-bower_components
-
-# node-waf configuration
-.lock-wscript
-
-# Compiled binary addons (https://nodejs.org/api/addons.html)
-build/Release
-
-# Dependency directories
-jspm_packages/
-
-# TypeScript v1 declaration files
-typings/
-
-# Optional npm cache directory
-.npm
-
-# Optional eslint cache
-.eslintcache
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# Editor directories and files
-.vscode/*
+# ---------- Editors & tooling ----------
+.vscode/
 !.vscode/extensions.json
-!.vscode/settings.json
 .idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
+*.swp
+*.swo
 *.sw?
+*~
+.gemini/
+.claude/
 
-# OS generated files
+# ---------- OS ----------
 .DS_Store
 .DS_Store?
 ._*
@@ -112,15 +109,21 @@ typings/
 .Trashes
 ehthumbs.db
 Thumbs.db
+desktop.ini
 
-# Temporary files
-tmp/
-temp/
-*.tmp
-*.temp
+# ---------- Internal docs, not for a shared repo ----------
+HOSTINGER_SETUP.md
+SECURITY_REFACTOR.md
 
-# Debug
-.debug/
-
-# AI assistant
-.gemini/
+# ==============================================================
+# DELIBERATELY NOT IGNORED
+#
+#   package-lock.json — was previously ignored; that has been
+#   reversed. A backend deployed to a server needs reproducible
+#   installs, and without the lockfile a deploy can silently pull a
+#   different transitive dependency than the one that was tested.
+#   Run `git add -f package-lock.json` once to start tracking it.
+#
+#   instrument.js — required. Loads env and initialises Sentry, and
+#   must remain the first import in server.js.
+# ==============================================================

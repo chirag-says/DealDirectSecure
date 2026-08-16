@@ -61,8 +61,7 @@ export function SuggestionList({ suggestions, isLoading, term, onSelect }: Sugge
           accessibilityRole="button"
           accessibilityLabel={`${suggestion.value}${suggestion.subtitle ? `, ${suggestion.subtitle}` : ''}`}
           onPress={() => onSelect(suggestion)}
-          className="flex-row items-center border-b border-border px-base py-md"
-          style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+          className="flex-row items-center border-b border-border px-base py-md active:opacity-70"
         >
           <Ionicons
             name={ICON_FOR_TYPE[suggestion.type]}
@@ -116,8 +115,7 @@ export function RecentSearches({ items, onSelect, onRemove, onClear }: RecentSea
             accessibilityRole="button"
             accessibilityLabel={`Search ${term}`}
             onPress={() => onSelect(term)}
-            className="flex-1 flex-row items-center py-md"
-            style={({ pressed }) => (pressed ? { opacity: 0.7 } : undefined)}
+            className="flex-1 flex-row items-center py-md active:opacity-70"
           >
             <Ionicons name="time-outline" size={18} color={theme.colors.textMuted} />
             <Text variant="body" numberOfLines={1} className="ml-md flex-1">

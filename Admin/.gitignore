@@ -1,18 +1,40 @@
-# Dependencies
-node_modules/
-package-lock.json
+# ==============================================================
+# DealDirect — Admin Panel (Vite 6 + React 19)
+#
+# This repo is standalone: nothing above this folder is ignored on
+# its behalf, so everything needed must be listed here.
+# ==============================================================
 
-# Build output
+# ---------- Dependencies ----------
+node_modules/
+.npm/
+.pnpm-store/
+
+# ---------- Build output ----------
 dist/
 dist-ssr/
 build/
+.vite/
 
-# Environment Variables (CRITICAL - NEVER COMMIT)
+# ---------- Secrets ----------
+# Only VITE_API_BASE_URL lives here today, which is public by nature
+# (anything VITE_-prefixed is inlined into the browser bundle).
+# Still ignored, because the moment someone adds a real key to a
+# .env file it must not be committed.
+#
+# NOTE: .env.production was previously TRACKED in git. Ignoring it
+# here does NOT untrack it — run this once:
+#     git rm --cached .env.production
 .env
 .env.*
 !.env.example
 
-# Logs
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ---------- Logs ----------
 logs/
 *.log
 npm-debug.log*
@@ -21,18 +43,34 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Editor directories and files
+# ---------- Ad-hoc diagnostics ----------
+test-*.js
+__*.js
+*.local.js
+tmp/
+temp/
+*.tmp
+
+# ---------- Testing / coverage ----------
+coverage/
+.nyc_output/
+
+# ---------- Editors & tooling ----------
 .vscode/*
 !.vscode/extensions.json
-!.vscode/settings.json
 .idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
+*.swp
+*.swo
 *.sw?
+*~
+.gemini/
+.claude/
 
-# OS generated files
+# ---------- OS ----------
 .DS_Store
 .DS_Store?
 ._*
@@ -40,23 +78,15 @@ lerna-debug.log*
 .Trashes
 ehthumbs.db
 Thumbs.db
+desktop.ini
 
-# Testing
-coverage/
-*.lcov
-
-# Cache
-.cache/
-.eslintcache
-*.tsbuildinfo
-
-# Temporary files
-tmp/
-temp/
-*.tmp
-*.temp
-
-# Vite
-*.local
-vite.config.js.timestamp-*
-vite.config.ts.timestamp-*
+# ==============================================================
+# DELIBERATELY NOT IGNORED
+#
+#   package-lock.json — was previously ignored; reversed so the
+#   built bundle is reproducible. Run once to start tracking:
+#       git add -f package-lock.json
+#
+#   public/_redirects and public/.htaccess — required for SPA
+#   routing on the host. Without them a deep link 404s.
+# ==============================================================

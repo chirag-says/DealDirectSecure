@@ -1,9 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { ProjectList, useProjectFeed } from '@/features/projects';
-import { useTheme } from '@/theme';
+import { gesture, screenPadding, spacing, useTheme } from '@/theme';
 import { Chip, Input, Screen, ScreenHeader } from '@/ui';
 
 const CATEGORIES = ['Residential', 'Commercial', 'Mixed Use'] as const;
@@ -30,7 +30,7 @@ export default function ProjectsScreen() {
     <Screen>
       <ScreenHeader title="Projects" backTo="/(tabs)" />
 
-      <View className="px-lg pb-sm">
+      <View className="px-base pb-sm">
         <Input
           placeholder="Search projects…"
           value={searchInput}
@@ -46,7 +46,7 @@ export default function ProjectsScreen() {
                   setSearchInput('');
                   setSearch('');
                 }}
-                hitSlop={8}
+                hitSlop={gesture.hitSlop}
               >
                 <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
               </Pressable>
@@ -55,17 +55,32 @@ export default function ProjectsScreen() {
         />
       </View>
 
-      <View className="flex-row px-lg pb-sm">
+      {/*
+        A scrolling rail, not a fixed row. Three chips fit across 375pt at the
+        default text size with about 30pt to spare - and clip with no way to
+        reach the third at large accessibility sizes, which is exactly the
+        reader who can least afford a control to go missing. The Properties
+        screen's quick-filter rail scrolls for the same reason.
+      */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingHorizontal: screenPadding,
+          paddingBottom: spacing.sm,
+          gap: spacing.sm,
+        }}
+        keyboardShouldPersistTaps="handled"
+      >
         {CATEGORIES.map((c) => (
           <Chip
             key={c}
             label={c}
             selected={category === c}
             onPress={() => setCategory((prev) => (prev === c ? undefined : c))}
-            className="mr-sm"
           />
         ))}
-      </View>
+      </ScrollView>
 
       <ProjectList feed={feed} />
     </Screen>

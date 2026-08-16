@@ -54,7 +54,8 @@ export {
 } from './components/SuggestionList';
 export { FilterSheet, type FilterSheetProps } from './components/FilterSheet';
 export { FacetSheet, type FacetSheetProps, type FacetOption } from './components/FacetSheet';
-export { QuickFilterBar, type QuickFilterBarProps } from './components/QuickFilterBar';
+export { FiltersButton, QuickFilterBar, type QuickFilterBarProps } from './components/QuickFilterBar';
+export { ResultsToolbar, type ResultsToolbarProps } from './components/ResultsToolbar';
 export {
   RelatedProperties,
   type RelatedPropertiesProps,

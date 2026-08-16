@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import { Pressable, Share, View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, Share, useWindowDimensions, View, type LayoutChangeEvent } from 'react-native';
 import Animated, {
   runOnUI,
   scrollTo,
@@ -21,7 +21,7 @@ import {
   DetailSectionNav,
   EmiCalculator,
   ExpandableText,
-  HERO_HEIGHT,
+  heroHeight,
   NearbyPlaces,
   PropertyRail,
   ReportSheet,
@@ -31,6 +31,7 @@ import {
   usePropertyDetail,
   useSectionRegistry,
 } from '@/features/properties';
+import { EnquirySheet, useSavedProperties } from '@/features/saved';
 import { RewardReveal } from '@/features/rewards';
 import { useSimilarProperties } from '@/features/search';
 import { relativeDay } from '@/lib';
@@ -117,9 +118,25 @@ export default function PropertyDetailScreen() {
 
   const [reporting, setReporting] = useState(false);
 
+  const [enquiring, setEnquiring] = useState(false);
+
+  /**
+   * Enquiry slots left, or null when unknown.
+   *
+   * The same `useSavedProperties` query the Saved tab and the feed's hearts
+   * already run, deduplicated by TanStack — this screen adds no request. It is
+   * needed here to say the true number in the confirmation sheet and to explain
+   * a dead button rather than letting the user press it and be refused.
+   *
+   * Null while signed out or unresolved. The server remains the authority on
+   * the cap; this only lets the UI stop being surprised by it.
+   */
+  const savedList = useSavedProperties();
+  const enquiriesLeft =
+    savedList.requiresAuth || savedList.isLoading ? null : savedList.remaining;
+
   // Measured rather than assumed: the bar's height depends on the bottom safe
-  // area, on whether the call and message actions are offered, and on whether
-  // the consequence line wraps at the user's text size.
+  // area and on whether the supporting line wraps at the user's text size.
   const [actionBarHeight, setActionBarHeight] = useState(120);
 
   const scrollY = useSharedValue(0);
@@ -574,8 +591,7 @@ export default function PropertyDetailScreen() {
             accessibilityLabel="Report this listing"
             onPress={() => setReporting(true)}
             hitSlop={12}
-            className="mt-3xl flex-row items-center justify-center"
-            style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+            className="mt-3xl flex-row items-center justify-center active:opacity-60"
           >
             <Ionicons name="flag-outline" size={15} color={theme.colors.textMuted} />
             <Text variant="footnote" tone="muted" className="ml-xs">
@@ -592,10 +608,37 @@ export default function PropertyDetailScreen() {
         inline button would sit several scrolls below where the decision gets
         made.
       */}
+      {/*
+        One action. The `tel:` shortcut that sat beside it is gone — see
+        `DetailActions` for what it did and why removing the button does not
+        remove the exposure.
+      */}
       <DetailActions
-        property={property}
         interest={interest}
+        remaining={enquiriesLeft}
+        onRequestEnquire={() => setEnquiring(true)}
         onHeightChange={setActionBarHeight}
+      />
+
+      {/*
+        THE CONSEQUENCE IS STATED BEFORE THE SIDE EFFECT, NOT AFTER IT.
+
+        `interest.toggle` posts to `/properties/interested/:id`, which creates a
+        `Lead` holding this user's name, email and phone, notifies the owner in
+        the app, and sends them those details over WhatsApp. None of that is
+        reversible: withdrawing pulls the user from `interestedUsers` and frees
+        the slot, and leaves the lead, the notification and the message where
+        they are. So the sheet runs first and there is no Undo afterwards.
+      */}
+      <EnquirySheet
+        visible={enquiring}
+        subtitle={property.locationLabel || property.title}
+        remaining={enquiriesLeft}
+        onCancel={() => setEnquiring(false)}
+        onConfirm={() => {
+          setEnquiring(false);
+          interest.toggle();
+        }}
       />
 
       <ReportSheet
@@ -720,9 +763,13 @@ function NavAnchor({ label, children }: { label: string; children: React.ReactNo
  * rhythm are the real constants rather than guesses.
  */
 function PropertyDetailSkeleton() {
+  // Same derivation as the real hero, so the photo does not change height at
+  // the moment the data lands.
+  const { width } = useWindowDimensions();
+
   return (
     <Screen unsafe>
-      <Skeleton height={HERO_HEIGHT} radius={0} />
+      <Skeleton height={heroHeight(width)} radius={0} />
       <View
         className="rounded-t-2xl bg-background px-lg pt-lg"
         style={{ marginTop: -20 }}

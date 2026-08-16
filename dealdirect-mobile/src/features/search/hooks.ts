@@ -267,5 +267,11 @@ export function useCompareSelection(): CompareSelection {
 
   const clear = useCallback(() => setItems([]), []);
 
-  return { items, isSelected, canToggle, toggle, clear };
+  // Memoised for the same reason as `useSaveToggle`'s return: the results
+  // screen builds its per-card compare props from this inside a `useCallback`,
+  // and a fresh literal would rebuild `renderItem` on every render.
+  return useMemo(
+    () => ({ items, isSelected, canToggle, toggle, clear }),
+    [items, isSelected, canToggle, toggle, clear]
+  );
 }
