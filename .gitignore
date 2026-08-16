@@ -99,7 +99,12 @@ service-account*.json
 **/test*.js
 
 # -- Backend test directory --
-backend/tests/
+# The committed regression suite lives here and IS tracked. The patterns above
+# (test*.js, debug*.js, fix*.js) exist to keep throwaway diagnostic scripts out
+# of the repo; this directory is the real suite and must survive a clone.
+# Anything in here that is not a *.test.js file stays ignored.
+backend/tests/*
+!backend/tests/*.test.js
 
 # -- Explicit files (already known) --
 backend/seed.js

@@ -81,6 +81,12 @@ __*.js
 *.local.js
 scratch*.js
 
+# ...except the committed regression suite. The patterns above keep throwaway
+# diagnostic scripts out of the repo; tests/ is the real suite and is tracked
+# (see the matching rule in the root .gitignore). Non-test files inside it stay
+# ignored by the root rule.
+!tests/*.test.js
+
 
 tmp/
 temp/
