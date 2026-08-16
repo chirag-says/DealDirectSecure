@@ -1702,6 +1702,39 @@ export const rejectDealVerification = async (req, res) => {
       },
     });
 
+    // ============================================
+    // Notify the BUYER that the deal did not go through.
+    //
+    // Since 2.8 the buyer is told when a deal is submitted in their name, so
+    // leaving them uninformed on rejection would be worse than the previous
+    // silence: they would be waiting on an outcome that already happened.
+    //
+    // `adminNotes` is deliberately NOT forwarded. The owner's message quotes it
+    // because it tells them what to correct, and it is written about the
+    // owner's submission and their proof documents. It is internal review
+    // detail about another party, not the buyer's to read. The buyer is told
+    // the outcome and nothing more — no new rejection semantics, no new state.
+    //
+    // Non-blocking, and placed after the owner's notification so a failure here
+    // cannot prevent the owner learning the result.
+    // ============================================
+    if (verification.buyer) {
+      Notification.create({
+        user: verification.buyer,
+        title: "A deal you were named in was not completed",
+        message: `The deal closure for "${verification.property.title}" was not approved, so the property is available again. No action is needed from you.`,
+        type: "deal_verification",
+        data: {
+          verificationId,
+          propertyId: verification.property._id,
+          actionUrl: "https://dealdirect.in/notifications",
+          actionText: "View Notifications",
+        },
+      }).catch((err) =>
+        console.error(`[Admin] Failed to notify buyer ${verification.buyer} of rejection:`, err.message)
+      );
+    }
+
     console.log(`[Admin] Verification ${verificationId} REJECTED by admin ${req.admin.email}`);
 
     res.status(200).json({

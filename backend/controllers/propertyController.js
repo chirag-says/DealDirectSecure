@@ -2517,6 +2517,45 @@ export const closeDeal = async (req, res) => {
       },
     });
 
+    // ============================================
+    // Notify the BUYER that a deal has been submitted in their name.
+    //
+    // Until now only the owner was told. The buyer was named as the
+    // counterparty to a transaction, had proof documents bearing their name
+    // uploaded, and learned about it only if an admin later approved it — or
+    // never, if it was rejected.
+    //
+    // The recipient is read from `verification.buyer`, the value that was
+    // actually persisted, rather than from `req.body.buyerId`. Both hold the
+    // same id here — buyerId is already validated as an ObjectId and checked
+    // against property.interestedUsers above, so an arbitrary user cannot be
+    // named — but taking it from the stored record means the notification and
+    // the verification can never disagree about who the counterparty is.
+    //
+    // Deliberately no admin/internal detail and no document references: the
+    // buyer is told what concerns them and pointed at their own notifications.
+    // Failure is non-blocking. The verification is already created and the
+    // property already moved to pending_verification; a notification that
+    // cannot be written must not turn a completed submission into a 500. The
+    // owner's notification above is intentionally left awaited and unchanged.
+    // ============================================
+    if (verification.buyer) {
+      Notification.create({
+        user: verification.buyer,
+        title: "A deal has been submitted for a property you enquired about",
+        message: `The owner of "${property.title}" has submitted a ${closingType === "rented" ? "rental" : "sale"} closure naming you as the buyer. Our team is verifying it. You'll be notified when it's confirmed.`,
+        type: "deal_verification",
+        data: {
+          propertyId,
+          verificationId: verification._id,
+          actionUrl: "https://dealdirect.in/notifications",
+          actionText: "View Notifications",
+        },
+      }).catch((err) =>
+        console.error(`[CloseDeal] Failed to notify buyer ${verification.buyer}:`, err.message)
+      );
+    }
+
     console.log(`[CloseDeal] Verification ${verification._id} created for property ${propertyId} by owner ${userId}`);
 
     res.status(201).json({
