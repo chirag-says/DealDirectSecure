@@ -3,7 +3,6 @@
  * Enterprise-grade authentication with secure endpoints
  */
 import express from "express";
-import multer from "multer";
 import {
   registerUser,
   registerUserDirect,
@@ -30,26 +29,24 @@ import {
   exportOwnersCSV,
   deleteAccount
 } from "../controllers/userController.js";
-import { addProperty, getOwnersWithProjects } from "../controllers/propertyController.js";
+import { getOwnersWithProjects } from "../controllers/propertyController.js";
 import {
   authMiddleware,
   optionalAuth,
-  requireRole,
   requireVerified,
   authRateLimit
 } from "../middleware/authUser.js";
-import { upload, memoryUpload, validateAndUploadToCloudinary, uploadConcurrencyGuard } from "../middleware/upload.js";
+// `upload` (the legacy CloudinaryStorage export) was imported here and never
+// used; dropped with the local-disk route.
+import { memoryUpload, validateAndUploadToCloudinary, uploadConcurrencyGuard } from "../middleware/upload.js";
 import { protectAdmin } from "../middleware/authAdmin.js";
 import { validateProfileUpdate } from "../middleware/validators/index.js";
 
 const router = express.Router();
 
-// Local storage for fallback
-const localStorage = multer.diskStorage({
-  destination: "uploads/",
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
-});
-const localUpload = multer({ storage: localStorage });
+// Local disk storage removed with POST /api/users/add-property (see below).
+// Every upload path now goes through middleware/upload.js, which validates
+// magic bytes before anything reaches Cloudinary.
 
 // ============================================
 // PUBLIC AUTH ROUTES (Rate limited)
@@ -102,15 +99,22 @@ router.post("/verify-upgrade-otp", authMiddleware, requireVerified, verifyUpgrad
 // PROPERTY ROUTES (Owner only)
 // ============================================
 
-router.post(
-  "/add-property",
-  authMiddleware,
-  requireVerified,
-  requireRole("owner"),
-  uploadConcurrencyGuard,
-  localUpload.array("images", 10),
-  addProperty
-);
+// REMOVED 2026-08-16 — POST /api/users/add-property
+//
+// A second, unhardened duplicate of POST /api/properties/add. It used a bare
+// multer.diskStorage with no fileFilter, no size limit and no magic-byte
+// validation, writing caller-controlled bytes into ./uploads, which is served
+// publicly. express.static derives Content-Type from the file extension, so an
+// uploaded .html rendered on the API origin.
+//
+// It was also outside the CSRF guard list, and its uploads never worked:
+// .array() puts req.files in an array while addProperty expects an object
+// keyed by field name, so the files landed on disk and were never attached to
+// the property.
+//
+// Verified before removal: zero references to "users/add-property" anywhere in
+// backend, client-next, Admin or dealdirect-mobile. Use POST /api/properties/add,
+// which runs the validated Cloudinary pipeline.
 
 // ============================================
 // ADMIN ROUTES (Admin protected)

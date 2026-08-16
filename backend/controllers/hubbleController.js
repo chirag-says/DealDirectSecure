@@ -363,7 +363,11 @@ export const handleHubbleReverse = async (req, res) => {
     const refundAmount = Math.abs(originalDebit.points);
 
     reward.addTransaction({
-      type: "adjustment",
+      // "refund", not "adjustment": an adjustment credits totalPoints, but the
+      // redeem it reverses only ever decremented availablePoints. Booking the
+      // reversal as an adjustment inflated lifetime points on every
+      // debit→reverse cycle and could promote the user a tier.
+      type: "refund",
       action: "hubble_reversal",
       points: refundAmount,
       description: note || `Reversal of Hubble gift card redemption`,

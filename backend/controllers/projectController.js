@@ -8,6 +8,7 @@ import Builder from "../models/Builder.js";
 import UnitType from "../models/UnitType.js";
 import { cloudinary, isCloudinaryConfigured } from "../middleware/upload.js";
 import { Readable } from "stream";
+import { escapeRegExp } from "../utils/escapeRegExp.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -315,7 +316,7 @@ export const listProjects = async (req, res) => {
     } else {
       filter.isActive = true;
     }
-    if (city) filter["location.city"] = { $regex: city, $options: "i" };
+    if (city) filter["location.city"] = { $regex: escapeRegExp(city), $options: "i" };
     if (category) filter["basics.category"] = category;
     if (status) filter["basics.status"] = status;
     if (search.trim()) {

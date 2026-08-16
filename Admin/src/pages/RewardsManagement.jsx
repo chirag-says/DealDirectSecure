@@ -26,6 +26,13 @@ const statusIcons = {
     failed: <XCircle className="w-4 h-4" />,
 };
 
+/**
+ * Must match MAX_ADMIN_ADJUSTMENT_POINTS in backend/services/rewardService.js.
+ * Duplicated by hand because the four apps share no package; the server is
+ * authoritative and re-checks it.
+ */
+const MAX_ADJUSTMENT = 50000;
+
 export default function RewardsManagement() {
     const [activeTab, setActiveTab] = useState('overview');
     const [rdPagination, setRdPagination] = useState({});
@@ -125,13 +132,30 @@ export default function RewardsManagement() {
     const handleAdjust = async (e) => {
         e.preventDefault();
         if (!adjustUserId || !adjustPoints) return;
+
+        // Mirrors the server-side rules so the admin sees the problem before
+        // the request goes out. The server re-checks all three; this is UX.
+        const amount = Number(adjustPoints);
+        if (!Number.isInteger(amount) || amount === 0) {
+            setAdjustMessage('❌ Points must be a non-zero whole number.');
+            return;
+        }
+        if (Math.abs(amount) > MAX_ADJUSTMENT) {
+            setAdjustMessage(`❌ A single adjustment cannot exceed ${MAX_ADJUSTMENT.toLocaleString('en-IN')} points.`);
+            return;
+        }
+        if (adjustReason.trim().length < 3) {
+            setAdjustMessage('❌ A reason of at least 3 characters is required.');
+            return;
+        }
+
         setAdjustLoading(true);
         setAdjustMessage('');
         try {
             const res = await rewardsManagementApi.adjustPoints(
                 adjustUserId.trim(),
-                parseInt(adjustPoints),
-                adjustReason
+                amount,
+                adjustReason.trim()
             );
             if (res.success) {
                 setAdjustMessage(`✅ Points adjusted. New balance: ${res.newBalance} pts (${res.tier} tier)`);
@@ -407,21 +431,28 @@ export default function RewardsManagement() {
                             <label className="block text-sm font-medium text-gray-700 mb-1">Points (positive to add, negative to deduct)</label>
                             <input
                                 type="number" required
+                                min={-MAX_ADJUSTMENT} max={MAX_ADJUSTMENT} step="1"
                                 placeholder="e.g. 500 or -200"
                                 value={adjustPoints}
                                 onChange={(e) => setAdjustPoints(e.target.value)}
                                 className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm"
                             />
+                            <p className="text-xs text-gray-500 mt-1">
+                                Whole numbers only, up to {MAX_ADJUSTMENT.toLocaleString('en-IN')} points per adjustment. The server enforces this.
+                            </p>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
                             <input
-                                type="text"
-                                placeholder="Reason for adjustment"
+                                type="text" required minLength={3}
+                                placeholder="Why these points are being adjusted"
                                 value={adjustReason}
                                 onChange={(e) => setAdjustReason(e.target.value)}
                                 className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm"
                             />
+                            <p className="text-xs text-gray-500 mt-1">
+                                Recorded against your admin account in the audit log.
+                            </p>
                         </div>
                         <button
                             type="submit" disabled={adjustLoading}

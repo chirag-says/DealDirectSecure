@@ -1,6 +1,7 @@
 import ContactInquiry from "../models/ContactInquiry.js";
 import User from "../models/userModel.js";
 import { sendContactInquiryWhatsApp } from "../services/whatsappService.js";
+import { escapeRegExp } from "../utils/escapeRegExp.js";
 
 // Create a new contact inquiry (requires logged-in user)
 export const createInquiry = async (req, res) => {
@@ -79,10 +80,10 @@ export const getAllInquiries = async (req, res) => {
     // Search by subject or message
     if (search) {
       query.$or = [
-        { subject: { $regex: search, $options: "i" } },
-        { message: { $regex: search, $options: "i" } },
-        { "userSnapshot.name": { $regex: search, $options: "i" } },
-        { "userSnapshot.email": { $regex: search, $options: "i" } },
+        { subject: { $regex: escapeRegExp(search), $options: "i" } },
+        { message: { $regex: escapeRegExp(search), $options: "i" } },
+        { "userSnapshot.name": { $regex: escapeRegExp(search), $options: "i" } },
+        { "userSnapshot.email": { $regex: escapeRegExp(search), $options: "i" } },
       ];
     }
 

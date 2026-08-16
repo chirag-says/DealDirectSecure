@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import speakeasy from "speakeasy";
 import qrcode from "qrcode";
-import Admin from "../models/Admin.js";
+import Admin, { ADMIN_PASSWORD_REGEX } from "../models/Admin.js";
 import AdminSession from "../models/AdminSession.js";
 import AuditLog from "../models/AuditLog.js";
 import Role from "../models/Role.js";
@@ -54,8 +54,6 @@ export const registerAdmin = async (req, res) => {
     // SECURITY FIX: Strong password validation for admins
     // Admins require stronger passwords (12+ chars) than regular users
     // ============================================
-    const ADMIN_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()\-_=+])[A-Za-z\d@$!%*?&#^()\-_=+]{12,}$/;
-
     if (!ADMIN_PASSWORD_REGEX.test(password)) {
       return res.status(400).json({
         success: false,
@@ -402,11 +400,17 @@ export const verifyMfa = async (req, res) => {
       });
     }
 
-    // Find the session
+    // Find the session.
+    //
+    // expiresAt is checked here for the same reason protectAdmin checks it: a
+    // session row stays in the collection until its TTL sweep, so matching on
+    // isActive alone accepted a pending MFA session long after it should have
+    // died. An abandoned challenge could be completed hours later.
     const session = await AdminSession.findOne({
       sessionToken: pendingToken,
       isActive: true,
       mfaVerified: false,
+      expiresAt: { $gt: new Date() },
     });
 
     if (!session) {
@@ -432,6 +436,34 @@ export const verifyMfa = async (req, res) => {
       });
     }
 
+    // Re-check account state between the password step and this one.
+    //
+    // loginAdmin verifies isActive and isLocked, but MFA is a separate request
+    // that can arrive much later. Without these an admin deactivated or locked
+    // in the interval completed login normally. protectAdmin performs the same
+    // two checks on every subsequent request; this closes the window before the
+    // session becomes usable.
+    if (admin.isActive === false) {
+      await session.revoke("admin_deactivated");
+      clearMfaPendingCookie(res);
+      await AuditLog.logAuth(admin._id, "mfa_failed", req, "failure");
+      return res.status(403).json({
+        success: false,
+        message: "Your account has been deactivated.",
+        code: "ACCOUNT_DEACTIVATED",
+      });
+    }
+
+    if (admin.isLocked) {
+      clearMfaPendingCookie(res);
+      const minutes = Math.ceil((admin.security.lockoutUntil - Date.now()) / 60000);
+      return res.status(403).json({
+        success: false,
+        message: `Account is locked. Try again in ${minutes} minute(s).`,
+        code: "ACCOUNT_LOCKED",
+      });
+    }
+
     let isValid = false;
 
     if (isBackupCode) {
@@ -449,6 +481,26 @@ export const verifyMfa = async (req, res) => {
 
     if (!isValid) {
       await AuditLog.logAuth(admin._id, "mfa_failed", req, "failure");
+
+      // Count MFA failures against the same lockout the password step uses.
+      //
+      // This branch previously audited and returned, with no counter. The only
+      // brake was an in-process, per-IP limiter of 10 requests per 15 minutes
+      // that authLimiter does not even cover for this route — and with
+      // window:1, three TOTP codes are valid at any moment. Reusing
+      // incrementLoginAttempts (5 attempts, 30-minute lock) means the second
+      // factor is as rate-limited as the first, with no new mechanism.
+      await admin.incrementLoginAttempts();
+
+      if (admin.isLocked) {
+        await session.revoke("mfa_lockout");
+        clearMfaPendingCookie(res);
+        return res.status(403).json({
+          success: false,
+          message: "Too many failed verification attempts. Account locked for 30 minutes.",
+          code: "ACCOUNT_LOCKED",
+        });
+      }
 
       return res.status(401).json({
         success: false,
@@ -920,8 +972,6 @@ export const changePassword = async (req, res) => {
     // ============================================
     // SECURITY FIX: Strong password validation for admins
     // ============================================
-    const ADMIN_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()\-_=+])[A-Za-z\d@$!%*?&#^()\-_=+]{12,}$/;
-
     if (!ADMIN_PASSWORD_REGEX.test(newPassword)) {
       return res.status(400).json({
         success: false,

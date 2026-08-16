@@ -124,13 +124,28 @@ export const setSessionCookie = (res, sessionToken) => {
 /**
  * Clear session cookie
  */
+/**
+ * Build clear-options from the options a cookie was set with.
+ *
+ * A browser deletes a cookie only when the clearing Set-Cookie matches its
+ * name, domain and path. These clears hardcoded their own attributes: they
+ * omitted `domain` (which the setter takes from COOKIE_DOMAIN) and used
+ * sameSite "strict" where the setter uses "none" in production. With
+ * COOKIE_DOMAIN configured, the cookie therefore survived logout — the session
+ * was revoked server-side, so it was inert, but every later request carried a
+ * dead token, took the 401 path and wrote an invalid_session audit entry. It
+ * would have become a real logout failure the moment revocation went lazy.
+ *
+ * Deriving from the setter means the two cannot drift again. maxAge is dropped
+ * because clearCookie sets its own expiry.
+ */
+const clearOptionsFrom = (options) => {
+  const { maxAge, ...rest } = options;
+  return rest;
+};
+
 export const clearSessionCookie = (res) => {
-  res.clearCookie(COOKIE_CONFIG.name, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/",
-  });
+  res.clearCookie(COOKIE_CONFIG.name, clearOptionsFrom(COOKIE_CONFIG.options));
 };
 
 /**
@@ -144,12 +159,7 @@ export const setMfaPendingCookie = (res, sessionToken) => {
  * Clear MFA pending cookie
  */
 export const clearMfaPendingCookie = (res) => {
-  res.clearCookie(MFA_COOKIE_CONFIG.name, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/",
-  });
+  res.clearCookie(MFA_COOKIE_CONFIG.name, clearOptionsFrom(MFA_COOKIE_CONFIG.options));
 };
 
 /**

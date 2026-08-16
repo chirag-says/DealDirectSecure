@@ -114,7 +114,7 @@ export const createBooking = async (req, res) => {
 
     const [project, unitType] = await Promise.all([
       Project.findById(projectId).select("basics builder financials").lean(),
-      UnitType.findById(unitTypeId).select("config pricing inventory builder isActive").lean(),
+      UnitType.findById(unitTypeId).select("config pricing paymentTerms inventory builder isActive").lean(),
     ]);
 
     if (!project) return res.status(404).json({ success: false, message: "Project not found." });
@@ -134,7 +134,19 @@ export const createBooking = async (req, res) => {
       clientEmail: clientEmail?.trim() || undefined,
       notes: notes?.trim() || undefined,
       status: "enquiry",
-      "payment.tokenAmount": project.financials?.bookingAmount || 0,
+      // Unit-level first, project-level only as a legacy fallback.
+      //
+      // createProject stopped writing project.financials when booking amounts
+      // moved to UnitType.paymentTerms (projectController.js), so reading the
+      // project alone resolved to 0 for every project created since. The client
+      // quoted the real unit-level amount and the user paid it, while the
+      // figure stored here — the one shown in the admin verification modal and
+      // in both the confirmation and rejection emails — was ₹0.
+      //
+      // This mirrors the client's own resolution order in
+      // UnitDetailContent.jsx, so the quoted and persisted amounts agree.
+      "payment.tokenAmount":
+        unitType.paymentTerms?.bookingAmount ?? project.financials?.bookingAmount ?? 0,
       statusHistory: [{ status: "enquiry", changedBy: "user", note: "Booking enquiry created" }],
     });
 
@@ -286,18 +298,24 @@ export const verifyPayment = async (req, res) => {
     }
 
     if (action === "approve") {
-      // 1. Update booking status
-      booking.payment.status = "verified";
-      booking.payment.verifiedAt = new Date();
-      booking.payment.verifiedBy = req.admin._id;
-      booking.status = "confirmed";
-      booking.statusHistory.push({ status: "confirmed", changedBy: "admin", note: adminNotes || "Payment verified" });
-      booking.adminNotes = adminNotes || booking.adminNotes;
-      booking.reviewedBy = req.admin._id;
-      booking.reviewedAt = new Date();
-      await booking.save();
+      // ORDERING: secure inventory BEFORE persisting the confirmation.
+      //
+      // This previously saved the booking as confirmed + payment verified and
+      // only then attempted the decrement. Two problems followed. A crash
+      // between the two writes left a confirmed booking against untouched
+      // inventory — an oversell, the exact failure the $gte:1 guard exists to
+      // prevent. And on the race path the booking was written twice, passing
+      // through a persisted state (confirmed, verified, no inventory) that was
+      // never true.
+      //
+      // Reserving first inverts the failure mode: if the save below fails, a
+      // unit is held by no booking. That is visible to an admin and harms no
+      // customer, whereas overselling does both.
+      //
+      // The decrement itself is unchanged — same filter, same $inc, same
+      // options. Only its position moved.
 
-      // 2. Decrement inventory atomically — C6 FIX: prevent negative inventory
+      // 1. Decrement inventory atomically — C6 FIX: prevent negative inventory
       //    Uses $gte:1 filter so only one concurrent approval can succeed for the last unit
       const inventoryResult = await UnitType.findOneAndUpdate(
         {
@@ -314,14 +332,27 @@ export const verifyPayment = async (req, res) => {
       );
 
       if (!inventoryResult) {
-        // Race condition: inventory exhausted between approval check and here
-        // Revert booking to cancelled state
+        // Race: the last unit went to a concurrent approval.
+        //
+        // payment.status stays "verified" deliberately. The admin did check the
+        // UTR and the money was received, so recording anything else would
+        // erase the refund obligation — and "rejected" would be a lie. The
+        // combination (payment verified + booking cancelled) now means exactly
+        // one thing, a refund is owed, and it is stated in the notes and the
+        // status history rather than left to be inferred.
+        booking.payment.status = "verified";
+        booking.payment.verifiedAt = new Date();
+        booking.payment.verifiedBy = req.admin._id;
         booking.status = "cancelled";
-        booking.adminNotes = (adminNotes || "") + " [Auto-cancelled: unit no longer available]";
+        booking.adminNotes =
+          (adminNotes || "") +
+          " [Auto-cancelled: unit no longer available. Payment was verified — REFUND DUE.]";
+        booking.reviewedBy = req.admin._id;
+        booking.reviewedAt = new Date();
         booking.statusHistory.push({
           status: "cancelled",
           changedBy: "admin",
-          note: "Auto-cancelled: no inventory available (race condition)",
+          note: "Auto-cancelled: no inventory available (race condition). Payment verified, refund due.",
         });
         await booking.save();
 
@@ -342,6 +373,17 @@ export const verifyPayment = async (req, res) => {
           message: "No units available. This unit type is fully booked.",
         });
       }
+
+      // 2. Inventory is secured — now persist the confirmation, in one write.
+      booking.payment.status = "verified";
+      booking.payment.verifiedAt = new Date();
+      booking.payment.verifiedBy = req.admin._id;
+      booking.status = "confirmed";
+      booking.statusHistory.push({ status: "confirmed", changedBy: "admin", note: adminNotes || "Payment verified" });
+      booking.adminNotes = adminNotes || booking.adminNotes;
+      booking.reviewedBy = req.admin._id;
+      booking.reviewedAt = new Date();
+      await booking.save();
 
       // 3. Notify client — fire and forget
       if (booking.clientEmail) {
@@ -401,34 +443,103 @@ export const verifyPayment = async (req, res) => {
   }
 };
 
+/**
+ * Legal manual status transitions, keyed by the booking's current status.
+ *
+ * Derived from the states that already exist on ProjectBooking — this is a
+ * guard over current behaviour, not a redesign.
+ *
+ * `confirmed` is deliberately not a target from any state. Confirmation is
+ * reached only through PUT /:id/verify, which is the path that checks the
+ * payment and takes a unit out of inventory under the $gte:1 guard. Allowing it
+ * here let an admin move enquiry → confirmed with no payment, no verification
+ * and no decrement, and then auto-enrol the user as a *paid* campaign member.
+ *
+ * `cancelled` and `completed` are terminal.
+ */
+export const BOOKING_STATUS_TRANSITIONS = {
+  enquiry: ["cancelled"],
+  payment_submitted: ["cancelled"],
+  confirmed: ["completed", "cancelled"],
+  completed: ["cancelled"],
+  cancelled: [],
+};
+
+/** Statuses in which a unit is held out of inventory. */
+export const STATUSES_HOLDING_INVENTORY = ["confirmed", "completed"];
+
 // ── PUT /api/bookings/:id/status ──────────────────────────────────────────────
-// Admin: general status update (confirmed → completed, any → cancelled)
+// Admin: general status update (confirmed → completed, non-terminal → cancelled)
 export const updateBookingStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, adminNotes } = req.body;
-    const allowed = ["confirmed", "cancelled", "completed"];
+    const allowed = ["cancelled", "completed"];
 
     if (!allowed.includes(status)) {
-      return res.status(400).json({ success: false, message: `Status must be one of: ${allowed.join(", ")}` });
+      return res.status(400).json({
+        success: false,
+        message: `Status must be one of: ${allowed.join(", ")}. To confirm a booking, verify its payment instead.`,
+        code: "INVALID_STATUS",
+      });
     }
 
     const booking = await ProjectBooking.findById(id);
     if (!booking) return res.status(404).json({ success: false, message: "Booking not found." });
 
+    const legal = BOOKING_STATUS_TRANSITIONS[booking.status] || [];
+    if (!legal.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: legal.length
+          ? `A booking in "${booking.status}" can only move to: ${legal.join(", ")}.`
+          : `A booking in "${booking.status}" is final and cannot change status.`,
+        code: "ILLEGAL_TRANSITION",
+      });
+    }
+
+    // Return the unit to inventory when cancelling out of a state that held one.
+    // Guarded on the transition rather than the target so a second cancel — which
+    // the transition table already rejects — could not double-restore.
+    const releasesInventory =
+      status === "cancelled" && STATUSES_HOLDING_INVENTORY.includes(booking.status);
+
+    if (releasesInventory) {
+      // Mirror of the approve-path decrement. bookedUnits is floored at 0 by the
+      // filter so a mis-counted record cannot be driven negative.
+      const restored = await UnitType.findOneAndUpdate(
+        { _id: booking.unitType, "inventory.bookedUnits": { $gte: 1 } },
+        { $inc: { "inventory.availableUnits": 1, "inventory.bookedUnits": -1 } },
+        { new: true }
+      );
+      if (!restored) {
+        console.warn(
+          `[Booking] Cancelled ${booking._id} from ${booking.status} but could not restore inventory ` +
+          `on unit ${booking.unitType} (bookedUnits already 0). Inventory may need manual correction.`
+        );
+      }
+    }
+
+    const previousStatus = booking.status;
     booking.status = status;
     if (adminNotes) booking.adminNotes = adminNotes;
     booking.reviewedBy = req.admin._id;
     booking.reviewedAt = new Date();
-    booking.statusHistory.push({ status, changedBy: "admin", note: adminNotes });
+    booking.statusHistory.push({
+      status,
+      changedBy: "admin",
+      note: adminNotes || `${previousStatus} → ${status}`,
+    });
     await booking.save();
 
-    // Sync to Group Buy campaign when booking reaches confirmed or completed
-    if (status === "confirmed" || status === "completed") {
+    // Sync to Group Buy campaign when booking reaches completed.
+    // `confirmed` is no longer reachable here, so verifyPayment is the only
+    // path that enrols a member on confirmation.
+    if (status === "completed") {
       syncBookingToCampaign(booking, req.admin._id).catch(() => {});
     }
 
-    return res.json({ success: true, data: { status: booking.status } });
+    return res.json({ success: true, data: { status: booking.status, previousStatus } });
   } catch (err) {
     console.error("[Booking] updateBookingStatus error:", err);
     return res.status(500).json({ success: false, message: "Failed to update booking status." });

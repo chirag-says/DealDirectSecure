@@ -2,13 +2,16 @@
  * Rewards Controller — DealDirect Rewards
  * API endpoints for the rewards/points system.
  */
+import mongoose from "mongoose";
 import {
   getWallet,
   getTransactionHistory,
   getReferralStats,
   awardPoints,
   adminAdjustPoints,
+  MAX_ADMIN_ADJUSTMENT_POINTS,
 } from "../services/rewardService.js";
+import AuditLog from "../models/AuditLog.js";
 import {
   getCategories,
   getSubCategories,
@@ -19,6 +22,7 @@ import {
 } from "../services/rewardPortService.js";
 import User from "../models/userModel.js";
 import Reward from "../models/Reward.js";
+import { escapeRegExp } from "../utils/escapeRegExp.js";
 
 // ============================================
 // USER-FACING ENDPOINTS
@@ -196,6 +200,23 @@ export const getCatalogueProductDetails = async (req, res) => {
  * POST /api/rewards/admin/adjust-points
  * Body: { userId, points, reason }
  */
+/**
+ * POST /api/rewards/admin/adjust-points
+ *
+ * Moves points into or out of a user's wallet. Points are money-equivalent
+ * (POINTS_TO_RUPEES), so this is the one admin operation that mints value on
+ * command, and it previously had none of the controls below: `points` went
+ * through a bare parseInt with no bound, `reason` was optional, `userId` was
+ * not validated, and nothing was written to AuditLog — the only trace lived
+ * inside the recipient's own wallet, which is destroyed if they delete their
+ * account.
+ *
+ * Not addressed here, deliberately: this route is still `protectAdmin` alone,
+ * so any authenticated admin at any role level can call it. Adding
+ * requirePermission needs `rewards` in the Permission.resource enum first;
+ * attaching a guard whose code can never resolve is exactly what caused the
+ * B2 regression that 403'd every admin on the verification routes.
+ */
 export const adminAdjust = async (req, res) => {
   try {
     const { userId, points, reason } = req.body;
@@ -204,15 +225,71 @@ export const adminAdjust = async (req, res) => {
       return res.status(400).json({ success: false, message: "userId and points are required" });
     }
 
-    const result = await adminAdjustPoints(userId, parseInt(points), reason, req.admin?._id);
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid userId is required.",
+        code: "INVALID_USER_ID",
+      });
+    }
+
+    // parseInt("12abc") is 12 and parseInt("abc") is NaN; Number() rejects both.
+    const amount = Number(points);
+
+    if (!Number.isInteger(amount) || amount === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "points must be a non-zero whole number.",
+        code: "INVALID_POINTS",
+      });
+    }
+
+    if (Math.abs(amount) > MAX_ADMIN_ADJUSTMENT_POINTS) {
+      return res.status(400).json({
+        success: false,
+        message: `A single adjustment cannot exceed ${MAX_ADMIN_ADJUSTMENT_POINTS} points.`,
+        code: "ADJUSTMENT_TOO_LARGE",
+      });
+    }
+
+    // A reason is what makes the audit entry readable six months later.
+    const trimmedReason = typeof reason === "string" ? reason.trim() : "";
+
+    if (trimmedReason.length < 3) {
+      return res.status(400).json({
+        success: false,
+        message: "A reason of at least 3 characters is required.",
+        code: "REASON_REQUIRED",
+      });
+    }
+
+    const result = await adminAdjustPoints(userId, amount, trimmedReason, req.admin?._id);
 
     if (!result.success) {
       return res.status(400).json({ success: false, message: result.error });
     }
 
+    // Audit AFTER the wallet write, so a failed adjustment is not recorded as a
+    // successful one. Non-blocking: the points have already moved, and losing
+    // the audit row must not turn a completed adjustment into a 500.
+    AuditLog.log({
+      admin: req.admin?._id,
+      category: "user_management",
+      action: "reward_points_adjusted",
+      resourceType: "User",
+      resourceId: userId,
+      description: `Adjusted reward wallet by ${amount} points: ${trimmedReason}`,
+      req,
+      severity: "high",
+      changes: { after: { newBalance: result.newBalance, tier: result.tier } },
+      metadata: { points: amount, reason: trimmedReason, targetUserId: userId },
+    }).catch((err) =>
+      console.error("[RewardsCtrl] Failed to write adjust-points audit entry:", err.message)
+    );
+
     res.status(200).json({
       success: true,
-      message: `Points adjusted by ${points} for user ${userId}`,
+      message: `Points adjusted by ${amount} for user ${userId}`,
       ...result,
     });
   } catch (error) {
@@ -297,8 +374,8 @@ export const adminGetOverview = async (req, res) => {
       pipeline.push({
         $match: {
           $or: [
-            { "userInfo.name": { $regex: search, $options: "i" } },
-            { "userInfo.email": { $regex: search, $options: "i" } },
+            { "userInfo.name": { $regex: escapeRegExp(search), $options: "i" } },
+            { "userInfo.email": { $regex: escapeRegExp(search), $options: "i" } },
           ],
         },
       });

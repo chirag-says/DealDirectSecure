@@ -1247,6 +1247,51 @@ export const deleteAccount = async (req, res) => {
     const userId = req.user._id;
 
     // ============================================
+    // RE-AUTHENTICATION GATE (added 2026-08-16)
+    //
+    // This endpoint hard-deletes across 12 collections and destroys the user's
+    // Cloudinary assets. It is irreversible and there is no soft-delete flag.
+    //
+    // Before this, `authMiddleware` was the only guard: a single request from
+    // any authenticated context wiped the account. The only confirmation was a
+    // typed phrase in the browser, which is not a server-side control.
+    //
+    // Requiring the current password proves the person at the keyboard is the
+    // account holder rather than someone reusing a live session (shared or
+    // unattended device, or a cross-site request — this route is also now on
+    // the CSRF list in server.js).
+    // ============================================
+    const { password } = req.body || {};
+
+    if (!password || typeof password !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Please enter your current password to confirm account deletion.",
+        code: "PASSWORD_REQUIRED",
+      });
+    }
+
+    // req.user comes from sanitizeUser and carries no password hash.
+    const accountForAuth = await User.findById(userId).select("+password");
+
+    if (!accountForAuth) {
+      return res.status(404).json({ success: false, message: "User account not found." });
+    }
+
+    const passwordMatches = await bcrypt.compare(password, accountForAuth.password);
+
+    if (!passwordMatches) {
+      // Deliberately not incrementing the login lockout counter: this caller is
+      // already authenticated, and locking the account here would let a
+      // mistyped password block the session that is trying to close it.
+      return res.status(401).json({
+        success: false,
+        message: "Incorrect password. Account was not deleted.",
+        code: "INVALID_PASSWORD",
+      });
+    }
+
+    // ============================================
     // B1 FIX: four of these cascades previously queried fields that do not
     // exist on the target schema, so they matched nothing and silently
     // deleted nothing while still reporting success:
@@ -1328,9 +1373,17 @@ export const deleteAccount = async (req, res) => {
     // Clear the HTTP-only cookie on the client side
     clearSessionCookie(res);
 
-    res.status(200).json({ 
-      success: true, 
-      message: "Your account and all associated data have been permanently deleted." 
+    // Wording matches the NOT DELETED list above. The previous message claimed
+    // "all associated data" was gone, which was untrue for the six retained
+    // collections and is the kind of promise a data-protection request is
+    // measured against.
+    res.status(200).json({
+      success: true,
+      message:
+        "Your account has been permanently deleted, along with your listings, " +
+        "sessions, saved searches and notifications. Records that form part of " +
+        "a transaction with another party — such as enquiries you sent, signed " +
+        "agreements and bookings — are retained as required for those records.",
     });
   } catch (error) {
     console.error("Delete Account error:", error);

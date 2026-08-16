@@ -10,6 +10,7 @@ import SavedSearch from "../models/SavedSearch.js";
 import TransactionVerification from "../models/TransactionVerification.js";
 import { awardPoints } from "../services/rewardService.js";
 import { sendNewLeadWhatsApp, sendNewPropertyWhatsApp } from "../services/whatsappService.js";
+import { escapeRegExp } from "../utils/escapeRegExp.js";
 
 // ============================================
 // SECURITY FIX: ReDoS Prevention
@@ -22,11 +23,8 @@ import { sendNewLeadWhatsApp, sendNewPropertyWhatsApp } from "../services/whatsa
  * @param {string} string - Raw user input
  * @returns {string} - Escaped string safe for use in RegExp
  */
-const escapeRegExp = (string) => {
-  if (!string || typeof string !== 'string') return '';
-  // Escape all regex special characters: \ ^ $ . * + ? ( ) [ ] { } |
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-};
+// escapeRegExp now lives in utils/ so every search path shares one
+// implementation. This file's four call sites are unchanged; see the import above.
 
 // ============================================
 // SECURITY FIX: Strict WHITELIST approach for mass assignment prevention
@@ -39,7 +37,7 @@ const escapeRegExp = (string) => {
  * Fields NOT in this list will be silently rejected.
  * Sensitive fields like isApproved, owner, views must be set via middleware or internal calls.
  */
-const PROPERTY_ALLOWED_FIELDS = [
+export const PROPERTY_ALLOWED_FIELDS = [
   // Basic info
   'title', 'description', 'listingType', 'negotiable',
   // Category & Type (as names, not ObjectIds - handled separately)
@@ -67,16 +65,54 @@ const PROPERTY_ALLOWED_FIELDS = [
   'buildingName', 'buildingType', 'constructionStatus',
   // Commercial specific
   'seatCapacity', 'meetingRooms', 'pantry', 'washrooms',
+
+  // ============================================================
+  // FIELD-CONTRACT RECONCILIATION (2026-08-16)
+  //
+  // Everything below is declared on propertySchema AND sent by the
+  // create/edit forms, but was missing from this list — so the sanitizer
+  // stripped it and the value never reached the database. The user filled
+  // the field in, the UI reported success, and the data was discarded.
+  //
+  // Two of these were the root cause of long-standing "data" bugs:
+  //   - category/subcategory/propertyType  -> taxonomy refs came out null,
+  //     which is why every ObjectId-based category filter returns nothing.
+  //   - priceUnit -> the form sends "Monthly"/"Total"; stripping it left the
+  //     schema default "Lac", which the website's price filter then
+  //     multiplies by 1e5.
+  //
+  // Do not add a name here unless it exists on propertySchema. Verify with:
+  //   node -e "import('./models/Property.js').then(m=>console.log(m.default.schema.path('<field>')?.instance))"
+  // ============================================================
+
+  // Taxonomy references (ObjectIds; non-ObjectId values are dropped downstream)
+  'category', 'subcategory', 'propertyType',
+  // Pricing and listing metadata
+  'priceUnit', 'gstApplicable', 'bookingAmount', 'videoUrl', 'ageOfProperty',
+  // Residential detail
+  'floorNo', 'propertyAge', 'allowedFor', 'petFriendly', 'maintenanceIncluded',
+  // Commercial detail
+  'commercialSubType', 'loadingArea', 'dockAvailable', 'shutters',
+  'floorHeight', 'powerLoad',
+  // Commercial per-subtype configuration
+  'workstations', 'conferenceRooms', 'cabins', 'frontage', 'storage',
+  'displayWindows', 'displayArea', 'seatingCapacity', 'kitchenArea', 'barArea',
+  'outdoorSeating', 'privateCabins', 'phoneBooths', 'loungeArea', 'loadingDocks',
+  'ceilingHeight', 'floorLoadCapacity', 'powerConnection', 'overheadCrane', 'centralAC',
 ];
 
 /**
  * SECURITY: Fields that can ONLY be modified by admin middleware or internal service calls
  * These are NEVER allowed from request bodies, even if somehow included.
  */
-const ADMIN_ONLY_FIELDS = [
+export const ADMIN_ONLY_FIELDS = [
   'isApproved', 'rejectionReason', 'approvedAt', 'approvedBy',
   'disapprovedAt', 'disapprovedBy', 'views', 'likes', 'interestedUsers',
-  'owner', '_id', 'createdAt', 'updatedAt', '__v', 'status', 'isBanned', 'isActive'
+  'owner', '_id', 'createdAt', 'updatedAt', '__v', 'status', 'isBanned', 'isActive',
+  // 'builder' decides which feed a listing appears in (owner vs builder) and is
+  // set only by addPropertyForBuilder via setAdminOnlyFields. 'inquiries' is a
+  // system counter. Neither may ever arrive from a request body.
+  'builder', 'inquiries'
 ];
 
 /**
@@ -87,7 +123,7 @@ const ADMIN_ONLY_FIELDS = [
  * @param {Object} data - Raw data from request body
  * @returns {Object} - Sanitized data with only allowed fields
  */
-const sanitizePropertyData = (data) => {
+export const sanitizePropertyData = (data) => {
   const sanitized = {};
 
   // SECURITY: Only copy whitelisted fields
@@ -807,7 +843,23 @@ export const getPropertyById = async (req, res) => {
       .populate("category")
       .populate("subcategory")
       .populate("propertyType")
-      .populate("owner", "name email phone profileImage");
+      // SECURITY: no email, no phone.
+      //
+      // GET /api/properties/:id is fully public (propertyRoutes.js has no
+      // authMiddleware on it). This previously populated the owner's email and
+      // phone into every response. The UI only ever rendered owner.name, so the
+      // leak was invisible in a browser and trivially harvested by iterating
+      // property ids — every seller's phone number on the platform.
+      //
+      // It also defeated the model the rest of the product is built on: the
+      // interest gate, the Lead record and the enquiry reward all exist to
+      // mediate contact that this endpoint was giving away.
+      //
+      // Owner contact reaches the buyer through the lead flow, and reaches the
+      // owner through their own dashboard. Admin screens that legitimately show
+      // owner email use the admin endpoints (adminController.js), which populate
+      // it separately and are protectAdmin-gated.
+      .populate("owner", "name profileImage");
 
     if (!prop) {
       return res.status(404).json({
@@ -1478,7 +1530,27 @@ export const updateMyProperty = async (req, res) => {
       delete data.subcategory;
     }
 
-    const updated = await Property.findByIdAndUpdate(propertyId, data, { new: true })
+    // ============================================================
+    // SECURITY: strict whitelist before the write.
+    //
+    // This runs LAST, not early like addProperty's call at the top of the
+    // pipeline, because everything above rewrites `data` into its final
+    // shape (area, extras, legal, address, parking, categorizedImages,
+    // images, bhk, negotiable, categoryName, propertyTypeName). Sanitizing
+    // earlier would filter the raw form names and let the computed output
+    // through unchecked, which is the opposite of what we want.
+    //
+    // Without this, an owner could PUT isApproved/status/builder on their own
+    // listing: `delete data.owner` was the only guard. That let the moderated
+    // party undo moderation, and let a listing be marked sold without going
+    // through close-deal and admin verification.
+    //
+    // runValidators enforces the schema enums (listingType, status) that a
+    // bare findByIdAndUpdate silently skips.
+    // ============================================================
+    data = sanitizePropertyData(data);
+
+    const updated = await Property.findByIdAndUpdate(propertyId, data, { new: true, runValidators: true })
       .populate("category", "name")
       .populate("subcategory", "name")
       .populate("propertyType", "name");
@@ -2312,14 +2384,31 @@ export const closeDeal = async (req, res) => {
       return res.status(400).json({ success: false, message: "A verification request for this property is already pending" });
     }
 
-    // Create the verification record
-    const verification = await TransactionVerification.create({
-      property: propertyId,
-      owner: userId,
-      buyer: buyerId,
-      closingType,
-      documentUrls,
-    });
+    // Create the verification record.
+    //
+    // The findOne above is a fast path for the common case; the partial unique
+    // index on { property } where status:"pending" is what actually prevents
+    // two concurrent submissions from both landing. Catch its duplicate-key
+    // error and return the same 400 the check-then-act path returns, so the
+    // caller cannot tell which guard fired.
+    let verification;
+    try {
+      verification = await TransactionVerification.create({
+        property: propertyId,
+        owner: userId,
+        buyer: buyerId,
+        closingType,
+        documentUrls,
+      });
+    } catch (err) {
+      if (err?.code === 11000) {
+        return res.status(400).json({
+          success: false,
+          message: "A verification request for this property is already pending",
+        });
+      }
+      throw err;
+    }
 
     // Update property status to pending_verification
     await Property.findByIdAndUpdate(propertyId, { status: "pending_verification" });
@@ -2384,27 +2473,40 @@ export const claimDealReward = async (req, res) => {
       return res.status(403).json({ success: false, message: "You are not part of this deal" });
     }
 
-    // Check if already claimed
-    if (isOwner && verification.ownerClaimed) {
-      return res.status(200).json({
-        success: true,
-        alreadyClaimed: true,
-        reward: {
-          pointsAwarded: verification.ownerReward.points,
-          cashValue: verification.ownerReward.cashValue,
-          rewardTier: "common",
-          description: `Deal reward for "${verification.property.title}"`,
-        },
-      });
-    }
+    // ============================================
+    // ATOMIC CLAIM
+    //
+    // This was a check-then-act with an await in the middle: read
+    // ownerClaimed → await awardPoints() → set the flag → await save(). Two
+    // concurrent requests both read false, both awarded, and the second save
+    // overwrote the first's recorded amount. A double-click was enough; the
+    // frontend's `claimingId` state does not survive a race, and nothing
+    // server-side stopped it.
+    //
+    // Now the flag is taken with a single conditional update. Exactly one
+    // caller can flip false → true, so exactly one caller proceeds to award.
+    // ============================================
+    const claimField = isOwner ? "ownerClaimed" : "buyerClaimed";
+    const rewardField = isOwner ? "ownerReward" : "buyerReward";
 
-    if (isBuyer && verification.buyerClaimed) {
+    const claimed = await TransactionVerification.findOneAndUpdate(
+      { _id: verificationId, [claimField]: { $ne: true } },
+      { $set: { [claimField]: true } },
+      { new: true }
+    );
+
+    if (!claimed) {
+      // Someone already holds this claim — either an earlier request or the
+      // other half of a race. Re-read so the stored amount is returned rather
+      // than the pre-claim snapshot loaded at the top of the handler.
+      const current = await TransactionVerification.findById(verificationId).lean();
+      const stored = current?.[rewardField] || {};
       return res.status(200).json({
         success: true,
         alreadyClaimed: true,
         reward: {
-          pointsAwarded: verification.buyerReward.points,
-          cashValue: verification.buyerReward.cashValue,
+          pointsAwarded: stored.points || 0,
+          cashValue: stored.cashValue || 0,
           rewardTier: "common",
           description: `Deal reward for "${verification.property.title}"`,
         },
@@ -2423,24 +2525,40 @@ export const claimDealReward = async (req, res) => {
       });
     } catch (err) {
       console.error(`[ClaimReward] Error awarding points:`, err.message);
+      // Release the claim so the user is not permanently locked out of a
+      // reward they never received.
+      await TransactionVerification.updateOne(
+        { _id: verificationId },
+        { $set: { [claimField]: false } }
+      ).catch(() => {});
       return res.status(500).json({ success: false, message: "Failed to award reward" });
     }
 
-    // Mark as claimed and save reward data
-    if (isOwner) {
-      verification.ownerClaimed = true;
-      verification.ownerReward = {
-        points: rewardResult.pointsAwarded || 0,
-        cashValue: rewardResult.cashValue || 0,
-      };
-    } else {
-      verification.buyerClaimed = true;
-      verification.buyerReward = {
-        points: rewardResult.pointsAwarded || 0,
-        cashValue: rewardResult.cashValue || 0,
-      };
+    // awardPoints resolves with { success: false } rather than throwing when the
+    // action is unmapped or the wallet write loses its optimistic-concurrency
+    // retry. Treat that the same way: release the claim and report failure,
+    // instead of recording a claim worth zero points.
+    if (!rewardResult?.success) {
+      console.error(`[ClaimReward] awardPoints did not succeed:`, rewardResult?.error);
+      await TransactionVerification.updateOne(
+        { _id: verificationId },
+        { $set: { [claimField]: false } }
+      ).catch(() => {});
+      return res.status(500).json({ success: false, message: "Failed to award reward" });
     }
-    await verification.save();
+
+    // Record what was actually awarded. The claim flag is already set.
+    await TransactionVerification.updateOne(
+      { _id: verificationId },
+      {
+        $set: {
+          [rewardField]: {
+            points: rewardResult.pointsAwarded || 0,
+            cashValue: rewardResult.cashValue || 0,
+          },
+        },
+      }
+    );
 
     // Mark the notification as claimed in the DB
     await Notification.updateMany(

@@ -85,6 +85,7 @@ const Profile = () => {
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmationMatch, setDeleteConfirmationMatch] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -425,10 +426,17 @@ const Profile = () => {
       toast.error('The confirmation phrase does not match.');
       return;
     }
-    
+
+    if (!deletePassword) {
+      toast.error('Please enter your current password to confirm.');
+      return;
+    }
+
     try {
       setIsDeleting(true);
-      const res = await api.delete('/users/me');
+      // The server re-checks this password before deleting anything. The typed
+      // phrase above is a client-side speed bump; the password is the control.
+      const res = await api.delete('/users/me', { data: { password: deletePassword } });
       if (res.data?.success) {
         toast.success(res.data.message || 'Account successfully deleted.');
         setShowDeleteModal(false);
@@ -1386,7 +1394,7 @@ const Profile = () => {
               <div className="bg-red-50 text-red-700 p-4 rounded-xl text-sm mb-6 border border-red-100 flex items-start gap-3">
                 <Shield className="w-5 h-5 flex-shrink-0 mt-0.5" />
                 <p>
-                  <strong>Warning:</strong> This action is permanent and irreversible. All your properties, messages, rewards, and personal data will be completely wiped from our servers.
+                  <strong>Warning:</strong> This action is permanent and irreversible. Your profile, listings, saved searches, notifications, messages and rewards will be deleted. Records that involve another party — enquiries you sent, signed agreements and bookings — are retained as part of those transactions.
                 </p>
               </div>
 
@@ -1402,12 +1410,30 @@ const Profile = () => {
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition font-mono"
                 />
               </div>
+
+              <div className="space-y-2">
+                <label htmlFor="delete-password" className="block text-sm font-medium text-slate-700">
+                  Enter your current password
+                </label>
+                <input
+                  id="delete-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  placeholder="Current password"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition"
+                />
+                <p className="text-xs text-slate-500">
+                  We ask for this so a live session on a shared or unattended device cannot delete your account.
+                </p>
+              </div>
             </div>
 
             {/* Modal Footer */}
             <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 bg-slate-50">
               <button
-                onClick={() => setShowDeleteModal(false)}
+                onClick={() => { setShowDeleteModal(false); setDeletePassword(""); }}
                 disabled={isDeleting}
                 className="px-5 py-2.5 text-slate-600 bg-slate-200 hover:bg-slate-300 rounded-xl font-medium transition disabled:opacity-50"
               >
@@ -1415,7 +1441,7 @@ const Profile = () => {
               </button>
               <button
                 onClick={handleDeleteAccount}
-                disabled={isDeleting || deleteConfirmationMatch !== `DELETE-${user?.email}`}
+                disabled={isDeleting || deleteConfirmationMatch !== `DELETE-${user?.email}` || !deletePassword}
                 className="px-5 py-2.5 bg-red-600 text-white hover:bg-red-700 rounded-xl font-medium transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isDeleting ? (

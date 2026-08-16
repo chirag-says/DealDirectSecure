@@ -548,7 +548,7 @@ export const getAllLeads = async (req, res) => {
     if (search) {
       // NOTE: For performance on large datasets, consider an index on:
       // { 'userSnapshot.name': 1, 'userSnapshot.email': 1, 'propertySnapshot.title': 1 }
-      const searchRegex = new RegExp(search, 'i');
+      const searchRegex = new RegExp(escapeRegExp(search), 'i');
       matchQuery.$or = [
         { 'userSnapshot.name': searchRegex },
         { 'userSnapshot.email': searchRegex },
@@ -646,6 +646,7 @@ export const getAllLeads = async (req, res) => {
 
 // ... other imports
 import ExcelJS from 'exceljs';
+import { escapeRegExp } from "../utils/escapeRegExp.js";
 
 // ... (other controller functions: createLead, getOwnerLeads, etc. remain unchanged)
 

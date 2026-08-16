@@ -80,6 +80,8 @@ debug*.js
 __*.js
 *.local.js
 scratch*.js
+
+
 tmp/
 temp/
 *.tmp

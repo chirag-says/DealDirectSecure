@@ -227,6 +227,49 @@ export const awardPoints = async (userId, action, metadata = {}, _retryCount = 0
 
     const wallet = await getOrCreateWallet(userId);
 
+    // ============================================
+    // ONE LISTING REWARD PER ACCOUNT, EVER
+    //
+    // INTENDED BEHAVIOUR (decided 2026-08-16, documented before changing any
+    // clawback logic):
+    //
+    //   A user is rewarded once, for becoming a lister. Not once per property.
+    //
+    // Why that reading. An owner account may hold exactly one listing at a time
+    // — addProperty enforces it inside a transaction. So "reward per listing"
+    // and "reward per account" coincide for every honest user, and they diverge
+    // only for the loop this closes: create → collect ≈112 points (₹5.61
+    // expected) → delete → create again, with no cap, no cooldown and no
+    // moderation gate in between. deleteMyProperty never touched the wallet, so
+    // the loop was unbounded and worth roughly ₹560/day at a human pace.
+    //
+    // WHY NOT A CLAWBACK ON DELETE. Forfeiting on delete was the other
+    // candidate. Rejected for three reasons: it punishes a legitimate delete;
+    // it cannot recover points the user has already spent through Hubble; and
+    // addTransaction clamps a negative balance to zero, so a forfeit larger
+    // than the current balance silently under-recovers and leaves the ledger
+    // disagreeing with the balance. A once-ever award needs no clawback,
+    // because deleting and recreating simply earns nothing the second time.
+    //
+    // CONSEQUENCE TO BE AWARE OF: a user who deletes their listing and later
+    // lists a genuinely different property is not rewarded again. That is the
+    // intended trade-off, not an oversight. Revisit only with a product
+    // decision — and if it changes, the replacement needs a cooldown or a
+    // clawback, not simply removing this block.
+    // ============================================
+    if (action === "list_property") {
+      const alreadyRewarded = wallet.transactions.some((t) => t.action === "list_property");
+
+      if (alreadyRewarded) {
+        console.log(`[RewardService] User ${userId} already claimed the one-time ${action} reward`);
+        return {
+          success: true,
+          pointsAwarded: 0,
+          message: "The listing reward has already been claimed on this account",
+        };
+      }
+    }
+
     // DAILY LIMIT CHECK FOR ENQUIRIES
     if (action === "send_enquiry") {
       const today = new Date();
@@ -517,7 +560,20 @@ export const trackDailyLogin = async (userId) => {
 /**
  * Admin: manually adjust points
  */
-export const adminAdjustPoints = async (userId, points, reason, adminId) => {
+/**
+ * Maximum magnitude of a single admin adjustment, in points.
+ *
+ * At POINTS_TO_RUPEES (₹0.05) this caps one submission at ₹2,500. The point is
+ * not that 50,000 is a magic number — it is that `parseInt` with no bound let a
+ * single form submission mint an unlimited amount, and the only record was a
+ * row inside the recipient's own wallet.
+ *
+ * Raising this is a product decision. Anything above it should be several
+ * deliberate adjustments, each separately audited.
+ */
+export const MAX_ADMIN_ADJUSTMENT_POINTS = 50000;
+
+export const adminAdjustPoints = async (userId, points, reason, adminId, _retryCount = 0) => {
   try {
     const wallet = await getOrCreateWallet(userId);
 
@@ -527,7 +583,7 @@ export const adminAdjustPoints = async (userId, points, reason, adminId) => {
       points,
       basePoints: Math.abs(points),
       multiplier: 1,
-      description: reason || "Admin adjustment",
+      description: reason,
       metadata: { adminId },
     });
 
@@ -540,6 +596,14 @@ export const adminAdjustPoints = async (userId, points, reason, adminId) => {
       tier: wallet.tier,
     };
   } catch (error) {
+    // Mirrors the C4 fix in awardPoints. `Reward` sets optimisticConcurrency,
+    // so a concurrent earn during this read-modify-write raises VersionError
+    // rather than silently losing one of the two writes. Retrying once re-reads
+    // the wallet and reapplies the delta against the current balance.
+    if (error.name === 'VersionError' && _retryCount < 1) {
+      console.warn(`[RewardService] Concurrency conflict adjusting ${userId}, retrying...`);
+      return adminAdjustPoints(userId, points, reason, adminId, _retryCount + 1);
+    }
     console.error("[RewardService] adminAdjustPoints error:", error.message);
     return { success: false, error: error.message };
   }

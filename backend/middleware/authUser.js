@@ -201,6 +201,30 @@ const handleJWTAuth = async (req, res, next, token) => {
     }
 
     // ============================================
+    // SECURITY: a token minted for another purpose is not an API credential.
+    //
+    // GET /api/chat/socket-token mints { id, purpose: 'socket_auth' } with a
+    // 5-minute life, for the Socket.io handshake. It carries no sessionId, so
+    // it fell through to the LEGACY branch below, which loads the user by
+    // decoded.id and authenticates the request — giving a real-time-layer
+    // token the run of the REST API. Worse, the legacy branch performs no
+    // session lookup, so such a token kept working after logout.
+    //
+    // The test is deliberately "explicitly stamped with something else" rather
+    // than "not stamped 'api'": nothing in this codebase mints an API JWT, and
+    // legacy tokens carry no purpose at all. Rejecting unstamped tokens here
+    // would break that path for no security gain.
+    // ============================================
+    if (decoded.purpose && decoded.purpose !== 'api') {
+      console.warn(`[Auth] Rejected token minted for purpose="${decoded.purpose}" on a REST route`);
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token. Please login again.",
+        code: "INVALID_TOKEN",
+      });
+    }
+
+    // ============================================
     // SECURITY FIX: Validate token against UserSession store
     // This ensures:
     // 1. Logged out tokens are rejected

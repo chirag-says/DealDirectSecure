@@ -98,6 +98,9 @@ service-account*.json
 **/debug*.js
 **/test*.js
 
+# -- Backend test directory --
+backend/tests/
+
 # -- Explicit files (already known) --
 backend/seed.js
 backend/scripts/seedRbac.js

@@ -12,7 +12,12 @@ const transactionSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ["earn", "redeem", "forfeit", "adjustment"],
+      // "refund" reverses a "redeem" without touching lifetime totals. It is a
+      // distinct type rather than a positive "redeem" because the Hubble
+      // controller locates the original debit by `type === "redeem"` — reusing
+      // that type would make a reversal look like the debit it reversed, and
+      // break both the debit idempotency check and the reversal lookup.
+      enum: ["earn", "redeem", "forfeit", "adjustment", "refund"],
       required: true,
     },
     action: {
@@ -178,6 +183,16 @@ rewardSchema.methods.addTransaction = function (txn) {
   } else if (txn.type === "redeem" || txn.type === "forfeit") {
     // points is negative for these types
     this.availablePoints += txn.points; // subtracts since points is negative
+  } else if (txn.type === "refund") {
+    // Exact mirror of "redeem": spendable balance only, lifetime total
+    // untouched. points is POSITIVE here.
+    //
+    // Reversals used to be booked as "adjustment", which credits totalPoints as
+    // well. Since a redeem never decremented totalPoints, every debit→reverse
+    // cycle left lifetime points permanently inflated by the refunded amount —
+    // and recalculateTier reads totalPoints, so repeating the cycle promoted a
+    // user to a higher tier (and a higher earning multiplier) without earning.
+    this.availablePoints += txn.points;
   } else if (txn.type === "adjustment") {
     this.totalPoints += txn.points;
     this.availablePoints += txn.points;

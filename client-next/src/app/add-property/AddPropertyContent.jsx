@@ -669,9 +669,20 @@ export default function AddProperty() {
                 return;
             }
 
-            submitData.append("propertyType", propertyTypeId || (metadata.propertyTypes[0]?._id));
+            // Taxonomy refs: send only a genuine match.
+            //
+            // These previously fell back to metadata.propertyTypes[0]._id and
+            // metadata.categories[0]._id when findObjectId failed to match the
+            // selected name. That silently stamped every unmatched listing with
+            // the same wrong id (in production, the one named "Plot" — on
+            // apartments, villas and penthouses alike), which is why filtering
+            // by category or property type returns the wrong set.
+            //
+            // A failed match must fail safely: omit the ref and rely on the
+            // denormalised *Name columns, which are correct on every row.
+            if (propertyTypeId) submitData.append("propertyType", propertyTypeId);
             submitData.append("propertyTypeName", formData.propertyType);
-            submitData.append("category", categoryId || (metadata.categories[0]?._id));
+            if (categoryId) submitData.append("category", categoryId);
             submitData.append("categoryName", formData.propertyCategory);
             submitData.append("title", generateTitle());
             submitData.append("description", formData.description || generateShortDescription());

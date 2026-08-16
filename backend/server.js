@@ -507,6 +507,20 @@ io.on("connection", (socket) => {
         return;
       }
 
+      // SECURITY: the socket accepts only tokens minted for the socket.
+      //
+      // The other half of the boundary enforced in authUser.handleJWTAuth: a
+      // token stamped for one purpose must not be spendable at another. This
+      // side previously accepted any signed JWT carrying an `id`. Only
+      // GET /api/chat/socket-token mints tokens today and it always stamps
+      // purpose='socket_auth', so this rejects nothing that exists — it stops
+      // a future API token from being replayed onto the real-time layer.
+      if (decoded.purpose !== 'socket_auth') {
+        console.warn(`[Socket.io] Rejected token with purpose="${decoded.purpose}" on socket ${socket.id}`);
+        socket.emit('auth_error', { code: 'INVALID_TOKEN', message: 'Invalid or expired token' });
+        return;
+      }
+
       // Validate decoded token has user ID
       const userId = decoded.id || decoded.userId || decoded._id;
       if (!userId) {
@@ -678,10 +692,27 @@ app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 // Applied AFTER body parsing but BEFORE routes
 // ============================================
 
+// Every credential-bearing or OTP-bearing endpoint, listed explicitly.
+//
+// app.use() matches a path prefix on a segment boundary, so
+// "/api/users/register" does NOT cover "/api/users/register-direct" — that
+// route, and the three OTP/reset routes below, were falling through to the
+// in-process authRateLimit alone (10 per 15 min, per process, lost on restart).
+// Verified against the route files before listing: every path below is a real
+// registered route.
+//
+// Limits are unchanged; only coverage is corrected.
 app.use("/api/users/login", authLimiter);
 app.use("/api/users/register", authLimiter);
-app.use("/api/admin/login", authLimiter);
+app.use("/api/users/register-direct", authLimiter);
+app.use("/api/users/verify-otp", authLimiter);
+app.use("/api/users/resend-otp", authLimiter);
 app.use("/api/users/forgot-password", authLimiter);
+app.use("/api/users/reset-password", authLimiter);
+app.use("/api/admin/login", authLimiter);
+// The second factor deserves the same brake as the first: verifyMfa now counts
+// failures against the account lockout, but that is per-account, not per-IP.
+app.use("/api/admin/mfa/verify", authLimiter);
 app.use("/api/agreements/generate", transactionalLimiter);
 app.use("/api/agreements/webhook", webhookLimiter);
 
@@ -702,8 +733,16 @@ const groupBuyLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use('/api/group-buy/projects/:id/join', groupBuyLimiter);
-app.use('/api/group-buy/projects/:id/exit', groupBuyLimiter);
+// Mounted on the real campaign routes. These previously pointed at
+// "/api/group-buy/projects/:id/join|exit", a prefix no router is mounted under
+// — so both limiters were dead code and joining or exiting a campaign, which is
+// a financial commitment, was covered only by the global 500-per-15-minutes
+// limiter. Verified against campaignRoutes.js: the routes are
+// POST /:id/join and POST /:id/exit under the /api/campaigns mount.
+//
+// The limit itself is unchanged at 10 per 15 minutes.
+app.use('/api/campaigns/:id/join', groupBuyLimiter);
+app.use('/api/campaigns/:id/exit', groupBuyLimiter);
 
 // ============================================
 // SECURITY: Block retired 'Agent' role globally
@@ -827,6 +866,10 @@ app.post("/api/contact", csrfGuard);
 // — Chat: currently hidden in the UI, but the API is live —
 app.post("/api/chat/message/send", csrfGuard);
 app.post("/api/chat/conversation/start", csrfGuard);
+
+// — Account deletion: irreversible, hard-deletes across 12 collections —
+// Also gated on a current-password re-check in userController.deleteAccount.
+app.delete("/api/users/me", csrfGuard);
 
 // Deliberately not a hard-coded count — the list above changes, and a stale
 // number in the boot log is worse than no number.

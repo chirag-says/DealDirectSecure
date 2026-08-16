@@ -10,6 +10,27 @@ import "./Role.js";
  * Enhanced Admin Schema
  * Enterprise-grade admin model with MFA support, role-based access, and security features
  */
+/**
+ * The single definition of admin password strength.
+ *
+ * The controller and this model each carried their own copy, and they
+ * disagreed: the controller accepted `#^()-_=+` as special characters, the
+ * model accepted only `@$!%*?&`. A password like `Abcdefghij1#` passed the
+ * controller's check, was assigned, then rejected by the pre-save hook below —
+ * and that error escaped to the generic 500 handler, so the admin saw "an
+ * unexpected error occurred" with no idea why. On an account flagged
+ * mustChangePassword, which cannot reach any other endpoint, that was a
+ * lockout.
+ *
+ * 12+ characters, with lowercase, uppercase, a digit and one special character.
+ * Import this rather than re-writing it.
+ */
+export const ADMIN_PASSWORD_REGEX =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()\-_=+])[A-Za-z\d@$!%*?&#^()\-_=+]{12,}$/;
+
+export const ADMIN_PASSWORD_REQUIREMENTS =
+  "Password must be at least 12 characters with uppercase, lowercase, number, and special character";
+
 const adminSchema = new mongoose.Schema(
   {
     name: {
@@ -138,12 +159,8 @@ adminSchema.pre("save", async function (next) {
   }
 
   // Validate password strength
-  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,}$/;
-  if (!passwordRegex.test(this.password)) {
-    const err = new Error(
-      "Password must be at least 12 characters with uppercase, lowercase, number, and special character"
-    );
-    return next(err);
+  if (!ADMIN_PASSWORD_REGEX.test(this.password)) {
+    return next(new Error(ADMIN_PASSWORD_REQUIREMENTS));
   }
 
   // Hash password with cost factor 12

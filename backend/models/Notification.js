@@ -14,8 +14,40 @@ const notificationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// ============================================
+// Remember whether this save was an insert.
+//
+// By the time post("save") runs, doc.isNew is already false, so the hook below
+// cannot tell an insert from an update on its own. $locals is Mongoose's
+// documented per-document scratch space and is not persisted.
+// ============================================
+notificationSchema.pre("save", function (next) {
+  this.$locals.wasNew = this.isNew;
+  next();
+});
+
 // Middleware to send email after a new notification is saved
 notificationSchema.post("save", async function (doc) {
+  // ============================================
+  // Only a newly created notification sends email.
+  //
+  // This hook fires on EVERY save, and marking a notification read is a save:
+  // notificationController.markNotificationRead does
+  //   notification.isRead = true; await notification.save();
+  // so opening the notification centre re-sent the email for each item read,
+  // and claiming a reward re-sent the "Claim Your Reward" notice after it had
+  // been claimed. One notification plus K read-toggles produced K+1 emails.
+  //
+  // markAllNotificationsRead uses updateMany, which bypasses document
+  // middleware entirely — so the same user action emailed or did not depending
+  // on which button was pressed. This makes both paths behave the same way.
+  //
+  // Scope note: email dispatch stays in the model for now. Moving it into an
+  // explicit service is the right fix for the N+1 lookup and the per-message
+  // SMTP handshake, and is deliberately left to a separate change.
+  // ============================================
+  if (!doc.$locals?.wasNew) return;
+
   try {
     const user = await User.findById(doc.user);
     if (user && user.email && user.preferences?.emailNotifications !== false) {

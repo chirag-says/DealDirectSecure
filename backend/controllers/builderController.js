@@ -8,6 +8,7 @@ import Property from "../models/Property.js";
 import Project from "../models/Project.js";
 import { cloudinary } from "../middleware/upload.js";
 import { Readable } from "stream";
+import { escapeRegExp } from "../utils/escapeRegExp.js";
 
 // ── List Builders ─────────────────────────────────────────────────────────────
 export const listBuilders = async (req, res) => {
@@ -29,10 +30,10 @@ export const listBuilders = async (req, res) => {
     // Text search
     if (search.trim()) {
       filter.$or = [
-        { name: { $regex: search.trim(), $options: "i" } },
-        { company: { $regex: search.trim(), $options: "i" } },
-        { phone: { $regex: search.trim(), $options: "i" } },
-        { email: { $regex: search.trim(), $options: "i" } },
+        { name: { $regex: escapeRegExp(search.trim()), $options: "i" } },
+        { company: { $regex: escapeRegExp(search.trim()), $options: "i" } },
+        { phone: { $regex: escapeRegExp(search.trim()), $options: "i" } },
+        { email: { $regex: escapeRegExp(search.trim()), $options: "i" } },
       ];
     }
 
