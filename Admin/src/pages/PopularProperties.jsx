@@ -113,6 +113,23 @@ const PopularProperties = () => {
                 </h2>
                 <p className="text-gray-500 text-sm">Select properties to display in the "Popular Properties" section of the home page.</p>
 
+                {/* This feature is not implemented in the backend.
+                    Verified 2026-08-16: there is no PUT /api/properties/popular/:id
+                    route, and `isPopular` exists on no model or controller. Every
+                    toggle therefore 404s and reports "Failed to update status".
+                    The control is disabled rather than left to fail, and the page
+                    has deliberately NOT been added to the sidebar.
+                    Building this needs a product decision and a real endpoint. */}
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-sm font-semibold text-amber-900">
+                        This feature is not available yet
+                    </p>
+                    <p className="mt-1 text-sm text-amber-800">
+                        Marking properties as popular has no backend support, so the control below is
+                        disabled. The list is read-only. Nothing you do here affects the home page.
+                    </p>
+                </div>
+
                 {/* --- SEARCH BAR --- */}
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
 
@@ -182,10 +199,9 @@ const PopularProperties = () => {
 
                             <button
                                 onClick={() => togglePopular(item)}
-                                className={`w-full py-2.5 rounded-lg text-sm font-bold flex justify-center items-center gap-2 transition-colors ${item.isPopular
-                                    ? "bg-red-50 text-red-600 hover:bg-red-100"
-                                    : "bg-yellow-50 text-yellow-700 hover:bg-yellow-100"
-                                    }`}
+                                disabled
+                                title="Not available — this feature has no backend support yet"
+                                className="w-full py-2.5 rounded-lg text-sm font-bold flex justify-center items-center gap-2 bg-gray-100 text-gray-400 cursor-not-allowed"
                             >
                                 <Star className={`w-4 h-4 ${item.isPopular ? 'fill-red-600' : ''}`} />
                                 {item.isPopular ? "Remove from Popular" : "Mark as Popular"}

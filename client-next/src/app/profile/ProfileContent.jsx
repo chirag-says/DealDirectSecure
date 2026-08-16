@@ -1160,6 +1160,16 @@ const Profile = () => {
                       <ChevronRight size={18} className="text-slate-400" />
                     </Link>
 
+                    {/* AGREEMENTS — HIDDEN (client decision, 2026-08-01).
+                        This link was missed when the feature was hidden: the
+                        hide comments in Navbar.jsx and app/agreements/page.js
+                        name three sites, and this was a fourth. It stayed live
+                        and landed users on the 404 page, because
+                        app/agreements/page.js calls notFound().
+
+                        Restore it together with the three links in Navbar.jsx,
+                        the notFound() in app/agreements/page.js, and the route
+                        mount in backend/server.js.
                     <Link href="/agreements"
                       className="flex items-center justify-between p-4 rounded-xl hover:bg-slate-50 transition group"
                     >
@@ -1171,6 +1181,7 @@ const Profile = () => {
                       </div>
                       <ChevronRight size={18} className="text-slate-400" />
                     </Link>
+                    */}
 
                     <Link href="/privacy"
                       className="flex items-center justify-between p-4 rounded-xl hover:bg-slate-50 transition group"

@@ -56,6 +56,12 @@ const Footer = () => {
     "Company": [
       { name: "About Us", path: "/about" },
       { name: "Why Us?", path: "/why-us" },
+      // The rewards marketing page had no inbound link a logged-out visitor
+      // could follow: the only links to it were on /rewards/dashboard and
+      // /rewards/terms, both behind auth. So the page explaining the rewards
+      // programme was reachable only by people who had already signed up for
+      // it. The footer renders on every page, including for guests.
+      { name: "Rewards", path: "/rewards" },
       { name: "FAQs", path: "/faq" },
     ],
     "Support": [
