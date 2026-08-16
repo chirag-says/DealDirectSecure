@@ -142,10 +142,37 @@ export const POINT_VALUES = {
  * @param {string} category - 'property_posting' | 'property_sale' | 'property_enquiry'
  * @returns {{ points: number, cashValue: number }}
  */
+/**
+ * Rarity bands, by how likely the drawn outcome actually was.
+ *
+ * The reveal UI (SpinWheelOverlay, PropertyHuntGame) has always expected a
+ * `rewardTier` of common | uncommon | rare | epic | legendary, and colours,
+ * labels, the screen flash and the confetti are all keyed off it. Nothing ever
+ * supplied one: the REWARD_TIERS entries carry only { points, cashValue,
+ * weight }, so `reward.tier` in awardPoints read undefined and every reveal —
+ * including a 100,000-point draw — fell back to "Common".
+ *
+ * Rarity is derived from the selected entry's share of the category's total
+ * weight, which is information the table already contains. That means it stays
+ * correct automatically if the weights are ever retuned, and it changes nothing
+ * about the draw: the same entry is selected with the same probability, and
+ * points, cashValue, weights and multipliers are untouched.
+ */
+const RARITY_BANDS = [
+  { minProbability: 0.25, rarity: 'common' },
+  { minProbability: 0.05, rarity: 'uncommon' },
+  { minProbability: 0.005, rarity: 'rare' },
+  { minProbability: 0.0005, rarity: 'epic' },
+  { minProbability: 0, rarity: 'legendary' },
+];
+
+export const rarityForProbability = (probability) =>
+  (RARITY_BANDS.find((band) => probability >= band.minProbability) || RARITY_BANDS[RARITY_BANDS.length - 1]).rarity;
+
 export const getRandomReward = (category) => {
   const tiers = REWARD_TIERS[category];
   if (!tiers || tiers.length === 0) {
-    return { points: 0, cashValue: 0 };
+    return { points: 0, cashValue: 0, tier: 'common' };
   }
 
   // Calculate total weight
@@ -158,12 +185,20 @@ export const getRandomReward = (category) => {
   for (const tier of tiers) {
     random -= tier.weight;
     if (random <= 0) {
-      return { points: tier.points, cashValue: tier.cashValue };
+      return {
+        points: tier.points,
+        cashValue: tier.cashValue,
+        tier: rarityForProbability(tier.weight / totalWeight),
+      };
     }
   }
 
   // Fallback to lowest tier
-  return { points: tiers[0].points, cashValue: tiers[0].cashValue };
+  return {
+    points: tiers[0].points,
+    cashValue: tiers[0].cashValue,
+    tier: rarityForProbability(tiers[0].weight / totalWeight),
+  };
 };
 
 // ============================================
