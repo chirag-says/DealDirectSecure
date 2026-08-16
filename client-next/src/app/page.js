@@ -34,11 +34,18 @@ async function getHomeData() {
     propertyTypes: ptData?.data || ptData || [],
     latestPosts: blogData?.success ? (blogData.data || []) : [],
     builderProjects: projectsData?.data || (Array.isArray(projectsData) ? projectsData : []),
+    // ssrFetch resolves to null on timeout, a non-2xx, or a network failure —
+    // it never throws. Both a failed request and a genuinely empty result
+    // therefore collapse to `[]` above, and the page rendered an empty
+    // properties section either way, with no message and no way to retry.
+    //
+    // Distinguishing them is a one-line check: null means the request failed.
+    propertiesUnavailable: propsData === null,
   };
 }
 
 export default async function HomePage() {
-  const { properties, categories, propertyTypes, latestPosts, builderProjects } = await getHomeData();
+  const { properties, categories, propertyTypes, latestPosts, builderProjects, propertiesUnavailable } = await getHomeData();
 
   return (
     <>
@@ -50,6 +57,7 @@ export default async function HomePage() {
         initialPropertyTypes={propertyTypes}
         initialLatestPosts={latestPosts}
         initialBuilderProjects={builderProjects}
+        propertiesUnavailable={propertiesUnavailable}
       />
     </>
   );

@@ -30,6 +30,8 @@ export default function RewardsDashboardContent() {
     const router = useRouter();
     const { isAuthenticated, loading: authLoading } = useAuth();
     const [wallet, setWallet] = useState(null);
+    // Distinct from "wallet is empty": this means the request did not succeed.
+    const [loadError, setLoadError] = useState(null);
     const [referral, setReferral] = useState(null);
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -56,8 +58,22 @@ export default function RewardsDashboardContent() {
             ]);
             if (walletRes.success) setWallet(walletRes.wallet);
             if (referralRes.success) setReferral(referralRes);
+            // A 200 that does not carry a wallet is still a failure to load one.
+            if (!walletRes.success) {
+                setLoadError(walletRes.message || 'We could not load your rewards wallet.');
+            } else {
+                setLoadError(null);
+            }
         } catch (err) {
+            // Previously this only logged. `wallet` stayed null and the render
+            // below dereferenced wallet.tier and wallet.availablePoints
+            // unguarded, so a failed request threw a TypeError into the error
+            // boundary — the user saw a generic crash page with no indication
+            // that their points were fine and only the request had failed.
             console.error('Failed to load rewards data:', err);
+            setLoadError(
+                err?.response?.data?.message || 'We could not load your rewards right now.'
+            );
         } finally {
             setLoading(false);
         }
@@ -138,7 +154,39 @@ export default function RewardsDashboardContent() {
 
     if (!isAuthenticated) return null;
 
-    const tc = wallet ? TIER_CONFIG[wallet.tier] || TIER_CONFIG.bronze : TIER_CONFIG.bronze;
+    // A failed load must never be rendered as a real wallet.
+    //
+    // Without this the page fell through to the card below with `wallet` null,
+    // where TIER_CONFIG defaulted to bronze and wallet.availablePoints threw.
+    // Either way the user could not tell "your balance is zero" from "we could
+    // not reach the server" — on the screen that states how much money they
+    // have, that distinction matters.
+    if (loadError || !wallet) {
+        return (
+            <div className="min-h-screen bg-gray-50 pt-28 pb-20">
+                <div className="max-w-5xl mx-auto px-4 sm:px-6">
+                    <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 mb-8">My Rewards</h1>
+                    <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+                        <p className="text-lg font-semibold text-red-800">
+                            We couldn&apos;t load your rewards
+                        </p>
+                        <p className="mt-1 text-sm text-red-600">
+                            {loadError || 'Your wallet did not load. Your points are safe — this is a display problem.'}
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => fetchData()}
+                            className="mt-5 px-6 py-2.5 rounded-full bg-red-600 text-white text-sm font-semibold hover:bg-red-700"
+                        >
+                            Try again
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    const tc = TIER_CONFIG[wallet.tier] || TIER_CONFIG.bronze;
     const TierIcon = tc.icon;
 
     return (

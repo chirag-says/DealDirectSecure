@@ -302,12 +302,23 @@ export default function MyBookingsContent() {
             <p className="text-sm">Loading your bookings...</p>
           </div>
         ) : error ? (
+          /* Only authenticated users reach the fetch (2.4 added the guard
+             above), so a failure here is a request problem, not a sign-in
+             problem. The old CTA sent the user to /login, which for someone
+             already signed in is a dead end that implies their session broke. */
           <div className="bg-white rounded-xl border border-slate-200 p-10 text-center">
             <AlertCircle size={32} className="text-red-400 mx-auto mb-3" />
             <p className="text-red-600 font-semibold text-sm">{error}</p>
-            <Link href="/login" className="text-slate-700 text-sm mt-3 inline-flex items-center gap-1 font-semibold hover:text-slate-900 transition">
-              Login to view your bookings <ArrowRight size={14} />
-            </Link>
+            <p className="text-slate-500 text-xs mt-1.5">
+              Your bookings are safe. This is a problem loading them.
+            </p>
+            <button
+              type="button"
+              onClick={() => fetch_()}
+              className="mt-4 inline-flex items-center gap-1.5 px-5 py-2.5 bg-slate-900 text-white rounded-lg font-semibold text-sm hover:bg-slate-800 transition"
+            >
+              Try again <ArrowRight size={14} />
+            </button>
           </div>
         ) : bookings.length === 0 ? (
           <div className="bg-white rounded-xl border border-slate-200 p-16 text-center">

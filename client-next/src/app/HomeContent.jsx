@@ -100,7 +100,7 @@ const formatCategoryDisplay = (name) => {
     return value || "Property";
 };
 
-const HomeContent = ({ initialProperties = [], initialCategories = [], initialPropertyTypes = [], initialLatestPosts = [], initialBuilderProjects = [] }) => {
+const HomeContent = ({ initialProperties = [], initialCategories = [], initialPropertyTypes = [], initialLatestPosts = [], initialBuilderProjects = [], propertiesUnavailable = false }) => {
     const [properties] = useState(initialProperties);
     const [builderProjects] = useState(initialBuilderProjects);
     const [categories] = useState(initialCategories);
@@ -203,7 +203,21 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
                         </button>
                     </div>
 
-                    {properties.length === 0 ? (
+                    {propertiesUnavailable ? (
+                        /* ERROR is not EMPTY.
+                           ssrFetch returns null on failure rather than throwing, so a
+                           timeout or a 500 used to collapse to the same empty array as
+                           "there are genuinely no listings" — and the page said
+                           "No popular properties available right now", which is a
+                           statement about our inventory, not about a failed request. */
+                        <div className="text-center py-12 bg-red-50 rounded-xl border border-dashed border-red-200">
+                            <p className="text-red-800 text-lg font-semibold">We couldn&apos;t load properties</p>
+                            <p className="text-red-600 text-sm mt-1">This is a problem on our side, not with your connection.</p>
+                            <Link href="/properties" className="inline-block mt-4 px-6 py-2.5 rounded-full bg-red-600 text-white text-sm font-semibold hover:bg-red-700">
+                                Browse all properties
+                            </Link>
+                        </div>
+                    ) : properties.length === 0 ? (
                         <p className="text-gray-500 text-lg text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">No popular properties available right now.</p>
                     ) : (
                         <div className="relative group">
