@@ -76,30 +76,26 @@ export default function Login() {
     setFormData((f) => ({ ...f, [name]: newValue }));
   };
 
-  // Safari macOS may fire onInput but not onChange during autofill
+  // Safari macOS may fire onInput but not onChange during autofill, so the
+  // phone field is re-cleaned here as well as in handleChange.
   const handlePhoneInput = (e) => {
     const cleaned = (e.target.value || "").replace(/[^0-9]/g, "").slice(0, 10);
-    setFormData((f) => ({ ...f, phone: cleaned }));
-  };
-
-  const isValidPhone = (phone) => {
-    const cleaned = (phone || "").trim();
-    if (!cleaned) return false;
-    return /^[6-9]\d{9}$/.test(cleaned);
+    if (cleaned !== e.target.value) {
+      setFormData((f) => ({ ...f, phone: cleaned }));
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // Defensive re-clean for Safari macOS autofill that may bypass onChange
-    const cleanPhone = (formData.phone || "").replace(/[^0-9]/g, "").slice(0, 10);
-    if (!isValidPhone(cleanPhone)) {
-      toast.error("Please enter a valid 10-digit phone number");
-      return;
-    }
-    // Update formData with cleaned phone in case autofill bypassed onChange
-    if (cleanPhone !== formData.phone) {
-      setFormData((f) => ({ ...f, phone: cleanPhone }));
-    }
+    // The phone requirement is gone.
+    //
+    // This form used to block submission unless a 10-digit phone matched
+    // /^[6-9]\d{9}$/, and the field was marked required — but the value was
+    // never sent anywhere. authLogin posts { email, password }, and
+    // POST /api/users/login reads exactly those two. So the check gated login
+    // on a value the API does not use, which locked out any account whose
+    // phone had changed, was never set, or was registered through the direct
+    // buyer path where phone is optional.
     setIsLoading(true);
     setBlockedError(null);
 
@@ -284,8 +280,24 @@ export default function Login() {
       return;
     }
 
-    if (forgotNewPassword.length < 6) {
-      toast.error("Password must be at least 6 characters");
+    // Mirrors validatePasswordStrength in backend/controllers/userController.js.
+    //
+    // This accepted 6 characters while the server requires 8 plus four
+    // character classes, so every user who typed a 6- or 7-character password
+    // passed the client check and then got a server rejection as a toast, with
+    // no way to know the real rule until they hit it.
+    const resetPasswordProblem = (pw) => {
+      if (!pw || pw.length < 8) return "Password must be at least 8 characters long";
+      if (!/[a-z]/.test(pw)) return "Password must contain at least one lowercase letter";
+      if (!/[A-Z]/.test(pw)) return "Password must contain at least one uppercase letter";
+      if (!/\d/.test(pw)) return "Password must contain at least one number";
+      if (!/[@$!%*?&#^()\-_=+]/.test(pw)) return "Password must contain at least one special character (@$!%*?&#^()-_=+)";
+      return null;
+    };
+
+    const passwordProblem = resetPasswordProblem(forgotNewPassword);
+    if (passwordProblem) {
+      toast.error(passwordProblem);
       return;
     }
 
@@ -548,7 +560,14 @@ export default function Login() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
 
-              {/* Phone Input */}
+              {/* Phone Input — present, but not a gate.
+                  The API authenticates on email + password only
+                  (POST /api/users/login reads exactly those two), so this
+                  field is collected for the user's convenience and does not
+                  block submission. It was previously `required` with a
+                  10-digit check, which locked out any account whose phone had
+                  changed, was never set, or was created through the direct
+                  buyer path where phone is optional. */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700 block">Phone Number</label>
                 <div className="relative">
@@ -564,7 +583,6 @@ export default function Login() {
                     onInput={handlePhoneInput}
                     autoComplete="tel-national"
                     inputMode="numeric"
-                    required
                     className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:border-blue-900 transition-colors outline-none text-slate-800"
                   />
                 </div>
@@ -777,7 +795,7 @@ export default function Login() {
                         value={forgotNewPassword}
                         onChange={(e) => setForgotNewPassword(e.target.value)}
                         required
-                        minLength={6}
+                        minLength={8}
                         className="w-full pl-10 pr-12 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:border-blue-900 transition-colors outline-none text-slate-800"
                       />
                       <button
@@ -802,7 +820,7 @@ export default function Login() {
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         required
-                        minLength={6}
+                        minLength={8}
                         className="w-full pl-10 pr-12 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:border-blue-900 transition-colors outline-none text-slate-800"
                       />
                       <button
