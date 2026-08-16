@@ -537,6 +537,26 @@ export const useAuth = () => {
 
 // ============================================
 // PROTECTED ROUTE COMPONENT
+//
+// NOT IN USE, and deliberately not adopted (reviewed 2026-08-16).
+//
+// Private routes are guarded by two layers that already work together:
+//   1. src/middleware.js redirects at the edge, before the page renders, using
+//      the non-HttpOnly `session_exists` cookie. This is what avoids a flash of
+//      private UI.
+//   2. Each private *Content.jsx checks `useAuth()` and redirects. This is the
+//      fallback the middleware itself documents, for cross-origin deployments
+//      where `session_exists` is not visible at the edge.
+//
+// Wiring this component in would add a third mechanism doing the same job, and
+// three of its five redirect targets do not exist as routes: /verify-mfa,
+// /change-password-required and /verify-email have no directory under src/app,
+// so adopting it would send users to the 404 page. Those branches also depend
+// on `requiresMfa` / `requiresPasswordChange`, which the user login flow never
+// sets — end users have no MFA; that is admin-only.
+//
+// If this is ever revived, build the missing pages first and reconcile it with
+// the middleware list rather than layering it on top.
 // ============================================
 
 export const ProtectedRoute = ({ children, requiredRole = null, requireVerified = false }) => {

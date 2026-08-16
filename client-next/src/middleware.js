@@ -11,14 +11,31 @@ import { NextResponse } from 'next/server';
  * - Does NOT validate the actual session (that's the backend's job via checkAuth)
  */
 
-// Routes that require authentication
+// Routes that require authentication.
+//
+// Matching is `pathname === route || pathname.startsWith(route + '/')`, so each
+// entry must be the exact private prefix. Two consequences worth keeping in
+// mind when editing this list:
+//
+//   - '/rewards/dashboard' is listed, NOT '/rewards'. The rewards marketing
+//     page at /rewards is public and must stay reachable by logged-out
+//     visitors; protecting the parent would hide it.
+//   - '/edit-property' covers '/edit-property/<id>' via the prefix rule.
+//
+// Three private routes were missing from this list and relied on their own
+// in-content redirect alone, so a guest reached the page, rendered it, fired an
+// authenticated request and got a 401 before being bounced. /my-bookings had no
+// in-content guard either, so the 401 was all the user saw.
 const PROTECTED_ROUTES = [
     '/profile',
     '/my-properties',
     '/add-property',
+    '/edit-property',
     '/notifications',
     '/settings',
     '/saved-properties',
+    '/my-bookings',
+    '/rewards/dashboard',
 ];
 
 // Routes that should redirect TO dashboard if already authenticated

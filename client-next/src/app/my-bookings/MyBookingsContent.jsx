@@ -6,7 +6,9 @@ import {
   Building2, Phone, AlertCircle, FileText, ArrowRight, Hash,
   Calendar, IndianRupee, Check, Circle, ShieldCheck, ExternalLink
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { bookingApi } from '../../utils/api';
+import { useAuth } from '../../context/AuthContext';
 
 /* ── Status config ── */
 const STATUS = {
@@ -247,6 +249,8 @@ function BookingCard({ booking, onRefresh }) {
 
 /* ── Main content ── */
 export default function MyBookingsContent() {
+  const router = useRouter();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -262,7 +266,26 @@ export default function MyBookingsContent() {
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { fetch_(); }, []);
+  // Auth guard, matching the pattern the other seven private screens use.
+  //
+  // This screen had none. A guest reached it, the effect fired
+  // bookingApi.getMyBookings(), the backend returned 401, and the raw error was
+  // rendered as "Failed to load bookings" — which reads as a broken page rather
+  // than "you need to sign in". The axios interceptor does not redirect either,
+  // because it only does so when a user is already in context.
+  //
+  // The edge middleware now also lists /my-bookings, so a guest is normally
+  // redirected before this renders. This is the second layer, and it is what
+  // catches the case the middleware itself documents: a cross-origin deployment
+  // where `session_exists` is not visible at the edge.
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      router.push('/login?from=/my-bookings');
+      return;
+    }
+    fetch_();
+  }, [authLoading, isAuthenticated]);
 
   return (
     <div className="min-h-screen bg-slate-50 pt-24 pb-16 px-4">
