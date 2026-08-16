@@ -12,6 +12,7 @@ import {
   searchProperties,
   filterProperties,
   getMyProperties,
+  getMyPropertyById,
   deleteMyProperty,
   updateMyProperty,
   markInterested,
@@ -72,6 +73,20 @@ router.post(
   validateAndUploadToCloudinary, // SECURITY: Validate magic bytes then upload
   // validatePropertyCreate, // TODO: Re-enable after fixing field whitelist
   addProperty
+);
+
+// 🔒 Protected: Read own property, including a disapproved one (Owners only)
+//
+// Declared before the "/:id" wildcard further down, like every other literal
+// path in this file. The public GET /properties/:id 404s on a disapproved
+// listing, which locked owners out of the edit page for the one listing they
+// needed to correct.
+router.get(
+  "/my-properties/:id",
+  authMiddleware,
+  ownerOnlyListingAccess,
+  validateMongoId('id'),
+  getMyPropertyById
 );
 
 // 🔒 Protected: Update own property (Owners only)

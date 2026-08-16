@@ -1280,6 +1280,52 @@ export const getMyProperties = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/properties/my-properties/:id
+ *
+ * An owner's view of ONE of their own listings.
+ *
+ * Why this exists. The edit page loaded through the public GET /properties/:id,
+ * which returns 404 once isApproved is false. So the moment an admin
+ * disapproved a listing, its owner could no longer open it — the one action
+ * that would let them fix whatever the admin objected to. The dashboard
+ * compounded it by rendering the listing as "Active", because the badge reads
+ * `status` and disapproval only changes `isApproved`.
+ *
+ * Ownership is enforced the way every other mutation here enforces it: a query
+ * scoped to { _id, owner }, 404 on a miss. That returns the same response for
+ * "does not exist" and "belongs to someone else", so this endpoint cannot be
+ * used to probe which property ids exist.
+ *
+ * This returns the owner's own document, including `isApproved` and
+ * `rejectionReason` — data they are entitled to and cannot get anywhere else.
+ * It deliberately does NOT widen what anyone else can see: the public endpoint
+ * is untouched, and this one populates no other user's contact details.
+ */
+export const getMyPropertyById = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const propertyId = req.params.id;
+
+    const property = await Property.findOne({ _id: propertyId, owner: userId })
+      .populate("category", "name")
+      .populate("subcategory", "name")
+      .populate("propertyType", "name");
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found or you don't have permission to view it",
+      });
+    }
+
+    res.status(200).json({ success: true, data: withPublicImages(req, property) });
+  } catch (error) {
+    console.error("Error in getMyPropertyById:", error);
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
+  }
+};
+
 // 🔒 Protected: Delete User's Own Property
 export const deleteMyProperty = async (req, res) => {
   try {

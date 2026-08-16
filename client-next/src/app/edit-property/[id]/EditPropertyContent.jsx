@@ -315,11 +315,22 @@ export default function EditProperty() {
     const fetchProperty = async () => {
         try {
             setIsLoading(true);
-            // Use api client - it handles auth via cookies
-            const res = await api.get(`/properties/${id}`);
+            // Owner-scoped read, not the public one.
+            //
+            // GET /properties/:id returns 404 once isApproved is false, so
+            // loading through it locked owners out of the exact listing they
+            // needed to fix after a disapproval. This endpoint is scoped to
+            // { _id, owner } on the server and returns the owner's own
+            // document, including rejectionReason.
+            //
+            // Shape note: this returns { success, data }, unlike the public
+            // endpoint which returns the property at the top level. Unwrap
+            // defensively so neither shape breaks the form.
+            const res = await api.get(`/properties/my-properties/${id}`);
+            const payload = res.data?.data || res.data;
 
-            if (res.data) {
-                const prop = res.data;
+            if (payload) {
+                const prop = payload;
                 setProperty(prop);
 
                 // Populate form data from property
@@ -1468,6 +1479,29 @@ export default function EditProperty() {
 
             {/* Main Content */}
             <main className="flex-1 p-6 md:p-12 max-w-5xl mx-auto w-full flex flex-col h-full">
+                {/* Moderation notice, repeated here because this is where the
+                    owner actually fixes the problem. The reason is the admin's
+                    own text from the disapprove action. */}
+                {property?.isApproved === false && (
+                    <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4">
+                        <p className="font-semibold text-red-800">
+                            This listing is hidden from buyers
+                        </p>
+                        {property.rejectionReason ? (
+                            <p className="mt-1 text-sm text-red-700">
+                                <span className="font-medium">Reason given:</span> {property.rejectionReason}
+                            </p>
+                        ) : (
+                            <p className="mt-1 text-sm text-red-700">
+                                No reason was recorded. Contact support if you are unsure what to change.
+                            </p>
+                        )}
+                        <p className="mt-2 text-sm text-red-600">
+                            Make the changes below and save. Our team reviews the listing again after you submit.
+                        </p>
+                    </div>
+                )}
+
                 <div className="flex-1 mb-20 md:mb-0 relative">
                     <AnimatePresence mode="wait" custom={direction}>
                         <motion.div

@@ -81,7 +81,7 @@ const resolveImageSrc = (img) => {
 };
 
 // Status badge component
-const StatusBadge = ({ status }) => {
+const StatusBadge = ({ status, isApproved }) => {
   const statusConfig = {
     active: { bg: "bg-green-100", text: "text-green-700", icon: CheckCircle, label: "Active" },
     pending: { bg: "bg-amber-100", text: "text-amber-700", icon: Clock, label: "Pending" },
@@ -89,9 +89,17 @@ const StatusBadge = ({ status }) => {
     sold: { bg: "bg-blue-100", text: "text-blue-700", icon: CheckCircle, label: "Sold" },
     rented: { bg: "bg-purple-100", text: "text-purple-700", icon: CheckCircle, label: "Rented" },
     inactive: { bg: "bg-gray-100", text: "text-gray-700", icon: XCircle, label: "Inactive" },
+    // Moderation state, not a `status` value. An admin disapproving a listing
+    // sets isApproved:false and leaves status as "active", so this badge used
+    // to read "Active" for a listing that was 404 to the entire public site.
+    disapproved: { bg: "bg-red-100", text: "text-red-700", icon: XCircle, label: "Needs changes" },
   };
 
-  const config = statusConfig[status] || statusConfig.pending;
+  // Moderation outranks lifecycle: a disapproved listing is invisible publicly
+  // whatever its status says, and that is the fact the owner needs first.
+  const config = isApproved === false
+    ? statusConfig.disapproved
+    : (statusConfig[status] || statusConfig.pending);
   const Icon = config.icon;
 
   return (
@@ -246,7 +254,7 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, onViewLeads, 
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
         <div className="absolute top-3 left-3">
-          <StatusBadge status={property.status || "active"} />
+          <StatusBadge status={property.status || "active"} isApproved={property.isApproved} />
         </div>
         <div className="absolute bottom-3 left-3 right-3 flex justify-between">
           <span className="px-2.5 py-1 bg-black/70 backdrop-blur text-white text-xs font-medium rounded-lg">
@@ -260,6 +268,32 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, onViewLeads, 
 
       {/* Content Section */}
       <div className="p-4">
+        {/* Moderation notice.
+            A disapproved listing is hidden from the public site, and until now
+            nothing told the owner that — or why. The reason comes straight from
+            the admin's disapprove action; it is shown verbatim so the owner
+            knows exactly what to change. */}
+        {property.isApproved === false && (
+          <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3">
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-red-800">
+              <XCircle className="h-4 w-4 shrink-0" />
+              Hidden from buyers until you make changes
+            </p>
+            {property.rejectionReason ? (
+              <p className="mt-1 text-sm text-red-700">
+                <span className="font-medium">Reason:</span> {property.rejectionReason}
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-red-700">
+                No reason was recorded. Contact support if you are not sure what to change.
+              </p>
+            )}
+            <p className="mt-1.5 text-xs text-red-600">
+              Edit the listing to fix it. Our team reviews it again after you save.
+            </p>
+          </div>
+        )}
+
         <h3 className="font-semibold text-gray-900 text-lg line-clamp-1 mb-1">
           {property.title}
         </h3>
@@ -311,7 +345,7 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, onViewLeads, 
 };
 
 // Lead Card Component
-const LeadCard = ({ lead, onUpdateStatus, onContact }) => {
+const LeadCard = ({ lead, onUpdateStatus, onContact, onView }) => {
   const [showActions, setShowActions] = useState(false);
 
   return (
