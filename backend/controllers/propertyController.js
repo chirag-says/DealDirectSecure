@@ -1933,8 +1933,9 @@ export const searchProperties = async (req, res) => {
       category,
       subcategory,
       propertyType,
-      buildingType,
-      size,
+      // Denormalised taxonomy names — the columns that hold correct data.
+      categoryName,
+      propertyTypeName,
       city,
       priceFrom,
       priceTo,
@@ -1943,6 +1944,17 @@ export const searchProperties = async (req, res) => {
       limit = 12,
       sort = "newest",
     } = req.query;
+
+    // `buildingType` and `size` used to be read here and written straight into
+    // the filter. Neither exists on propertySchema, and Mongoose 8 defaults
+    // strictQuery to false, so both reached MongoDB as unknown paths and
+    // matched zero documents — any client sending either got an empty list with
+    // no error. Removed rather than implemented: nothing writes those fields.
+
+    // Pagination bounds. These were unvalidated, so ?limit=200000 returned the
+    // whole corpus in one response and a negative page produced a negative skip.
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 12, 1), 60);
+    const safePage = Math.max(parseInt(page, 10) || 1, 1);
 
     const filter = {
       isApproved: true,
@@ -1953,12 +1965,43 @@ export const searchProperties = async (req, res) => {
       ]
     };
 
+    // Taxonomy filters.
+    //
+    // The ObjectId refs (category/subcategory/propertyType) are accepted for
+    // backward compatibility, but they are NOT the reliable way to filter this
+    // collection today: on existing rows those refs are null or point at the
+    // wrong document, while the denormalised categoryName / propertyTypeName
+    // columns are correct on every row. The write path was repaired in Phase 0
+    // so new listings store sound refs, but the historical backfill has not
+    // run, so a ref filter still returns the wrong set for older listings.
+    //
+    // categoryName / propertyTypeName below are therefore the filters clients
+    // should use. They match the strings the UI already displays. Once the
+    // backfill lands, the ref filters become equivalent and either will do.
     if (category) filter.category = category;
     if (subcategory) filter.subcategory = subcategory;
     if (propertyType) filter.propertyType = propertyType;
-    if (buildingType) filter.buildingType = buildingType;
-    if (size) filter.size = size;
+
+    // Name-based taxonomy filtering, matched case-insensitively and anchored so
+    // "Villa" cannot also match "Villa Plot". Input is escaped — these reach a
+    // regex and the endpoint is public.
+    if (categoryName) {
+      filter.categoryName = { $regex: `^${escapeRegExp(String(categoryName).trim())}$`, $options: "i" };
+    }
+    if (propertyTypeName) {
+      filter.propertyTypeName = { $regex: `^${escapeRegExp(String(propertyTypeName).trim())}$`, $options: "i" };
+    }
+
     if (city && city !== "All") filter["address.city"] = city;
+
+    // Only listings a buyer can still act on.
+    //
+    // Search previously applied no status filter at all, so sold, rented and
+    // pending-verification listings came back in results and could be enquired
+    // on — generating leads and enquiry rewards against dead inventory.
+    // `active` and `pending` are the two states that mean "available"; the
+    // schema's other values are terminal or in-flight.
+    filter.status = { $nin: ["sold", "rented", "pending_verification", "inactive"] };
 
     if (priceFrom || priceTo) {
       filter.price = {};
@@ -2027,19 +2070,20 @@ export const searchProperties = async (req, res) => {
     else if (sort === "priceDesc") query = query.sort({ price: -1 });
     else query = query.sort({ createdAt: -1 });
 
-    // Pagination
-    const skip = (page - 1) * limit;
+    // Pagination, using the bounded values computed at the top.
+    const skip = (safePage - 1) * safeLimit;
 
     const [total, data] = await Promise.all([
       Property.countDocuments(filter),
-      query.skip(skip).limit(Number(limit)),
+      query.skip(skip).limit(safeLimit),
     ]);
 
     res.json({
       data: data.map((item) => withPublicImages(req, item)),
       total,
-      page: Number(page),
-      pages: Math.ceil(total / limit),
+      page: safePage,
+      pages: Math.ceil(total / safeLimit),
+      limit: safeLimit,
     });
   } catch (err) {
     console.error('[Property] Search error:', err.message);

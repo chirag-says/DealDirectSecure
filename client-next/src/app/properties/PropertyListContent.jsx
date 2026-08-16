@@ -251,14 +251,19 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
-const normalizePrice = (price, unit) => {
-  const amount = Number(price) || 0;
-  const normalizedUnit = (unit || "").toLowerCase();
-
-  if (normalizedUnit.includes("crore")) return amount * 10000000;
-  if (normalizedUnit.includes("lac") || normalizedUnit.includes("lakh")) return amount * 100000;
-  return amount;
-};
+// normalizePrice was removed (2026-08-16).
+//
+// It multiplied `price` by 1e5 or 1e7 based on `priceUnit`, on the assumption
+// that priceUnit was a scale. It is not: it defaults to "Lac" and carried that
+// default on rows whose price is plainly in rupees, so the helper inflated
+// those values 100,000×. It was used for the price filter, the price sort and
+// — worst — one display path, while formatPrice everywhere else correctly read
+// the raw rupee value. That is exactly the "same amount interpreted three
+// different ways" problem.
+//
+// price is rupees. Filtering now happens server-side against the stored value,
+// and display goes through formatPrice. If a real unit is ever needed, it
+// belongs in one shared helper used by all three, not reintroduced here.
 
 // Simple in-memory cache for suggestions
 const suggestionsCache = new Map();
@@ -293,6 +298,72 @@ const SkeletonCard = () => (
   </div>
 );
 
+/**
+ * Price-range option → rupee bounds.
+ *
+ * These are the exact thresholds the old browser-side predicate used. The
+ * difference is that the comparison now happens server-side against the stored
+ * rupee value, instead of against normalizePrice(price, priceUnit) — which
+ * multiplied by 1e5 whenever priceUnit read "Lac", so a ₹36,000 rental was
+ * evaluated as ₹36 crore and excluded from every rent bracket.
+ *
+ * `price` is stored in rupees. `priceUnit` is a display label and is not a
+ * multiplier — formatPrice has always ignored it, and now filtering does too.
+ */
+export const PRICE_RANGE_BOUNDS = {
+  rent_low: { priceTo: 9999 },
+  rent_mid: { priceFrom: 10000, priceTo: 50000 },
+  rent_high: { priceFrom: 50001 },
+  low: { priceTo: 4999999 },
+  mid: { priceFrom: 5000000, priceTo: 15000000 },
+  high: { priceFrom: 15000001 },
+};
+
+/**
+ * Existing UI filter state → /properties/search query parameters.
+ *
+ * Every filter the UI already offered is preserved. Two are deliberately not
+ * forwarded:
+ *
+ *  - heroPossession / heroFurnishing compared against `possessionStatus` and
+ *    `furnishingStatus`, which exist on no schema, so they matched nothing and
+ *    silently emptied the page. Sending them would reproduce that.
+ *  - the taxonomy ObjectId (`filters.propertyType`) is not sent as a ref,
+ *    because those refs are null or wrong on existing rows. The resolved NAME
+ *    is sent instead, against the denormalised column that is correct on every
+ *    row.
+ */
+export const buildSearchParams = (filters, page, propertyTypes = []) => {
+  const params = { page, limit: 12 };
+
+  if (filters.search?.trim()) params.search = filters.search.trim();
+  if (filters.city && filters.city !== "All") params.city = filters.city;
+
+  // Rent vs sale. The backend expands either intent across all six spellings
+  // the schema enum allows.
+  const intent = filters.availableFor || filters.intent;
+  if (intent) params.listingType = /rent/i.test(intent) ? "rent" : "sale";
+
+  if (filters.category) params.categoryName = filters.category;
+
+  // Resolve the selected property-type id to its name.
+  if (filters.propertyType) {
+    const match = propertyTypes.find((pt) => String(pt._id) === String(filters.propertyType));
+    if (match?.name) params.propertyTypeName = match.name;
+  }
+
+  const bounds = PRICE_RANGE_BOUNDS[filters.priceRange];
+  if (bounds) Object.assign(params, bounds);
+
+  // The hero budget control is a plain upper bound in rupees.
+  if (filters.heroBudget) {
+    const budget = Number(filters.heroBudget);
+    if (Number.isFinite(budget) && budget > 0) params.priceTo = budget;
+  }
+
+  return params;
+};
+
 const PropertyPage = ({ initialProperties = [], initialCategories = [], propertiesApiUrl = '/properties/property-list' }) => {
   const router = useRouter();
   const pathname = usePathname();
@@ -300,6 +371,15 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
 
   const [properties, setProperties] = useState(initialProperties);
   const [loading, setLoading] = useState(true);
+  // Server-side discovery state. `loadError` is deliberately distinct from an
+  // empty result: a failed request must never render as "nothing matched".
+  const [page, setPage] = useState(1);
+  const [totalResults, setTotalResults] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  // Bumped by the retry button so a failed page-1 request can be re-issued.
+  const [retryToken, setRetryToken] = useState(0);
   const [filters, setFilters] = useState(initialFilters);
   const [propertyTypes, setPropertyTypes] = useState([]);
   const [cities, setCities] = useState([]);
@@ -538,42 +618,86 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
     setCompareBaseType(null);
   };
 
+  // Taxonomy list, fetched once. Cities are derived from whatever page of
+  // results is loaded, exactly as before.
   useEffect(() => {
-    const fetchAllData = async () => {
+    const fetchTaxonomy = async () => {
       try {
-        // Only fetch if no server-provided data
-        const needsProperties = initialProperties.length === 0;
-        setLoading(needsProperties);
-
-        const [propsRes, ptRes] = await Promise.all([
-          needsProperties ? api.get(propertiesApiUrl) : Promise.resolve(null),
-          api.get('/propertyTypes/list-propertytype'),
-        ]);
-
-        if (propsRes) {
-          // Handle both response shapes:
-          //   /property-list → { success, data: [...] }
-          //   /list          → plain array
-          const raw = propsRes.data;
-          const propsData = Array.isArray(raw) ? raw : (raw?.data || raw?.properties || []);
-          setProperties(propsData);
-          const uniqueCities = [...new Set(propsData.map(p => p.address?.city).filter(Boolean))];
-          setCities(uniqueCities);
-        } else {
-          // Use server-provided data for cities
-          const uniqueCities = [...new Set(initialProperties.map(p => p.address?.city).filter(Boolean))];
-          setCities(uniqueCities);
-        }
+        const ptRes = await api.get('/propertyTypes/list-propertytype');
         setPropertyTypes(ptRes.data.data || ptRes.data || []);
-
       } catch (err) {
-        console.error("Error fetching data:", err);
-      } finally {
-        setLoading(false);
+        console.error("Error fetching property types:", err);
       }
     };
-    fetchAllData();
+    fetchTaxonomy();
   }, []);
+
+  // ============================================================
+  // Server-side discovery.
+  //
+  // Replaces a single unfiltered GET of /properties/list?limit=50 followed by
+  // browser-side filtering. The UI is unchanged; what changed is that the
+  // query runs in MongoDB, over every listing rather than the first 50, and
+  // the result set is paginated.
+  //
+  // Filter changes reset to page 1 and replace the list. "Load more" advances
+  // the page and appends, which keeps a single continuous list — the layout
+  // the page already had.
+  // ============================================================
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchPage = async () => {
+      const firstPage = page === 1;
+      if (firstPage) setLoading(true); else setLoadingMore(true);
+      setLoadError(null);
+
+      try {
+        const res = await api.get('/properties/search', {
+          params: buildSearchParams(filters, page, propertyTypes),
+        });
+
+        if (cancelled) return;
+
+        const body = res.data || {};
+        const rows = Array.isArray(body.data) ? body.data : [];
+
+        setProperties((prev) => (firstPage ? rows : [...prev, ...rows]));
+        setTotalResults(Number(body.total) || 0);
+        setTotalPages(Number(body.pages) || 0);
+
+        // Cities come from what has been loaded, as they did before.
+        setCities((prev) => {
+          const merged = new Set(firstPage ? [] : prev);
+          rows.forEach((p) => { if (p.address?.city) merged.add(p.address.city); });
+          return [...merged];
+        });
+      } catch (err) {
+        if (cancelled) return;
+        console.error("Error fetching properties:", err);
+        // A failed request must not look like "no properties match". The empty
+        // state and the error state are different things and are rendered
+        // differently below.
+        setLoadError(err?.response?.data?.message || "We couldn't load properties. Please try again.");
+        if (firstPage) {
+          setProperties([]);
+          setTotalResults(0);
+          setTotalPages(0);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
+      }
+    };
+
+    fetchPage();
+    return () => { cancelled = true; };
+  }, [filters, page, propertyTypes, retryToken]);
+
+  // Any filter change starts a new result set.
+  useEffect(() => { setPage(1); }, [filters]);
 
   // Optimized autocomplete with caching and request cancellation
   useEffect(() => {
@@ -769,134 +893,25 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
     : null;
   const activePropertyTypeName = (activePropertyType?.name || "").toString().toLowerCase();
 
-  const filteredProperties = properties.filter((p) => {
-    const query = filters.search.toLowerCase();
-
-    const matchesSearch = query
-      ? [
-        p.title,
-        p.address?.city,
-        p.address?.state,
-        p.address?.area,
-        p.address?.landmark,
-        p.city,
-        p.locality,
-        p.propertyTypeName,
-        p.propertyType?.name,
-        p.bhk,
-      ]
-        .filter(Boolean).some((f) => f.toLowerCase().includes(query))
-      : true;
-
-    // Type filter: if a high-level type like Residential / Commercial / Plot
-    // is selected in the dropdown, use semantic flags instead of strict ID match.
-    const matchType = (() => {
-      if (!filters.propertyType) return true;
-
-      const propertyTypeName = (
-        p.propertyTypeName ||
-        (typeof p.propertyType === "object" ? p.propertyType?.name : p.propertyType) ||
-        ""
-      ).toString();
-      const propertyTypeLower = propertyTypeName.toLowerCase();
-
-      const { isResidential, isCommercial } = getTypeFlags(p);
-
-      if (!activePropertyTypeName) {
-        return String(p.propertyType?._id || p.propertyType) === String(filters.propertyType);
-      }
-
-      // If selected type name clearly indicates Residential
-      if (activePropertyTypeName.includes("residen")) {
-        return isResidential;
-      }
-
-      // If selected type name clearly indicates Commercial (but not specifically a plot)
-      if (activePropertyTypeName.includes("commercial") && !activePropertyTypeName.includes("plot")) {
-        return isCommercial;
-      }
-
-      // If selected type name is Plot / Land, match only land/plot style properties
-      if (
-        activePropertyTypeName.includes("plot") ||
-        activePropertyTypeName.includes("land")
-      ) {
-        const isPlotLike =
-          propertyTypeLower.includes("plot") ||
-          propertyTypeLower.includes("land") ||
-          Boolean(p.area?.plotSqft && !p.area?.builtUpSqft && !p.area?.carpetSqft && !p.area?.superBuiltUpSqft);
-        return isPlotLike;
-      }
-
-      // Fallback: strict match on propertyType id
-      return String(p.propertyType?._id || p.propertyType) === String(filters.propertyType);
-    })();
-
-    const matchCity = filters.city
-      ? ((p.address?.city || p.city || "").toLowerCase() === filters.city.toLowerCase())
-      : true;
-
-    // Filter by listing type (Rent/Sell)
-    const matchListingType = filters.availableFor
-      ? p.listingType?.toLowerCase() === filters.availableFor.toLowerCase()
-      : true;
-
-    let matchPrice = true;
-    const priceInRupees = normalizePrice(p.price, p.priceUnit);
-    if (filters.priceRange) {
-      if (filters.priceRange === "low") matchPrice = priceInRupees < 5000000;
-      if (filters.priceRange === "mid") matchPrice = priceInRupees >= 5000000 && priceInRupees <= 15000000;
-      if (filters.priceRange === "high") matchPrice = priceInRupees > 15000000;
-      
-      if (filters.priceRange === "rent_low") matchPrice = priceInRupees < 10000;
-      if (filters.priceRange === "rent_mid") matchPrice = priceInRupees >= 10000 && priceInRupees <= 50000;
-      if (filters.priceRange === "rent_high") matchPrice = priceInRupees > 50000;
-    }
-
-    // Filter by hero budget
-    let matchHeroBudget = true;
-    if (filters.heroBudget) {
-      if (filters.heroBudget === "Under ₹50 Lac") matchHeroBudget = priceInRupees <= 5000000;
-      if (filters.heroBudget === "₹50 Lac - ₹1 Cr") matchHeroBudget = priceInRupees > 5000000 && priceInRupees <= 10000000;
-      if (filters.heroBudget === "₹1 Cr - ₹2 Cr") matchHeroBudget = priceInRupees > 10000000 && priceInRupees <= 20000000;
-      if (filters.heroBudget === "₹2 Cr - ₹5 Cr") matchHeroBudget = priceInRupees > 20000000 && priceInRupees <= 50000000;
-      if (filters.heroBudget === "Above ₹5 Cr") matchHeroBudget = priceInRupees > 50000000;
-      
-      if (filters.heroBudget === "Under ₹10,000") matchHeroBudget = priceInRupees <= 10000;
-      if (filters.heroBudget === "₹10,000 - ₹25,000") matchHeroBudget = priceInRupees > 10000 && priceInRupees <= 25000;
-      if (filters.heroBudget === "₹25,000 - ₹50,000") matchHeroBudget = priceInRupees > 25000 && priceInRupees <= 50000;
-      if (filters.heroBudget === "₹50,000 - ₹1 Lac") matchHeroBudget = priceInRupees > 50000 && priceInRupees <= 100000;
-      if (filters.heroBudget === "Above ₹1 Lac") matchHeroBudget = priceInRupees > 100000;
-    }
-
-    // Filter by hero types
-    let matchHeroTypes = true;
-    if (filters.heroTypes && filters.heroTypes.length > 0) {
-      const pTypeName = (p.propertyTypeName || (typeof p.propertyType === "object" ? p.propertyType?.name : p.propertyType) || "").toString().toLowerCase();
-      matchHeroTypes = filters.heroTypes.some(t => pTypeName.includes(t.toLowerCase()));
-    }
-
-    // Filter by possession
-    let matchPossession = true;
-    if (filters.heroPossession) {
-      matchPossession = (p.possessionStatus || "").toLowerCase() === filters.heroPossession.toLowerCase();
-    }
-
-    // Filter by furnishing
-    let matchFurnishing = true;
-    if (filters.heroFurnishing) {
-      matchFurnishing = (p.furnishingStatus || "").toLowerCase() === filters.heroFurnishing.toLowerCase();
-    }
-
-    let matchCategory = true;
-    if (filters.category) {
-      const { isResidential, isCommercial } = getTypeFlags(p);
-      if (filters.category.toLowerCase() === "residential") matchCategory = isResidential;
-      if (filters.category.toLowerCase() === "commercial") matchCategory = isCommercial;
-    }
-
-    return matchesSearch && matchType && matchCity && matchPrice && matchListingType && matchHeroBudget && matchHeroTypes && matchPossession && matchFurnishing && matchCategory;
-  });
+  // ============================================================
+  // The server is the source of truth for discovery.
+  //
+  // This used to be a ~130-line predicate run in the browser over whatever
+  // /properties/list?limit=50 had returned. That meant: only the first 50
+  // listings were ever considered, price comparisons ran through
+  // normalizePrice (which multiplies by 1e5 whenever priceUnit reads "Lac" —
+  // which it did on every legacy row, so a 36,000 rental was evaluated as 36
+  // crore), and two hero filters compared against `possessionStatus` and
+  // `furnishingStatus`, fields that exist on no schema and therefore never
+  // matched anything.
+  //
+  // All of that now happens in MongoDB via /properties/search, which also
+  // excludes sold and rented listings and bounds the page size. `properties`
+  // holds exactly what the server returned for the current filters, so this is
+  // a pass-through — kept under the same name because fifteen call sites below
+  // (map view, compare, related-properties, result counts) read it.
+  // ============================================================
+  const filteredProperties = properties;
 
   // Calculate related properties when filtered results are less than 6
   const relatedProperties = useMemo(() => {
@@ -985,7 +1000,8 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
 
         // Match by price range proximity
         if (filters.priceRange) {
-          const priceInRupees = normalizePrice(p.price, p.priceUnit);
+          // Raw rupees, the same basis the server filters on.
+          const priceInRupees = Number(p.price) || 0;
           const isLow = priceInRupees < 5000000;
           const isMid = priceInRupees >= 5000000 && priceInRupees <= 15000000;
           const isHigh = priceInRupees > 15000000;
@@ -1407,7 +1423,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                     ? "Searching the best options for you..."
                     : filteredProperties.length > 0 && relatedProperties.length > 0
                       ? `Showing ${filteredProperties.length} matching + ${relatedProperties.length} related properties`
-                      : `Showing ${filteredProperties.length} of ${properties.length} properties`}
+                      : `Showing ${filteredProperties.length} of ${totalResults} properties`}
                 </p>
               </div>
               {!loading && filteredProperties.length > 0 && (
@@ -1510,6 +1526,24 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
             {[1, 2, 3, 4, 5, 6].map((n) => <SkeletonCard key={n} />)}
+          </div>
+        ) : loadError ? (
+          /* ERROR is not EMPTY. A failed request used to fall through to the
+             "no properties match your filters" state, which told the user their
+             search was fine and simply had no results. */
+          <div className="text-center py-24 bg-white rounded-3xl border border-dashed border-red-200">
+            <div className="bg-red-50 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
+              <FaMapMarkerAlt className="text-4xl text-red-400" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">We couldn&apos;t load properties</h3>
+            <p className="text-slate-500 mb-6 max-w-md mx-auto">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => { setPage(1); setRetryToken((t) => t + 1); }}
+              className="px-6 py-2.5 rounded-full bg-red-600 text-white text-sm font-semibold hover:bg-red-700"
+            >
+              Try again
+            </button>
           </div>
         ) : filteredProperties.length === 0 && relatedProperties.length === 0 ? (
           <div className="text-center py-24 bg-white rounded-3xl border border-dashed border-slate-300">
@@ -1937,7 +1971,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                       <div>
                         <p className="text-xs text-slate-400 font-medium mb-0.5">Price</p>
                         <p className="text-2xl font-extrabold text-indigo-700 tracking-tight">
-                          {formatPrice(normalizePrice(p.price, p.priceUnit) || p.price)}
+                          {formatPrice(p.price)}
                         </p>
                       </div>
                       <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 text-xs font-semibold px-3 py-1.5 rounded-xl border border-indigo-100 whitespace-nowrap flex-shrink-0">
@@ -2214,6 +2248,41 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                 </div>
               ))}
             </div>
+
+            {/* Load more.
+                The page previously showed whatever the first 50 listings were
+                and had no way to reach the rest. This advances the server-side
+                page and appends, keeping the single continuous list the layout
+                already used rather than introducing numbered pages. */}
+            {page < totalPages && (
+              <div className="mt-10 flex flex-col items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={loadingMore}
+                  className="px-8 py-3 rounded-full bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {loadingMore ? "Loading…" : "Load more properties"}
+                </button>
+                <p className="text-xs text-slate-500">
+                  Showing {filteredProperties.length} of {totalResults}
+                </p>
+              </div>
+            )}
+
+            {/* A failure while appending must not wipe the results already shown. */}
+            {loadError && page > 1 && (
+              <div className="mt-6 text-center">
+                <p className="text-sm text-red-600">{loadError}</p>
+                <button
+                  type="button"
+                  onClick={() => setRetryToken((t) => t + 1)}
+                  className="mt-2 px-5 py-2 rounded-full border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50"
+                >
+                  Try again
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>
