@@ -8,6 +8,7 @@ import Role from "../models/Role.js";
 import User from "../models/userModel.js";
 import Property from "../models/Property.js";
 import Lead from "../models/Lead.js";
+import { notifyUser } from "../services/notificationService.js";
 import { assertLeadTransition, LeadTransitionError } from "../utils/leadState.js";
 import Report from "../models/Report.js";
 import {
@@ -1552,7 +1553,6 @@ async function createDefaultRoles() {
 // ============================================
 
 import TransactionVerification from "../models/TransactionVerification.js";
-import Notification from "../models/Notification.js";
 import { awardPoints } from "../services/rewardService.js";
 
 /**
@@ -1651,8 +1651,8 @@ export const approveDealVerification = async (req, res) => {
     }
 
     // 3. Send "Claim Your Reward" notification to OWNER
-    await Notification.create({
-      user: verification.owner._id,
+    await notifyUser(verification.owner._id, {
+
       title: "Deal Verified — Claim Your Reward!",
       message: `Your property deal for "${verification.property.title}" has been verified! Click below to claim your reward.`,
       type: "deal_reward",
@@ -1661,12 +1661,11 @@ export const approveDealVerification = async (req, res) => {
         propertyId: verification.property._id,
         actionUrl: `/notifications`,
         actionText: "Claim Your Reward",
-      },
-    });
+      },});
 
     // 4. Send "Claim Your Reward" notification to BUYER
-    await Notification.create({
-      user: verification.buyer._id,
+    await notifyUser(verification.buyer._id, {
+
       title: "Congratulations — Claim Your Reward!",
       message: `The deal for "${verification.property.title}" is verified! Click below to claim your congratulations gift.`,
       type: "deal_reward",
@@ -1675,8 +1674,7 @@ export const approveDealVerification = async (req, res) => {
         propertyId: verification.property._id,
         actionUrl: `/notifications`,
         actionText: "Claim Your Reward",
-      },
-    });
+      },});
 
     console.log(`[Admin] Verification ${verificationId} APPROVED by admin ${req.admin.email}`);
 
@@ -1726,8 +1724,8 @@ export const rejectDealVerification = async (req, res) => {
     await verification.save();
 
     // Notify the owner
-    await Notification.create({
-      user: verification.owner,
+    await notifyUser(verification.owner, {
+
       title: "Deal Verification Rejected",
       message: `Your deal closure request for "${verification.property.title}" was not approved. Reason: ${adminNotes.trim()}. Your property has been reactivated.`,
       type: "deal_verification",
@@ -1736,8 +1734,7 @@ export const rejectDealVerification = async (req, res) => {
         propertyId: verification.property._id,
         actionUrl: "https://dealdirect.in/my-properties",
         actionText: "View My Properties",
-      },
-    });
+      },});
 
     // ============================================
     // Notify the BUYER that the deal did not go through.
@@ -1756,8 +1753,8 @@ export const rejectDealVerification = async (req, res) => {
     // cannot prevent the owner learning the result.
     // ============================================
     if (verification.buyer) {
-      Notification.create({
-        user: verification.buyer,
+      notifyUser(verification.buyer, {
+
         title: "A deal you were named in was not completed",
         message: `The deal closure for "${verification.property.title}" was not approved, so the property is available again. No action is needed from you.`,
         type: "deal_verification",
@@ -1766,8 +1763,7 @@ export const rejectDealVerification = async (req, res) => {
           propertyId: verification.property._id,
           actionUrl: "https://dealdirect.in/notifications",
           actionText: "View Notifications",
-        },
-      }).catch((err) =>
+        },}).catch((err) =>
         console.error(`[Admin] Failed to notify buyer ${verification.buyer} of rejection:`, err.message)
       );
     }

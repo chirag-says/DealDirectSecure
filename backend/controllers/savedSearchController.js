@@ -1,5 +1,5 @@
 import SavedSearch from "../models/SavedSearch.js";
-import Notification from "../models/Notification.js";
+import { notifyUser } from "../services/notificationService.js";
 import mongoose from "mongoose";
 
 // ============================================
@@ -66,13 +66,12 @@ export const createSavedSearch = async (req, res) => {
 
     // Create a simple notification for the user
     try {
-      await Notification.create({
-        user: userId,
+      await notifyUser(userId, {
+
         title: "Search saved",
         message: `We will alert you when new properties match: ${name}`,
         type: "saved-search",
-        data: { savedSearchId: saved._id },
-      });
+        data: { savedSearchId: saved._id },});
     } catch (notifyErr) {
       console.error("Notification create error (saved search):", notifyErr);
     }

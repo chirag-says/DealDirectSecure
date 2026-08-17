@@ -69,6 +69,12 @@ const createTransporter = () => {
       user: smtpUser,
       pass: smtpPass,
     },
+    // Pooled. Without this nodemailer opens a fresh TCP+TLS+AUTH connection per
+    // message, which is what made a wide saved-search fan-out one handshake per
+    // recipient.
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
   };
 
   // H8 FIX: Enable TLS verification by default to prevent MITM attacks.
@@ -86,6 +92,30 @@ const createTransporter = () => {
   }
 
   return nodemailer.createTransport(smtpConfig);
+};
+
+/**
+ * One transport for the process, built on first use.
+ *
+ * `createTransporter()` used to be called inside sendEmail, so every
+ * notification constructed a new transport and — because the config was not
+ * pooled — a new connection. Reusing it is the whole point of a pool.
+ *
+ * Built lazily rather than at import time: the SMTP environment variables are
+ * read here, and reading them at module load would freeze whatever was set
+ * before dotenv ran.
+ */
+let sharedTransporter = null;
+
+const getTransporter = () => {
+  if (!sharedTransporter) sharedTransporter = createTransporter();
+  return sharedTransporter;
+};
+
+/** Test seam: drop the cached transport so config changes take effect. */
+export const __resetTransporterForTests = () => {
+  if (sharedTransporter?.close) sharedTransporter.close();
+  sharedTransporter = null;
 };
 
 // Email templates
@@ -444,11 +474,11 @@ export const sendEmail = async (to, template, data) => {
       return { success: true, skipped: true, message: "SMTP not configured" };
     }
 
-    const transporter = createTransporter();
-
-    // Verify SMTP connection
-    await transporter.verify();
-    console.log("✅ SMTP connection verified");
+    // No per-send verify(). It is a full connect/EHLO/auth round trip that told
+    // us nothing sendMail would not, and it doubled the connections per
+    // message. A dead server now surfaces as a failed send, which is already
+    // handled below.
+    const transporter = getTransporter();
 
     const emailContent = emailTemplates[template](...data);
 
@@ -476,7 +506,18 @@ export const sendNewLeadNotification = async (ownerEmail, ownerName, leadData, p
   return sendEmail(ownerEmail, "newLead", [ownerEmail, ownerName, leadData, propertyData]);
 };
 
+/**
+ * Test seam. The integration suite counts deliveries and simulates SMTP
+ * failure; without an override it would have to reach a real server or assert
+ * on log lines. Null restores the real implementation.
+ */
+let sendGeneralNotificationOverride = null;
+export const __setSendGeneralNotificationForTests = (fn) => { sendGeneralNotificationOverride = fn; };
+
 export const sendGeneralNotification = async (userEmail, userName, title, message, actionUrl = null, actionText = null) => {
+  if (sendGeneralNotificationOverride) {
+    return sendGeneralNotificationOverride(userEmail, userName, title, message, actionUrl, actionText);
+  }
   return sendEmail(userEmail, "generalNotification", [userName, title, message, actionUrl, actionText]);
 };
 
@@ -496,7 +537,7 @@ export const sendBookingAlert = async (booking, projectName, unitName) => {
     const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
     if (!smtpUser || !smtpPass) return;
 
-    const transporter = createTransporter();
+    const transporter = getTransporter();
     const template = emailTemplates.bookingAlert(booking, projectName, unitName);
     await transporter.sendMail({
       from: `"DealDirect" <${smtpUser}>`,

@@ -325,11 +325,21 @@ export async function makeLead(property, buyer, overrides = {}) {
 // Notifications
 // ---------------------------------------------------------------------------
 
+/**
+ * A notification created the way the application creates one.
+ *
+ * Goes through notifyUser rather than Notification.create. Since Phase 3E
+ * delivery lives in the service, not in a model hook, so a raw create persists
+ * without emailing — and `notifications.test.js` opens with a control asserting
+ * that creating a notification DOES attempt an email, precisely so its later
+ * "sent no email" assertions cannot pass vacuously. A factory that wrote the
+ * document directly would break that control and quietly hollow out every
+ * assertion after it.
+ */
 export async function makeNotification(user, overrides = {}) {
-  const Notification = mongoose.model('Notification');
+  const { notifyUser } = await import('../../../services/notificationService.js');
   const n = next();
-  return Notification.create({
-    user: user._id || user,
+  return notifyUser(user._id || user, {
     title: `Test Notification ${n}`,
     message: `Synthetic notification body ${n}.`,
     ...overrides,

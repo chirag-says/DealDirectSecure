@@ -11,6 +11,7 @@ import TransactionVerification from "../models/TransactionVerification.js";
 import { awardPoints } from "../services/rewardService.js";
 import { applyTaxonomy, TaxonomyError } from "../utils/taxonomyResolver.js";
 import { deletePropertyAggregate, DeleteBlockedError } from "../utils/aggregateDelete.js";
+import { notifyUser, notifySavedSearchMatches } from "../services/notificationService.js";
 import { sendNewLeadWhatsApp, sendNewPropertyWhatsApp } from "../services/whatsappService.js";
 import { escapeRegExp } from "../utils/escapeRegExp.js";
 
@@ -478,49 +479,13 @@ export const addProperty = async (req, res) => {
       session.endSession();
     }
 
-    // After creating a property, try to notify users whose saved searches match
+    // Saved-search fan-out. The matching rules and the delivery both moved
+    // into notificationService: this block and the one in the admin create
+    // path below had drifted apart (one matched on city and price, the other
+    // on city alone), and the per-recipient User.findById behind them was the
+    // N+1 that made a wide match expensive.
     try {
-      const savedSearches = await SavedSearch.find({ isActive: true }).lean();
-      const city = (prop.address?.city || "").toLowerCase();
-      const price = Number(prop.price) || 0;
-      const listingType = (prop.listingType || "").toLowerCase();
-      const propertyTypeId = prop.propertyType?.toString?.() || prop.propertyType?.toString?.() || "";
-
-      const notificationsToCreate = [];
-
-      for (const search of savedSearches) {
-        const f = search.filters || {};
-
-        // City match (if filter.city set)
-        if (f.city && city !== f.city.toLowerCase()) continue;
-
-        // Property type match (if filter.propertyType set)
-        if (f.propertyType && propertyTypeId && propertyTypeId !== String(f.propertyType)) continue;
-
-        // Listing type (availableFor) match
-        if (f.availableFor && listingType && listingType !== f.availableFor.toLowerCase()) continue;
-
-        // Price band match
-        if (f.priceRange && price) {
-          let matchPrice = false;
-          if (f.priceRange === "low") matchPrice = price < 5000000;
-          if (f.priceRange === "mid") matchPrice = price >= 5000000 && price <= 15000000;
-          if (f.priceRange === "high") matchPrice = price > 15000000;
-          if (!matchPrice) continue;
-        }
-
-        notificationsToCreate.push({
-          user: search.user,
-          title: "New property matches your saved search",
-          message: `${prop.title || "A new property"} in ${prop.address?.city || "your area"} matches "${search.name}"`,
-          type: "saved-search-match",
-          data: { savedSearchId: search._id, propertyId: prop._id },
-        });
-      }
-
-      if (notificationsToCreate.length) {
-        await Notification.insertMany(notificationsToCreate);
-      }
+      await notifySavedSearchMatches(prop);
     } catch (notifyErr) {
       console.error("Error generating notifications for saved searches:", notifyErr);
     }
@@ -682,23 +647,12 @@ export const addPropertyForBuilder = async (req, res) => {
 
     const prop = await Property.create(data);
 
-    // Notify saved searches (non-blocking)
+    // Saved-search fan-out, same service as the owner create path. This copy
+    // matched on city alone while the other also matched price; the service
+    // keeps both rules and skips the price test when no price is given, which
+    // is what this copy effectively did.
     try {
-      const savedSearches = await SavedSearch.find({ isActive: true }).lean();
-      const city = (prop.address?.city || "").toLowerCase();
-      const notificationsToCreate = [];
-      for (const search of savedSearches) {
-        const f = search.filters || {};
-        if (f.city && city !== f.city.toLowerCase()) continue;
-        notificationsToCreate.push({
-          user: search.user,
-          title: "New property matches your saved search",
-          message: `${prop.title || "A new property"} in ${prop.address?.city || "your area"} matches "${search.name}"`,
-          type: "saved-search-match",
-          data: { savedSearchId: search._id, propertyId: prop._id },
-        });
-      }
-      if (notificationsToCreate.length) await Notification.insertMany(notificationsToCreate);
+      await notifySavedSearchMatches(prop);
     } catch (notifyErr) {
       console.error("Error generating notifications:", notifyErr);
     }
@@ -1693,8 +1647,8 @@ export const markInterested = async (req, res) => {
     // Notify property owner (non-blocking)
     if (property.owner) {
       try {
-        await Notification.create({
-          user: property.owner,
+        await notifyUser(property.owner, {
+
           title: "New Interest on Your Property",
           message: `${user.name} is interested in your property "${property.title}". Check your leads for contact details.`,
           type: "interest",
@@ -1705,8 +1659,7 @@ export const markInterested = async (req, res) => {
             interestedUserName: user.name,
             actionUrl: "https://dealdirect.in/my-properties",
             actionText: "View Leads"
-          },
-        });
+          },});
         console.log(`Notification sent to owner ${property.owner} for property ${propertyId}`);
       } catch (notifError) {
         console.error("Error creating notification:", notifError);
@@ -2483,8 +2436,8 @@ export const closeDeal = async (req, res) => {
     await Property.findByIdAndUpdate(propertyId, { status: "pending_verification" });
 
     // Notify the owner that submission is received
-    await Notification.create({
-      user: userId,
+    await notifyUser(userId, {
+
       title: "Deal Closure Submitted",
       message: `Your deal closure request for "${property.title}" has been submitted for admin verification. You'll be notified once it's approved.`,
       type: "deal_verification",
@@ -2493,8 +2446,7 @@ export const closeDeal = async (req, res) => {
         verificationId: verification._id,
         actionUrl: "https://dealdirect.in/my-properties",
         actionText: "View My Properties",
-      },
-    });
+      },});
 
     // ============================================
     // Notify the BUYER that a deal has been submitted in their name.
@@ -2519,8 +2471,8 @@ export const closeDeal = async (req, res) => {
     // owner's notification above is intentionally left awaited and unchanged.
     // ============================================
     if (verification.buyer) {
-      Notification.create({
-        user: verification.buyer,
+      notifyUser(verification.buyer, {
+
         title: "A deal has been submitted for a property you enquired about",
         message: `The owner of "${property.title}" has submitted a ${closingType === "rented" ? "rental" : "sale"} closure naming you as the buyer. Our team is verifying it. You'll be notified when it's confirmed.`,
         type: "deal_verification",
@@ -2529,8 +2481,7 @@ export const closeDeal = async (req, res) => {
           verificationId: verification._id,
           actionUrl: "https://dealdirect.in/notifications",
           actionText: "View Notifications",
-        },
-      }).catch((err) =>
+        },}).catch((err) =>
         console.error(`[CloseDeal] Failed to notify buyer ${verification.buyer}:`, err.message)
       );
     }

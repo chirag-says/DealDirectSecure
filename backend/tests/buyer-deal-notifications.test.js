@@ -38,9 +38,16 @@ const closeDeal = fnBody(propertyCode, 'closeDeal');
 const approve = fnBody(adminCode, 'approveDealVerification');
 const reject = fnBody(adminCode, 'rejectDealVerification');
 
-/** Every Notification.create in a block, with the recipient expression. */
+/**
+ * Every notification a block sends, with the recipient expression.
+ *
+ * Phase 3E moved delivery out of the Notification model, so controllers call
+ * `notifyUser(recipient, { ... })` rather than `Notification.create({ user, ... })`.
+ * Everything asserted below — who is told, in what order, and whether the call
+ * is awaited — is unchanged; only the call shape moved.
+ */
 const recipients = (block) =>
-  [...block.matchAll(/Notification\.create\(\{\s*user:\s*([^,\n]+)/g)].map((m) => m[1].trim());
+  [...block.matchAll(/notifyUser\(\s*([^,]+),/g)].map((m) => m[1].trim());
 
 describe('deal submission notifies the buyer', () => {
   test('closeDeal creates a notification for the buyer', () => {
@@ -56,14 +63,14 @@ describe('deal submission notifies the buyer', () => {
     // and the verification can never disagree about the counterparty.
     assert.doesNotMatch(
       closeDeal,
-      /Notification\.create\(\{\s*user:\s*buyerId/,
+      /notifyUser\(\s*buyerId/,
       'the notification must not trust the client-supplied id directly'
     );
   });
 
   test('the buyer is still validated against the property before any of this', () => {
     const validateAt = closeDeal.indexOf('isBuyerInterested');
-    const notifyAt = closeDeal.indexOf('user: verification.buyer');
+    const notifyAt = closeDeal.indexOf('notifyUser(verification.buyer,');
     assert.ok(validateAt !== -1, 'the interestedUsers check was removed');
     assert.ok(validateAt < notifyAt, 'validation must precede notification');
   });
@@ -80,7 +87,7 @@ describe('deal submission notifies the buyer', () => {
     // pending_verification by this point.
     const block = closeDeal.slice(closeDeal.indexOf('if (verification.buyer)'));
     assert.match(block.slice(0, 900), /\}\)\.catch\(/);
-    assert.doesNotMatch(block.slice(0, 200), /await Notification\.create/);
+    assert.doesNotMatch(block.slice(0, 200), /await notifyUser/);
   });
 
   test('it carries no admin or document detail', () => {
@@ -95,12 +102,12 @@ describe('the owner notification is unchanged', () => {
   });
 
   test('the owner notification is still awaited', () => {
-    assert.match(closeDeal, /await Notification\.create\(\{\s*user: userId/);
+    assert.match(closeDeal, /await notifyUser\(\s*userId,/);
   });
 
   test('the owner is notified before the buyer', () => {
-    const ownerAt = closeDeal.indexOf('user: userId');
-    const buyerAt = closeDeal.indexOf('user: verification.buyer');
+    const ownerAt = closeDeal.indexOf('notifyUser(userId,');
+    const buyerAt = closeDeal.indexOf('notifyUser(verification.buyer,');
     assert.ok(ownerAt !== -1 && buyerAt !== -1);
     assert.ok(ownerAt < buyerAt);
   });
@@ -138,7 +145,7 @@ describe('rejection notifies the correct buyer', () => {
   });
 
   test('the owner notification still comes first and is awaited', () => {
-    const ownerAt = reject.indexOf('await Notification.create');
+    const ownerAt = reject.indexOf('await notifyUser');
     const buyerAt = reject.indexOf('if (verification.buyer)');
     assert.ok(ownerAt !== -1 && ownerAt < buyerAt, 'a buyer-notification failure must not block the owner');
   });
@@ -199,24 +206,34 @@ describe('no duplicate notifications', () => {
   });
 
   test('no insertMany was introduced for these flows', () => {
-    // insertMany bypasses the post-save hook that sends email; using it here
-    // would change delivery behaviour, which is out of scope.
+    // These are single-recipient flows. notifyUsers is the batch path and
+    // reaching for it here would change delivery shape for no reason.
     for (const block of [closeDeal, reject]) {
-      assert.doesNotMatch(block, /Notification\.insertMany/);
+      assert.doesNotMatch(block, /notifyUsers\(/);
     }
   });
 });
 
-describe('notification infrastructure is unchanged', () => {
-  test('delivery still goes through the model post-save hook', () => {
-    const model = read('../models/Notification.js');
-    assert.match(model, /notificationSchema\.post\("save"/);
-    assert.match(model, /sendGeneralNotification/);
+describe('notification infrastructure', () => {
+  test('delivery no longer goes through the model', () => {
+    // INVERTED by Phase 3E, deliberately. Delivery moved to
+    // services/notificationService.js and the model is persistence only.
+    // Leaving the old assertion would have made this file block that change
+    // while still looking like a passing regression guard.
+    const model = stripComments(read('../models/Notification.js'));
+    assert.doesNotMatch(model, /sendGeneralNotification/);
+    assert.doesNotMatch(model, /post\("save"/);
   });
 
-  test('the duplicate-send guard from 2.5 is still in place', () => {
-    const model = read('../models/Notification.js');
-    assert.match(model, /if \(!doc\.\$locals\?\.wasNew\) return;/);
+  test('the duplicate-send guard from 2.5 still holds, in its new home', () => {
+    // The rule was "only a newly created notification mails", enforced by a
+    // $locals flag inside the post-save hook. With delivery out of the model it
+    // is structural instead: only notifyUser and notifyUsers dispatch, and
+    // updating a document never reaches them.
+    // tests/integration/notification-service.test.js proves it behaviourally.
+    const service = read('../services/notificationService.js');
+    assert.match(service, /Notification\.create/);
+    assert.match(service, /Notification\.insertMany/);
   });
 
   test('deal state transitions were not changed', () => {
