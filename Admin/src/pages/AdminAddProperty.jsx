@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { toast } from "react-toastify";
 import locationData from "../data/real-estate-locations.json";
+import { taxonomyRefOrNull } from "../utils/taxonomyRef";
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -559,13 +560,11 @@ export default function AdminAddProperty() {
         setCurrentStep(prev => Math.max(prev - 1, 1));
     };
 
-    const findObjectId = (name, type) => {
-        if (!metadata[type] || !metadata[type].length) return null;
-        let match = metadata[type].find(item => item.name === name) ||
-            metadata[type].find(item => item.name.toLowerCase() === name.toLowerCase()) ||
-            metadata[type].find(item => item.name.toLowerCase().includes(name.toLowerCase()));
-        return match ? match._id : null;
-    };
+    // Exact-match only. See utils/taxonomyRef.js for why the previous
+    // case-insensitive and substring steps were removed: the substring step
+    // resolved "Residential" to the document named "Residential Plot" and
+    // corrupted 25 of 47 listings.
+    const findObjectId = (name, type) => taxonomyRefOrNull(name, metadata[type], type);
 
     // Lightweight number helpers to keep payload clean
     const toNumber = (val) => {
@@ -588,9 +587,17 @@ export default function AdminAddProperty() {
             const submitData = new FormData();
             const categoryId = findObjectId(formData.propertyCategory, 'categories');
             const propertyTypeId = findObjectId(formData.propertyType, 'propertyTypes');
-            submitData.append("propertyType", propertyTypeId || "");
+            // Send a reference only when one genuinely resolved.
+            //
+            // These previously appended "" on a miss. An empty string is not an
+            // absent field: it reaches the server as category="" and has to be
+            // cast to an ObjectId, so a failed lookup turned into a request-level
+            // error instead of a listing with no reference. Omitting matches the
+            // web form and leaves the correct denormalised *Name columns to carry
+            // the taxonomy until the migration runs.
+            if (propertyTypeId) submitData.append("propertyType", propertyTypeId);
             submitData.append("propertyTypeName", formData.propertyType);
-            submitData.append("category", categoryId || "");
+            if (categoryId) submitData.append("category", categoryId);
             submitData.append("categoryName", formData.propertyCategory);
             submitData.append("title", generateTitle());
             submitData.append("description", formData.description || generateShortDescription());

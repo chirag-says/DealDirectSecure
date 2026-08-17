@@ -16,6 +16,7 @@ import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-lea
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import api from "../../utils/api";
+import { taxonomyRefOrNull } from "../../utils/taxonomyRef";
 import { useAuth } from "../../context/AuthContext";
 import axios from "axios"; // Keep for metadata fetching (public endpoints)
 import RewardRevealRouter from "../../components/Rewards/RewardRevealRouter";
@@ -623,13 +624,11 @@ export default function AddProperty() {
         setCurrentStep(prev => Math.max(prev - 1, 1));
     };
 
-    const findObjectId = (name, type) => {
-        if (!metadata[type] || !metadata[type].length) return null;
-        let match = metadata[type].find(item => item.name === name) ||
-            metadata[type].find(item => item.name.toLowerCase() === name.toLowerCase()) ||
-            metadata[type].find(item => item.name.toLowerCase().includes(name.toLowerCase()));
-        return match ? match._id : null;
-    };
+    // Exact-match only. See utils/taxonomyRef.js for why the previous
+    // case-insensitive and substring steps were removed: the substring step
+    // resolved "Residential" to the document named "Residential Plot" and
+    // corrupted 25 of 47 listings.
+    const findObjectId = (name, type) => taxonomyRefOrNull(name, metadata[type], type);
 
     // Lightweight number helpers to keep payload clean
     const toNumber = (val) => {
