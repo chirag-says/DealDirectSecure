@@ -350,6 +350,21 @@ export const LEAD_SYSTEM_ONLY = ['converted'];
 
 ## 5. Data Migration Plan
 
+> **SUPERSEDED for taxonomy (2026-08-17).** The taxonomy analysis, the target
+> structure, the mapping table and the decision status now live in
+> [`DEALDIRECT-TAXONOMY-DECISION.md`](DEALDIRECT-TAXONOMY-DECISION.md), which is
+> the source of truth for Phase 3B. Where that document and this section
+> disagree, that document is correct.
+>
+> One conclusion below is **wrong** and is kept only as history: §5.1 describes
+> the property ObjectId refs as a recoverable "semantic inversion". They are not.
+> Re-checking every ref found that **zero** of the 25 rows carrying refs have both
+> refs matching their own name columns; all 25 point at one of two documents
+> written by a since-fixed substring-matching bug. The refs carry no information
+> and are not migration inputs. See §1.1 of the decision document.
+>
+> The `priceUnit` and booking figures in §5.3 are unaffected and still stand.
+
 **No write was performed. Every figure below comes from a read-only query run on 2026-08-16 against the development database.**
 
 ### 5.1 The finding that changes the plan
