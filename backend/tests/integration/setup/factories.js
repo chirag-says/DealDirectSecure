@@ -79,6 +79,91 @@ export const makeOwner = (o = {}) => makeUser({ role: 'owner', ...o });
 export const makeBuyer = (o = {}) => makeUser({ role: 'buyer', ...o });
 
 // ---------------------------------------------------------------------------
+// Admins
+// ---------------------------------------------------------------------------
+
+/**
+ * A fixed user agent for admin fixtures.
+ *
+ * The session fingerprint is derived from the user agent and the client IP, so
+ * the session has to be built from the same values the request will carry. A
+ * mismatch is not a test failure with a useful message: protectAdmin revokes
+ * the session and returns SESSION_FINGERPRINT_MISMATCH, which reads like an
+ * authorisation bug rather than a fixture bug.
+ */
+export const ADMIN_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36';
+
+/**
+ * Unlike User, the Admin model hashes its own password in a pre-save hook and
+ * validates the plaintext against a strength regex first. So this factory
+ * passes the plaintext and lets the model do the work; handing it a bcrypt hash
+ * fails the strength check with a message that reads like a fixture typo.
+ */
+export async function makeAdmin(overrides = {}) {
+  const Admin = mongoose.model('Admin');
+  const n = next();
+  return Admin.create({
+    name: `Test Admin ${n}`,
+    email: `test-admin-${n}@example.com`,
+    password: TEST_PASSWORD,
+    isActive: true,
+    ...overrides,
+  });
+}
+
+/**
+ * An admin plus a live, MFA-verified session.
+ *
+ * The session is built directly rather than through the login endpoint, because
+ * the login path requires a TOTP code from a real authenticator secret. What is
+ * under test here is what a legitimately authenticated admin can do, not how
+ * they authenticated, and `tests/admin-auth.test.js` already covers the gate
+ * itself.
+ *
+ * `mfaVerified` is set explicitly. protectAdmin refuses every admin route
+ * without it, and createSession deliberately never sets it, so a fixture that
+ * omitted it would 403 on every call.
+ */
+export async function adminWithSession(api, overrides = {}) {
+  const AdminSession = mongoose.model('AdminSession');
+  const admin = await makeAdmin(overrides);
+
+  const { uniqueClientIp } = await import('./app.js');
+  const ip = uniqueClientIp();
+
+  // Shaped like the request Supertest will send, so the fingerprint matches.
+  const fakeReq = {
+    headers: { 'user-agent': ADMIN_USER_AGENT, 'x-forwarded-for': ip },
+    ip,
+    connection: { remoteAddress: ip },
+  };
+
+  const sessionToken = AdminSession.generateToken();
+  await AdminSession.create({
+    admin: admin._id,
+    sessionToken,
+    fingerprint: AdminSession.generateFingerprint(fakeReq),
+    fingerprintData: AdminSession.generateFingerprintData(fakeReq),
+    ipAddress: ip,
+    userAgent: ADMIN_USER_AGENT,
+    deviceInfo: { browser: 'Chrome', os: 'Windows', device: 'Desktop' },
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    mfaVerified: true,
+  });
+
+  return { admin, ip, cookies: [`admin_session=${sessionToken}`] };
+}
+
+/** Attach an admin fixture's session, IP and user agent to a Supertest request. */
+export function asAdmin(req, { ip, cookies }) {
+  return req
+    .set('X-Forwarded-For', ip)
+    .set('User-Agent', ADMIN_USER_AGENT)
+    .set('Cookie', cookies);
+}
+
+// ---------------------------------------------------------------------------
 // Taxonomy
 // ---------------------------------------------------------------------------
 
