@@ -375,16 +375,6 @@ const MAX_TOTAL_UPLOAD_SIZE = 200 * 1024 * 1024; // 200MB total per request (bro
  */
 export const validateAndUploadToCloudinary = async (req, res, next) => {
   try {
-    // FAIL FAST: Check if Cloudinary is configured before processing files
-    if (!cloudinaryConfigured) {
-      console.error('❌ CRITICAL: Cloudinary is not configured. Cannot process file uploads.');
-      return res.status(503).json({
-        success: false,
-        message: 'Image upload service is not configured. Please contact support.',
-        code: 'STORAGE_NOT_CONFIGURED'
-      });
-    }
-
     // Collect all files from request
     const allFiles = [];
 
@@ -405,8 +395,32 @@ export const validateAndUploadToCloudinary = async (req, res, next) => {
       }
     }
 
+    // Nothing to upload: this request has no business with image storage.
+    //
+    // This return is deliberately BEFORE the Cloudinary configuration check
+    // below. It used to be after, which meant every request on an
+    // upload-guarded route was refused with 503 when storage was unavailable,
+    // whether or not it carried a file. Property create and update both sit
+    // behind this middleware, so an image-service outage also stopped an owner
+    // correcting a price or a description: work that never touches Cloudinary.
     if (allFiles.length === 0) {
       return next();
+    }
+
+    // FAIL FAST: files are present, so storage is genuinely required.
+    //
+    // Checked before magic-byte validation and before any upload, so an
+    // unavailable service is refused outright rather than half-processed. The
+    // one outcome that must never happen is accepting the request and dropping
+    // the image, which would report success for a listing whose photos silently
+    // went nowhere.
+    if (!cloudinaryConfigured) {
+      console.error('❌ CRITICAL: Cloudinary is not configured. Cannot process file uploads.');
+      return res.status(503).json({
+        success: false,
+        message: 'Image upload service is not configured. Please contact support.',
+        code: 'STORAGE_NOT_CONFIGURED'
+      });
     }
 
     // ============================================
