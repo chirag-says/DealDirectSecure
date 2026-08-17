@@ -3,8 +3,8 @@
 Phase 3B.3. **Preparation only. Nothing in this plan has been executed against
 production.** No production data, index or deployment was touched.
 
-**Status: READY**, conditional on the three operator actions in §1 that cannot be
-performed from this repository.
+**Status: READY, DEFERRED.** The plan is complete and its tooling is tested.
+Execution is held until phases 4 and 5 land, by decision on 2026-08-17.
 
 No credentials or connection strings appear below.
 
@@ -25,10 +25,16 @@ No credentials or connection strings appear below.
 | 9 | New code proven safe on pre-migration data | **done** (§3) |
 | 10 | **Maintenance window agreed** | **operator** |
 | 11 | **Write freeze mechanism chosen** | **operator** |
-| 12 | **Deployment of Phase 3B code scheduled** | **operator** |
+| 12 | **Three app deploys scheduled, in order** | **operator** (§5) |
+| 13 | **Phases 4 and 5 complete** | **outstanding** |
 
 Items 10 to 12 are decisions and access this repository does not have. Everything
 else is prepared.
+
+Item 13 is a sequencing decision taken on 2026-08-17: production receives
+finalised code only after the remaining phases are done, so this cutover is
+**deferred**, not pending. The plan below stays valid; re-run the dry run before
+using it, because the corpus will have moved.
 
 ---
 
@@ -83,6 +89,7 @@ canonical documents, 25 stale refs, 22 null) and exercises every path.
 | Legacy row resolved into a new ref | **impossible**, refused |
 | Category selector | **empty** |
 | Property type selector | **empty** |
+| Admin taxonomy page | renders its empty state, no crash |
 
 The new code satisfies all four requirements: it reads existing properties
 safely, never creates a new stale reference, does not crash on temporarily
@@ -151,7 +158,8 @@ documents and seeds 23; the time is dominated by verification, not by the write.
 | 1 | **Freeze writes** | maintenance mode, or scale the backend to zero | unfreeze, abandon |
 | 2 | **Independent backup** | §2 | abandon; do not proceed without a verified archive |
 | 3 | Verify the backup | manifest exists, counts match 47/19/3/48, checksums recorded | re-run step 2; abandon if it fails twice |
-| 4 | **Deploy Phase 3B code** | normal deploy | redeploy the previous build; **no data has changed yet**, so this is a clean revert |
+| 4a | **Deploy `client-next`** | its own repo | redeploy the previous build |
+| 4b | **Deploy `backend`** | its own repo | redeploy the previous build; **no data has changed yet**, so this is a clean revert |
 | 5 | Health check | `/health` 200; startup log shows `database=Deal-Direct` | roll back the deploy |
 | 6 | Confirm the pre-migration state | `status` reports 47 properties, 0 consistent, 22 null | roll back the deploy; investigate before writing |
 | 7 | **Run the migration** | §4 `up` | run `down`, then roll back the deploy |
@@ -164,6 +172,46 @@ documents and seeds 23; the time is dominated by verification, not by the write.
 **The deploy and the migration are one operation.** Splitting them either leaves
 the create form unusable (deploy without migrate, §3) or leaves the old code free
 to write fresh stale references over the repaired data (migrate without deploy).
+
+### Deploy order is not free: client-next before backend
+
+This repository is the development source. It is **not** what production runs.
+`backend`, `client-next` and `Admin` each live in their own repository and are
+hosted independently, so "deploy Phase 3B" is three deploys, and their order
+decides whether the site keeps working.
+
+The live `client-next` fetches its add-property metadata like this:
+
+```js
+const [cats, subs, types] = await Promise.all([
+  api.get('/categories/list-category'),
+  api.get('/subcategories/list'),      // <- unmounted by the backend deploy
+  api.get('/propertyTypes/list-propertytype')
+]);
+setMetadata({ ... });                  // never reached if any leg rejects
+```
+
+`Promise.all` rejects as a unit. The moment the backend unmounts
+`/api/subcategories`, that 404 takes down the whole call, `setMetadata` never
+runs, and the add-property form loses **all three** dropdowns, not just the
+retired one. That is not the short seed window described above; it lasts until
+`client-next` ships.
+
+Deploying `client-next` first is safe in the other direction: it simply stops
+asking for a route the old backend still serves. So:
+
+```
+client-next  ->  backend  ->  migration  ->  Admin
+```
+
+Keep `client-next` and `backend` close together. Between them the site runs new
+frontend against old backend, which means the category dropdown still lists the
+19 legacy rows, exactly as it does today. That is the current broken state
+continuing briefly, not a new failure.
+
+`Admin` can follow at any point. Its add-property screen never fetched
+subcategories, and its `/add-subcategory` page is only reachable by URL once the
+sidebar entry is gone.
 
 ---
 
@@ -337,6 +385,55 @@ migration verified in production
 
 Both were already dropped in development, where the parent-scoped constraint is
 covered by tests.
+
+### The legacy-document cleanup got easier
+
+The other deferred stage, deleting the nineteen obsolete categories and the
+three parentless property types, no longer needs a bespoke script. After the
+migration every listing points at a canonical document, so the legacy rows are
+unreferenced, and the admin delete endpoint now refuses only two things: a
+canonical document, and one still referenced by a listing (§9a). A legacy row is
+neither, so it deletes through the normal endpoint with the integrity check
+enforced server-side.
+
+The 48 subcategory documents still need a direct database delete: their API is
+unmounted and nothing reads them.
+
+---
+
+## 9a. The canonical taxonomy is protected server-side
+
+Added after the cutover plan was first written, because the plan assumed the
+seeded documents would stay as seeded and nothing enforced that.
+
+Four admin endpoints could rename or delete any taxonomy document:
+
+```
+PUT    /api/categories/edit/:id       DELETE /api/categories/delete/:id
+PUT    /api/propertyTypes/edit/:id    DELETE /api/propertyTypes/delete/:id
+```
+
+None knew the contract existed. Renaming `Residential` raises no error anywhere:
+the document stays valid and stays referenced by 37 listings. It just stops
+matching the allow-list, so it vanishes from every dropdown and every create
+against it starts returning `TAXONOMY_UNKNOWN_NAME`. Nothing reports that.
+Deleting is faster: twenty requests empty the property type taxonomy and strand
+every listing in the database. Both were reproduced against the real endpoints
+before the guard was written.
+
+Two rules now, both returning 409:
+
+| Code | Refuses |
+|---|---|
+| `TAXONOMY_PROTECTED` | editing or deleting a canonical document, including moving a canonical type to another category |
+| `TAXONOMY_IN_USE` | deleting any document listings still reference |
+
+A property type is canonical **for its parent**, so a row named `Villa` under a
+legacy category is history and stays deletable. Everything outside the canonical
+set stays editable, which is what keeps the cleanup stage above possible.
+
+The vocabulary changes through `config/taxonomy.js` and a migration, so the data
+and the contract move together. That is the only path.
 
 ---
 
