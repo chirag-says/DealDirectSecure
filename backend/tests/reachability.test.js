@@ -11,7 +11,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 
 const CLIENT = new URL('../../client-next/src/', import.meta.url);
 const ADMIN = new URL('../../Admin/src/', import.meta.url);
@@ -136,6 +136,62 @@ describe('admin taxonomy pages have a navigation path', () => {
     const addProperty = readAdmin('pages/AdminAddProperty.jsx');
     assert.match(addProperty, /list-category/);
     assert.match(addProperty, /list-propertytype/);
+  });
+});
+
+/**
+ * Two defect classes that shipped twice each in the Admin app, so they are
+ * asserted across every page rather than fixed one file at a time.
+ *
+ * The `axios` one is the more interesting failure. `AddCategory.jsx` and
+ * `AllCategory.jsx` both called `axios.get()` without importing it, so both
+ * threw a ReferenceError on first render and showed a toast instead. Neither
+ * page had ever worked, and nothing reported it: the catch block turns a
+ * missing import into a friendly error message.
+ */
+describe('admin pages do not call undefined globals or retired routes', () => {
+  const pages = readdirSync(new URL('pages/', ADMIN)).filter((f) => f.endsWith('.jsx'));
+
+  test('every page that calls axios also imports it', () => {
+    const offenders = pages.filter((file) => {
+      const src = stripJsxComments(readAdmin(`pages/${file}`));
+      if (!/\baxios\s*\.\s*(get|post|put|patch|delete|request)\s*\(/.test(src)) return false;
+      return !/^\s*import\s+axios\b/m.test(src);
+    });
+
+    assert.deepEqual(offenders, [], `these pages call axios without importing it: ${offenders.join(', ')}`);
+  });
+
+  /**
+   * The deploy-order constraint, as an assertion rather than a paragraph.
+   *
+   * `backend`, `client-next` and `Admin` deploy from separate repositories, so
+   * "deploy Phase 3B" is three deploys and their order matters. The live
+   * client-next fetches its add-property metadata as one `Promise.all` that
+   * includes `/subcategories/list`. `Promise.all` rejects as a unit, so the
+   * moment the backend unmounts that route the 404 takes down the whole call
+   * and the form loses ALL THREE dropdowns until client-next ships.
+   *
+   * Hence client-next before backend, per the cutover plan. If a future edit
+   * reintroduces the call, that ordering is wrong again and this fails.
+   */
+  test('client-next does not call the retired subcategory API', () => {
+    const src = stripJsxComments(readClient('app/add-property/AddPropertyContent.jsx'));
+    assert.doesNotMatch(
+      src,
+      /subcategories/,
+      'reintroducing this call restores the deploy-order hazard the cutover plan describes'
+    );
+  });
+
+  test('no admin page calls the retired subcategory API', () => {
+    const offenders = pages.filter((file) =>
+      /\/api\/subcategories\//.test(stripJsxComments(readAdmin(`pages/${file}`)))
+    );
+
+    // AddSubCategory.jsx is unrouted and unimported, so it is unreachable, but
+    // it is still the page a future edit would copy from.
+    assert.deepEqual(offenders, [], `these pages still call the retired API: ${offenders.join(', ')}`);
   });
 });
 
