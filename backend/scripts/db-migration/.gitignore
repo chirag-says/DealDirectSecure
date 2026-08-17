@@ -1,0 +1,6 @@
+# Dumps contain every user record, lead, agreement and audit log in the
+# database. They must never reach the repository.
+dumps/
+
+# Generated inventories are working artefacts, not source.
+inventory.*.json

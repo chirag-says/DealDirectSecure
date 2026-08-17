@@ -131,6 +131,15 @@ backend/scripts/migrateLegacyUsers.js
 # -- Keep normalizeCategoryName.js (legitimate utility) --
 !backend/scripts/normalizeCategoryName.js
 
+# -- Keep the database migration tooling (reviewed 2026-08-17) --
+# migrate.js matches **/migrate*.js above, which exists because migration
+# scripts often carry credentials. This one does not: both connection strings
+# are read from backend/.env and backend/.env.new at runtime, are passed to
+# mongodump/mongorestore through a temporary 0600 config file rather than argv,
+# and no script in that directory prints anything but host and database name.
+# The dumps they produce stay ignored via backend/scripts/db-migration/.gitignore.
+!backend/scripts/db-migration/migrate.js
+
 # ===========================================================
 # 5. DATABASE DUMPS & BACKUPS
 # ===========================================================
