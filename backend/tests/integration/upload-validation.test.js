@@ -29,13 +29,13 @@ import mongoose from 'mongoose';
 import { request, uniqueClientIp } from './setup/app.js';
 import { stopTestDatabase, truncateAll } from './setup/db.js';
 import { stopFakeProviders } from './setup/fakeProviders.js';
-import { makeOwner, makeProperty, loginAs } from './setup/factories.js';
+import { makeOwner, makeProperty, loginAs, seedTaxonomy } from './setup/factories.js';
 import { NOT_AN_IMAGE, PNG_1x1 } from './setup/fixtures.js';
 
 let api;
 
 test.before(async () => { api = await request(); });
-test.beforeEach(async () => { await truncateAll(); });
+test.beforeEach(async () => { await truncateAll(); await seedTaxonomy(); });
 test.after(async () => { await stopFakeProviders(); await stopTestDatabase(); });
 
 const Property = () => mongoose.model('Property');

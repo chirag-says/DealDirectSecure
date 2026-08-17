@@ -28,7 +28,7 @@ import mongoose from 'mongoose';
 import { request, uniqueClientIp } from './setup/app.js';
 import { stopTestDatabase, truncateAll } from './setup/db.js';
 import { stopFakeProviders } from './setup/fakeProviders.js';
-import { makeOwner, makeProperty, loginAs } from './setup/factories.js';
+import { makeOwner, makeProperty, loginAs, seedTaxonomy } from './setup/factories.js';
 import {
   PROPERTY_ALLOWED_FIELDS, ADMIN_ONLY_FIELDS,
 } from '../../controllers/propertyController.js';
@@ -36,7 +36,7 @@ import {
 let api;
 
 test.before(async () => { api = await request(); });
-test.beforeEach(async () => { await truncateAll(); });
+test.beforeEach(async () => { await truncateAll(); await seedTaxonomy(); });
 test.after(async () => { await stopFakeProviders(); await stopTestDatabase(); });
 
 const Property = () => mongoose.model('Property');
@@ -46,8 +46,13 @@ const Property = () => mongoose.model('Property');
  * derived, so that a field silently falling out of the pipeline breaks this
  * test instead of quietly shrinking the expectation.
  */
+// propertyTypeName and categoryName are excluded from the sentinel sweep on
+// purpose: they are no longer free text. The server-side contract resolves them
+// against real taxonomy documents and rejects anything it cannot match exactly,
+// so a sentinel would be a 400 rather than a stored value. They are asserted
+// with canonical values in their own tests below.
 const MUST_PERSIST = [
-  'description', 'propertyTypeName', 'city', 'locality',
+  'description', 'city', 'locality',
   'price', 'deposit', 'maintenance', 'securityDeposit',
   'bhk', 'bedrooms', 'bathrooms', 'balconies', 'totalFloors',
   'furnishing', 'facing', 'amenities', 'powerBackup', 'constructionStatus',
@@ -215,15 +220,21 @@ test('create round-trip', async (t) => {
     assert.equal(doc.price, 45000);
   });
 
-  await t.test('categoryName is normalised to its bucket rather than stored raw', async () => {
+  await t.test('canonical taxonomy names resolve to their documents', async () => {
     const { doc } = await createProperty({ categoryName: 'Commercial', propertyTypeName: 'Office Space' });
     assert.equal(doc.categoryName, 'Commercial');
     assert.equal(doc.propertyTypeName, 'Office Space');
+    assert.ok(doc.category, 'the category reference should be resolved server-side');
+    assert.ok(doc.propertyType, 'the property type reference should be resolved server-side');
   });
 
-  await t.test('an unrecognised category falls back to Residential, not to empty', async () => {
-    const { doc } = await createProperty({ categoryName: 'Nonsense Category' });
-    assert.equal(doc.categoryName, 'Residential');
+  await t.test('an unrecognised category is rejected, not bucketed', async () => {
+    // This used to be bucketed by substring and defaulted to "Residential" when
+    // nothing matched, which is how a listing could end up filed under a
+    // category its owner never chose. Guessing is now a 400.
+    const { res } = await createProperty({ categoryName: 'Nonsense Category' });
+    assert.equal(res.status, 400, JSON.stringify(res.body).slice(0, 200));
+    assert.equal(res.body.code, 'TAXONOMY_UNKNOWN_NAME');
   });
 
   await t.test('the new listing belongs to the caller and is auto-published', async () => {

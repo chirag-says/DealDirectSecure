@@ -19,6 +19,7 @@
 
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import { CANONICAL_TAXONOMY } from '../../../config/taxonomy.js';
 
 let seq = 0;
 const next = () => ++seq;
@@ -82,23 +83,68 @@ export const makeBuyer = (o = {}) => makeUser({ role: 'buyer', ...o });
 // ---------------------------------------------------------------------------
 
 /**
- * PropertyType and Category. Note the naming in this codebase is inverted
- * relative to what the names suggest, `propertytypes` holds Residential /
- * Commercial / Plot, and `categories` holds Apartment / Villa / Office. The
- * factories follow the data as it actually is, not as the names read, so tests
- * exercise the real shape.
+ * Category is the top level, PropertyType the second, and a property type
+ * belongs to a category. That is now true of the names as well as the shape:
+ * the two collections used to hold each other's contents, which is what the
+ * Phase 3B migration corrected.
  */
-export async function makePropertyType(overrides = {}) {
+/**
+ * Seed the canonical taxonomy into the test database.
+ *
+ * Required by any suite that creates a property through the API. The
+ * server-side consistency contract resolves categoryName and propertyTypeName
+ * against real documents and rejects anything it cannot find exactly, so a
+ * database with no taxonomy rejects every create. That is the correct
+ * production behaviour, and it means the harness has to seed the same
+ * vocabulary the application ships with rather than inventing fixtures.
+ *
+ * Idempotent: safe to call in `before` and again after a truncate.
+ */
+export async function seedTaxonomy() {
+  const Category = mongoose.model('Category');
   const PropertyType = mongoose.model('PropertyType');
-  const n = next();
-  return PropertyType.create({ name: `Residential ${n}`, ...overrides });
+  const categories = new Map();
+
+  for (const categoryName of Object.keys(CANONICAL_TAXONOMY)) {
+    const doc = await Category.findOneAndUpdate(
+      { name: categoryName }, { $setOnInsert: { name: categoryName } },
+      { upsert: true, new: true }
+    );
+    categories.set(categoryName, doc);
+  }
+
+  const types = new Map();
+  for (const [categoryName, typeNames] of Object.entries(CANONICAL_TAXONOMY)) {
+    const category = categories.get(categoryName)._id;
+    for (const name of typeNames) {
+      const doc = await PropertyType.findOneAndUpdate(
+        { name, category }, { $setOnInsert: { name, category } },
+        { upsert: true, new: true }
+      );
+      types.set(name, doc);
+    }
+  }
+
+  return { categories, types };
 }
+
+/** The canonical pair every fixture property uses unless told otherwise. */
+export const DEFAULT_TAXONOMY = Object.freeze({
+  categoryName: 'Residential',
+  propertyTypeName: 'Apartment / Flat',
+});
 
 export async function makeCategory(overrides = {}) {
   const Category = mongoose.model('Category');
   const n = next();
-  const propertyType = overrides.propertyType || (await makePropertyType())._id;
-  return Category.create({ name: `Apartment ${n}`, propertyType, ...overrides });
+  return Category.create({ name: `Test Category ${n}`, ...overrides });
+}
+
+export async function makePropertyType(overrides = {}) {
+  const PropertyType = mongoose.model('PropertyType');
+  const n = next();
+  const category = overrides.category || (await makeCategory())._id;
+  return PropertyType.create({ name: `Test Type ${n}`, ...overrides, category });
 }
 
 // ---------------------------------------------------------------------------

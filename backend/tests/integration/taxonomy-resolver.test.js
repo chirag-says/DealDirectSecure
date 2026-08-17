@@ -36,7 +36,7 @@ import mongoose from 'mongoose';
 import { request, uniqueClientIp } from './setup/app.js';
 import { stopTestDatabase, truncateAll } from './setup/db.js';
 import { stopFakeProviders } from './setup/fakeProviders.js';
-import { makeOwner, loginAs } from './setup/factories.js';
+import { makeOwner, loginAs, seedTaxonomy } from './setup/factories.js';
 
 import * as webResolver from '../../../client-next/src/utils/taxonomyRef.js';
 import * as adminResolver from '../../../Admin/src/utils/taxonomyRef.js';
@@ -44,7 +44,7 @@ import * as adminResolver from '../../../Admin/src/utils/taxonomyRef.js';
 let api;
 
 test.before(async () => { api = await request(); });
-test.beforeEach(async () => { await truncateAll(); });
+test.beforeEach(async () => { await truncateAll(); await seedTaxonomy(); });
 test.after(async () => { await stopFakeProviders(); await stopTestDatabase(); });
 
 const Property = () => mongoose.model('Property');
@@ -201,10 +201,11 @@ test('property creation still works', async (t) => {
     return { res, owner, doc: await Property().findOne({ owner: owner._id }).lean() };
   }
 
-  await t.test('a listing with names but no refs is created and keeps its names', async () => {
-    // The state every listing is in until the taxonomy migration runs: the
-    // canonical names do not exist in the taxonomy, so the resolver returns null
-    // and the client sends no reference.
+  await t.test('canonical names alone are resolved server-side', async () => {
+    // Since the migration the server resolves names itself, so a client that
+    // sends no reference still ends up with correct ones. That is the point of
+    // moving resolution off the browser: the client cannot get it wrong because
+    // the client no longer does it.
     const { res, doc } = await createWith({
       categoryName: 'Residential',
       propertyTypeName: 'Apartment / Flat',
@@ -213,19 +214,19 @@ test('property creation still works', async (t) => {
     assert.equal(res.status, 201, JSON.stringify(res.body).slice(0, 200));
     assert.equal(doc.categoryName, 'Residential');
     assert.equal(doc.propertyTypeName, 'Apartment / Flat');
-    assert.ok(!doc.category, 'no reference should be invented');
-    assert.ok(!doc.propertyType, 'no reference should be invented');
+    assert.ok(doc.category, 'the server should have resolved the category');
+    assert.ok(doc.propertyType, 'the server should have resolved the property type');
   });
 
-  await t.test('a resolved reference is stored as sent', async () => {
-    const type = await mongoose.model('PropertyType').create({ name: 'Residential' });
-    const category = await mongoose.model('Category').create({
-      name: 'Apartment', propertyType: type._id,
-    });
+  await t.test('a reference that agrees with its name is stored as sent', async () => {
+    const Category = mongoose.model('Category');
+    const PropertyType = mongoose.model('PropertyType');
+    const category = await Category.findOne({ name: 'Residential' });
+    const type = await PropertyType.findOne({ name: 'Villa', category: category._id });
 
     const { res, doc } = await createWith({
       categoryName: 'Residential',
-      propertyTypeName: 'Apartment',
+      propertyTypeName: 'Villa',
       category: String(category._id),
       propertyType: String(type._id),
     });
@@ -235,9 +236,9 @@ test('property creation still works', async (t) => {
     assert.equal(String(doc.propertyType), String(type._id));
   });
 
-  await t.test('an empty-string reference does not become a stored value', async () => {
-    // The Admin form used to append "" on a resolver miss. Whatever the server
-    // does with that, it must not end up as a reference on the document.
+  await t.test('an empty-string reference is ignored, and the names still resolve', async () => {
+    // The Admin form used to append "" on a resolver miss. An empty string is
+    // absent rather than a reference, so the names decide.
     const { res, doc } = await createWith({
       categoryName: 'Residential',
       propertyTypeName: 'Villa',
@@ -245,13 +246,8 @@ test('property creation still works', async (t) => {
       propertyType: '',
     });
 
-    if (res.status === 201) {
-      assert.ok(!doc.category, 'an empty string must not survive as a reference');
-      assert.ok(!doc.propertyType, 'an empty string must not survive as a reference');
-    } else {
-      // Rejecting outright is also acceptable; silently storing something is not.
-      assert.ok(res.status >= 400);
-      assert.equal(doc, null);
-    }
+    assert.equal(res.status, 201, JSON.stringify(res.body).slice(0, 200));
+    assert.ok(doc.category, 'resolved from the name');
+    assert.ok(doc.propertyType, 'resolved from the name');
   });
 });
