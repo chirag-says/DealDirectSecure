@@ -53,6 +53,62 @@ did NOT update the docs, say so explicitly — that is a debt marker.
 
 ---
 
+## 2026-08-17: Phase 3A.1, four defects fixed (notifications routing, property field contract, upload coupling, multipart bodies)
+
+**Files changed**
+- `backend/routes/notificationRoutes.js`: `PATCH "/mark-all/read"` now declared before `PATCH "/:id/read"`.
+- `backend/middleware/upload.js`: the `cloudinaryConfigured` check moved below the "no files" early return in `validateAndUploadToCloudinary`.
+- `backend/controllers/propertyController.js`: `sanitizePropertyData` now uses `Object.prototype.hasOwnProperty.call(data, field)`; nine dead names removed from `PROPERTY_ALLOWED_FIELDS`.
+- `backend/tests/integration/`: three new suites (`notifications`, `upload-unavailable`, `upload-validation`), a `setup/fixtures.js` with synthetic image bytes, an email observer in `setup/fakeProviders.js`, and deterministic index building in `setup/app.js`.
+
+**Reason**
+The Phase 3A integration suite reported three defects as passing tests asserting broken behaviour. This pass fixed them and replaced those tests with assertions of the correct behaviour. The suite now has zero `todo` entries.
+
+**Architectural impact**
+- **Mark-all-as-read now works.** It never had. Express matched `/:id/read` first and cast `"mark-all"` to an ObjectId. Nothing else changed; both handlers were already correct.
+- **Property editing now works for multipart requests.** This is the significant one. Multer 2 builds `req.body` with `Object.create(null)`, and `sanitizePropertyData` called `data.hasOwnProperty(...)`, which throws on a prototype-less object. The edit form posts multipart and sends no `features` key, so `data` was never rebuilt by the spread at line ~1499 and reached the sanitizer without a prototype: **every save from the edit screen returned 500.** Creation escaped only because the add form does send `features`. Anything that writes to `req.body` from a multipart route must assume no prototype.
+- **An image-service outage no longer blocks text-only edits.** A file-carrying request still fails fast with 503 before magic-byte validation and before any upload; that ordering is deliberate and load-bearing.
+- **The property field contract is now documented by path, not by name.** The whitelist contains two different kinds of entry: schema paths, and transient input names that `updateMyProperty` translates (`carpetArea` to `area.carpetSqft`, and eleven more). The create and update paths accept **different shapes**: add-property sends nested objects, edit-property sends flat state, and only the latter is translated. Do not assume a body that works on PUT works on POST.
+- Nine names (`floor`, `age`, `availability`, `possessionDate`, `waterSupply`, `ownershipType`, `buildingName`, `buildingType`, `seatCapacity`) were removed from the whitelist. No behaviour change: no form sent them, they matched no schema path, and no property code read them.
+- `availableFrom` was never broken. Phase 3A listed it as discarded because the check compared a `Date` to an ISO string.
+
+**Two issues left open (not fixed)**
+1. `cloudinary.uploader.upload_stream` returns a Q promise the SDK never settles on failure (`uploader.js:595-607`), so every failed upload leaks an unhandled rejection. Noisy, not fatal: `errorHandler.js:471` logs without exiting and the HTTP response is a correct `500 UPLOAD_FAILED`.
+2. Five models cannot build their indexes. `models/Role.js` declares `name` as `unique: true` then adds `roleSchema.index({ name: 1 })` at line 57; `Admin`, `User`, `UserSession` and `AdminSession` share the shape. In production the losing index is simply never created.
+
+**Migration notes**
+None. No schema change, no data migration, no production infrastructure touched.
+
+**Docs updated**
+[`DEALDIRECT-INTEGRATION-TESTS.md`](../DEALDIRECT-INTEGRATION-TESTS.md) sections 5-9 rewritten: the field matrix, the two new upload suites, the nine-mutation table, and the two open issues. `AI/KNOWN_BUGS.md` still does not carry any of this; that debt marker stands.
+
+## 2026-08-17: Integration-test harness (Phase 3A); three test seams in app code
+
+**Files changed**
+- `backend/tests/integration/**` (new, 11 files): the harness. `setup/guard.js` (refuses unsafe NODE_ENV / database targets), `setup/db.js` (in-memory replica set + truncation), `setup/externals.js` (credential neutralisation + network egress blocking), `setup/fakeProviders.js` (loopback SMS provider, synthetic Cloudinary config), `setup/app.js` (Supertest + per-request client IP), `setup/factories.js`, and four suites.
+- `backend/server.js`: `connectDB()` and `httpServer.listen()` are now skipped when `NODE_ENV === "test"`, and `app` is exported. No behaviour change outside tests.
+- `backend/services/hubbleService.js`: the module-level token-cleanup `setInterval` is now `unref()`d.
+- `backend/package.json`: `test` narrowed to `tests/*.test.js`; added `test:integration` and `test:all`.
+- `.gitignore`, `backend/.gitignore`: un-ignore `backend/tests/integration/**` so the suite is committable.
+
+**Reason**
+The 471-test unit suite asserts against source text and pure functions. It cannot see the failure mode that has cost this codebase the most: a value accepted by the API, reported as saved, and discarded before it reaches the database. Only a round trip through the real middleware chain into a real database shows that.
+
+**Architectural impact**
+- `app` is now an export of `server.js`. Nothing in the running application imports it; it exists for the harness.
+- `NODE_ENV=test` is now a meaningful mode: the process does not connect to Mongo and does not listen on 9000. Anything added to `server.js` that assumes a live connection at import time will break the harness.
+- `hubbleService`'s cleanup timer no longer holds the event loop open. In the server the listening socket does that anyway, so the sweep still fires as before.
+- Three defects were found and **not** fixed, each recorded as a passing test that asserts the current broken behaviour, so it turns red when fixed:
+  1. `PATCH /api/notifications/mark-all/read` is unreachable. `routes/notificationRoutes.js` declares `PATCH "/:id/read"` one line earlier, so Express matches the wildcard, `markNotificationRead` gets `id = "mark-all"`, the ObjectId cast fails and it returns 500. Mark-all-as-read has never worked. Fix is a one-line reorder.
+  2. Twenty-two fields in `PROPERTY_ALLOWED_FIELDS` are accepted by `sanitizePropertyData` but never written by `addProperty` (`carpetArea`, `landmark`, `reraId`, `buildingName`, `possessionDate` and others; full list in the test). Same class as the `priceUnit` bug fixed in Phase 0/1, still open.
+  3. `validateAndUploadToCloudinary` returns 503 for any request on a route it guards, whether or not a file is present, so an image-service outage blocks title-only edits.
+
+**Migration notes**
+None. No schema change, no migration, no production infrastructure touched. `mongodb-memory-server` and `supertest` added as devDependencies only.
+
+**Docs updated**
+[`DEALDIRECT-INTEGRATION-TESTS.md`](../DEALDIRECT-INTEGRATION-TESTS.md) (new, at repo root) documents the harness, the isolation argument, timings, and the three findings. `AI/KNOWN_BUGS.md` was **not** updated with the three defects above: that is a debt marker.
+
 ## 2026-08-13 — Mobile plan of record rewritten: four product decisions, 18-defect register (docs only)
 
 **Files changed**
