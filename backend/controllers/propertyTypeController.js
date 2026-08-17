@@ -1,6 +1,7 @@
 // controllers/propertyTypeController.js
 // SECURITY FIX: Sanitized error responses to prevent information disclosure
 import PropertyType from "../models/PropertyType.js";
+import { findActivePropertyTypes } from "../utils/activeTaxonomy.js";
 
 export const createPropertyType = async (req, res) => {
   try {
@@ -17,7 +18,9 @@ export const createPropertyType = async (req, res) => {
 
 export const getPropertyTypes = async (req, res) => {
   try {
-    const list = await PropertyType.find().sort({ createdAt: -1 });
+    // Active taxonomy only, and each one checked against its own parent, so a
+    // canonical name hanging off a legacy category is excluded too.
+    const list = await findActivePropertyTypes();
     res.json({ success: true, data: list });
   } catch (err) {
     console.error('[PropertyType] Get all error:', err.message);

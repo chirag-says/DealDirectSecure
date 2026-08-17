@@ -1,13 +1,14 @@
 // controllers/categoryController.js
 // SECURITY FIX: Sanitized error responses to prevent information disclosure
 import Category from "../models/Category.js";
+import { findActiveCategories } from "../utils/activeTaxonomy.js";
 
 export const createCategory = async (req, res) => {
   try {
-    const exists = await Category.findOne({
-      name: req.body.name,
-      propertyType: req.body.propertyType,
-    });
+    // Category is the top level and has no parent, so the name alone decides
+    // uniqueness. This used to key on { name, propertyType }, which was the
+    // inverted shape: a "category" was a child of a "property type".
+    const exists = await Category.findOne({ name: req.body.name });
 
     if (exists)
       return res.status(400).json({ success: false, message: "Category already exists" });
@@ -22,7 +23,15 @@ export const createCategory = async (req, res) => {
 
 export const getCategories = async (req, res) => {
   try {
-    const list = await Category.find().populate("propertyType");
+    // No populate: a category has no parent to populate. Leaving the old
+    // populate("propertyType") in place threw a StrictPopulateError once the
+    // path was removed from the schema, which took the endpoint to a 500 and
+    // with it every taxonomy dropdown in the web and Admin forms.
+    // Active taxonomy only. The migration was additive, so this collection
+    // still holds nineteen obsolete rows including the listing intents Buy,
+    // Rental and Rent; offering them as categories is how they got into the
+    // data in the first place.
+    const list = await findActiveCategories();
     res.json({ success: true, data: list });
   } catch (err) {
     console.error('[Category] Get all error:', err.message);
