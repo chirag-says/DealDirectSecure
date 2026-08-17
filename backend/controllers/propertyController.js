@@ -9,6 +9,7 @@ import Notification from "../models/Notification.js";
 import SavedSearch from "../models/SavedSearch.js";
 import TransactionVerification from "../models/TransactionVerification.js";
 import { awardPoints } from "../services/rewardService.js";
+import { applyTaxonomy, TaxonomyError } from "../utils/taxonomyResolver.js";
 import { sendNewLeadWhatsApp, sendNewPropertyWhatsApp } from "../services/whatsappService.js";
 import { escapeRegExp } from "../utils/escapeRegExp.js";
 
@@ -504,31 +505,33 @@ export const addProperty = async (req, res) => {
       delete data.longitude;
     }
 
-    // Normalize categoryName to high-level buckets (Residential / Commercial)
-    if (data.categoryName) {
-      const raw = data.categoryName.toString();
-      const lower = raw.toLowerCase();
-
-      if (lower.includes("residen")) {
-        data.categoryName = "Residential";
-      } else if (lower.includes("commercial")) {
-        data.categoryName = "Commercial";
-      } else if (data.propertyTypeName || data.propertyType) {
-        // Infer from property type when category text is generic like "Plot"
-        const typeName = (data.propertyTypeName || data.propertyType || "").toString().toLowerCase();
-        const isCommercialType = /office|shop|showroom|restaurant|cafe|warehouse|industrial|co-working|coworking|commercial/.test(typeName);
-        data.categoryName = isCommercialType ? "Commercial" : "Residential";
-      } else {
-        // Default to Residential if nothing else is known
-        data.categoryName = "Residential";
+    // ============================================
+    // TAXONOMY CONSISTENCY CONTRACT
+    //
+    // Replaces a block that bucketed categoryName by substring
+    // (lower.includes("residen")), inferred the category from the property type
+    // when that failed, and defaulted to "Residential" when nothing matched.
+    //
+    // Every one of those is a guess, and guessing is what produced a corpus
+    // where 25 of 47 listings carry taxonomy references describing a different
+    // property. The substring rule also has no answer for the Land & Plots
+    // category: "Land & Plots" contains neither "residen" nor "commercial", so
+    // every plot would have been filed as Residential.
+    //
+    // resolveTaxonomy accepts only exact canonical names, requires an id and a
+    // name to agree, and requires the property type to belong to the category.
+    // Anything else is a 400 rather than a quiet correction.
+    // ============================================
+    try {
+      await applyTaxonomy(data);
+    } catch (taxErr) {
+      if (taxErr instanceof TaxonomyError) {
+        if (session.inTransaction()) await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({ success: false, message: taxErr.message, code: taxErr.code });
       }
-    } else if (data.propertyTypeName || data.propertyType) {
-      const typeName = (data.propertyTypeName || data.propertyType || "").toString().toLowerCase();
-      const isCommercialType = /office|shop|showroom|restaurant|cafe|warehouse|industrial|co-working|coworking|commercial/.test(typeName);
-      data.categoryName = isCommercialType ? "Commercial" : "Residential";
+      throw taxErr;
     }
-
-    console.log("Final data being saved:", JSON.stringify(data, null, 2)); // Debug log
 
     // ============================================
     // SECURITY: Create property within transaction if owner role
@@ -1607,9 +1610,21 @@ export const updateMyProperty = async (req, res) => {
       delete data.category; // Remove category ObjectId reference if it's invalid
     }
 
-    // Remove subcategory if it's not a valid ObjectId
-    if (data.subcategory && !mongoose.Types.ObjectId.isValid(data.subcategory)) {
-      delete data.subcategory;
+    // ============================================
+    // TAXONOMY CONSISTENCY CONTRACT
+    //
+    // Same rule as create: an id and a name must agree, names resolve exactly,
+    // the type must belong to the category, and anything else is a 400. Also
+    // strips subcategory unconditionally, since the level is retired (D9) and
+    // no new reference may be created regardless of what a client sends.
+    // ============================================
+    try {
+      await applyTaxonomy(data);
+    } catch (taxErr) {
+      if (taxErr instanceof TaxonomyError) {
+        return res.status(400).json({ success: false, message: taxErr.message, code: taxErr.code });
+      }
+      throw taxErr;
     }
 
     // ============================================================
