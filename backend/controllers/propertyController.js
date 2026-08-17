@@ -48,23 +48,23 @@ export const PROPERTY_ALLOWED_FIELDS = [
   'price', 'expectedPrice', 'deposit', 'expectedDeposit', 'maintenance',
   'priceNegotiable', 'securityDeposit',
   // Property details
-  'bhk', 'bhkType', 'bedrooms', 'bathrooms', 'balconies', 'floor', 'totalFloors',
-  'furnishing', 'facing', 'age', 'availability', 'availableFrom', 'possessionDate',
+  'bhk', 'bhkType', 'bedrooms', 'bathrooms', 'balconies', 'totalFloors',
+  'furnishing', 'facing', 'availableFrom',
   // Area
   'area', 'builtUpArea', 'carpetArea', 'superBuiltUpArea', 'plotArea',
   // Features
   'features', 'amenities', 'extras', 'parking', 'parkingCovered', 'parkingOpen',
-  'flooring', 'powerBackup', 'waterSupply', 'gatedSecurity',
+  'flooring', 'powerBackup', 'gatedSecurity',
   // Extra rooms
   'servantRoom', 'poojaRoom', 'studyRoom', 'storeRoom',
   // Legal
-  'legal', 'reraId', 'ownershipType',
+  'legal', 'reraId',
   // Images (processed separately but allowed in data flow)
   'images', 'categorizedImages', 'imageCategoryMap', 'existingCategorizedImages', 'imagesToRemove',
   // Building info
-  'buildingName', 'buildingType', 'constructionStatus',
+  'constructionStatus',
   // Commercial specific
-  'seatCapacity', 'meetingRooms', 'pantry', 'washrooms',
+  'meetingRooms', 'pantry', 'washrooms',
 
   // ============================================================
   // FIELD-CONTRACT RECONCILIATION (2026-08-16)
@@ -83,6 +83,28 @@ export const PROPERTY_ALLOWED_FIELDS = [
   //
   // Do not add a name here unless it exists on propertySchema. Verify with:
   //   node -e "import('./models/Property.js').then(m=>console.log(m.default.schema.path('<field>')?.instance))"
+  // ============================================================
+
+  // ============================================================
+  // REMOVED 2026-08-17, and why (Phase 3A.1)
+  //
+  //   floor, age, availability, possessionDate, waterSupply,
+  //   ownershipType, buildingName, buildingType, seatCapacity
+  //
+  // Nine names that promised support this API does not have. Each was checked
+  // three ways before removal: no form sends it (add, edit, and Admin all
+  // grepped), it maps to no path on propertySchema, and no property code path
+  // reads it. Listing them here made the whitelist read as though a landmark or
+  // a RERA number submitted under these names would be stored; nothing ever
+  // stored them.
+  //
+  // Removing them changes no behaviour: an unlisted field is dropped silently,
+  // which is exactly what happened to these while they were listed. What it
+  // changes is that the list now describes the fields the API actually accepts.
+  //
+  // Watch for near-misses when reading old code: the schema spells these
+  // floorNo, propertyAge / ageOfProperty, availableFrom, seatingCapacity. The
+  // forms use those names too, and they are still whitelisted above.
   // ============================================================
 
   // Taxonomy references (ObjectIds; non-ObjectId values are dropped downstream)
