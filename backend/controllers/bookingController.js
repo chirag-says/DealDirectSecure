@@ -22,6 +22,7 @@ import User from "../models/userModel.js";
 import { cloudinary } from "../middleware/upload.js";
 import { sendBookingAlert, sendGeneralNotification } from "../utils/emailService.js";
 import { Readable } from "stream";
+import { reverseMembershipForCancelledBooking } from "../utils/campaignMemberState.js";
 
 // ── Helper: Sync a confirmed booking to the Group Buy campaign ────────────────
 // When a booking is confirmed/completed, auto-enroll the buyer as a paid member
@@ -537,6 +538,22 @@ export const updateBookingStatus = async (req, res) => {
     // path that enrols a member on confirmation.
     if (status === "completed") {
       syncBookingToCampaign(booking, req.admin._id).catch(() => {});
+    }
+
+    // ...and reverse it when the booking is cancelled out of a state that had
+    // enrolled someone. The sync ran forward only, so a cancelled booking left
+    // behind the paid member it created, still counted in paidMemberCount with
+    // nothing pointing at the cancellation.
+    //
+    // Only `confirmed` and `completed` enrol, so only those reverse. Cancelling
+    // from `enquiry` or `payment_submitted` invalidates no membership because
+    // none was ever created, and treating every cancellation as a reversal
+    // would exit members who joined the campaign directly.
+    //
+    // This is not a refund. tokenStatus stays `paid` because it is true and it
+    // is evidence; the booking remains the authoritative payment record.
+    if (status === "cancelled") {
+      await reverseMembershipForCancelledBooking(booking, previousStatus);
     }
 
     return res.json({ success: true, data: { status: booking.status, previousStatus } });

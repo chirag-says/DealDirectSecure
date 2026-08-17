@@ -12,6 +12,7 @@ import CampaignMember from "../models/CampaignMember.js";
 import UnitType from "../models/UnitType.js";
 import User from "../models/userModel.js";
 import { cloudinary } from "../middleware/upload.js";
+import { assertSelfExitAllowed, CampaignMemberStateError } from "../utils/campaignMemberState.js";
 import { Readable } from "stream";
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -330,6 +331,22 @@ export const exitCampaign = async (req, res) => {
       return res.status(404).json({ success: false, message: "Active membership not found." });
     }
 
+    // A paid membership cannot be dropped from here.
+    //
+    // This used to succeed: the filter above checks `status` and never looked
+    // at `tokenStatus`, so a paid user exited, paidMemberCount fell, and the
+    // response below promised a manual refund while recording that obligation
+    // nowhere. The surviving paid+exited document was the only trace money was
+    // owed, and nothing surfaced it.
+    try {
+      assertSelfExitAllowed(member);
+    } catch (err) {
+      if (err instanceof CampaignMemberStateError) {
+        return res.status(err.status).json({ success: false, message: err.message, code: err.code });
+      }
+      throw err;
+    }
+
     member.status = "exited";
     member.exitReason = req.body.reason || "";
     member.exitedAt = new Date();
@@ -338,7 +355,10 @@ export const exitCampaign = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "You have exited the campaign. Refund (if applicable) will be processed manually.",
+      // Only an unpaid membership reaches this line, so there is no payment to
+      // return and nothing to promise. The old copy offered a manual refund to
+      // every exiting member, paid or not.
+      message: "You have left the campaign.",
     });
   } catch (error) {
     console.error("[campaignController.exitCampaign]", error);
