@@ -15,8 +15,14 @@ import crypto from "crypto";
 // In production, consider Redis for multi-instance deployments
 const tokenStore = new Map();
 
-// Cleanup expired tokens every 5 minutes
-setInterval(() => {
+// Cleanup expired tokens every 5 minutes.
+//
+// unref() so this timer alone does not hold the event loop open. In the running
+// server the listening socket keeps the process alive, so the sweep still fires
+// exactly as before; the difference only shows in a process with no server
+// handle, such as the integration test runner, which would otherwise never
+// exit and every suite would fail on timeout rather than on its assertions.
+const tokenCleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [token, data] of tokenStore.entries()) {
     if (now > data.expiresAt) {
@@ -24,6 +30,7 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000);
+tokenCleanupTimer.unref?.();
 
 /**
  * Generate a short-lived, single-use SSO token for a user.

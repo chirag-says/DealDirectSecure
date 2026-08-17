@@ -116,7 +116,21 @@ validateEnvironment();
 // ============================================
 
 import connectDB from "./config/db.js";
-connectDB();
+
+// TEST HARNESS SEAM (Phase 3A).
+//
+// Under NODE_ENV=test the integration harness owns the database connection: it
+// starts an isolated in-memory replica set and connects Mongoose to it before
+// importing this file. Connecting here as well would either race that
+// connection or, worse, reach whatever MONGO_URI happens to be in .env, which
+// on a developer machine is the shared development Atlas cluster.
+//
+// This is the seam, not a safety control. The guard that actually prevents a
+// non-test database being touched lives in tests/integration/setup/guard.js and
+// runs before any of this is imported.
+if (process.env.NODE_ENV !== "test") {
+  connectDB();
+}
 
 // ============================================
 // SECURITY MIDDLEWARE IMPORTS
@@ -983,21 +997,34 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 const PORT = process.env.PORT || 9000;
 
-httpServer.listen(PORT, () => {
-  console.log('═'.repeat(60));
-  console.log(`🚀 DealDirect Server v1.0.0`);
-  console.log('═'.repeat(60));
-  console.log(`📍 Port: ${PORT}`);
-  console.log(`🌍 Environment: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
-  console.log(`🔒 Security Features:`);
-  console.log(`   • Helmet CSP: Enabled`);
-  console.log(`   • CORS Lockdown: ${allowedOrigins.length} domains whitelisted`);
-  console.log(`   • Rate Limiting: Multi-tier (Global/Auth/Transactional)`);
-  console.log(`   • HSTS: ${isProduction ? 'Enabled' : 'Disabled (dev mode)'}`);
-  console.log(`   • Secure Cookies: ${isProduction ? 'Strict' : 'Relaxed (dev mode)'}`);
-  console.log(`   • Payload Limit: 100KB (10KB for auth)`);
-  console.log(`   • X-Powered-By: Hidden`);
-  console.log('═'.repeat(60));
-});
+// TEST HARNESS SEAM (Phase 3A).
+//
+// Supertest drives the Express app in-process and binds an ephemeral port
+// itself, so the integration suite must not take 9000. Otherwise a running dev
+// server makes the suite fail with EADDRINUSE, and a suite left running holds
+// the port. Socket.IO stays attached to httpServer either way; it simply never
+// accepts a connection because nothing is listening.
+if (process.env.NODE_ENV !== "test") {
+  httpServer.listen(PORT, () => {
+    console.log('═'.repeat(60));
+    console.log(`🚀 DealDirect Server v1.0.0`);
+    console.log('═'.repeat(60));
+    console.log(`📍 Port: ${PORT}`);
+    console.log(`🌍 Environment: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+    console.log(`🔒 Security Features:`);
+    console.log(`   • Helmet CSP: Enabled`);
+    console.log(`   • CORS Lockdown: ${allowedOrigins.length} domains whitelisted`);
+    console.log(`   • Rate Limiting: Multi-tier (Global/Auth/Transactional)`);
+    console.log(`   • HSTS: ${isProduction ? 'Enabled' : 'Disabled (dev mode)'}`);
+    console.log(`   • Secure Cookies: ${isProduction ? 'Strict' : 'Relaxed (dev mode)'}`);
+    console.log(`   • Payload Limit: 100KB (10KB for auth)`);
+    console.log(`   • X-Powered-By: Hidden`);
+    console.log('═'.repeat(60));
+  });
+}
 
-export { io, httpServer };
+// `app` is exported so the integration harness can drive the real middleware
+// chain with Supertest (same routes, same auth, same validation, same
+// controllers) without a listening socket. Nothing in the running application
+// imports it.
+export { app, io, httpServer };

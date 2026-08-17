@@ -106,6 +106,19 @@ service-account*.json
 backend/tests/*
 !backend/tests/*.test.js
 
+# -- Integration suite --
+# A negation cannot reach inside a directory git has been told to ignore, so
+# backend/tests/integration must be re-included before anything under it can be.
+# Each level is then re-ignored and its real files named explicitly, which keeps
+# the "scratch work stays out" rule intact one directory deeper.
+!backend/tests/integration/
+backend/tests/integration/*
+!backend/tests/integration/*.test.js
+!backend/tests/integration/test.env
+!backend/tests/integration/setup/
+backend/tests/integration/setup/*
+!backend/tests/integration/setup/*.js
+
 # -- Explicit files (already known) --
 backend/seed.js
 backend/scripts/seedRbac.js

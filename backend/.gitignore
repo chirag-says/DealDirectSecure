@@ -87,6 +87,13 @@ scratch*.js
 # ignored by the root rule.
 !tests/*.test.js
 
+# The integration harness. `*.test.js` above would otherwise catch the suites,
+# and `test*.js` would catch nothing here but is why setup/ is named explicitly
+# rather than left to a broad negation.
+!tests/integration/*.test.js
+!tests/integration/setup/*.js
+!tests/integration/test.env
+
 
 tmp/
 temp/
