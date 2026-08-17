@@ -236,15 +236,20 @@ describe('reward adjustment — authorization', () => {
     assert.match(rewardsController, /req\.admin\?\._id/);
   });
 
-  test('KNOWN GAP: still no permission check on this route', () => {
-    // Deliberate and documented. `rewards` is absent from Permission.resource,
-    // so attaching requirePermission here would deny every admin — the exact
-    // failure mode of B2. This test records the gap so it is not mistaken for
-    // an oversight; flip it when the enum is extended.
+  test('no permission guard on this route, and there is no longer one to add', () => {
+    // This was recorded as a KNOWN GAP awaiting an extended Permission.resource
+    // enum. Phase 3F resolved it the other way: the permission layer was
+    // retired outright, because every admin held every permission so it
+    // separated nothing, while a code that could not resolve 403'd the whole
+    // panel. `requirePermission` no longer exists.
+    //
+    // The route is protectAdmin-only, which is now the deliberate answer rather
+    // than a gap. Any admin can adjust points; attribution and the audit log
+    // are what make that accountable.
     assert.doesNotMatch(
       rewardsRoutes.slice(rewardsRoutes.indexOf('/admin/adjust-points')),
       /requirePermission/,
-      'a permission guard appeared — verify `rewards` is in the Permission.resource enum first'
+      'requirePermission was removed in Phase 3F — reintroducing it needs that decision revisited'
     );
   });
 });

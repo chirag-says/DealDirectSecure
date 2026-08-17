@@ -336,28 +336,13 @@ adminSchema.methods.getPermissions = async function () {
 };
 
 /**
- * Check if admin has a specific permission
+ * hasPermission / hasAnyPermission / hasAllPermissions removed in Phase 3F.
+ *
+ * All three had zero callers, and they resolved permissions that no longer gate
+ * anything now that requirePermission is gone. getPermissions() is kept: it is
+ * the only place that knows how a role resolves to codes, and the eventual
+ * cleanup migration needs to read that mapping.
  */
-adminSchema.methods.hasPermission = async function (permissionCode) {
-  const permissions = await this.getPermissions();
-  return permissions.includes(permissionCode);
-};
-
-/**
- * Check if admin has any of the specified permissions
- */
-adminSchema.methods.hasAnyPermission = async function (permissionCodes) {
-  const permissions = await this.getPermissions();
-  return permissionCodes.some((code) => permissions.includes(code));
-};
-
-/**
- * Check if admin has all specified permissions
- */
-adminSchema.methods.hasAllPermissions = async function (permissionCodes) {
-  const permissions = await this.getPermissions();
-  return permissionCodes.every((code) => permissions.includes(code));
-};
 
 // Query middleware to exclude soft-deleted by default
 adminSchema.pre(/^find/, function (next) {

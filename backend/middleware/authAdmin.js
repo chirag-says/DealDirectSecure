@@ -308,7 +308,25 @@ export const protectAdmin = async (req, res, next) => {
     // Get admin from database
     // Populate role for ObjectId-based roles (needed for permission/level checks)
     // Legacy admins with string roles will have role as a plain string (populate is a no-op)
-    const admin = await Admin.findById(session.admin).populate('role');
+    // `Admin.role` is declared Mixed, because it has to hold either a legacy
+    // string ("admin") or an ObjectId reference. Mongoose cannot infer a target
+    // from a Mixed path, so the bare `.populate('role')` that used to be here
+    // silently did nothing: `req.admin.role` stayed an ObjectId, `role.level`
+    // was undefined, and requireRoleLevel read `|| 0` for every admin alive.
+    //
+    // That meant requireSuperAdmin (level 100) denied EVERYONE, including the
+    // three production accounts that genuinely are level 100, so the audit log
+    // was unreachable by anybody. Same failure class as the permission layer
+    // this phase removed: a guard that only ever says no.
+    //
+    // Naming the model explicitly is what makes populate work on a Mixed path.
+    // Legacy string roles are left alone — there is nothing to resolve — and
+    // they still fall through to level 0.
+    const admin = await Admin.findById(session.admin).populate({
+      path: 'role',
+      model: 'Role',
+      match: { _id: { $exists: true } },
+    });
 
     if (!admin) {
       await session.revoke("admin_not_found");
@@ -471,63 +489,40 @@ export const attachAdminIfPresent = async (req, res, next) => {
 };
 
 /**
- * Permission checking middleware factory
- * Use: requirePermission("users:read")
+ * PERMISSION MIDDLEWARE REMOVED (Phase 3F, 2026-08-18).
+ *
+ * `requirePermission` guarded five admin routes and protected none of them.
+ * Production holds 45 Permission documents wired to four roles, all three admin
+ * accounts hold `super_admin`, and that role grants all 45 — so the check
+ * passed for every admin every time. It was a lookup that always succeeded.
+ *
+ * It could only ever fail, and it failed closed and site-wide. Commit 79ae3ab
+ * attached requirePermission("verifications:read") to the deal-verification
+ * routes; `verifications` is not in the closed Permission.resource enum, so no
+ * such document can exist, no role can grant it, and every admin including
+ * super_admin got a 403 while deal closures piled up unapproved. The fix that
+ * shipped was to remove the guards. rewardsController.js records the same
+ * reasoning for the rewards route, reached independently.
+ *
+ * The product has one admin role. Permission.resource is a closed enum of 12
+ * values that cannot express builders, projects, unit types, campaigns,
+ * bookings, verifications or agreements, so it could not describe the newer
+ * surface even if tiers were wanted.
+ *
+ * Deleted rather than left in place: a middleware that exists is a middleware
+ * someone reattaches, and reattaching it with a code outside the enum is
+ * exactly the outage above.
+ *
+ * The Role and Permission models and the production collections are UNTOUCHED.
+ * Cleaning those up is a separate migration, deliberately after this code
+ * change has been stable. See DEALDIRECT-DELETION-AND-RBAC-DECISION.md §2.
+ *
+ * Still enforced, and doing the real work: protectAdmin above (session
+ * validity, fingerprint, MFA, account active, not locked) and requireRoleLevel
+ * below, which reads role.level — seeded by createDefaultRoles, so unlike the
+ * permission layer it works on a fresh database.
  */
-export const requirePermission = (...requiredPermissions) => {
-  return async (req, res, next) => {
-    try {
-      if (!req.admin) {
-        return res.status(401).json({
-          success: false,
-          message: "Authentication required.",
-          code: "NOT_AUTHENTICATED",
-        });
-      }
 
-      // Get admin's permission codes
-      const adminPermissions = await req.admin.getPermissions();
-
-      // Check if admin has any of the required permissions
-      const hasPermission = requiredPermissions.some((perm) => adminPermissions.includes(perm));
-
-      if (!hasPermission) {
-        await AuditLog.log({
-          admin: req.admin._id,
-          category: "authorization",
-          action: "permission_denied",
-          description: `Access denied. Required: [${requiredPermissions.join(", ")}]`,
-          req,
-          sessionId: req.adminSession?._id,
-          result: "denied",
-          severity: "medium",
-          metadata: { requiredPermissions, adminPermissions },
-        });
-
-        return res.status(403).json({
-          success: false,
-          message: "You do not have permission to perform this action.",
-          code: "PERMISSION_DENIED",
-          required: requiredPermissions,
-        });
-      }
-
-      next();
-    } catch (error) {
-      console.error("Permission check error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Authorization error.",
-        code: "AUTHORIZATION_ERROR",
-      });
-    }
-  };
-};
-
-/**
- * Role level checking middleware factory
- * Use: requireRoleLevel(50) // Requires role with level >= 50
- */
 export const requireRoleLevel = (minLevel) => {
   return async (req, res, next) => {
     try {

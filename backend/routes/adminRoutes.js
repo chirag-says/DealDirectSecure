@@ -21,7 +21,6 @@ import {
 } from "../controllers/adminController.js";
 import {
   protectAdmin,
-  requirePermission,
   // requireRoleLevel - REMOVED: No longer needed (admin registration removed)
   requireSuperAdmin,
   authRateLimit,
@@ -60,15 +59,15 @@ router.post("/mfa/confirm", protectAdmin, confirmMfaSetup);
 router.post("/mfa/disable", protectAdmin, disableMfa);
 
 // Dashboard & Analytics
-router.get("/dashboard/stats", protectAdmin, requirePermission("dashboard:read"), getDashboardStats);
+router.get("/dashboard/stats", protectAdmin, getDashboardStats);
 
 // Leads Management
-router.get("/leads", protectAdmin, requirePermission("leads:read"), getAllLeads);
-router.put("/leads/:id", protectAdmin, requirePermission("leads:update"), updateAdminLeadStatus);
+router.get("/leads", protectAdmin, getAllLeads);
+router.put("/leads/:id", protectAdmin, updateAdminLeadStatus);
 
 // Reports Management
-router.get("/reports", protectAdmin, requirePermission("reports:read"), getAdminReports);
-router.put("/reports/:id", protectAdmin, requirePermission("reports:update"), updateReportStatus);
+router.get("/reports", protectAdmin, getAdminReports);
+router.put("/reports/:id", protectAdmin, updateReportStatus);
 
 // ============================================
 // ADMIN MANAGEMENT ROUTES (High privilege)
@@ -88,24 +87,17 @@ import {
 // ============================================
 // Deal Verifications
 //
-// NOTE: these routes deliberately use protectAdmin ALONE, with no
-// requirePermission() guard.
+// protectAdmin alone, like every other admin route.
 //
-// Commit 79ae3ab added requirePermission("verifications:read" / ":approve")
-// here. Those codes can never resolve: Permission.resource is a closed enum
-// (models/Permission.js) that does not contain "verifications", so a matching
-// Permission document cannot be created and no role can grant it. The result
-// was a hard 403 for every admin, including super_admin — the Deal
-// Verifications page silently rendered "No pending verifications found" while
-// deal closures piled up unapproved and no user could claim a deal reward.
+// Commit 79ae3ab attached requirePermission("verifications:read" / ":approve")
+// here. Those codes could never resolve: Permission.resource is a closed enum
+// that does not contain "verifications", so no matching document could be
+// created and no role could grant it. Every admin got a hard 403 including
+// super_admin, the page rendered "No pending verifications found", deal
+// closures piled up unapproved, and no user could claim a deal reward.
 //
-// This restores the working form from commit e437dc6 and matches how the rest
-// of the admin surface is protected.
-//
-// To reinstate permission guards later: first add "verifications" to the
-// Permission.resource enum, seed verifications:read / verifications:approve
-// records, attach them to the relevant roles, and verify against the database
-// before re-adding the middleware here.
+// The permission layer was retired entirely in Phase 3F, so the middleware that
+// caused this no longer exists. See middleware/authAdmin.js for the reasoning.
 // ============================================
 router.get("/verifications", protectAdmin, getDealVerifications);
 router.post("/verifications/:id/approve", protectAdmin, approveDealVerification);

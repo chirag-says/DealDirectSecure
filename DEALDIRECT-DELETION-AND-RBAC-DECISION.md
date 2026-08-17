@@ -294,6 +294,62 @@ question, not an engineering one.
 **Do not delete the `permissions` and `roles` collections as part of B.** See
 §2.6: how they were populated is unknown, so they may not be reproducible.
 
+### 2.5a RESOLVED — option B implemented, 2026-08-18 (Phase 3F)
+
+Product assumption verified against the repository before any change. **No
+near-term requirement for multiple admin classes exists.** Searched: admin
+pages (no role or permission management screen), the Admin frontend (nothing
+consumes `context.permissions`; `Sidebar` reads `roleName`/`roleLevel` only to
+print a badge), feature flags (none), and the docs.
+
+The only thing resembling a requirement is `adminfixes.md`, which lists
+"Role-based UI gating: Missing (all admins see all menus)" and imagines "a
+junior admin". That is an inference from the unused scaffolding, not a product
+need — exactly the reasoning this decision was told not to accept.
+
+**What was removed:** `requirePermission` from its five routes and from
+`middleware/authAdmin.js` entirely, plus `hasPermission`, `hasAnyPermission`
+and `hasAllPermissions` on the Admin model, all three of which had zero callers.
+
+Deleted rather than left unused: a middleware that exists is one somebody
+reattaches, and reattaching it with a code outside the closed enum is precisely
+the `79ae3ab` outage.
+
+**What was kept:** `protectAdmin` on every admin route. `requireSuperAdmin` on
+the audit log. `getPermissions()`, which is the only code that knows how a role
+resolves to codes and which the cleanup migration will need. The `Role` and
+`Permission` models. **The production collections — 45 permissions, four roles —
+are untouched**, and stay that way until the separate cleanup migration, which
+should follow only after this code change has been stable.
+
+`scripts/seedRbac.js` stays deleted. It is recoverable at `68ebab2` and §2.7
+records how; there is no reason to reintroduce a seeding dependency for a layer
+the code no longer uses.
+
+**Correction to §2.2:** the count is **five** routes, not eight. Eight was a
+grep total that included the import line and two comment lines.
+
+### 2.5b A second guard was found broken shut
+
+Implementing the above surfaced that `requireSuperAdmin` **denied everyone**,
+including the three production accounts that genuinely are level 100.
+
+`Admin.role` is declared `Mixed`, because it must hold either a legacy string or
+an ObjectId. Mongoose cannot infer a populate target from a Mixed path, so the
+`.populate('role')` in `protectAdmin` silently did nothing: `req.admin.role`
+stayed an ObjectId, `role.level` was `undefined`, and `requireRoleLevel` read
+`|| 0` for every admin alive. The audit log was unreachable by anybody.
+
+Same failure class as the permission layer — a guard that only ever says no —
+and it had been invisible for the same reason: nothing tested it.
+
+Fixed by naming the model explicitly in the populate. **This opens a route that
+was closed to everyone**, which is a real behaviour change: all three production
+admins are level 100, so after deployment they gain access to the audit log.
+That is the intended design, the data is read-only, and the alternative is
+keeping a security control that silently does nothing. Flagged here rather than
+buried because it is the one part of this change that widens access.
+
 ### 2.6 What the first analysis got wrong, and the open risk
 
 The first version of this section concluded the permission layer was

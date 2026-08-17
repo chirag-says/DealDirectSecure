@@ -21,8 +21,18 @@ import { useAdmin } from "../context/AdminContext";
 const Sidebar = ({ isOpen, toggleSidebar }) => {
   const { admin, logout, roleName, roleLevel } = useAdmin();
 
-  // All menu items available to all authenticated admins
-  // Backend handles permission enforcement
+  // All menu items available to all authenticated admins.
+  //
+  // Not an oversight: the product has ONE admin role with full administrative
+  // powers, so there is no tier to gate on. The permission layer that used to
+  // sit behind these routes was retired in Phase 3F because every admin held
+  // every permission, so it separated nothing while remaining able to 403 the
+  // whole panel when a code could not resolve.
+  //
+  // The backend enforces ADMIN AUTHENTICATION on every one of these routes
+  // (protectAdmin: session, fingerprint, MFA, active account), plus a role-level
+  // check on the audit log. It does not enforce per-menu permissions, and this
+  // comment used to claim it did.
   const menuItems = [
     {
       path: "/dashboard",

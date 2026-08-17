@@ -128,18 +128,15 @@ export async function makeAdmin(overrides = {}) {
 /**
  * Grant an admin a role carrying the given permission codes.
  *
- * Eight admin routes sit behind `requirePermission`, which resolves
- * `Role.permissions[] → Permission.code`. Nothing in the repository seeds those
- * documents — `scripts/seedRbac.js` was committed and then deleted in f9420d1 —
- * so a fresh database grants nobody anything and every guarded route answers
- * 403. Production IS seeded (45 permissions across four roles), so a harness
- * with none does not reproduce production; it reproduces a disaster-recovery
- * restore.
+ * FIVE admin routes used to sit behind `requirePermission`. Phase 3F removed
+ * that layer: every admin held every permission, so it separated nothing, while
+ * a code outside the closed `Permission.resource` enum 403'd the whole panel
+ * (commit 79ae3ab). No route requires a permission today.
  *
- * Codes are `resource:action`, and `Permission.resource` is a closed enum, so
- * a code outside it cannot be created. That is not a limitation of this helper:
- * it is why `verifications:read` could never resolve and 403'd every admin in
- * commit 79ae3ab.
+ * The helper is kept because `Role` and `Permission` still exist and the
+ * production collections are untouched pending the cleanup migration, and
+ * because it is how a fixture gets a Role at all — `requireSuperAdmin` reads
+ * `role.level`, so the audit-log tests need one.
  */
 export async function grantPermissions(admin, codes) {
   if (!codes.length) return admin;
