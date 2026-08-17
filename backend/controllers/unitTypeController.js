@@ -7,7 +7,8 @@ import UnitType from "../models/UnitType.js";
 import Project from "../models/Project.js";
 import { cloudinary } from "../middleware/upload.js";
 import { Readable } from "stream";
-import { assertUnitTypeDeletable, handleDeleteGuard } from "../utils/deleteGuard.js";
+import { handleDeleteGuard } from "../utils/deleteGuard.js";
+import { deleteUnitTypeAggregate } from "../utils/aggregateDelete.js";
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 /**
@@ -341,11 +342,6 @@ export const updateUnitType = async (req, res) => {
 // ── Delete UnitType ───────────────────────────────────────────────────────────
 export const deleteUnitType = async (req, res) => {
   try {
-    const unitType = await UnitType.findById(req.params.id);
-    if (!unitType) {
-      return res.status(404).json({ success: false, message: "Unit type not found." });
-    }
-
     // Refuse when campaigns, paid members or live bookings depend on this.
     //
     // Replaces `if (unitType.activeCampaignCount > 0)`, which was wrong twice
@@ -354,16 +350,10 @@ export const deleteUnitType = async (req, res) => {
     // tokenStatus `paid` left it at zero, so the unit type deleted and took the
     // only record of those payments with it. There is no gateway behind them;
     // the UPI reference and the uploaded screenshot are the receipt.
-    await assertUnitTypeDeletable(unitType._id);
-
-    const projectId = unitType.project;
-    await unitType.deleteOne();
-
-    // Decrement parent project's unit type count
-    await Project.findByIdAndUpdate(projectId, { $inc: { unitTypeCount: -1 } });
-
-    // Recalculate denormalized price range on parent project
-    await recalcPriceRange(projectId);
+    const result = await deleteUnitTypeAggregate(req.params.id, { recalcPriceRange });
+    if (!result) {
+      return res.status(404).json({ success: false, message: "Unit type not found." });
+    }
 
     return res.status(200).json({ success: true, message: "Unit type deleted." });
   } catch (error) {

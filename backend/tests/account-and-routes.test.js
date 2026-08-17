@@ -11,6 +11,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { USER_CASCADE } from '../utils/aggregateDelete.js';
 import { readFileSync } from 'node:fs';
 
 /**
@@ -80,15 +81,19 @@ describe('account deletion is re-authenticated', () => {
   });
 
   test('the password is verified with bcrypt before anything is deleted', () => {
+    // The cascade moved into deleteUserAggregate, so `deleteMany` and
+    // `findByIdAndDelete` no longer appear in this handler. Without adding the
+    // aggregate call here, Math.min of an empty list is Infinity and the
+    // assertion would pass vacuously — still green, testing nothing.
     const compareAt = fn.indexOf('bcrypt.compare');
-    const firstDelete = Math.min(
-      ...['deletePropertyAssets', 'deleteMany', 'findByIdAndDelete']
-        .map((m) => fn.indexOf(m))
-        .filter((i) => i !== -1)
-    );
+    const destructive = ['deleteUserAggregate', 'deletePropertyAssets', 'deleteMany', 'findByIdAndDelete']
+      .map((m) => fn.indexOf(m))
+      .filter((i) => i !== -1);
+
     assert.notEqual(compareAt, -1, 'no bcrypt.compare in deleteAccount');
+    assert.ok(destructive.length, 'no destructive call found in deleteAccount — has it moved again?');
     assert.ok(
-      compareAt < firstDelete,
+      compareAt < Math.min(...destructive),
       'password check must run before the first destructive operation'
     );
   });
@@ -112,16 +117,21 @@ describe('account deletion is re-authenticated', () => {
   });
 
   test('the deliberately retained collections are still documented', () => {
-    // Reads raw source: the retention list is a comment block, and it is the
-    // only record of which collections survive deletion and why.
-    const rawFn = (() => {
-      const start = userControllerRaw.indexOf('export const deleteAccount');
-      const next = userControllerRaw.indexOf('\nexport const ', start + 10);
-      return userControllerRaw.slice(start, next === -1 ? userControllerRaw.length : next);
-    })();
+    // The retention list moved out of deleteAccount into utils/aggregateDelete.js
+    // when the cascade was consolidated, and it is now an exported constant
+    // rather than a comment. Asserting against the constant is stronger: a
+    // comment can drift from the code, USER_CASCADE cannot.
+    const aggregate = readFileSync(
+      new URL('../utils/aggregateDelete.js', import.meta.url), 'utf8'
+    );
     for (const model of ['Lead', 'Agreement', 'TransactionVerification', 'CampaignMember', 'ProjectBooking']) {
-      assert.ok(rawFn.includes(model), `${model} disappeared from the retention note`);
+      assert.ok(
+        USER_CASCADE.retained.includes(model),
+        `${model} dropped out of USER_CASCADE.retained — that is a policy change, not a refactor`
+      );
+      assert.ok(aggregate.includes(model), `${model} lost its TODO in the decision boundary`);
     }
+    assert.match(aggregate, /DECISION BOUNDARY/, 'the parked policy note was removed');
   });
 });
 

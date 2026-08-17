@@ -9,7 +9,8 @@ import UnitType from "../models/UnitType.js";
 import { cloudinary, isCloudinaryConfigured } from "../middleware/upload.js";
 import { Readable } from "stream";
 import { escapeRegExp } from "../utils/escapeRegExp.js";
-import { assertProjectDeletable, handleDeleteGuard } from "../utils/deleteGuard.js";
+import { handleDeleteGuard } from "../utils/deleteGuard.js";
+import { deleteProjectAggregate } from "../utils/aggregateDelete.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -481,28 +482,19 @@ export const addConstructionUpdate = async (req, res) => {
 // ── Delete Project ────────────────────────────────────────────────────────────
 export const deleteProject = async (req, res) => {
   try {
-    const project = await Project.findById(req.params.id);
-    if (!project) {
+    // Refuses on unit types (400, unchanged) and on live bookings (409).
+    let result;
+    try {
+      result = await deleteProjectAggregate(req.params.id);
+    } catch (err) {
+      if (err.code === "DELETE_BLOCKED_UNIT_TYPES") {
+        return res.status(err.status).json({ success: false, message: err.message });
+      }
+      throw err;
+    }
+    if (!result) {
       return res.status(404).json({ success: false, message: "Project not found." });
     }
-
-    // Block deletion if unit types exist
-    const unitTypeCount = await UnitType.countDocuments({ project: project._id });
-    if (unitTypeCount > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot delete project with ${unitTypeCount} unit type(s). Remove unit types first.`,
-      });
-    }
-
-    // Refuse when live bookings reference this project.
-    //
-    // The unit-type check above was the only guard, so a project whose unit
-    // types had been removed deleted cleanly while bookings still pointed at
-    // it, taking the UTR numbers and payment screenshots with it.
-    await assertProjectDeletable(project._id);
-
-    await project.deleteOne();
 
     return res.status(200).json({ success: true, message: "Project deleted." });
   } catch (error) {

@@ -5,6 +5,7 @@
  */
 import Builder from "../models/Builder.js";
 import Property from "../models/Property.js";
+import { deleteBuilderAggregate } from "../utils/aggregateDelete.js";
 import Project from "../models/Project.js";
 import { cloudinary } from "../middleware/upload.js";
 import { Readable } from "stream";
@@ -265,32 +266,23 @@ export const updateBuilder = async (req, res) => {
 // ── Delete Builder (soft) ─────────────────────────────────────────────────────
 export const deleteBuilder = async (req, res) => {
   try {
-    const builder = await Builder.findById(req.params.id);
-    if (!builder) {
+    // Soft delete, and the name is the only misleading part: the whole chain
+    // below a builder — projects, unit types, campaigns, paid members,
+    // bookings — hangs off this reference, so it is deactivated rather than
+    // removed. The approved-property refusal is unchanged.
+    const result = await deleteBuilderAggregate(req.params.id);
+    if (!result) {
       return res.status(404).json({ success: false, message: "Builder not found." });
     }
-
-    // Check if they have active properties
-    const activePropertyCount = await Property.countDocuments({
-      builder: builder._id,
-      isApproved: true,
-    });
-
-    if (activePropertyCount > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot deactivate builder — they have ${activePropertyCount} active approved propert${activePropertyCount === 1 ? "y" : "ies"}. Disapprove properties first.`,
-      });
-    }
-
-    builder.isActive = false;
-    await builder.save();
 
     return res.status(200).json({
       success: true,
       message: "Builder deactivated successfully.",
     });
   } catch (err) {
+    if (err.code === "DELETE_BLOCKED_PROPERTIES") {
+      return res.status(err.status).json({ success: false, message: err.message });
+    }
     console.error("[Builder] deleteBuilder error:", err);
     return res.status(500).json({ success: false, message: "Failed to deactivate builder." });
   }

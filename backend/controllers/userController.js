@@ -24,7 +24,7 @@ import { Parser } from "@json2csv/plainjs";
 import PDFDocument from "pdfkit";
 import { sendOtpSms, sendPasswordResetSms, isSmsConfigured } from "../services/smsService.js";
 import { getOrCreateWallet, createReferralFromCode, trackDailyLogin } from "../services/rewardService.js";
-import { deletePropertyAssets } from "./propertyController.js";
+import { deleteUserAggregate } from "../utils/aggregateDelete.js";
 import { sendNewUserWhatsApp } from "../services/whatsappService.js";
 import { sendWelcomeEmail } from "../utils/emailService.js";
 
@@ -1291,80 +1291,27 @@ export const deleteAccount = async (req, res) => {
       });
     }
 
-    // ============================================
-    // B1 FIX: four of these cascades previously queried fields that do not
-    // exist on the target schema, so they matched nothing and silently
-    // deleted nothing while still reporting success:
+    // The cascade itself lives in utils/aggregateDelete.js as
+    // deleteUserAggregate, alongside its four siblings. Behaviour is unchanged:
+    // the same twelve collections are deleted and the same six are retained.
     //
-    //   UserSession.deleteMany({ userId })        → field is `user`
-    //   LoginTracker.deleteMany({ user })         → field is `userId`
-    //   Report.deleteMany({ reporter })           → field is `reportedBy`
-    //   Referral.deleteMany({ referredUser })     → field is `referred`
+    // B1 FIX, preserved there: four of these cascades used to query fields that
+    // do not exist on the target schema, so they matched nothing and silently
+    // deleted nothing while still reporting success —
+    //   UserSession.deleteMany({ userId }) → the field is `user`
+    //   LoginTracker.deleteMany({ user })  → the field is `userId`
+    //   Report.deleteMany({ reporter })    → the field is `reportedBy`
+    //   Referral.deleteMany({ referredUser }) → the field is `referred`
+    // Sessions surviving account deletion was the worst of them.
     //
-    // Sessions surviving account deletion was the most serious: the API
-    // told the user "all associated data have been permanently deleted"
-    // while their session documents remained.
-    //
-    // When adding a cascade here, verify the field name against the model.
-    // ============================================
-
-    // 1. Delete owned properties — and their Cloudinary assets.
-    //    Property.deleteMany alone orphans every uploaded image, leaving them
-    //    publicly reachable by URL after the account is gone.
-    const ownedProperties = await Property.find({ owner: userId })
-      .select("_id images categorizedImages")
-      .lean();
-    for (const property of ownedProperties) {
-      await deletePropertyAssets(property); // never throws
-    }
-    await Property.deleteMany({ owner: userId });
-
-    // 2. Sessions and tokens
-    await UserSession.deleteMany({ user: userId });
-    await PasswordResetToken.deleteMany({ user: userId });
-    await LoginTracker.deleteMany({ userId });
-
-    // 3. Communications and history
-    await ContactInquiry.deleteMany({ user: userId });
-    await SavedSearch.deleteMany({ user: userId });
-    await Report.deleteMany({ reportedBy: userId });
-    await Notification.deleteMany({ user: userId });
-
-    // 4. Chat interactions
-    await Message.deleteMany({ sender: userId });
-    // Remove user from any conversations they were part of
-    await Conversation.updateMany(
-      { participants: userId },
-      { $pull: { participants: userId } }
-    );
-    // Delete any conversations that are now empty
-    await Conversation.deleteMany({ participants: { $size: 0 } });
-
-    // 5. Rewards and Referrals
-    await Reward.deleteMany({ user: userId });
-    await Referral.deleteMany({ $or: [{ referrer: userId }, { referred: userId }] });
-
-    // ============================================
-    // NOT DELETED — deliberate, needs a product decision before changing.
-    //
-    // These reference the user but also belong to a counterparty or to a
-    // financial/legal record, so removing them silently would destroy another
-    // party's data or an auditable trail:
-    //
-    //   Lead                    — the property OWNER's lead list
-    //   Agreement               — a signed legal document, both parties
-    //   TransactionVerification — deal proof + its Cloudinary documents
-    //   RedemptionRequest       — payout records, may be mid-processing
-    //   CampaignMember          — group-buy commitment, affects campaign counts
-    //   ProjectBooking          — booking + payment record held by admin
-    //
-    // Decide per collection whether to delete, anonymise (strip userSnapshot
-    // and null the ref), or retain for a defined period. Anonymising is
-    // usually the right answer for the counterparty-facing ones.
-    // ============================================
-
-    // 6. Finally, delete the User document itself
-    const deletedUser = await User.findByIdAndDelete(userId);
+    // WHAT CHANGED: owned properties now go through deletePropertyAggregate, so
+    // one holding a pending verification or a binding agreement is kept instead
+    // of silently destroyed. Those are reported back rather than failing the
+    // request halfway with other collections already gone.
+    const { deletedUser, skippedProperties } = await deleteUserAggregate(userId, {
+      Property, UserSession, PasswordResetToken, LoginTracker, ContactInquiry,
+      SavedSearch, Report, Notification, Message, Conversation, Reward, Referral, User,
+    });
 
     if (!deletedUser) {
       return res.status(404).json({ message: "User account not found." });
@@ -1384,6 +1331,10 @@ export const deleteAccount = async (req, res) => {
         "sessions, saved searches and notifications. Records that form part of " +
         "a transaction with another party — such as enquiries you sent, signed " +
         "agreements and bookings — are retained as required for those records.",
+      // A listing tied to a live deal or a binding agreement is kept. Saying so
+      // matters: the message above promises the listings are gone, and a
+      // data-protection request is measured against exactly that claim.
+      ...(skippedProperties.length && { retainedListings: skippedProperties.length }),
     });
   } catch (error) {
     console.error("Delete Account error:", error);
