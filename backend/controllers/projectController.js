@@ -9,6 +9,7 @@ import UnitType from "../models/UnitType.js";
 import { cloudinary, isCloudinaryConfigured } from "../middleware/upload.js";
 import { Readable } from "stream";
 import { escapeRegExp } from "../utils/escapeRegExp.js";
+import { assertProjectDeletable, handleDeleteGuard } from "../utils/deleteGuard.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -494,11 +495,19 @@ export const deleteProject = async (req, res) => {
       });
     }
 
+    // Refuse when live bookings reference this project.
+    //
+    // The unit-type check above was the only guard, so a project whose unit
+    // types had been removed deleted cleanly while bookings still pointed at
+    // it, taking the UTR numbers and payment screenshots with it.
+    await assertProjectDeletable(project._id);
+
     await project.deleteOne();
 
     return res.status(200).json({ success: true, message: "Project deleted." });
   } catch (error) {
-    console.error("[projectController.deleteProject]", error);
-    return res.status(500).json({ success: false, message: "Server error." });
+    return handleDeleteGuard(error, res, {
+      log: "[projectController.deleteProject]", message: "Server error.",
+    });
   }
 };

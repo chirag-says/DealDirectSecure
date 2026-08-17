@@ -7,6 +7,7 @@ import UnitType from "../models/UnitType.js";
 import Project from "../models/Project.js";
 import { cloudinary } from "../middleware/upload.js";
 import { Readable } from "stream";
+import { assertUnitTypeDeletable, handleDeleteGuard } from "../utils/deleteGuard.js";
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 /**
@@ -345,13 +346,15 @@ export const deleteUnitType = async (req, res) => {
       return res.status(404).json({ success: false, message: "Unit type not found." });
     }
 
-    // Block if active campaigns exist
-    if (unitType.activeCampaignCount > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot delete unit type with ${unitType.activeCampaignCount} active campaign(s).`,
-      });
-    }
+    // Refuse when campaigns, paid members or live bookings depend on this.
+    //
+    // Replaces `if (unitType.activeCampaignCount > 0)`, which was wrong twice
+    // over: it trusted a denormalised counter, and that counter only counted
+    // campaigns in state `active`. A COMPLETED campaign holding members at
+    // tokenStatus `paid` left it at zero, so the unit type deleted and took the
+    // only record of those payments with it. There is no gateway behind them;
+    // the UPI reference and the uploaded screenshot are the receipt.
+    await assertUnitTypeDeletable(unitType._id);
 
     const projectId = unitType.project;
     await unitType.deleteOne();
@@ -364,7 +367,8 @@ export const deleteUnitType = async (req, res) => {
 
     return res.status(200).json({ success: true, message: "Unit type deleted." });
   } catch (error) {
-    console.error("[unitTypeController.deleteUnitType]", error);
-    return res.status(500).json({ success: false, message: "Server error." });
+    return handleDeleteGuard(error, res, {
+      log: "[unitTypeController.deleteUnitType]", message: "Server error.",
+    });
   }
 };
