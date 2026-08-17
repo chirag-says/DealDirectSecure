@@ -13,6 +13,7 @@ import UnitType from "../models/UnitType.js";
 import User from "../models/userModel.js";
 import { cloudinary } from "../middleware/upload.js";
 import { assertSelfExitAllowed, CampaignMemberStateError } from "../utils/campaignMemberState.js";
+import { expireIfDue, expireDueInList } from "../utils/campaignExpiry.js";
 import { Readable } from "stream";
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -87,6 +88,13 @@ export const getCampaign = async (req, res) => {
       return res.status(404).json({ success: false, message: "Campaign not found." });
     }
 
+    // `expired` had been in the status enum since the model was written and
+    // nothing ever set it, so a campaign past its end date reported itself as
+    // active in every response. Resolved on read: there is no scheduler here,
+    // and a campaign is expired exactly when someone looks at it after the end
+    // date, which is the only moment the answer matters.
+    await expireIfDue(campaign);
+
     return res.status(200).json({ success: true, data: campaign });
   } catch (error) {
     console.error("[campaignController.getCampaign]", error);
@@ -101,6 +109,7 @@ export const listByUnitType = async (req, res) => {
     if (req.query.status) filter.status = req.query.status;
 
     const campaigns = await GroupBuyCampaign.find(filter).sort({ createdAt: -1 }).lean();
+    await expireDueInList(campaigns);
 
     return res.status(200).json({ success: true, data: campaigns });
   } catch (error) {
@@ -119,6 +128,7 @@ export const listByProject = async (req, res) => {
       .populate("unitType", "config.name config.bedrooms pricing.effectivePrice")
       .sort({ createdAt: -1 })
       .lean();
+    await expireDueInList(campaigns);
 
     return res.status(200).json({ success: true, data: campaigns });
   } catch (error) {

@@ -1,3 +1,4 @@
+import { assertLeadTransition, LeadTransitionError } from '../utils/leadState.js';
 import Lead from "../models/Lead.js";
 import Property from "../models/Property.js";
 import User from "../models/userModel.js";
@@ -224,6 +225,18 @@ export const updateLeadStatus = async (req, res) => {
       const sanitizedStatus = sanitizeLeadStatus(status);
       if (!sanitizedStatus) {
         return res.status(400).json({ success: false, message: 'Invalid lead status' });
+      }
+
+      // Enum membership was the only check. It never read the CURRENT status,
+      // so every state was reachable from every other one: `converted -> new`
+      // erased the record of a closed deal.
+      try {
+        assertLeadTransition(lead.status, sanitizedStatus);
+      } catch (err) {
+        if (err instanceof LeadTransitionError) {
+          return res.status(err.status).json({ success: false, message: err.message, code: err.code });
+        }
+        throw err;
       }
       updates.status = sanitizedStatus;
     }

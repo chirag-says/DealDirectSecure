@@ -125,9 +125,60 @@ export async function makeAdmin(overrides = {}) {
  * without it, and createSession deliberately never sets it, so a fixture that
  * omitted it would 403 on every call.
  */
-export async function adminWithSession(api, overrides = {}) {
+/**
+ * Grant an admin a role carrying the given permission codes.
+ *
+ * Eight admin routes sit behind `requirePermission`, which resolves
+ * `Role.permissions[] → Permission.code`. Nothing in the repository seeds those
+ * documents — `scripts/seedRbac.js` was committed and then deleted in f9420d1 —
+ * so a fresh database grants nobody anything and every guarded route answers
+ * 403. Production IS seeded (45 permissions across four roles), so a harness
+ * with none does not reproduce production; it reproduces a disaster-recovery
+ * restore.
+ *
+ * Codes are `resource:action`, and `Permission.resource` is a closed enum, so
+ * a code outside it cannot be created. That is not a limitation of this helper:
+ * it is why `verifications:read` could never resolve and 403'd every admin in
+ * commit 79ae3ab.
+ */
+export async function grantPermissions(admin, codes) {
+  if (!codes.length) return admin;
+  const Permission = mongoose.model('Permission');
+  const Role = mongoose.model('Role');
+
+  const permissionIds = [];
+  for (const code of codes) {
+    const [resource, action] = code.split(':');
+    const doc = await Permission.findOneAndUpdate(
+      { code },
+      { $setOnInsert: { code, name: code, resource, action } },
+      { upsert: true, new: true }
+    );
+    permissionIds.push(doc._id);
+  }
+
+  // `Role.name` is a closed enum too, so a fixture cannot invent a role name.
+  // Reusing `super_admin` matches production, where all three admin accounts
+  // hold that role and it is simply the internal name for "Admin".
+  const role = await Role.findOneAndUpdate(
+    { name: 'super_admin' },
+    { $set: { permissions: permissionIds }, $setOnInsert: { displayName: 'Super Administrator', level: 100 } },
+    { upsert: true, new: true }
+  );
+
+  admin.role = role._id;
+  await admin.save();
+  return admin;
+}
+
+/**
+ * `permissions` grants the listed codes. Defaults to none, which is what a
+ * fresh database actually gives an admin.
+ */
+export async function adminWithSession(api, { permissions = [], ...overrides } = {}) {
   const AdminSession = mongoose.model('AdminSession');
   const admin = await makeAdmin(overrides);
+  await grantPermissions(admin, permissions);
 
   const { uniqueClientIp } = await import('./app.js');
   const ip = uniqueClientIp();

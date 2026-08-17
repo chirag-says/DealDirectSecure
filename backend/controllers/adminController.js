@@ -8,6 +8,7 @@ import Role from "../models/Role.js";
 import User from "../models/userModel.js";
 import Property from "../models/Property.js";
 import Lead from "../models/Lead.js";
+import { assertLeadTransition, LeadTransitionError } from "../utils/leadState.js";
 import Report from "../models/Report.js";
 import {
   createSession,
@@ -1297,7 +1298,20 @@ export const updateAdminLeadStatus = async (req, res) => {
     }
 
     const oldStatus = lead.status;
-    if (status) lead.status = status;
+
+    // This path had NO whitelist at all: `lead.status = status` straight from
+    // the request body, so it was the wider of the two holes.
+    if (status) {
+      try {
+        assertLeadTransition(lead.status, status);
+      } catch (err) {
+        if (err instanceof LeadTransitionError) {
+          return res.status(err.status).json({ success: false, message: err.message, code: err.code });
+        }
+        throw err;
+      }
+      lead.status = status;
+    }
     if (notes !== undefined) lead.notes = notes;
 
     await lead.save();
@@ -1612,6 +1626,29 @@ export const approveDealVerification = async (req, res) => {
     verification.reviewedBy = req.admin._id;
     verification.reviewedAt = new Date();
     await verification.save();
+
+    // 2b. Convert the buyer's lead.
+    //
+    // Nothing wrote Lead.status = "converted" anywhere in the codebase, so
+    // `conversionRate` measured a field owners set by hand rather than deals
+    // that actually closed.
+    //
+    // Deliberately bypasses the transition table: an approved verification is
+    // the authoritative record that the property changed hands, so a lead
+    // sitting in `lost` is stale data rather than a veto. Scoped to this
+    // buyer — other interested users' leads on the same property did not
+    // convert.
+    //
+    // Non-fatal: the deal is already approved and must not be reported as
+    // failed because a derived status could not be written.
+    try {
+      await Lead.updateOne(
+        { property: verification.property._id, user: verification.buyer._id },
+        { $set: { status: "converted" } }
+      );
+    } catch (err) {
+      console.error("[Verification] Lead conversion failed:", err.message);
+    }
 
     // 3. Send "Claim Your Reward" notification to OWNER
     await Notification.create({
