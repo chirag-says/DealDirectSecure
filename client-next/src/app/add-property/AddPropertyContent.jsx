@@ -440,7 +440,6 @@ export default function AddProperty() {
 
     const [metadata, setMetadata] = useState({
         categories: [],
-        subcategories: [],
         propertyTypes: []
     });
 
@@ -481,14 +480,12 @@ export default function AddProperty() {
     useEffect(() => {
         const fetchMetadata = async () => {
             try {
-                const [cats, subs, types] = await Promise.all([
+                const [cats, types] = await Promise.all([
                     api.get('/categories/list-category'),
-                    api.get('/subcategories/list'),
                     api.get('/propertyTypes/list-propertytype')
                 ]);
                 setMetadata({
                     categories: cats.data.data || cats.data || [],
-                    subcategories: subs.data.data || subs.data || [],
                     propertyTypes: types.data.data || types.data || []
                 });
             } catch (error) {

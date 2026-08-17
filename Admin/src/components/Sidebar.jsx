@@ -46,11 +46,14 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       icon: <BarChart3 className="h-5 w-5" />,
     },
 
-    // Taxonomy management had no navigation path at all: /all-category,
-    // /add-category and /add-subcategory were routed and guarded but reachable
-    // only by typing the URL. That matters operationally rather than
-    // cosmetically — /admin-add-property depends on these taxonomies, and the
-    // property category and type filters are driven by them.
+    // Taxonomy management had no navigation path at all: /all-category and
+    // /add-category were routed and guarded but reachable only by typing the
+    // URL. That matters operationally rather than cosmetically, since
+    // /admin-add-property depends on these taxonomies and the property category
+    // and type filters are driven by them.
+    //
+    // /add-subcategory is gone: the subcategory level is retired (decision D9)
+    // and its API is unmounted.
     {
       path: "/all-category",
       name: "Categories",
@@ -60,12 +63,6 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
     {
       path: "/add-category",
       name: "Add Category",
-      icon: <BarChart3 className="h-5 w-5" />,
-    },
-
-    {
-      path: "/add-subcategory",
-      name: "Add Subcategory",
       icon: <BarChart3 className="h-5 w-5" />,
     },
 

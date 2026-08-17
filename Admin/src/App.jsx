@@ -15,7 +15,6 @@ import Dashboard from "./pages/Dashboard";
 import BookingManagement from "./pages/BookingManagement";
 
 import AddCategory from "./pages/AddCategory";
-import AddSubCategory from "./pages/AddSubCategory";
 import AllClients from "./pages/AllClients";
 import AllProperty from "./pages/AllProperty";
 import AllCategory from "./pages/AllCategory";
@@ -174,14 +173,6 @@ function AppContent() {
           element={
             <AdminProtectedRoute>
               <AddCategory />
-            </AdminProtectedRoute>
-          }
-        />
-        <Route
-          path="/add-subcategory"
-          element={
-            <AdminProtectedRoute>
-              <AddSubCategory />
             </AdminProtectedRoute>
           }
         />

@@ -897,7 +897,17 @@ app.use("/api/propertyTypes", propertyTypeRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/categories", categoryRoutes);
-app.use("/api/subcategories", subcategoryRoutes);
+// SUBCATEGORY RETIRED (decision D9).
+//
+// The level is gone from the product: zero of 47 properties ever referenced a
+// subcategory, 30 of the 48 documents duplicated Property.bhk, 9 were the
+// literal string "Standard" and the rest were early experimentation. The home
+// page filter that consumed this API could only ever return zero results.
+//
+// The routes are unmounted rather than deleted, and the 48 documents are left
+// in place, because destructive cleanup is a separate reviewed stage. Nothing
+// reads them now: applyTaxonomy strips any inbound subcategory reference.
+// app.use("/api/subcategories", subcategoryRoutes);
 app.use("/api/properties", propertyRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/chat", chatRoutes);

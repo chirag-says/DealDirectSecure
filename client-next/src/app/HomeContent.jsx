@@ -104,12 +104,10 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
     const [properties] = useState(initialProperties);
     const [builderProjects] = useState(initialBuilderProjects);
     const [categories] = useState(initialCategories);
-    const [subcategories, setSubcategories] = useState([]);
     const [propertyTypeOptions] = useState(initialPropertyTypes);
     const [filters, setFilters] = useState({
         search: "",
         category: "",
-        subcategory: "",
         city: "",
         state: "",
         minBudget: "",
@@ -145,27 +143,10 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
         if (img.startsWith("/uploads")) return `${API_BASE}${img}`;
         return `${API_BASE}/uploads/${img}`;
     };
-
-    // Properties, categories, and property types are now pre-fetched on the server
-    // and passed via props. Only subcategories are fetched client-side on filter change.
-
-    useEffect(() => {
-        const fetchSubcategories = async () => {
-            if (!filters.category) {
-                setSubcategories([]);
-                return;
-            }
-            try {
-                const res = await api.get(
-                    `/subcategories/byCategory/${filters.category}`
-                );
-                setSubcategories(res.data.data || res.data || []);
-            } catch (error) {
-                console.error("Error fetching subcategories:", error);
-            }
-        };
-        fetchSubcategories();
-    }, [filters.category]);
+    // Properties, categories and property types are pre-fetched on the server
+    // and passed via props. The subcategory level is retired (decision D9):
+    // no property ever referenced one, so the filter it fed could only ever
+    // return zero results.
 
     const handleViewDetails = (property) => {
         router.push(`/properties/${property._id}`);
@@ -178,7 +159,6 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
                 filters={filters}
                 setFilters={setFilters}
                 categories={categories}
-                subcategories={subcategories}
                 propertyTypes={propertyTypeOptions}
             />
 

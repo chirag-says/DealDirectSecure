@@ -105,10 +105,12 @@ describe('admin taxonomy pages have a navigation path', () => {
   const sidebar = readAdmin('components/Sidebar.jsx');
   const app = readAdmin('App.jsx');
 
+  // /add-subcategory is deliberately absent: the subcategory level is retired
+  // (decision D9). Its removal is asserted below rather than merely dropped
+  // from this list, so re-adding the page without re-deciding D9 fails here.
   for (const [path, label] of [
     ['/all-category', 'Categories'],
     ['/add-category', 'Add Category'],
-    ['/add-subcategory', 'Add Subcategory'],
   ]) {
     test(`${path} is linked from the sidebar`, () => {
       assert.match(sidebar, new RegExp(`path:\\s*"${path}"`), `${path} is reachable only by typing the URL`);
@@ -122,6 +124,13 @@ describe('admin taxonomy pages have a navigation path', () => {
       assert.match(sidebar, new RegExp(`name:\\s*"${label}"`));
     });
   }
+
+  test('the retired subcategory page is gone from every admin surface', () => {
+    assert.doesNotMatch(sidebar, /path:\s*"\/add-subcategory"/, 'sidebar still links the retired page');
+    assert.doesNotMatch(sidebar, /name:\s*"Add Subcategory"/, 'sidebar still labels the retired page');
+    assert.doesNotMatch(app, /path="\/add-subcategory"/, 'the retired route is still mounted');
+    assert.doesNotMatch(app, /import AddSubCategory/, 'the retired page is still imported');
+  });
 
   test('taxonomy management matters because add-property depends on it', () => {
     const addProperty = readAdmin('pages/AdminAddProperty.jsx');
