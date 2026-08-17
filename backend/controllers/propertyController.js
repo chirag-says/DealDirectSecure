@@ -149,8 +149,22 @@ export const sanitizePropertyData = (data) => {
   const sanitized = {};
 
   // SECURITY: Only copy whitelisted fields
+  //
+  // Called through Object.prototype rather than as data.hasOwnProperty(...).
+  // Multer builds req.body with Object.create(null) (multer 2.x,
+  // lib/make-middleware.js:29), so a multipart body has no prototype and the
+  // method call throws "data.hasOwnProperty is not a function".
+  //
+  // That broke property editing outright: the edit form posts multipart and
+  // sends no `features` key, so `data` was never rebuilt by the spread at
+  // line ~1499 and arrived here without a prototype. Every save from the edit
+  // screen returned 500. Creation escaped it only because the add form does
+  // send `features`, and that spread happens to produce an ordinary object.
+  //
+  // The safe form is also the correct one for a security filter: it keeps
+  // working if a request supplies its own "hasOwnProperty" field.
   for (const field of PROPERTY_ALLOWED_FIELDS) {
-    if (data.hasOwnProperty(field) && data[field] !== undefined) {
+    if (Object.prototype.hasOwnProperty.call(data, field) && data[field] !== undefined) {
       sanitized[field] = data[field];
     }
   }
