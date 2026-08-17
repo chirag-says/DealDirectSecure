@@ -1,31 +1,25 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import adminApi from "../api/adminApi";
 import { toast } from "react-toastify";
 
-const API_URL = import.meta.env.VITE_API_BASE_URL;
 
+/**
+ * Category is the TOP level of the taxonomy and has no parent.
+ *
+ * This screen used to ask for a property type to file the new category under,
+ * which was the inverted model: it made a category a child of a type. It also
+ * fetched that list with a bare `axios` it never imported, so the dropdown threw
+ * on every render and only ever showed "Failed to load property types".
+ *
+ * Creating a property type, which does need a parent category, has no admin
+ * screen. That is a gap rather than an oversight of this change.
+ */
 const AddCategory = () => {
   const [name, setName] = useState("");
-  const [propertyTypes, setPropertyTypes] = useState([]);
-  const [selectedPropertyType, setSelectedPropertyType] = useState("");
   const [loading, setLoading] = useState(false);
-
-  // Fetch property types for dropdown
-  useEffect(() => {
-    const fetchPropertyTypes = async () => {
-      try {
-        const res = await axios.get(`${API_URL}/api/propertyTypes/list-propertytype`);
-        setPropertyTypes(res.data);
-      } catch (error) {
-        toast.error("Failed to load property types");
-      }
-    };
-    fetchPropertyTypes();
-  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedPropertyType) return toast.warn("Please select a property type");
     if (!name.trim()) return toast.warn("Please enter a category name");
 
     try {
@@ -33,12 +27,11 @@ const AddCategory = () => {
       // Using adminApi - cookies sent automatically
       const { data } = await adminApi.post(
         `/api/categories/add-category`,
-        { name, propertyType: selectedPropertyType }
+        { name }
       );
 
       toast.success(data.message || "Category added successfully");
       setName("");
-      setSelectedPropertyType("");
     } catch (error) {
       toast.error(error.response?.data?.message || "Error adding category");
     } finally {
@@ -54,25 +47,6 @@ const AddCategory = () => {
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Property Type Dropdown */}
-          <div>
-            <label className="block text-gray-700 font-medium mb-2">
-              Select Property Type
-            </label>
-            <select
-              value={selectedPropertyType}
-              onChange={(e) => setSelectedPropertyType(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">-- Select Property Type --</option>
-              {propertyTypes.map((pt) => (
-                <option key={pt._id} value={pt._id}>
-                  {pt.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
           {/* Category Name Input */}
           <div>
             <label className="block text-gray-700 font-medium mb-2">
