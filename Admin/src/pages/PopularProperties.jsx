@@ -47,6 +47,16 @@ const PopularProperties = () => {
         try {
             const params = {
                 search: searchTerm,
+                // /properties/admin/all became paginated in Phase 4.7, default
+                // 20. This screen filters CLIENT-side on isApproved and
+                // isPopular, so a default page would let it choose "popular"
+                // from only the newest twenty listings.
+                //
+                // Asking for the ceiling preserves today's behaviour exactly
+                // and is still bounded — the server clamps anything above it.
+                // The real fix is server-side isPopular filtering, which is a
+                // change to this screen's behaviour and belongs in its own pass.
+                limit: 5000,
             };
 
             // Using adminApi - cookies sent automatically

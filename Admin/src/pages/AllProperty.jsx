@@ -30,6 +30,13 @@ const AllProperty = () => {
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
 
+    // --- Pagination (Phase 4.7) ---
+    // /properties/admin/all used to return every property in the database,
+    // approved and rejected both. It returns a page now, so the page tracks
+    // which one and how many there are.
+    const [page, setPage] = useState(1);
+    const [pagination, setPagination] = useState({ total: 0, pages: 1, limit: 20 });
+
     // --- Modal State ---
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedPropertyId, setSelectedPropertyId] = useState(null);
@@ -55,7 +62,7 @@ const AllProperty = () => {
     };
 
     // --- Fetch Properties using adminApi (cookie-based auth) ---
-    const fetchProperties = async (overrideSearch) => {
+    const fetchProperties = async (overrideSearch, targetPage = page) => {
         setLoading(true);
         try {
             // Build Params
@@ -63,11 +70,13 @@ const AllProperty = () => {
                 search: overrideSearch !== undefined ? overrideSearch : searchTerm,
                 status: statusFilter,
                 startDate: startDate || undefined,
-                endDate: endDate || undefined
+                endDate: endDate || undefined,
+                page: targetPage
             };
 
             const res = await adminApi.get(`/api/properties/admin/all`, { params });
             setProperties(extractList(res.data));
+            if (res.data?.pagination) setPagination(res.data.pagination);
         } catch (err) {
             console.error(err);
             toast.error("Failed to fetch properties");
@@ -78,8 +87,19 @@ const AllProperty = () => {
     // Auto-fetch ONLY on filter changes (Dropdowns/Dates)
     // We EXCLUDE searchTerm here so it doesn't search on every keystroke
     useEffect(() => {
-        fetchProperties();
+        // A filter change invalidates the current page. Without the reset, an
+        // admin on page 3 of "all" lands on page 3 of a two-page filtered set
+        // and sees an empty screen.
+        setPage(1);
+        fetchProperties(undefined, 1);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [statusFilter, startDate, endDate]);
+
+    // Page changes refetch without disturbing the filters.
+    useEffect(() => {
+        if (page !== 1) fetchProperties(undefined, page);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [page]);
 
     // Initial load from URL query (?search=...)
     useEffect(() => {
@@ -95,7 +115,8 @@ const AllProperty = () => {
     // Handle Enter Key in Search Input
     const handleKeyDown = (e) => {
         if (e.key === 'Enter') {
-            fetchProperties();
+            setPage(1);
+            fetchProperties(undefined, 1);
         }
     };
 
@@ -311,6 +332,32 @@ const AllProperty = () => {
                     </div>
                 )})}
             </div>
+
+            {/* --- PAGINATION ---
+                Prev/Next matching BookingManagement.jsx, the sibling admin
+                table. Hidden while there is only one page, so at the current
+                corpus the screen looks exactly as it did. */}
+            {!loading && pagination.pages > 1 && (
+                <div className="flex items-center justify-center gap-3 mt-8">
+                    <button
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                        className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-700 disabled:opacity-40 hover:bg-gray-50 transition-colors"
+                    >
+                        ← Prev
+                    </button>
+                    <span className="px-4 py-2 text-sm text-gray-500">
+                        Page {page} of {pagination.pages} · {pagination.total} properties
+                    </span>
+                    <button
+                        onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
+                        disabled={page >= pagination.pages}
+                        className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-700 disabled:opacity-40 hover:bg-gray-50 transition-colors"
+                    >
+                        Next →
+                    </button>
+                </div>
+            )}
 
             {/* Modal */}
             {isModalOpen && (

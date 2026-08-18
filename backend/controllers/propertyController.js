@@ -709,6 +709,8 @@ export const addPropertyForBuilder = async (req, res) => {
  * short page.
  */
 const LIST_DEFAULT = 50;
+// Matches BookingManagement.jsx, the sibling admin table, which asks for 20.
+const ADMIN_DEFAULT = 20;
 const FEED_DEFAULT = 200;
 const LIST_MAX = 5000;
 
@@ -2316,20 +2318,44 @@ export const getAdminProperties = async (req, res) => {
       query.builder = req.query.builderId;
     }
 
-    const properties = await Property.find(query)
-      .populate("category", "name")
-      .populate("propertyType", "name")
-      .populate("builder", "name company phone")
-      .sort({ createdAt: -1 });
+    // Bounded (Phase 4.7). This was `find(query)` with four populates, a sort,
+    // and no limit or skip — every property in the database, approved and
+    // rejected both, on a screen an admin opens routinely.
+    //
+    // The default of 20 matches BookingManagement.jsx, the sibling admin table.
+    // The ceiling is the same LIST_MAX as the public feeds. PopularProperties
+    // filters client-side and so asks for an explicit limit; everything else
+    // gets a page.
+    const { limit, page, skip } = boundsFrom(req.query, ADMIN_DEFAULT);
 
-    console.log(`Found ${properties.length} properties matching search.`); // 🔍 Debug Log
+    const [properties, total] = await Promise.all([
+      Property.find(query)
+        .populate("category", "name")
+        .populate("propertyType", "name")
+        .populate("builder", "name company phone")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Property.countDocuments(query),
+    ]);
 
     const processedProperties = properties.map((item) => withPublicImages(req, item));
 
     res.status(200).json({
       success: true,
       data: processedProperties,
-      count: processedProperties.length
+      // Unchanged meaning: how many documents are in THIS response. What
+      // changed is that the response is now a page. Nothing in the Admin app
+      // reads it; `extractList` takes `data`.
+      count: processedProperties.length,
+      // Additive, and shaped like ContactInquiries.jsx already expects.
+      pagination: {
+        total,
+        limit,
+        page,
+        pages: Math.max(1, Math.ceil(total / limit)),
+        hasMore: skip + processedProperties.length < total,
+      },
     });
 
   } catch (err) {

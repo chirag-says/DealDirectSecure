@@ -26,6 +26,10 @@ const adminRoutes = read('../routes/adminRoutes.js');
 const campaignRoutes = read('../routes/campaignRoutes.js');
 const propertyRoutes = read('../routes/propertyRoutes.js');
 
+/** Admin app source, for the pagination-consumer assertions below. */
+const readAdminSrc = (rel) =>
+  readFileSync(new URL(`../../Admin/src/${rel}`, import.meta.url), 'utf8');
+
 const mountedAt = (path, limiter) => {
   const re = new RegExp(
     `app\\.use\\(\\s*['"]${path.replace(/[/:]/g, (c) => '\\' + c)}['"]\\s*,\\s*${limiter}\\s*\\)`
@@ -185,5 +189,33 @@ describe('agreement limiters remain declared for re-enablement', () => {
     // Raw source: the mount is itself a comment, so the stripped copy cannot see it.
     const serverRaw = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
     assert.match(serverRaw, /\/\/ app\.use\("\/api\/agreements", agreementRoutes\);/);
+  });
+});
+
+describe('the Admin property manager consumes the paginated response', () => {
+  const allProperty = readAdminSrc('pages/AllProperty.jsx');
+  const popular = readAdminSrc('pages/PopularProperties.jsx');
+
+  test('AllProperty sends a page and reads the metadata back', () => {
+    assert.match(allProperty, /page:\s*targetPage/, 'the page is not sent to the server');
+    assert.match(allProperty, /setPagination\(res\.data\.pagination\)/, 'the metadata is discarded');
+  });
+
+  test('AllProperty resets to page 1 when a filter changes', () => {
+    // Without this an admin on page 3 of "all" lands on page 3 of a two-page
+    // filtered set and sees an empty screen.
+    assert.match(allProperty, /setPage\(1\);\s*\n\s*fetchProperties\(undefined, 1\)/);
+  });
+
+  test('AllProperty renders a Prev/Next control', () => {
+    assert.match(allProperty, /Prev/);
+    assert.match(allProperty, /Next/);
+    assert.match(allProperty, /pagination\.pages > 1/, 'the control should hide on a single page');
+  });
+
+  test('PopularProperties asks for the corpus it filters over', () => {
+    // It filters isApproved and isPopular in the browser, so a default page of
+    // 20 would let it choose "popular" from only the newest twenty listings.
+    assert.match(popular, /limit:\s*5000/, 'this screen needs an explicit limit, not the default');
   });
 });
