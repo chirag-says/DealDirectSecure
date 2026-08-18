@@ -54,12 +54,21 @@ const getCookie = (name) => {
 };
 
 /**
- * Fetch a fresh CSRF token from the server
+ * Refresh the CSRF token and return it.
+ *
+ * The token comes back in the `csrf_token` cookie, NOT in the response body.
+ * `getCsrfTokenHandler` deliberately stopped sending it in the body — that is
+ * the point of the double-submit cookie pattern — but this helper still read
+ * `response.data.csrfToken` and so returned `undefined` on every call.
+ *
+ * The twin of this bug lives in client-next/src/utils/api.js; both were fixed
+ * together, and api-client-contract.test.js asserts neither reads the body
+ * again.
  */
 export const fetchAdminCsrfToken = async () => {
     try {
-        const response = await adminApi.get('/csrf-token');
-        return response.data.csrfToken;
+        await adminApi.get('/csrf-token');
+        return getCookie(CSRF_COOKIE_NAME);
     } catch (error) {
         console.warn('Failed to fetch CSRF token:', error.message);
         return null;
@@ -172,167 +181,27 @@ export const adminAuthApi = {
 
 // ============================================
 // USER MANAGEMENT API
-// ============================================
 
-export const userManagementApi = {
-    getAll: async (params = {}) => {
-        const response = await adminApi.get('/api/users/list', { params });
-        return response.data;
-    },
-
-    toggleBlock: async (userId) => {
-        const response = await adminApi.put(`/api/users/block/${userId}`);
-        return response.data;
-    },
-
-    getOwnersWithProjects: async () => {
-        const response = await adminApi.get('/api/users/owners-projects');
-        return response.data;
-    },
-
-    exportCSV: async () => {
-        const response = await adminApi.get('/api/users/export-csv', { responseType: 'blob' });
-        return response.data;
-    },
-
-    exportPDF: async () => {
-        const response = await adminApi.get('/api/users/export-pdf', { responseType: 'blob' });
-        return response.data;
-    },
-};
 
 // ============================================
 // PROPERTY MANAGEMENT API
-// ============================================
 
-export const propertyManagementApi = {
-    getAll: async (params = {}) => {
-        const response = await adminApi.get('/api/properties/admin/all', { params });
-        return response.data;
-    },
-
-    approve: async (propertyId) => {
-        const response = await adminApi.put(`/api/properties/approve/${propertyId}`);
-        return response.data;
-    },
-
-    disapprove: async (propertyId, reason) => {
-        const response = await adminApi.put(`/api/properties/disapprove/${propertyId}`, { reason });
-        return response.data;
-    },
-
-    update: async (propertyId, formData) => {
-        const response = await adminApi.put(`/api/properties/edit/${propertyId}`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        return response.data;
-    },
-
-    delete: async (propertyId) => {
-        const response = await adminApi.delete(`/api/properties/delete/${propertyId}`);
-        return response.data;
-    },
-
-    adminAddProperty: async (formData) => {
-        const response = await adminApi.post('/api/properties/admin/add', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-            timeout: 120000,
-        });
-        return response.data;
-    },
-};
 
 // ============================================
 // LEAD MANAGEMENT API
-// ============================================
 
-export const leadManagementApi = {
-    getAll: async (params = {}) => {
-        const response = await adminApi.get('/api/admin/leads', { params });
-        return response.data;
-    },
-
-    export: async (format = 'excel') => {
-        const response = await adminApi.get(`/api/admin/leads/export`, {
-            params: { format },
-            responseType: 'blob'
-        });
-        return response.data;
-    },
-};
 
 // ============================================
 // CATEGORY MANAGEMENT API
-// ============================================
 
-export const categoryApi = {
-    getAll: async () => {
-        const response = await adminApi.get('/api/categories');
-        return response.data;
-    },
-
-    create: async (data) => {
-        const response = await adminApi.post('/api/categories', data);
-        return response.data;
-    },
-
-    update: async (id, data) => {
-        const response = await adminApi.put(`/api/categories/${id}`, data);
-        return response.data;
-    },
-
-    delete: async (id) => {
-        const response = await adminApi.delete(`/api/categories/${id}`);
-        return response.data;
-    },
-};
 
 // ============================================
 // PROPERTY TYPE API
-// ============================================
 
-export const propertyTypeApi = {
-    getAll: async () => {
-        const response = await adminApi.get('/api/propertyTypes');
-        return response.data;
-    },
-
-    create: async (data) => {
-        const response = await adminApi.post('/api/propertyTypes', data);
-        return response.data;
-    },
-
-    update: async (id, data) => {
-        const response = await adminApi.put(`/api/propertyTypes/${id}`, data);
-        return response.data;
-    },
-
-    delete: async (id) => {
-        const response = await adminApi.delete(`/api/propertyTypes/${id}`);
-        return response.data;
-    },
-};
 
 // ============================================
 // REPORTS API
-// ============================================
 
-export const reportsApi = {
-    getPropertyReports: async (params = {}) => {
-        const response = await adminApi.get('/api/admin/reports/properties', { params });
-        return response.data;
-    },
-
-    getMessageReports: async (params = {}) => {
-        const response = await adminApi.get('/api/admin/reports/messages', { params });
-        return response.data;
-    },
-
-    resolveReport: async (reportId, resolution) => {
-        const response = await adminApi.put(`/api/admin/reports/${reportId}/resolve`, resolution);
-        return response.data;
-    },
-};
 
 // ============================================
 // MFA API
@@ -362,19 +231,7 @@ export const mfaApi = {
 
 // ============================================
 // DASHBOARD API
-// ============================================
 
-export const dashboardApi = {
-    getStats: async () => {
-        const response = await adminApi.get('/api/admin/dashboard/stats');
-        return response.data;
-    },
-
-    getRecentActivity: async () => {
-        const response = await adminApi.get('/api/admin/dashboard/activity');
-        return response.data;
-    },
-};
 
 // ============================================
 // BLOG MANAGEMENT API

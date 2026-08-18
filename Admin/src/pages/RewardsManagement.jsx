@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { rewardsManagementApi, userManagementApi } from '../api/adminApi';
+import { rewardsManagementApi } from '../api/adminApi';
 import { Search, Gift, TrendingUp, TrendingDown, RefreshCw, CheckCircle, XCircle, Clock, ChevronLeft, ChevronRight, Users, Coins, ArrowUpDown, ChevronUp, ChevronDown, Award } from 'lucide-react';
 
 const tierColors = {

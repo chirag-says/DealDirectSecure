@@ -13,7 +13,7 @@ import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-lea
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import axios from "axios"; // for Nominatim geocoding (public endpoints)
-import adminApi, { builderApi, propertyManagementApi } from "../api/adminApi";
+import adminApi, { builderApi } from "../api/adminApi";
 
 // Dedicated instance for third-party geocoding — must NOT send credentials.
 // The global axios.defaults.withCredentials = true would make browsers reject

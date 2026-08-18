@@ -85,13 +85,21 @@ const getCookie = (name) => {
 };
 
 /**
- * Fetch a fresh CSRF token from the server
- * Call this on app initialization
+ * Refresh the CSRF token and return it.
+ *
+ * The token comes back in the `csrf_token` cookie, NOT in the response body.
+ * `getCsrfTokenHandler` deliberately stopped sending it in the body — that is
+ * the point of the double-submit cookie pattern — but this helper still read
+ * `response.data.csrfToken` and so returned `undefined` on every call.
+ *
+ * Harmless in practice only by luck: the request interceptor below reads the
+ * cookie itself, and this helper has no caller. It was still a trap, since
+ * anyone who called it would get `undefined` and conclude CSRF was broken.
  */
 export const fetchCsrfToken = async () => {
     try {
-        const response = await api.get('/csrf-token');
-        return response.data.csrfToken;
+        await api.get('/csrf-token');
+        return getCookie(CSRF_COOKIE_NAME);
     } catch (error) {
         console.warn('Failed to fetch CSRF token:', error.message);
         return null;
@@ -330,132 +338,15 @@ export const authApi = {
 
 // ============================================
 // PROPERTY API METHODS
-// ============================================
 
-export const propertyApi = {
-    // Get all properties (public)
-    getAll: async (params = {}) => {
-        const response = await api.get('/properties/list', { params });
-        return response.data;
-    },
-
-    // Search properties
-    search: async (query) => {
-        const response = await api.get('/properties/search', { params: { q: query } });
-        return response.data;
-    },
-
-    // Get single property
-    getById: async (id) => {
-        const response = await api.get(`/properties/${id}`);
-        return response.data;
-    },
-
-    // Get my properties (authenticated)
-    getMyProperties: async () => {
-        const response = await api.get('/properties/my-properties');
-        return response.data;
-    },
-
-    // Add property (authenticated)
-    add: async (formData) => {
-        const response = await api.post('/properties/add', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        return response.data;
-    },
-
-    // Update my property
-    update: async (id, formData) => {
-        const response = await api.put(`/properties/my-properties/${id}`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        return response.data;
-    },
-
-    // Delete my property
-    delete: async (id) => {
-        const response = await api.delete(`/properties/${id}`);
-        return response.data;
-    },
-
-    // Mark interested
-    markInterested: async (id) => {
-        const response = await api.post(`/properties/interested/${id}`);
-        return response.data;
-    },
-
-    // Check interested
-    checkInterested: async (id) => {
-        const response = await api.get(`/properties/interested/${id}/check`);
-        return response.data;
-    },
-
-    // Remove interest
-    removeInterest: async (id) => {
-        const response = await api.delete(`/properties/interested/${id}`);
-        return response.data;
-    },
-
-    // Get saved properties
-    getSaved: async () => {
-        const response = await api.get('/properties/saved');
-        return response.data;
-    },
-
-    // Remove saved property
-    removeSaved: async (id) => {
-        const response = await api.delete(`/properties/saved/${id}`);
-        return response.data;
-    },
-};
 
 // ============================================
 // NOTIFICATION API METHODS
-// ============================================
 
-export const notificationApi = {
-    getAll: async () => {
-        const response = await api.get('/notifications');
-        return response.data;
-    },
-
-    markRead: async (id) => {
-        const response = await api.put(`/notifications/${id}/read`);
-        return response.data;
-    },
-
-    markAllRead: async () => {
-        const response = await api.put('/notifications/read-all');
-        return response.data;
-    },
-};
 
 // ============================================
 // LEAD API METHODS
-// ============================================
 
-export const leadApi = {
-    getMyLeads: async () => {
-        const response = await api.get('/leads');
-        return response.data;
-    },
-
-    getAnalytics: async () => {
-        const response = await api.get('/leads/analytics');
-        return response.data;
-    },
-
-    updateStatus: async (id, status, notes) => {
-        const response = await api.put(`/leads/${id}/status`, { status, notes });
-        return response.data;
-    },
-
-    markViewed: async (id) => {
-        const response = await api.put(`/leads/${id}/viewed`);
-        return response.data;
-    },
-};
 
 // ============================================
 // AGREEMENT API METHODS
@@ -495,40 +386,11 @@ export const agreementApi = {
 
 // ============================================
 // CONTACT API METHODS
-// ============================================
 
-export const contactApi = {
-    submit: async (data) => {
-        const response = await api.post('/contact', data);
-        return response.data;
-    },
-};
 
 // ============================================
 // SAVED SEARCH API METHODS
-// ============================================
 
-export const savedSearchApi = {
-    create: async (data) => {
-        const response = await api.post('/saved-searches', data);
-        return response.data;
-    },
-
-    getMine: async () => {
-        const response = await api.get('/saved-searches/mine');
-        return response.data;
-    },
-
-    toggle: async (id) => {
-        const response = await api.patch(`/saved-searches/${id}/toggle`);
-        return response.data;
-    },
-
-    delete: async (id) => {
-        const response = await api.delete(`/saved-searches/${id}`);
-        return response.data;
-    },
-};
 
 // ============================================
 // REWARDS API METHODS
@@ -597,60 +459,12 @@ export const rewardsApi = {
 // ============================================
 // PROJECT API METHODS
 // Mounted at: /api/projects
-// ============================================
 
-export const projectApi = {
-    /**
-     * List all active projects (public).
-     * @param {object} params — e.g. { isActive: true, limit: 50, city: 'Mumbai' }
-     */
-    getAll: async (params = {}) => {
-        const response = await api.get('/projects', { params });
-        return response.data;
-    },
-
-    /**
-     * Get a single project by ID (public).
-     */
-    getById: async (id) => {
-        const response = await api.get(`/projects/${id}`);
-        return response.data;
-    },
-
-    /**
-     * Get all projects belonging to a specific builder (public).
-     * Used on the builder profile page.
-     */
-    getByBuilder: async (builderId, params = {}) => {
-        const response = await api.get(`/projects/builder/${builderId}`, { params });
-        return response.data;
-    },
-};
 
 // ============================================
 // UNIT TYPE API METHODS
 // Mounted at: /api/unit-types
-// ============================================
 
-export const unitTypeApi = {
-    /**
-     * Get all unit types for a project (public).
-     * This is the primary call on the project detail page.
-     */
-    getByProject: async (projectId) => {
-        const response = await api.get(`/unit-types/project/${projectId}`);
-        return response.data;
-    },
-
-    /**
-     * Get a single unit type by ID (public).
-     * Used on the unit detail / booking page.
-     */
-    getById: async (id) => {
-        const response = await api.get(`/unit-types/${id}`);
-        return response.data;
-    },
-};
 
 // ============================================
 // CAMPAIGN API METHODS
