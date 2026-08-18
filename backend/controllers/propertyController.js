@@ -2040,7 +2040,12 @@ export const searchProperties = async (req, res) => {
             { description: regex },
             { "address.city": regex },
             { "address.area": regex },
-            { "address.locality": regex },
+            // The locality is a TOP-LEVEL field, not address.locality. The
+            // address subdocument holds line, area, city, state, pincode,
+            // landmark, nearby, latitude and longitude — no locality. All 47
+            // production properties populate the top-level one and none has
+            // address.locality, so every query against it matched nothing.
+            { locality: regex },
           ]
         }
       ];
@@ -2121,16 +2126,20 @@ export const getSuggestions = async (req, res) => {
               $project: {
                 title: 1,
                 city: "$address.city",
-                locality: "$address.locality",
+                locality: "$locality",
                 image: { $arrayElemAt: ["$images", 0] }
               }
             },
             { $limit: 5 }
           ],
-          // Match by locality
+          // Match by locality.
+          //
+          // This facet had never returned anything for anyone: it queried
+          // address.locality, which is not a schema path. The data is in the
+          // top-level `locality`, populated on all 47 production properties.
           localities: [
-            { $match: { "address.locality": regex } },
-            { $group: { _id: "$address.locality", city: { $first: "$address.city" } } },
+            { $match: { locality: regex } },
+            { $group: { _id: "$locality", city: { $first: "$address.city" } } },
             { $limit: 5 }
           ],
           // Match by city
