@@ -735,7 +735,7 @@ app.use("/api/agreements/webhook", webhookLimiter);
 // ============================================
 app.use("/api/properties/search", searchLimiter);
 app.use("/api/properties/suggestions", searchLimiter);
-app.use("/api/properties/filter", searchLimiter);
+// /api/properties/filter retired in Phase 4.3 — the limiter guarded nothing.
 
 // ============================================
 // Group Buy join rate limiter — prevent abuse

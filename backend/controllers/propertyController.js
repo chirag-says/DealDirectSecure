@@ -690,10 +690,46 @@ export const addPropertyForBuilder = async (req, res) => {
 //   ?limit=N                 → cap results (used by home page carousel)
 // By default: returns only OWNER properties (builder == null) to keep feeds separate
 // ============================================
+/**
+ * Bounds for the public list endpoints (Phase 4.3 / 4.4).
+ *
+ * The numbers come from the codebase, not from taste:
+ *   LIST_DEFAULT 50    the primary caller asks for ?limit=50
+ *                      (client-next/src/app/properties/page.js)
+ *   LIST_MAX 5000      sitemap.js asks for ?limit=5000, so a lower cap would
+ *                      silently shorten the sitemap
+ *   FEED_DEFAULT 200   no caller passes a limit to /property-list; 200 clears
+ *                      the 47-document corpus, so today's behaviour is
+ *                      unchanged and the bound only bites on future growth
+ *
+ * `validatePagination` is deliberately NOT mounted on these routes: it caps
+ * limit at 100 and rejects anything larger with a 400, which would break the
+ * sitemap. Oversized limits clamp here rather than failing, because these
+ * endpoints serve unauthenticated public traffic where a 400 is worse than a
+ * short page.
+ */
+const LIST_DEFAULT = 50;
+const FEED_DEFAULT = 200;
+const LIST_MAX = 5000;
+
+/** Parse limit/page from a query, clamping rather than rejecting. */
+const boundsFrom = (query, fallback) => {
+  const rawLimit = parseInt(query.limit, 10);
+  const rawPage = parseInt(query.page, 10);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0
+    ? Math.min(rawLimit, LIST_MAX)
+    : fallback;
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+  return { limit, page, skip: (page - 1) * limit };
+};
+
 export const getProperties = async (req, res) => {
   try {
     const isBuilderProperty = req.query.isBuilderProperty === 'true';
-    const limit = parseInt(req.query.limit) || 0; // 0 = no limit in Mongoose
+    // Bounded. This used to be `parseInt(req.query.limit) || 0`, and 0 means
+    // NO LIMIT in Mongoose — so the default was every approved listing and
+    // ?limit=200000 was honoured literally.
+    const { limit, skip } = boundsFrom(req.query, LIST_DEFAULT);
 
     // SECURITY: Only return properties that are:
     // 1. Approved by admin (isApproved: true)
@@ -734,10 +770,20 @@ export const getProperties = async (req, res) => {
       .populate("builder", "name company logo city")
       .sort({ createdAt: -1 });
 
-    if (limit > 0) query = query.limit(limit);
+    const [list, total] = await Promise.all([
+      query.skip(skip).limit(limit),
+      Property.countDocuments(securityFilter),
+    ]);
 
-    const list = await query;
-
+    // The body stays a BARE ARRAY — mobile's type definitions record that
+    // explicitly, so wrapping it in an envelope would be a breaking change
+    // dressed up as an improvement. The bound is reported in headers instead,
+    // which old clients ignore and a future client can act on.
+    res.set({
+      'X-Total-Count': String(total),
+      'X-Limit': String(limit),
+      'X-Has-More': String(skip + list.length < total),
+    });
     res.json(list.map((item) => withPublicImages(req, item)));
   } catch (err) {
     console.error('[Properties] Get all error:', err.message);
@@ -1145,19 +1191,42 @@ export const disapproveProperty = async (req, res) => {
 // ── IMPORTANT: Builder properties are excluded here — they have their own feed ──
 export const getAllPropertiesList = async (req, res) => {
   try {
-    const properties = await Property.find({
+    // Bounded. This had no limit clause at all, and it is the home feed —
+    // four live callers in client-next read it, including the Navbar and the
+    // hero omnibox, which use the whole set for client-side suggestions.
+    //
+    // The default of 200 clears the current 47-document corpus, so every one of
+    // those callers sees exactly what it saw before. The bound only bites on
+    // growth, which is what makes this deployable backend-first today.
+    const { limit, page, skip } = boundsFrom(req.query, FEED_DEFAULT);
+
+    const filter = {
       isApproved: true,
       // Exclude builder properties — they belong on /projects, not /properties
       $or: [
         { builder: null },
         { builder: { $exists: false } }
       ]
-    })
-      .populate("category", "name")
-      .populate("propertyType", "name")
-      .sort({ createdAt: -1 });
+    };
 
-    res.status(200).json({ success: true, data: properties.map((item) => withPublicImages(req, item)) });
+    const [properties, total] = await Promise.all([
+      Property.find(filter)
+        .populate("category", "name")
+        .populate("propertyType", "name")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Property.countDocuments(filter),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: properties.map((item) => withPublicImages(req, item)),
+      // Additive. The existing { success, data } shape is untouched, so a
+      // client that ignores this keeps working; one that reads it can tell when
+      // the feed has been cut short instead of silently losing listings.
+      pagination: { total, limit, page, hasMore: skip + properties.length < total },
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
@@ -2122,63 +2191,15 @@ export const getSuggestions = async (req, res) => {
   }
 };
 
-export const filterProperties = async (req, res) => {
-  try {
-    const { search = "", sort = "newest" } = req.query;
-
-    // Base filter: only approved owner-posted properties (no builder)
-    let filter = {
-      isApproved: true,
-      $or: [
-        { builder: null },
-        { builder: { $exists: false } }
-      ]
-    };
-
-    // Search in title or city
-    // Note: use $and so we don't overwrite the builder-exclusion $or
-    if (search.trim()) {
-      // SECURITY FIX: Escape regex special characters to prevent ReDoS
-      const escapedSearch = escapeRegExp(search.trim());
-      const regex = new RegExp(escapedSearch, "i");
-      filter.$and = [
-        ...(filter.$and || []),
-        { $or: [{ title: regex }, { "address.city": regex }] }
-      ];
-      delete filter.$or; // Builder exclusion moves inside $and below
-      filter.$and.push({
-        $or: [{ builder: null }, { builder: { $exists: false } }]
-      });
-    }
-
-    // Fetch properties and populate references
-    let properties = await Property.find(filter)
-      .populate("propertyType", "name")
-      .populate("category", "name");
-
-    // Further filter by populated fields (category, propertyType)
-    if (search.trim()) {
-      const lower = search.toLowerCase();
-      properties = properties.filter(
-        (p) =>
-          p.title?.toLowerCase().includes(lower) ||
-          p.address?.city?.toLowerCase().includes(lower) ||
-          p.category?.name?.toLowerCase().includes(lower) ||
-          p.propertyType?.name?.toLowerCase().includes(lower)
-      );
-    }
-
-    // Sort
-    if (sort === "priceAsc") properties.sort((a, b) => a.price - b.price);
-    else if (sort === "priceDesc") properties.sort((a, b) => b.price - a.price);
-    else properties.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    res.json({ success: true, data: properties.map((item) => withPublicImages(req, item)) });
-  } catch (err) {
-    console.error("[Property] Filter error:", err.message);
-    res.status(500).json({ success: false, message: 'Failed to filter properties' });
-  }
-};
+// filterProperties REMOVED (Phase 4.3).
+//
+// Unbounded — no limit clause at all — and dead: zero call sites across
+// client-next, Admin and mobile, re-verified this pass. The only references
+// anywhere were mobile comments explaining that it deliberately does NOT use
+// this endpoint.
+//
+// Filtering as a capability is not removed. /properties/search is where it
+// lives, and it is what PropertyListContent migrated to.
 
 export const getOwnersWithProjects = async (req, res) => {
   try {

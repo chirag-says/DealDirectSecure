@@ -10,7 +10,6 @@ import {
   approveProperty,
   disapproveProperty,
   searchProperties,
-  filterProperties,
   getMyProperties,
   getMyPropertyById,
   deleteMyProperty,
@@ -48,10 +47,22 @@ const router = express.Router();
 router.get("/list", getProperties);
 router.get("/property-list", getAllPropertiesList); // For frontend home page
 
-// Public search & filter (MUST be before /:id)
+// Public search (MUST be before /:id). /filter was retired in Phase 4.3.
 router.get("/search", searchProperties);
 router.get("/suggestions", getSuggestions); // Fast autocomplete
-router.get("/filter", filterProperties);
+
+// /filter was retired in Phase 4.3: unbounded, and zero call sites across
+// client-next, Admin and mobile. Answered explicitly rather than deleted
+// outright, because without this the path falls through to the "/:id" wildcard
+// below and getPropertyById tries to cast "filter" to an ObjectId — which
+// currently surfaces as a 500. A retired endpoint should say so.
+router.get("/filter", (req, res) =>
+  res.status(410).json({
+    success: false,
+    message: "This endpoint has been retired. Use /api/properties/search.",
+    code: "ENDPOINT_RETIRED",
+  })
+);
 
 // ============================================
 // PROTECTED ROUTES - AUTHENTICATED USERS

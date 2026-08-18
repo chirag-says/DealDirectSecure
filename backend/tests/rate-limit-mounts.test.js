@@ -124,7 +124,6 @@ describe('search limiter mounts still match real routes', () => {
   for (const [mount, routePath] of [
     ['/api/properties/search', '/search'],
     ['/api/properties/suggestions', '/suggestions'],
-    ['/api/properties/filter', '/filter'],
   ]) {
     test(`${mount} is limited and registered`, () => {
       assert.notEqual(mountedAt(mount, 'searchLimiter'), -1);
@@ -132,6 +131,25 @@ describe('search limiter mounts still match real routes', () => {
       assert.match(propertyRoutes, re);
     });
   }
+
+  test('the retired /filter mount is gone, not orphaned', () => {
+    // /filter was retired in Phase 4.3: unbounded and with zero call sites.
+    // The limiter mount had to go with it — a rate limiter in front of a route
+    // that no longer reaches a handler protects nothing and reads as though the
+    // endpoint is still live.
+    assert.equal(
+      mountedAt('/api/properties/filter', 'searchLimiter'), -1,
+      'a limiter is still mounted on the retired endpoint'
+    );
+  });
+
+  test('the retired path still answers deliberately', () => {
+    // Kept as a tombstone returning 410 rather than deleted outright: without
+    // it the path falls through to the "/:id" wildcard and getPropertyById
+    // tries to cast "filter" to an ObjectId, which surfaces as a 500.
+    assert.match(propertyRoutes, /ENDPOINT_RETIRED/);
+    assert.doesNotMatch(propertyRoutes, /filterProperties/);
+  });
 });
 
 describe('limits themselves are unchanged', () => {
