@@ -31,9 +31,25 @@ async function getInitialProperties() {
         { path: '/api/categories/list-category', revalidate: 3600 },
     ]);
 
+    // `/api/properties/list` returns a BARE ARRAY, not an envelope — mobile's
+    // type definitions record that explicitly, and Phase 4.3 deliberately kept
+    // the shape rather than making a breaking change. An array has neither
+    // `.data` nor `.properties`, so the previous
+    //     propsData?.data || propsData?.properties || []
+    // always evaluated to [] and the hidden SEO block below rendered zero
+    // listings on every request.
+    //
+    // ssrFetch returns null when the request fails. That stays distinct from an
+    // empty result: null falls through to [], but only after the array and
+    // envelope shapes have been ruled out, so a failure is not mistaken for a
+    // genuinely empty corpus by anything reading `propsData` itself.
+    const properties = Array.isArray(propsData)
+        ? propsData
+        : (propsData?.data ?? propsData?.properties ?? []);
+
     return {
-        properties: propsData?.data || propsData?.properties || [],
-        categories: catsData?.data || catsData || [],
+        properties,
+        categories: Array.isArray(catsData) ? catsData : (catsData?.data ?? []),
     };
 }
 
