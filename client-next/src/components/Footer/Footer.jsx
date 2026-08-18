@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState } from "react";
+import React from "react";
 import Link from "next/link";
-import { toast } from "react-toastify";
 
 import {
   AiOutlineMail,
@@ -24,20 +23,16 @@ import logo from "../../assets/dealdirect_logo.png";
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
-  const [email, setEmail] = useState("");
-
-  const handleSubscribe = (e) => {
-    e.preventDefault();
-    if (!email || !/\S+@\S+\.\S+/.test(email)) {
-      toast.error("Please enter a valid email address.");
-      return;
-    }
-    // Simulate API call
-    setTimeout(() => {
-      toast.success("Subscribed successfully!");
-      setEmail("");
-    }, 500);
-  };
+  // NEWSLETTER REMOVED (Phase 5.11).
+  //
+  // The form here validated an address, waited 500 ms, then showed
+  // "Subscribed successfully!" — and stored nothing. There is no newsletter
+  // backend: no route, no model, no controller, and no other UI anywhere in
+  // the four applications.
+  //
+  // Removed rather than wired up, because building a subscription service is a
+  // product decision, not a cleanup. Telling users they had subscribed to a
+  // list that does not exist is the part that was actually wrong.
 
   const quickLinks = {
     "Buy": [
@@ -143,7 +138,7 @@ const Footer = () => {
             ))}
           </div>
 
-          {/* Newsletter */}
+          {/* Popular Cities — this column also held the newsletter form until 5.11 */}
           <div className="space-y-6">
             <div>
               <h4 className="font-bold text-white text-base mb-6">Popular Cities</h4>
@@ -160,25 +155,6 @@ const Footer = () => {
               </div>
             </div>
 
-            <div>
-              <h4 className="font-bold text-white text-base mb-4">Stay Updated</h4>
-              <form onSubmit={handleSubscribe} className="flex flex-col space-y-3">
-                <input
-                  type="email"
-                  placeholder="Your email address"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-slate-900 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-600 border border-slate-800 transition-all"
-                  required
-                />
-                <button
-                  type="submit"
-                  className="w-full bg-red-600 text-white px-4 py-3 rounded-xl text-sm font-semibold hover:bg-red-700 transition-all shadow-lg shadow-red-900/20"
-                >
-                  Subscribe
-                </button>
-              </form>
-            </div>
           </div>
         </div>
 
