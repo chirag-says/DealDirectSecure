@@ -176,7 +176,23 @@ refused forever.
 > **Product and ops decision, not an engineering fact.** What follows is what the
 > data model and the production numbers support.
 
-**Recommended: C now, B when group buy is confirmed as a product.**
+> **Superseded in part, 2026-08-18.** Group Buy is deferred to a dedicated build
+> after Phases 3, 4 and 5. That settles the open question this recommendation
+> hinged on, and it answers it in the direction that favoured waiting: option B
+> is not worth building for one paid member in a feature nobody is shipping yet,
+> and the refund workflow folds into that later build.
+>
+> What that leaves for now is neither B nor a formal C, but the status quo plus
+> the integrity guards already shipped: deletion of paid campaign structures is
+> refused, a paid member cannot self-exit, and a cancelled booking reverses the
+> membership it created. Support has no self-service unwind path, which remains
+> true and remains recorded — the one paid member in production is the whole
+> exposure.
+>
+> The two defect fixes below (§5, "worth doing regardless") were shipped in
+> `b14ecf1`, so only the workflow half is deferred.
+
+**Original recommendation: C now, B when group buy is confirmed as a product.**
 
 Reasoning from the actual state rather than the general principle:
 
@@ -216,7 +232,7 @@ let paid money be deleted.
 | # | Question | Needed for |
 |---|---|---|
 | 1 | Option A, B or C? | closing the support dead end |
-| 2 | Group buy: build or withdraw? | whether B is ever worth building |
+| 2 | ~~Group buy: build or withdraw?~~ **DECIDED 2026-08-18: deferred to a post-Phase-5 build** | resolves this table's dependency — see below |
 | 3 | When a refund is paid out-of-band, what must be recorded — reference, amount, who authorised? | any refund state design |
 | 4 | Should a paid member be allowed to self-exit at all? | fixing `exitCampaign` |
 | 5 | Who is accountable for a refund actually reaching the payer? | there is no gateway; this is a human process |

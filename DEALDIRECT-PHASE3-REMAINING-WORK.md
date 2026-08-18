@@ -1,247 +1,190 @@
-# Phase 3 — Remaining Work Report
+# Phase 3 — Status Report
 
-Built from the repository as it stands at `129e2a9`, not from the audit text.
-Every claim below was re-checked against source; where a re-check changed the
-audit's conclusion, that is called out.
+Built from the repository, not from the audit text. Every claim was re-checked
+against source; where a re-check changed the audit's conclusion, that is called
+out.
 
-Test baseline: **472 unit, 278 integration, 750 total, 0 failures, 0 todos.**
+**Test baseline: 529 unit, 440 integration, 969 total, 0 failures, 0 todos.**
+
+**Phase 3 engineering is complete.** The one item that remains, 3.5 Group Buy,
+is a product decision that has now been taken: deferred. See §3.
+
+Production remains untouched: no write, no deploy, no migration.
 
 ---
 
-## 1. Completed Phase 3 workstreams
+## 1. Phase 3, item by item
 
-| Workstream | State | Evidence |
+The roadmap defines Phase 3 as 3.1 to 3.6. Taxonomy came from the audit rather
+than the roadmap and is tracked alongside.
+
+| # | Item | State | Commit |
+|---|---|---|---|
+| 3.1 | Enforce state transitions | **done** | `ff29117` |
+| 3.2 | Decide the fate of admin RBAC | **done** — retired | `be600e2` |
+| 3.3 | Add cascade handling | **done** | `a1651e9`, `8822206` |
+| 3.4 | Collapse the API client layer | **done** | `3e115d2` |
+| 3.5 | Group buy — build or withdraw | **DEFERRED, see §3** | — |
+| 3.6 | Move email out of the model layer | **done** | `2e0ebf6` |
+
+Audit-originated work in the same phase:
+
+| Workstream | State | Commit |
 |---|---|---|
-| 3A integration-test foundation | done | harness, provable DB and egress isolation |
-| 3A.1 fixes found by the harness | done | 4 production defects, each with a regression test |
+| 3A integration-test foundation | done | `2e2ca2a` |
+| 3A.1 fixes the harness found | done | 4 defects, each with a regression test |
 | 3B.0 development database separation | done | `dealdirect_dev`, anonymised |
-| 3B.1 taxonomy redesign + migration | done | migration UP/DOWN verified on real data |
-| 3B.2 production read-only validation | done | 47/47 mapped, 0 unknown, 0 ambiguous |
-| 3B.3 cutover preparation | done | backup, gate, dry run, plan |
-| 3B.4 taxonomy production-readiness | **done this pass** | admin mutation guard, Admin page repair |
-
-**Not in the roadmap's Phase 3 list.** The taxonomy workstream came out of the
-audit, not from 3.1–3.6. It is finished as code; only the production cutover
-remains, and that is deferred by decision.
+| 3B.1–3B.3 taxonomy redesign, validation, cutover prep | done | `4957022`…`f87c573` |
+| 3B.4 taxonomy production-readiness | done | `ef0da6e`, `0dc7f58` |
+| CampaignMember payment-state integrity | done | `b14ecf1` |
+| Aggregate-root deletion | done | `8822206` |
 
 ---
 
-## 2. Remaining Phase 3 workstreams
+## 2. What each workstream actually found
 
-Roadmap items 3.1–3.6, each re-verified.
+Kept short; the detail is in the commit messages and the decision documents.
 
-### A. Taxonomy production cutover — *prepared, deferred*
+**3.1 State transitions.** Lead had no transition validation on either write
+path — the owner path checked enum membership only, the admin path had no
+whitelist at all — so `converted → new` erased a closed deal and
+`lost → converted` manufactured a conversion. Nothing anywhere wrote
+`Lead.status = "converted"`, so `conversionRate` measured a field owners set by
+hand. `expired` was in the campaign enum and set by no code.
 
-Not blocked by code. Held until phases 4 and 5 land, by decision on 2026-08-17.
-Re-run the dry run before executing: it is pinned to 47 properties.
+**3.2 RBAC.** Reasoning from the repository alone gave the wrong answer twice,
+recorded in `DEALDIRECT-DELETION-AND-RBAC-DECISION.md` §2.6. Production holds 45
+permissions wired to four roles and every admin holds all 45, so the layer
+separated nothing while remaining able to 403 the whole panel when a code could
+not resolve (`79ae3ab`). Retired. Implementing it surfaced that
+`requireSuperAdmin` denied **everyone**, including genuine level-100 accounts,
+because `Admin.role` is `Mixed` and a bare `populate` cannot resolve it.
 
-### B. Cascade handling (3.3) — **verified, worst finding standing**
+**3.3 Cascades.** The audit's "zero cascade hooks" was true but misleading — an
+explicit twelve-collection cascade already existed in `deleteAccount` — and its
+builder-chain claim was wrong: builders soft-delete and each level refuses when
+children exist. The real holes were narrower: a unit type guarded on a cached
+counter that only counted *active* campaigns, so a completed campaign holding
+PAID members deleted cleanly; and `ProjectBooking`, holding the UTR and payment
+screenshot, blocked nothing anywhere.
 
-```
-delete hooks across 31 models : 0
-```
+**3.4 API client.** Structural finding: each app has two layers and pages use
+the axios instance directly (66 raw calls web, 33 Admin), so most of the helper
+layer had never been called. 14 groups referenced nowhere were deleted; two
+equally-unreferenced groups were kept because they are the client half of held
+features. No shared abstraction was built — there is no root `package.json` or
+workspace, so it would mean introducing monorepo tooling.
 
-Grep for `pre|post('remove'|'deleteOne'|'deleteMany'|'findOneAndDelete')` returns
-nothing in any model file. The audit is correct and understated: there is no
-cascade layer at all, so every delete is a potential orphan.
-
-Two chains carry money:
-
-- `Builder → Project → UnitType → GroupBuyCampaign → CampaignMember` — deleting a
-  builder strands paid campaign members and every `ProjectBooking`.
-- `Property → TransactionVerification → Reward` — deleting a property orphans a
-  pending verification, after which admin approve and reject both throw and the
-  buyer's reward is permanently unclaimable.
-
-### C. State-transition enforcement (3.1) — **verified**
-
-- **Lead:** `sanitizeLeadStatus` checks enum membership and nothing else. It
-  never reads the current status, so `lost → converted` and `converted → new`
-  both succeed. Confirmed by reading `updateLeadStatus`: it builds
-  `updates.status` and calls `findByIdAndUpdate` with no comparison to the
-  stored value.
-- **Lead, second half:** no code path writes `Lead.status = 'converted'` from
-  deal approval, so `conversionRate` measures a field owners set by hand.
-- **Campaign:** `expired` is in the `GroupBuyCampaign` enum and is written by no
-  controller or service. Grep across `controllers/` and `services/` returns
-  nothing.
-- **Property:** owner cannot set `status` directly any more (fixed in 0.3), but
-  there is still no correction path for a wrongly approved verification.
-
-### D. Notification architecture (3.6) — **partly fixed, three defects standing**
-
-The re-send bug is fixed and well documented in `models/Notification.js`. The
-architectural problems the audit named are still there, and the file says so
-itself in a scope note. Standing:
-
-- `post("save")` does `User.findById` per notification.
-- `post("insertMany")` loops `User.findById` per document — the actual N+1, and
-  the fan-out path.
-- Dispatch is inside the model, so it fires from 9 call sites across three
-  controllers with no way to grep for "who sends mail".
-
-Per-send SMTP transporter creation was not re-verified in this pass; treat that
-one as audit-claimed, not confirmed.
-
-### E. Admin RBAC (3.2) — **verified, decision still open**
-
-```
-routes using requirePermission : 8
-routes using protectAdmin      : 93
-role/permission seed script    : none
-```
-
-Slightly better than the audit's "5 of 75", worse in the way that matters: the
-8 guarded routes depend on permission strings that no committed script creates.
-Whether they work in production is still unknown from inside this repository.
-
-### F. API-client architecture (3.4) — **verified, larger than described**
-
-```
-client-next/src/utils/api.js   754 L
-Admin/src/api/adminApi.js      631 L
-dealdirect-mobile/src/api/      9 modules
-```
-
-Three hand-maintained clients, no shared package. The mobile one is a different
-architecture entirely (`request.ts`, `queryClient.ts`, typed `endpoints/`), so
-"collapse the API client layer" is really two jobs: delete dead helpers in the
-two axios clients, and decide whether mobile's design becomes the target.
-
-### G. Performance (Phase 4 by the roadmap, but the pagination gap is integrity-adjacent)
-
-```
-validatePagination : exists in middleware/validators/index.js
-                     mounted on leadRoutes only
-/list, /property-list, /search, /filter : unguarded
-Reward.transactions : unbounded array, no cap
-```
-
-The audit's claim holds. `/filter` still has no caller in any of the four apps.
+**3.6 Notifications.** The SMTP claim was confirmed and understated: a new
+transport per message *and* a `verify()` handshake before each one. Delivery
+moved out of Mongoose middleware; the fan-out recipient lookup went from one
+query per document to one `$in` for the batch.
 
 ---
 
-## 3. Dependency order
+## 3. Deferred by product decision
 
-```
-B. cascades ─────────────┐
-                         ├──> A. cutover (deferred by decision, not by code)
-C. state transitions ────┘
+### Group Buy = intentionally deferred product build
 
-E. RBAC decision ──> any further admin-surface work
-D. notifications ──> Phase 4.1 fan-out performance
-F. API clients ────> (independent; blocks nothing)
-```
+**Decided 2026-08-18.** Group Buy will not be built during remediation. It will
+be handled after the entire roadmap — Phases 3, 4 and 5 — as a dedicated
+product-hardening and build effort.
 
-- **B before C.** A transition table that forbids `converted → new` is worth
-  little while deleting the parent still orphans the record silently.
-- **D before 4.1.** Moving dispatch out of the model is the refactor; batching
-  the lookup is the optimisation. Doing them in the other order means optimising
-  code that is about to move.
-- **E gates admin work.** Every new admin endpoint has to choose guarded or
-  unguarded, and right now that choice is being made by coin flip.
-- **F blocks nothing** and is the only one safe to interleave.
+**Reason, as given:** the current Group Buy business logic is immature and
+should be redesigned as a complete workflow rather than incrementally patched
+during the remediation phase.
 
----
+That is the right call on the evidence. Verified by exhaustive search: no code
+compares `memberCount` to `minBuyers`, and no code applies `discountPerBuyer` to
+any price, booking or token amount. The feature is a schema, an admin form, a
+client-side progress bar and marketing copy. Patching it piecemeal would mean
+inventing product rules nobody has decided, which is how the current state was
+reached.
 
-## 4. Risk ranking
+**Not built, deliberately:** minimum-buyer completion, discount calculation,
+join UX, refund workflow, campaign payment workflow, admin campaign-management
+UI, any further campaign state machine.
 
-Ranked on the criteria given: data integrity, security, financial, blast radius,
-user impact, reversibility.
+**The safety work already done STAYS, and must not be removed:**
 
-| # | Workstream | Integrity | Financial | Blast radius | Reversible? | Rank |
-|---|---|---|---|---|---|---|
-| 1 | **B. Cascades** | severe — silent orphans | yes — paid members, unclaimable rewards | whole aggregate chain | **no**, deleted data is gone | **highest** |
-| 2 | **C. State transitions** | high — invalid states persist | indirect, deal/reward flow | per record | partly | high |
-| 3 | **E. RBAC** | none | none | admin access, all 93 routes | yes | high (security) |
-| 4 | **D. Notifications** | none | none | every notification path | yes | medium |
-| 5 | **G. Pagination / unbounded arrays** | low now, fatal at the 16 MB BSON ceiling | no | per endpoint | yes | medium |
-| 6 | **F. API clients** | none | none | per screen | yes | low |
-
-B outranks everything because it is the only one whose failure is unrecoverable.
-A wrong lead status can be corrected; a cascade-deleted `CampaignMember` who paid
-cannot be reconstructed from anything in the database.
-
-E is ranked high on security rather than integrity: the 8 guarded routes may be
-failing open or closed in production and nobody can tell from here.
-
----
-
-## 5. Recommended next workstream
-
-**B. Cascade and delete-integrity handling.**
-
-Highest integrity risk, the only irreversible one, and it is the prerequisite
-for C. It also has a natural first slice that is pure protection and ships
-without deleting anything:
-
-1. **Refuse** deletes that would destroy a financial record — a property with a
-   pending verification, a unit type with paid campaign members, a builder with
-   any project. Refusing is reversible; cascading is not.
-2. Then explicit cascade functions per aggregate root, shaped like the existing
-   `deletePropertyAssets`, dry-run each against `dealdirect_dev`.
-
-Step 1 alone closes the unrecoverable half of the risk. It is also the same
-shape as the guard just shipped for the taxonomy — `TAXONOMY_IN_USE` refuses a
-delete that would strand references — so the pattern is established and tested.
-
-**Not recommended next:** D or F. Both are refactors of working code, and
-starting a refactor while deletes still orphan paid records is the wrong order.
-
----
-
-## 6. Production blockers
-
-| Blocker | Owner | Status |
+| Protection | Commit | What it prevents |
 |---|---|---|
-| Cutover deferred until phases 4 and 5 | Chirag | decided 2026-08-17 |
-| Three separate app deploys, order-dependent | Chirag | order documented and now test-asserted |
-| Maintenance window, write-freeze method | Chirag | not chosen |
-| Dry run pinned to 47 properties | — | re-run before executing |
-| RBAC state in production unknown | Chirag | needs a live check, not a code change |
+| Paid `CampaignMember` blocks unit-type deletion | `a1651e9` | destroying the only record that money moved — there is no gateway, the UPI reference and screenshot *are* the receipt |
+| Booking → member reversal on cancellation | `b14ecf1` | a cancelled booking leaving a paid member inflating `paidMemberCount` |
+| Paid members cannot self-exit | `b14ecf1` | a silent `paid` + `exited` state with no refund obligation recorded anywhere |
+| Campaign lazy expiry | `ff29117` | a campaign past its end date reporting itself active forever |
+| Aggregate-root deletion refusals | `8822206` | orphaning deal, payment or legal evidence |
 
-Nothing in the code blocks the cutover. Every blocker is a decision or an
-environment fact.
+These are integrity guards, not feature code. They hold the data still so the
+eventual build starts from something coherent.
+
+**One consequence of deferring, stated plainly and NOT acted on.** The promise
+is still live on the site. `ProjectDetailContent.jsx` and `UnitDetailContent.jsx`
+both render a discount figure, a progress bar and an "N+ buyers needed" line for
+a discount no code can deliver. Withdrawing that copy is roughly half a day and
+is independent of building the feature, but it is a product and marketing call,
+not an engineering one, so it is recorded here rather than done.
+
+A second fact worth carrying into the future build: **the web app has no join
+path at all.** Nothing reaches campaign join or exit by any route, so the
+feature is not merely undelivered, it is unreachable. The client helpers were
+kept for exactly this reason.
+
+### Builder / Project / UnitType redesign = intentionally deferred product hardening
+
+**Decided 2026-08-18.** The `Builder → Project → UnitType → GroupBuyCampaign →
+CampaignMember` chain is a future end-to-end hardening effort, not a remediation
+task. Its product workflow is not being redesigned now.
+
+**Same reason:** redesigning a workflow incrementally, inside a remediation
+phase, produces the half-built state that remediation exists to clear up.
+
+**What remediation still maintains on that chain, and only this:**
+
+- deletion integrity — refusals before destructive work, at every level
+- state integrity — booking transitions, campaign expiry, member reversal
+- reference integrity — no orphaned campaigns, members, bookings or unit types
+- protection against financial and data loss — paid tokens, UTRs, payment proofs
+
+Nothing beyond that list should be touched before the dedicated effort.
 
 ---
 
-## 7. Product decisions still required
+## 4. Still open, but not Phase 3 engineering
 
-Carried from the roadmap, none answered yet. The first two gate Phase 3 work.
+| Item | Type | Blocked on |
+|---|---|---|
+| Taxonomy production cutover | operational | prepared and tested; held until all phases land |
+| Index drift: `builders.email_1`, `agreements.idempotencyKey_1` | engineering | both deployed unique and non-sparse against a schema that says otherwise; queued for the index-cleanup stage, which is itself held behind the cutover |
+| Invalid ObjectId returns 500 | engineering | global error-handler change; touches every route, needs its own pass |
+| Deleted-user PII policy | product + legal | `DEALDIRECT-DELETION-AND-RBAC-DECISION.md` §1.6 |
+| Retention period for retained records | legal | as above |
+| Refund workflow | product + ops | folded into the deferred Group Buy build |
+| Legacy taxonomy document deletion | operational | after the cutover |
+| RBAC collection cleanup | operational | after the code change has been stable |
 
-1. **Admin RBAC (3.2)** — commit to the layer or remove it? Affects 93 routes.
-   Blocks E and any new admin surface.
-2. **Group buy (3.5)** — build the threshold and discount, or withdraw the
-   promise? Nothing in the campaign module is worth doing until this is
-   answered, and it changes how much B's builder-chain cascade matters.
-3. **Deleted-user PII** — for `Lead`, `Agreement`, `TransactionVerification`,
-   `CampaignMember`, `ProjectBooking`: delete, anonymise, or retain? This is an
-   input to B, not a separate task: the cascade design has to know the answer.
-4. **Reward promises** — implement the 5-photo bonus, referral milestones 2 and
-   3, and the login streak, or remove the UI copy?
-5. **Orphaned Cloudinary assets** — run a dry-run reconciliation?
-6. **Deal-closure documents** on permanent public URLs — still an accepted risk.
-7. **`/properties/filter`** — retire it rather than paginate it? No caller in any
-   of the four apps.
-8. **Chat and agreements** — confirm they stay hidden.
-
-Decisions 1 and 3 are the ones that actually block the recommended next
-workstream.
+The `builders.email_1` drift has a live consequence today: creating a **second**
+builder without an email address fails with a duplicate-key error, because one
+document already holds `email: null`. Worth knowing while the fix is queued.
 
 ---
 
-## 8. What this pass changed
+## 5. What comes next
 
-| Commit | Change |
-|---|---|
-| `ef0da6e` | canonical taxonomy is immutable through the admin API; referenced rows cannot be deleted; `createPropertyType` matches its own index |
-| `0dc7f58` | Admin taxonomy page repaired (had never rendered data); dead `AddSubCategory.jsx` removed; axios-without-import and retired-route sweeps across all admin pages |
-| `129e2a9` | cutover plan records the guard and the eased legacy-cleanup stage |
+**Phase 3 engineering is complete.** 3.1, 3.2, 3.3, 3.4 and 3.6 are implemented,
+tested and committed; 3.5 is deferred by decision rather than outstanding.
 
-Three defects were found that the audit did not list: the admin mutation hole,
-the `createPropertyType` index disagreement, and the third instance of the
-axios-without-import bug. The first was reproduced against live endpoints before
-being fixed — an admin could empty the property-type taxonomy in twenty requests
-and strand every listing in the database.
+Next is **Phase 4 — Performance**, which the roadmap defines as its own
+top-level phase with ten items (4.1 to 4.10). Confirmed by re-reading the
+roadmap rather than inferring: nothing performance-related sits under Phase 3.
 
-Production remains untouched.
+Two Phase 4 items already have verified evidence gathered during Phase 3, so
+they need measurement rather than investigation:
+
+- **4.1 notification fan-out** — the N+1 and the per-message SMTP handshake were
+  both fixed in `2e0ebf6`. This item is largely already done; re-scope it rather
+  than re-doing it.
+- **4.3 / 4.4 unbounded list endpoints and uncapped pagination** —
+  `validatePagination` exists in `middleware/validators/index.js` and is mounted
+  on lead routes only. `/list`, `/property-list`, `/search` and `/filter` are
+  unguarded. `/filter` still has no caller in any of the four applications.
