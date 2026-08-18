@@ -144,27 +144,40 @@ describe('/my-bookings no longer reaches a raw 401', () => {
   });
 });
 
-describe('ProtectedRoute stays unused, deliberately', () => {
+describe('ProtectedRoute is gone, and nothing reached for it', () => {
   const authContext = readClient('context/AuthContext.jsx');
 
-  test('it is still not wired into any route', () => {
-    // Adopting it would add a third mechanism alongside the middleware and the
-    // in-content guards, which already cover every private route.
+  // It used to be exported and documented as deliberately unused. Phase 5.3
+  // removed it: three of its five redirect targets were not routes, and two of
+  // its five branches keyed off requiresMfa / requiresPasswordChange, flags no
+  // user response has ever set. The guarantee these tests protect is unchanged —
+  // private routes are still covered by the middleware and the in-content
+  // checks, which is what the rest of this file asserts.
+
+  test('no screen imports or renders it', () => {
     const appFiles = PRIVATE_ROUTES.map(([, f]) => readClient(f));
     for (const src of appFiles) {
       assert.doesNotMatch(src, /<ProtectedRoute/, 'a screen started using ProtectedRoute');
+      assert.doesNotMatch(src, /import\s*\{[^}]*ProtectedRoute/, 'a screen imported ProtectedRoute');
     }
   });
 
-  test('the reason is recorded where the next reader will look', () => {
-    assert.match(authContext, /NOT IN USE/);
+  test('AuthContext no longer exports it', () => {
+    assert.doesNotMatch(authContext, /export const ProtectedRoute/);
   });
 
-  test('its redirect targets still do not exist, which is why', () => {
+  test('the two mechanisms that DO guard private routes are still in place', () => {
+    // The point of removing the third one was that these two already work.
+    assert.match(middleware, /PROTECTED_ROUTES/, 'the edge guard went with it');
+    assert.match(authContext, /export const AuthProvider/, 'the context itself went with it');
+  });
+
+  test('its dead redirect targets are still not routes', () => {
+    // If one of these is ever built, the removal was premature and the flow
+    // needs designing rather than resurrecting.
     for (const route of ['app/verify-mfa', 'app/change-password-required', 'app/verify-email']) {
-      assert.equal(clientExists(route), false, `${route} now exists — revisit the ProtectedRoute decision`);
+      assert.equal(clientExists(route), false, `${route} now exists — the 5.3 removal needs revisiting`);
     }
-    assert.match(authContext, /router\.replace\('\/verify-mfa'\)/);
   });
 });
 

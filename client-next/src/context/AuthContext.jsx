@@ -7,15 +7,19 @@
  * - Automatic session validation on app load (fetches /api/users/me)
  * - Role-based access control helpers
  * - Graceful logout on 401 errors
- * - MFA and password change requirement handling
- * 
+ *
+ * NO MFA HERE (removed in Phase 5.3). MFA is an admin feature, implemented in
+ * the separate Admin app against /api/admin/mfa/*. The user API has never had
+ * an MFA field, an MFA response code, or a /users/verify-mfa route, so the
+ * flow this context used to carry could not run. The same was true of the
+ * forced-password-change flow it sat beside.
+ *
  * NEXT.JS MIGRATION NOTES:
  * - Added 'use client' directive (context uses hooks)
  * - Replaced useNavigate -> useRouter (from next/navigation)
  * - Replaced useLocation -> usePathname (from next/navigation)
  * - Replaced navigate('/path', { state: {...} }) -> router.push('/path?param=value')
- * - ProtectedRoute rewritten to use useRouter for redirects
- * 
+ *
  * NOTE: Uses HttpOnly cookies for authentication - no tokens in localStorage
  */
 
@@ -40,11 +44,6 @@ export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-
-    // Special auth states for MFA and password requirements
-    const [requiresMfa, setRequiresMfa] = useState(false);
-    const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
-    const [pendingAuthData, setPendingAuthData] = useState(null);
 
     // Owner property tracking - to hide "Register Property" button after posting
     const [ownerHasProperty, setOwnerHasProperty] = useState(false);
@@ -111,10 +110,6 @@ export const AuthProvider = ({ children }) => {
 
             if (result.authenticated && result.user) {
                 setUser(result.user);
-                // Check if user needs to change password
-                if (result.user.requiresPasswordChange) {
-                    setRequiresPasswordChange(true);
-                }
                 // Check if owner has property
                 await checkOwnerProperty(result.user);
             } else {
@@ -147,18 +142,10 @@ export const AuthProvider = ({ children }) => {
                 if (user) {
                     // Session expired - clear state and redirect
                     setUser(null);
-                    setRequiresMfa(false);
-                    setRequiresPasswordChange(false);
-                    setPendingAuthData(null);
 
                     // Redirect to login with message via query params (Next.js doesn't have navigation state)
                     const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
                     router.replace(`/login?message=${encodeURIComponent(errorInfo.message || 'Your session has expired. Please log in again.')}&from=${encodeURIComponent(currentPath)}`);
-                } else {
-                    // User was never logged in - just clear any stale state, don't redirect
-                    setRequiresMfa(false);
-                    setRequiresPasswordChange(false);
-                    setPendingAuthData(null);
                 }
             } else if (errorInfo.type === 'FORBIDDEN') {
                 // User doesn't have permission
@@ -176,39 +163,14 @@ export const AuthProvider = ({ children }) => {
     // ============================================
 
     /**
-     * Login handler with MFA and password change requirement support.
-     * No localStorage token storage - uses HttpOnly cookies.
+     * Login handler. No localStorage token storage - uses HttpOnly cookies.
      */
     const login = async (email, password) => {
         try {
             setLoading(true);
             setError(null);
-            setRequiresMfa(false);
-            setRequiresPasswordChange(false);
 
             const response = await authApi.login(email, password);
-
-            // Handle MFA requirement
-            if (response.requiresMfa || response.code === 'REQUIRES_MFA') {
-                setRequiresMfa(true);
-                setPendingAuthData({ email, mfaToken: response.mfaToken });
-                return {
-                    success: false,
-                    requiresMfa: true,
-                    message: response.message || 'Please complete MFA verification'
-                };
-            }
-
-            // Handle password change requirement
-            if (response.passwordChangeRequired || response.code === 'PASSWORD_CHANGE_REQUIRED') {
-                setRequiresPasswordChange(true);
-                setPendingAuthData({ email, tempToken: response.tempToken });
-                return {
-                    success: false,
-                    passwordChangeRequired: true,
-                    message: response.message || 'You must change your password before continuing'
-                };
-            }
 
             if (response.success && response.user) {
                 setUser(response.user);
@@ -221,28 +183,6 @@ export const AuthProvider = ({ children }) => {
         } catch (err) {
             const errorData = err.response?.data;
 
-            // Handle MFA requirement from error response
-            if (errorData?.requiresMfa || errorData?.code === 'REQUIRES_MFA') {
-                setRequiresMfa(true);
-                setPendingAuthData({ email, mfaToken: errorData.mfaToken });
-                return {
-                    success: false,
-                    requiresMfa: true,
-                    message: errorData.message || 'Please complete MFA verification'
-                };
-            }
-
-            // Handle password change requirement from error response
-            if (errorData?.passwordChangeRequired || errorData?.code === 'PASSWORD_CHANGE_REQUIRED') {
-                setRequiresPasswordChange(true);
-                setPendingAuthData({ email, tempToken: errorData.tempToken });
-                return {
-                    success: false,
-                    passwordChangeRequired: true,
-                    message: errorData.message || 'You must change your password before continuing'
-                };
-            }
-
             const message = errorData?.message || 'Login failed. Please try again.';
             setError(message);
             return { success: false, message, errorData };
@@ -251,76 +191,14 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    /**
-     * Verify MFA code after login
-     */
-    const verifyMfa = async (code) => {
-        try {
-            setLoading(true);
-            setError(null);
-
-            const response = await api.post('/users/verify-mfa', {
-                email: pendingAuthData?.email,
-                code,
-                mfaToken: pendingAuthData?.mfaToken
-            });
-
-            if (response.data.success && response.data.user) {
-                setUser(response.data.user);
-                setRequiresMfa(false);
-                setPendingAuthData(null);
-                return { success: true, user: response.data.user };
-            }
-
-            return { success: false, message: response.data.message || 'MFA verification failed' };
-        } catch (err) {
-            const message = err.response?.data?.message || 'MFA verification failed. Please try again.';
-            setError(message);
-            return { success: false, message };
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    /**
-     * Change password when required before login
-     */
-    const changePasswordOnLogin = async (newPassword) => {
-        try {
-            setLoading(true);
-            setError(null);
-
-            const response = await api.post('/users/change-password-required', {
-                email: pendingAuthData?.email,
-                newPassword,
-                tempToken: pendingAuthData?.tempToken
-            });
-
-            if (response.data.success && response.data.user) {
-                setUser(response.data.user);
-                setRequiresPasswordChange(false);
-                setPendingAuthData(null);
-                return { success: true, user: response.data.user };
-            }
-
-            return { success: false, message: response.data.message || 'Password change failed' };
-        } catch (err) {
-            const message = err.response?.data?.message || 'Password change failed. Please try again.';
-            setError(message);
-            return { success: false, message };
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    /**
-     * Cancel MFA or password change flow
-     */
-    const cancelPendingAuth = () => {
-        setRequiresMfa(false);
-        setRequiresPasswordChange(false);
-        setPendingAuthData(null);
-    };
+    // `verifyMfa`, `changePasswordOnLogin` and `cancelPendingAuth` were removed
+    // here (Phase 5.3). The first posted to /users/verify-mfa and the second to
+    // /users/change-password-required. Neither route exists — userRoutes.js
+    // registers no such path — so both calls would have 404ed, and nothing
+    // could set the state that made them reachable in the first place.
+    //
+    // Users who need to change a password use the ordinary flows:
+    // PUT /users/change-password when signed in, or the OTP reset when not.
 
     /**
      * Register handler - no localStorage token storage.
@@ -332,28 +210,6 @@ export const AuthProvider = ({ children }) => {
 
             const response = await authApi.register(userData);
 
-            // Handle MFA requirement for registration
-            if (response.requiresMfa || response.code === 'REQUIRES_MFA') {
-                setRequiresMfa(true);
-                setPendingAuthData({ email: userData.email, mfaToken: response.mfaToken });
-                return {
-                    success: false,
-                    requiresMfa: true,
-                    message: response.message || 'Please complete MFA verification'
-                };
-            }
-
-            // Handle password change requirement for registration
-            if (response.passwordChangeRequired || response.code === 'PASSWORD_CHANGE_REQUIRED') {
-                setRequiresPasswordChange(true);
-                setPendingAuthData({ email: userData.email, tempToken: response.tempToken });
-                return {
-                    success: false,
-                    passwordChangeRequired: true,
-                    message: response.message || 'You must set a new password'
-                };
-            }
-
             if (response.success) {
                 // Registration successful - may need OTP verification
                 return { success: true, ...response };
@@ -362,28 +218,6 @@ export const AuthProvider = ({ children }) => {
             return { success: false, message: response.message || 'Registration failed' };
         } catch (err) {
             const errorData = err.response?.data;
-
-            // Handle MFA requirement from error response
-            if (errorData?.requiresMfa || errorData?.code === 'REQUIRES_MFA') {
-                setRequiresMfa(true);
-                setPendingAuthData({ email: userData.email, mfaToken: errorData.mfaToken });
-                return {
-                    success: false,
-                    requiresMfa: true,
-                    message: errorData.message || 'Please complete MFA verification'
-                };
-            }
-
-            // Handle password change requirement from error response
-            if (errorData?.passwordChangeRequired || errorData?.code === 'PASSWORD_CHANGE_REQUIRED') {
-                setRequiresPasswordChange(true);
-                setPendingAuthData({ email: userData.email, tempToken: errorData.tempToken });
-                return {
-                    success: false,
-                    passwordChangeRequired: true,
-                    message: errorData.message || 'You must set a new password'
-                };
-            }
 
             const message = errorData?.message || 'Registration failed. Please try again.';
             setError(message);
@@ -406,9 +240,6 @@ export const AuthProvider = ({ children }) => {
         } finally {
             // Always clear local state regardless of server response
             setUser(null);
-            setRequiresMfa(false);
-            setRequiresPasswordChange(false);
-            setPendingAuthData(null);
             setLoading(false);
 
             // Redirect logic: 
@@ -484,11 +315,6 @@ export const AuthProvider = ({ children }) => {
         loading,
         error,
 
-        // Special auth states
-        requiresMfa,
-        requiresPasswordChange,
-        pendingAuthData,
-
         // Auth status
         isAuthenticated,
         isOwner,
@@ -509,11 +335,6 @@ export const AuthProvider = ({ children }) => {
         updateUser,
         clearError: () => setError(null),
         refreshOwnerPropertyStatus: () => checkOwnerProperty(user),
-
-        // MFA & Password change handlers
-        verifyMfa,
-        changePasswordOnLogin,
-        cancelPendingAuth,
     };
 
     return (
@@ -535,80 +356,13 @@ export const useAuth = () => {
     return context;
 };
 
-// ============================================
-// PROTECTED ROUTE COMPONENT
+// ProtectedRoute was removed here (Phase 5.3).
 //
-// NOT IN USE, and deliberately not adopted (reviewed 2026-08-16).
-//
-// Private routes are guarded by two layers that already work together:
-//   1. src/middleware.js redirects at the edge, before the page renders, using
-//      the non-HttpOnly `session_exists` cookie. This is what avoids a flash of
-//      private UI.
-//   2. Each private *Content.jsx checks `useAuth()` and redirects. This is the
-//      fallback the middleware itself documents, for cross-origin deployments
-//      where `session_exists` is not visible at the edge.
-//
-// Wiring this component in would add a third mechanism doing the same job, and
-// three of its five redirect targets do not exist as routes: /verify-mfa,
-// /change-password-required and /verify-email have no directory under src/app,
-// so adopting it would send users to the 404 page. Those branches also depend
-// on `requiresMfa` / `requiresPasswordChange`, which the user login flow never
-// sets — end users have no MFA; that is admin-only.
-//
-// If this is ever revived, build the missing pages first and reconcile it with
-// the middleware list rather than layering it on top.
-// ============================================
-
-export const ProtectedRoute = ({ children, requiredRole = null, requireVerified = false }) => {
-    const { isAuthenticated, loading, hasRole, isVerified, requiresMfa, requiresPasswordChange } = useAuth();
-    const router = useRouter();
-    const pathname = usePathname();
-
-    useEffect(() => {
-        if (!loading) {
-            // Handle MFA requirement
-            if (requiresMfa) {
-                router.replace('/verify-mfa');
-                return;
-            }
-
-            // Handle password change requirement
-            if (requiresPasswordChange) {
-                router.replace('/change-password-required');
-                return;
-            }
-
-            if (!isAuthenticated) {
-                router.replace(`/login?from=${encodeURIComponent(pathname)}`);
-            } else if (requiredRole && !hasRole(requiredRole)) {
-                router.replace('/');
-            } else if (requireVerified && !isVerified) {
-                router.replace('/verify-email');
-            }
-        }
-    }, [loading, isAuthenticated, hasRole, isVerified, requiredRole, requireVerified, requiresMfa, requiresPasswordChange, router, pathname]);
-
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-red-600"></div>
-            </div>
-        );
-    }
-
-    if (!isAuthenticated || requiresMfa || requiresPasswordChange) {
-        return null;
-    }
-
-    if (requiredRole && !hasRole(requiredRole)) {
-        return null;
-    }
-
-    if (requireVerified && !isVerified) {
-        return null;
-    }
-
-    return children;
-};
+// It had zero call sites and was documented as deliberately not adopted:
+// private routes are already guarded twice, by src/middleware.js at the edge
+// and by each private *Content.jsx. Three of its five redirect targets
+// (/verify-mfa, /change-password-required, /verify-email) are not routes, and
+// two of its five branches depended on requiresMfa / requiresPasswordChange,
+// which no user response has ever set.
 
 export default AuthContext;
