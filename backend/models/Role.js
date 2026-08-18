@@ -54,7 +54,7 @@ const roleSchema = new mongoose.Schema(
 );
 
 // Index for faster lookups
-roleSchema.index({ name: 1 });
+// name is declared `unique: true` inline, which already builds the index.
 roleSchema.index({ level: -1 });
 
 // Virtual to get permission names

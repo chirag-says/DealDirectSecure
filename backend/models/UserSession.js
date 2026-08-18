@@ -171,8 +171,8 @@ const userSessionSchema = new mongoose.Schema(
 // Indexes for efficient queries
 userSessionSchema.index({ user: 1, isActive: 1 });
 userSessionSchema.index({ tokenHash: 1 });
-userSessionSchema.index({ expiresAt: 1 });
-
+// expiresAt carries the TTL index inline (expireAfterSeconds: 0); a plain
+// index here would be a second declaration of the same field.
 /**
  * Generate a cryptographically secure session token
  */

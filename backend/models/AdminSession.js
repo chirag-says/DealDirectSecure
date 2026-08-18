@@ -57,7 +57,8 @@ const adminSessionSchema = new mongoose.Schema(
         expiresAt: {
             type: Date,
             required: true,
-            index: true,
+            // No inline index: the TTL declared below is the real one,
+            // and declaring both warned on every boot.
         },
         // Last activity timestamp for session timeout
         lastActivity: {

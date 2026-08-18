@@ -142,7 +142,7 @@ const adminSchema = new mongoose.Schema(
 );
 
 // Indexes
-adminSchema.index({ email: 1 });
+// email is declared `unique: true` inline, which already builds the index.
 adminSchema.index({ isActive: 1, deletedAt: 1 });
 adminSchema.index({ role: 1 });
 

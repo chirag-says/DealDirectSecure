@@ -221,12 +221,12 @@ userSchema.pre("save", async function (next) {
 });
 
 // Indexes
-userSchema.index({ email: 1 }, { unique: true });
+// email is declared `unique: true` inline, which already builds this index.
 userSchema.index({ role: 1 });
 userSchema.index({ isVerified: 1 });
 userSchema.index({ isBlocked: 1 });
 userSchema.index({ createdAt: -1 });
-userSchema.index({ referralCode: 1 }, { sparse: true });
+// referralCode is declared `unique: true, sparse: true` inline.
 userSchema.index({ referredBy: 1 });
 
 // Virtual for full address
