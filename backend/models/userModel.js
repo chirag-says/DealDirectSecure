@@ -130,11 +130,15 @@ const userSchema = new mongoose.Schema(
         default: null,
         select: false,
       },
-      // Session version (increment to invalidate all sessions)
-      sessionVersion: {
-        type: Number,
-        default: 0,
-      },
+      // `sessionVersion` was removed here (Phase 5.6). It was written only by
+      // an `invalidateSessions()` method that nothing ever called, and read by
+      // nothing at all.
+      //
+      // What actually invalidates sessions after a password change is the
+      // UserSession record being revoked — `revokeOtherSessions` on change and
+      // `revokeAllUserSessions` on reset. `changedPasswordAfter` below is a
+      // second line of defence, but only on the legacy no-sessionId path in
+      // authMiddleware; the session path never reaches it.
     },
 
     // Referral System — DealDirect Rewards
@@ -150,11 +154,9 @@ const userSchema = new mongoose.Schema(
       uppercase: true,
       trim: true,
     },
-    // Tracks whether user has completed their "first action" (for referral milestone)
-    hasCompletedFirstAction: {
-      type: Boolean,
-      default: false,
-    },
+    // `hasCompletedFirstAction` was removed here (Phase 5.6). It was declared
+    // for a referral milestone that was never built: no code read it, and no
+    // code ever set it to true.
 
     // Deprecated fields - kept for migration compatibility
     resetPasswordOtp: {
@@ -287,12 +289,10 @@ userSchema.methods.changedPasswordAfter = function (jwtTimestamp) {
   return false;
 };
 
-// Instance method: Invalidate all sessions (increment version)
-userSchema.methods.invalidateSessions = async function () {
-  this.security = this.security || {};
-  this.security.sessionVersion = (this.security.sessionVersion || 0) + 1;
-  await this.save();
-};
+// `invalidateSessions()` was removed here (Phase 5.6) along with the
+// sessionVersion field it incremented. Nothing called it. To invalidate
+// sessions, use UserSession.revokeAllUserSessions — which is what the password
+// flows already do.
 
 // Static method: Filter safe fields for API response
 userSchema.statics.getSafeFields = function () {

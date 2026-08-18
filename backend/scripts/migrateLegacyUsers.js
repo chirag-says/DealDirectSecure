@@ -56,7 +56,6 @@ const migrateUser = async (user) => {
             passwordChangedAt: null,
             lastLoginAt: null,
             lastLoginIp: null,
-            sessionVersion: 0,
         };
         logs.push('Security metadata: initialized');
     } else {
@@ -65,10 +64,10 @@ const migrateUser = async (user) => {
             updates['security.failedLoginAttempts'] = 0;
             logs.push('security.failedLoginAttempts: initialized to 0');
         }
-        if (user.security.sessionVersion === undefined) {
-            updates['security.sessionVersion'] = 0;
-            logs.push('security.sessionVersion: initialized to 0');
-        }
+        // sessionVersion is no longer initialised here: the field was removed in
+        // Phase 5.6. Documents that already carry it are left alone — the value
+        // is inert, and rewriting every user to drop one unused number is a
+        // migration this does not need to run.
         if (user.security.lockoutUntil === undefined) {
             updates['security.lockoutUntil'] = null;
             logs.push('security.lockoutUntil: initialized to null');
