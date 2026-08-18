@@ -852,6 +852,19 @@ export const getPropertyById = async (req, res) => {
 
     res.json(withPublicImages(req, prop));
   } catch (err) {
+    // A malformed id is a client mistake, not a server fault. errorHandler.js
+    // already maps CastError to 400 CAST_ERROR — but this catch runs first and
+    // swallowed it, so /api/properties/not-an-id answered 500. That reads as
+    // "the site is broken" to a crawler and to monitoring alike, when the
+    // honest answer is "there is no such property".
+    if (err.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid identifier format',
+        code: 'CAST_ERROR',
+      });
+    }
+
     console.error('[Property] Get by ID error:', err.message);
     res.status(500).json({
       success: false,

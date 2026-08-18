@@ -1,15 +1,30 @@
 import { Suspense } from 'react';
+import { notFound } from 'next/navigation';
 import PropertyDetailsContent from './PropertyDetailsContent';
-import { getServerApiBase, ssrFetch } from '../../../utils/ssrFetch';
+import { getServerApiBase, ssrFetchWithStatus } from '../../../utils/ssrFetch';
 import { PropertyJsonLd, BreadcrumbJsonLd } from '../../../components/JsonLd';
 
 // Force dynamic rendering — never pre-render at build time
 export const dynamic = 'force-dynamic';
 
-// Helper to fetch property data with timeout
+/**
+ * Fetch the property, keeping "does not exist" separate from "could not ask".
+ *
+ * This page used to render 200 with an empty body for a property that is not
+ * there — a soft 404. Search engines index that as real content, and users get
+ * a page instead of an error.
+ *
+ * The fix is not simply `if (!property) notFound()`. `ssrFetch` returns null for
+ * a timeout too, so that version would answer 404 for every live property while
+ * the backend was restarting, and Google de-indexes URLs that return 404. Only
+ * a definitive absence — 404, 410, or a malformed id — may become a 404 here.
+ */
 async function getProperty(id) {
-    if (!id) return null;
-    return await ssrFetch(`/api/properties/${id}`, { revalidate: 60 });
+    if (!id) return { property: null, missing: true };
+    const { data, notFound: missing } = await ssrFetchWithStatus(
+        `/api/properties/${id}`, { revalidate: 60 }
+    );
+    return { property: data, missing };
 }
 
 export async function generateMetadata(props) {
@@ -18,12 +33,16 @@ export async function generateMetadata(props) {
 
     if (!id) return {};
 
-    const property = await getProperty(id);
+    const { property } = await getProperty(id);
 
     if (!property) {
+        // No canonical here, deliberately. A canonical URL on a page that is
+        // about to answer 404 asks search engines to index the 404 as the
+        // authoritative version of itself.
         return {
             title: 'Property Not Found',
             description: 'The requested property could not be found.',
+            robots: { index: false, follow: false },
         };
     }
 
@@ -60,7 +79,11 @@ export default async function PropertyDetailsPage(props) {
     const params = await props.params;
     const id = params?.id;
 
-    const property = await getProperty(id);
+    const { property, missing } = await getProperty(id);
+
+    // Definitively absent → a real 404. Unreachable backend → fall through and
+    // render, so a transient outage does not de-index a live listing.
+    if (missing) notFound();
 
     // Build breadcrumb items
     const breadcrumbItems = [

@@ -80,6 +80,57 @@ export async function ssrFetch(path, { revalidate = 120, timeoutMs = 8000 } = {}
 }
 
 /**
+ * Like `ssrFetch`, but reports WHY it failed.
+ *
+ * `ssrFetch` collapses every outcome to `data ?? null`, which is fine for a
+ * list that can render empty. It is not fine for a detail page deciding whether
+ * to answer 404, because "this property does not exist" and "the API is
+ * unreachable" arrive as the same `null`.
+ *
+ * Serving 404 for the second case is actively harmful: a backend blip would
+ * make every live property answer 404, and search engines drop URLs that do.
+ * So the caller needs the distinction, and gets it here.
+ *
+ * @returns {Promise<{data: any|null, notFound: boolean, unavailable: boolean, status: number|null}>}
+ *   `notFound`    — the resource is definitively absent (404/410), or the id was
+ *                   malformed (400). Neither is transient; both mean 404.
+ *   `unavailable` — we could not find out (5xx, timeout, DNS). Never a 404.
+ */
+export async function ssrFetchWithStatus(path, { revalidate = 120, timeoutMs = 8000 } = {}) {
+    const url = `${getServerApiBase()}${path}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const res = await fetch(url, {
+            signal: controller.signal,
+            next: { revalidate },
+            headers: { 'Accept': 'application/json', 'X-SSR-Request': 'true' },
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok) return { data: await res.json(), notFound: false, unavailable: false, status: res.status };
+
+        // 400 is here because a malformed id cannot become valid on a retry —
+        // it is a permanent "no such resource", same as 404.
+        if (res.status === 404 || res.status === 410 || res.status === 400) {
+            return { data: null, notFound: true, unavailable: false, status: res.status };
+        }
+
+        console.warn(`[SSR] ${path} responded with ${res.status}`);
+        return { data: null, notFound: false, unavailable: true, status: res.status };
+    } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            console.error(`[SSR] TIMEOUT after ${timeoutMs}ms: ${path}`);
+        } else {
+            console.error(`[SSR] Fetch failed for ${path}:`, error.message);
+        }
+        return { data: null, notFound: false, unavailable: true, status: null };
+    }
+}
+
+/**
  * Fetch multiple API endpoints in parallel with individual error isolation.
  * Each endpoint that fails returns null — others still succeed.
  * 

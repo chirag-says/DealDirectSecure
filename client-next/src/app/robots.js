@@ -8,6 +8,10 @@ export default function robots() {
             {
                 userAgent: '*',
                 allow: '/',
+                // Keep this list in step with PROTECTED_ROUTES in
+                // src/middleware.js. /my-bookings and /rewards/dashboard were
+                // protected there but crawlable here, so a bot could request
+                // them and collect a login redirect on every pass.
                 disallow: [
                     '/profile',
                     '/my-properties',
@@ -16,6 +20,8 @@ export default function robots() {
                     '/add-property',
                     '/edit-property/',
                     '/agreements',
+                    '/my-bookings',
+                    '/rewards/dashboard',
                     '/api/',
                 ],
             },
