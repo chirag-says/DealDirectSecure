@@ -8,6 +8,11 @@ import api from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "react-toastify";
 import { formatPrice } from "../../utils/formatPrice";
+import {
+  scoreRelated,
+  shouldSuggestRelated,
+  relatedPoolParams,
+} from "../../utils/relatedProperties";
 
 import {
   FaMapMarkerAlt,
@@ -913,128 +918,46 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
   // ============================================================
   const filteredProperties = properties;
 
-  // Calculate related properties when filtered results are less than 6
-  const relatedProperties = useMemo(() => {
-    // Only calculate related properties if there are filters applied and results < 6
-    const hasFilters = filters.search || filters.city || filters.propertyType || filters.priceRange || filters.availableFor;
-    if (!hasFilters || filteredProperties.length >= 6) return [];
+  // Related properties, shown when a narrowed search returns fewer than six.
+  //
+  // The candidates come from their own request. They used to be taken from
+  // `properties` — but `properties` is now exactly the search results, and the
+  // ranking excludes the search results, so the pool was always empty and the
+  // section silently stopped rendering. See utils/relatedProperties.js.
+  const [relatedPool, setRelatedPool] = useState([]);
 
-    const filteredIds = new Set(filteredProperties.map(p => p._id));
-    const query = (filters.search || "").toLowerCase();
+  useEffect(() => {
+    // Only ask when the rule says to: a narrowed search with fewer than six
+    // results. Otherwise this would be a second request on every search.
+    if (loading) return;
+    if (!shouldSuggestRelated(filters, properties.length)) {
+      setRelatedPool([]);
+      return;
+    }
 
-    // Get the category/type context from current filters or filtered results
-    const currentCategory = filters.propertyType
-      ? propertyTypes.find(pt => String(pt._id) === String(filters.propertyType))?.name?.toLowerCase() || ""
-      : "";
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get("/properties/search", { params: relatedPoolParams() });
+        if (cancelled) return;
+        const body = res.data || {};
+        setRelatedPool(Array.isArray(body.data) ? body.data : []);
+      } catch {
+        // Suggestions are an extra. If the request fails the section simply
+        // does not render; the actual results are already on screen.
+        if (!cancelled) setRelatedPool([]);
+      }
+    })();
 
-    // Determine if looking for residential or commercial
-    const isLookingForResidential = currentCategory.includes("residen") ||
-      /apartment|flat|villa|house|bhk|penthouse|independent|builder\s*floor|row\s*house|farm\s*house/i.test(query);
-    const isLookingForCommercial = currentCategory.includes("commercial") ||
-      /office|shop|showroom|warehouse|industrial|godown|retail/i.test(query);
+    return () => { cancelled = true; };
+  }, [filters, properties.length, loading]);
 
-    // Score and find related properties
-    const related = properties
-      .filter(p => !filteredIds.has(p._id)) // Exclude already shown properties
-      .map(p => {
-        let score = 0;
-        const { isResidential, isCommercial, propertyTypeName } = getTypeFlags(p);
-
-        // Match by property category (highest priority)
-        if (isLookingForResidential && isResidential) score += 30;
-        if (isLookingForCommercial && isCommercial) score += 30;
-
-        // If no specific category detected, give base score to all properties
-        if (!isLookingForResidential && !isLookingForCommercial) {
-          score += 10; // Base relevance for any property
-        }
-
-        // Match by listing type (Rent/Sell)
-        if (filters.availableFor && p.listingType?.toLowerCase() === filters.availableFor.toLowerCase()) {
-          score += 25;
-        } else if (!filters.availableFor) {
-          score += 10; // No listing type filter, give base score
-        }
-
-        // Match by city (if different city but same type, still relevant)
-        if (filters.city) {
-          const pCity = (p.address?.city || p.city || "").toLowerCase();
-          if (pCity === filters.city.toLowerCase()) {
-            score += 20;
-          } else if (pCity) {
-            score += 5;
-          }
-        } else {
-          score += 5; // No city filter, give small base score
-        }
-
-        // Match by similar property type name
-        if (query) {
-          const pTypeLower = propertyTypeName.toLowerCase();
-          const pTitle = (p.title || "").toLowerCase();
-          const pBhk = (p.bhk || "").toLowerCase();
-
-          // Check if property type or title contains any word from the search query
-          const queryWords = query.split(/\s+/).filter(w => w.length > 2);
-          const matchesAnyWord = queryWords.some(word =>
-            pTypeLower.includes(word) || pTitle.includes(word)
-          );
-
-          if (matchesAnyWord) {
-            score += 15;
-          }
-
-          if (pTypeLower.includes(query) || pTitle.includes(query) || pBhk.includes(query)) {
-            score += 15;
-          }
-
-          // BHK matching - if searching for "2 BHK", "3 BHK" etc. show similar BHK
-          const bhkMatch = query.match(/(\d+)\s*bhk/i);
-          if (bhkMatch) {
-            const searchBhk = parseInt(bhkMatch[1]);
-            const propBhk = parseInt(p.bedrooms || p.bhk || "0");
-            if (propBhk === searchBhk) score += 20;
-            else if (Math.abs(propBhk - searchBhk) === 1) score += 10; // Adjacent BHK
-          }
-        }
-
-        // Match by price range proximity
-        if (filters.priceRange) {
-          // Raw rupees, the same basis the server filters on.
-          const priceInRupees = Number(p.price) || 0;
-          const isLow = priceInRupees < 5000000;
-          const isMid = priceInRupees >= 5000000 && priceInRupees <= 15000000;
-          const isHigh = priceInRupees > 15000000;
-
-          if (filters.priceRange === "low" && isLow) score += 15;
-          else if (filters.priceRange === "mid" && isMid) score += 15;
-          else if (filters.priceRange === "high" && isHigh) score += 15;
-          // Adjacent price ranges get partial score
-          else if ((filters.priceRange === "low" && isMid) || (filters.priceRange === "mid" && (isLow || isHigh)) || (filters.priceRange === "high" && isMid)) {
-            score += 8;
-          }
-        }
-
-        return { ...p, relevanceScore: score };
-      })
-      .filter(p => p.relevanceScore >= 15) // Include if somewhat relevant
-      .sort((a, b) => b.relevanceScore - a.relevanceScore)
-      .slice(0, 6); // Always show 6 related properties
-
-    // Debug log
-    console.log('Related properties calculation:', {
-      hasFilters,
-      filteredCount: filteredProperties.length,
-      totalProperties: properties.length,
-      query,
-      isLookingForResidential,
-      isLookingForCommercial,
-      relatedCount: related.length,
-      topScores: related.slice(0, 3).map(p => ({ title: p.title, score: p.relevanceScore }))
-    });
-
-    return related;
-  }, [filteredProperties, properties, filters, propertyTypes]);
+  const relatedProperties = useMemo(
+    () => (shouldSuggestRelated(filters, filteredProperties.length)
+      ? scoreRelated(relatedPool, { matched: filteredProperties, filters, propertyTypes })
+      : []),
+    [relatedPool, filteredProperties, filters, propertyTypes]
+  );
 
   // Get properties with valid coordinates for map
   const propertiesWithCoords = useMemo(() => {
