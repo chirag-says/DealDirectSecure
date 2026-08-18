@@ -375,7 +375,9 @@ export const registerUserDirect = async (req, res) => {
 
     // --- DealDirect Rewards: post-registration hooks ---
     try {
-      await getOrCreateWallet(user._id);
+      // The return value is discarded — this only ensures the wallet exists — so
+      // there is no reason to hydrate the transaction array.
+      await getOrCreateWallet(user._id, { withTransactions: false });
 
       // Handle referral code if provided
       if (req.body.referralCode) {
@@ -450,7 +452,9 @@ export const verifyOtp = async (req, res) => {
 
     // --- DealDirect Rewards: post-registration hooks ---
     try {
-      await getOrCreateWallet(user._id);
+      // The return value is discarded — this only ensures the wallet exists — so
+      // there is no reason to hydrate the transaction array.
+      await getOrCreateWallet(user._id, { withTransactions: false });
 
       // Handle referral code if provided during registration
       if (req.body.referralCode) {

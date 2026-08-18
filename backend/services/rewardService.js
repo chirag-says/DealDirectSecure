@@ -224,17 +224,29 @@ export const getRandomReward = (category) => {
 // ============================================
 
 /**
- * Get or create a reward wallet for a user
+ * Get or create a reward wallet for a user.
+ *
+ * `withTransactions: false` excludes the embedded transaction array from the
+ * read. Use it only where the array is genuinely not needed — most callers do
+ * need it, either to display history or because they push to it.
+ *
+ * SAFE TO SAVE. Mongoose writes only the paths a document actually modified,
+ * so saving a wallet loaded without `transactions` leaves the stored array
+ * alone. That is not obvious and it is the one way this change could silently
+ * destroy data, so it is asserted directly in
+ * tests/integration/reward-projection.test.js rather than assumed.
  */
-export const getOrCreateWallet = async (userId) => {
-  let wallet = await Reward.findOne({ user: userId });
+export const getOrCreateWallet = async (userId, { withTransactions = true } = {}) => {
+  const projection = withTransactions ? undefined : { transactions: 0 };
+
+  let wallet = await Reward.findOne({ user: userId }, projection);
   if (!wallet) {
     try {
       wallet = await Reward.create({ user: userId });
     } catch (err) {
       // Handle race condition: another request may have created it
       if (err.code === 11000) {
-        wallet = await Reward.findOne({ user: userId });
+        wallet = await Reward.findOne({ user: userId }, projection);
       }
       if (!wallet) throw err;
     }
@@ -574,7 +586,9 @@ export const getReferralStats = async (userId) => {
  */
 export const trackDailyLogin = async (userId) => {
   try {
-    const wallet = await getOrCreateWallet(userId);
+    // Runs on EVERY login and touches only lastLoginDate and monthlyLoginDays,
+    // so there is no reason to pull the transaction array across for it.
+    const wallet = await getOrCreateWallet(userId, { withTransactions: false });
     const today = new Date().toISOString().split("T")[0];
     
     if (wallet.lastLoginDate === today) return { success: true, message: "Already tracked today" };
