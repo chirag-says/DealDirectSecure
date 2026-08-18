@@ -53,10 +53,39 @@ const getCookieOptions = () => ({
 // ============================================
 
 /**
- * Middleware to set CSRF token cookie on every request
- * This ensures the frontend always has a valid CSRF token
+ * Paths that never need a CSRF cookie issued.
+ *
+ * `/uploads` is static content mounted with `Cache-Control: public,
+ * max-age=86400`. A response carrying `Set-Cookie` is not cacheable by a shared
+ * cache, so issuing the token there defeated the caching that mount was
+ * explicitly configured for.
+ *
+ * `/health` is polled by uptime checkers, not browsers, so it never precedes a
+ * mutating request. `/ping` and `/debug-startup` are registered before this
+ * middleware and never received the cookie in the first place.
+ *
+ * DELIBERATELY NARROW. Skipping all safe methods would be wrong: the double
+ * submit pattern needs the cookie present BEFORE the first mutating request,
+ * and nothing bootstraps it explicitly — `fetchCsrfToken` has zero callers in
+ * either client. The token is issued implicitly by whatever request the browser
+ * makes first, which is always a GET. Skip those and a fresh session's first
+ * mutation gets a 403.
+ */
+const CSRF_COOKIE_EXEMPT_PREFIXES = ['/uploads', '/health'];
+
+const needsCsrfCookie = (path) =>
+    !CSRF_COOKIE_EXEMPT_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
+
+/**
+ * Middleware to set the CSRF token cookie.
+ *
+ * Runs on every request except the exempt prefixes above. This ISSUES the
+ * token; `requireCsrf` below is what ENFORCES it, on a named list of
+ * state-changing routes. Changing the scope here does not change enforcement.
  */
 export const setCsrfToken = (req, res, next) => {
+    if (!needsCsrfCookie(req.path)) return next();
+
     // Check if CSRF token already exists in cookies
     let token = req.cookies?.[CSRF_COOKIE_NAME];
 

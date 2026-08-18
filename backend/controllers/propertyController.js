@@ -730,7 +730,6 @@ export const getProperties = async (req, res) => {
 
     let query = Property.find(securityFilter)
       .populate("category")
-      .populate("subcategory")
       .populate("propertyType")
       .populate("builder", "name company logo city")
       .sort({ createdAt: -1 });
@@ -758,7 +757,6 @@ export const getPropertyById = async (req, res) => {
     // First, fetch the property to check its status
     const prop = await Property.findById(req.params.id)
       .populate("category")
-      .populate("subcategory")
       .populate("propertyType")
       // SECURITY: no email, no phone.
       //
@@ -1156,7 +1154,6 @@ export const getAllPropertiesList = async (req, res) => {
       ]
     })
       .populate("category", "name")
-      .populate("subcategory", "name")
       .populate("propertyType", "name")
       .sort({ createdAt: -1 });
 
@@ -1181,7 +1178,6 @@ export const getMyProperties = async (req, res) => {
 
     const properties = await Property.find({ owner: ownerQuery })
       .populate("category", "name")
-      .populate("subcategory", "name")
       .populate("propertyType", "name")
       .populate("interestedUsers.user", "name email phone profileImage")
       .sort({ createdAt: -1 });
@@ -1228,7 +1224,6 @@ export const getMyPropertyById = async (req, res) => {
 
     const property = await Property.findOne({ _id: propertyId, owner: userId })
       .populate("category", "name")
-      .populate("subcategory", "name")
       .populate("propertyType", "name");
 
     if (!property) {
@@ -1531,7 +1526,6 @@ export const updateMyProperty = async (req, res) => {
 
     const updated = await Property.findByIdAndUpdate(propertyId, data, { new: true, runValidators: true })
       .populate("category", "name")
-      .populate("subcategory", "name")
       .populate("propertyType", "name");
 
     // --- DealDirect Rewards: property sale/rental rewards ---
@@ -1788,7 +1782,6 @@ export const getSavedProperties = async (req, res) => {
       "interestedUsers.user": userQuery
     })
       .populate("category", "name")
-      .populate("subcategory", "name")
       .populate("propertyType", "name")
       .sort({ createdAt: -1 });
 
@@ -1994,7 +1987,6 @@ export const searchProperties = async (req, res) => {
     // Build query
     let query = Property.find(filter)
       .populate("category", "name")
-      .populate("subcategory", "name")
       .populate("propertyType", "name");
 
     // Sorting
@@ -2162,10 +2154,9 @@ export const filterProperties = async (req, res) => {
     // Fetch properties and populate references
     let properties = await Property.find(filter)
       .populate("propertyType", "name")
-      .populate("category", "name")
-      .populate("subcategory", "name");
+      .populate("category", "name");
 
-    // Further filter by populated fields (category, subcategory, propertyType)
+    // Further filter by populated fields (category, propertyType)
     if (search.trim()) {
       const lower = search.toLowerCase();
       properties = properties.filter(
@@ -2173,7 +2164,6 @@ export const filterProperties = async (req, res) => {
           p.title?.toLowerCase().includes(lower) ||
           p.address?.city?.toLowerCase().includes(lower) ||
           p.category?.name?.toLowerCase().includes(lower) ||
-          p.subcategory?.name?.toLowerCase().includes(lower) ||
           p.propertyType?.name?.toLowerCase().includes(lower)
       );
     }
@@ -2307,7 +2297,6 @@ export const getAdminProperties = async (req, res) => {
 
     const properties = await Property.find(query)
       .populate("category", "name")
-      .populate("subcategory", "name")
       .populate("propertyType", "name")
       .populate("builder", "name company phone")
       .sort({ createdAt: -1 });

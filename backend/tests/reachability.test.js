@@ -184,6 +184,28 @@ describe('admin pages do not call undefined globals or retired routes', () => {
     );
   });
 
+  /**
+   * Phase 4.11. The subcategory level was retired in Phase 3B: its API is
+   * unmounted, `applyTaxonomy` strips any inbound reference, and zero of 47
+   * production properties have ever had one. The schema path survives, so
+   * `populate("subcategory")` stayed legal — it just resolved nothing, ten
+   * times over, on the busiest property reads.
+   *
+   * The schema path is deliberately left alone. Removing it belongs to the
+   * deferred destructive cleanup, alongside deleting the 48 documents.
+   */
+  test('no property read path populates the retired subcategory', () => {
+    const controller = stripJsxComments(readBackend('../controllers/propertyController.js'));
+    assert.doesNotMatch(
+      controller, /populate\(\s*["']subcategory["']/,
+      'a retired relation is being joined again on every matching read'
+    );
+  });
+
+  test('the schema path is still there, because deleting it is a separate stage', () => {
+    assert.match(readBackend('../models/Property.js'), /subcategory:/);
+  });
+
   test('no admin page calls the retired subcategory API', () => {
     const offenders = pages.filter((file) =>
       /\/api\/subcategories\//.test(stripJsxComments(readAdmin(`pages/${file}`)))
