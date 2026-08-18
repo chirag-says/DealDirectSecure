@@ -2,6 +2,7 @@ import Notification from "../models/Notification.js";
 import SavedSearch from "../models/SavedSearch.js";
 import User from "../models/userModel.js";
 import { sendGeneralNotification } from "../utils/emailService.js";
+import { escapeRegExp } from "../utils/escapeRegExp.js";
 
 /**
  * Notification creation and delivery.
@@ -124,17 +125,47 @@ export async function notifyUsers(entries) {
  * price simply skips the price test, which is what the second copy did.
  */
 export async function notifySavedSearchMatches(property) {
-  const searches = await SavedSearch.find({ isActive: true }).lean();
+  const city = property.address?.city || "";
+
+  // The city test runs in MongoDB (Phase 4.2). It used to be a JavaScript
+  // comparison over every active saved search, so a property in one city pulled
+  // every watcher of every other city across the wire before discarding them.
+  //
+  // CASE SEMANTICS ARE PRESERVED EXACTLY, including one that looks like a bug.
+  // The old comparison was `lower(propertyCity) === lower(savedCity)`:
+  // case-insensitive, anchored, and NOT trimmed — so " Pune" did not match
+  // "Pune". The anchored `^...$` regex with `i` reproduces all three. Making it
+  // trim would silently widen who gets notified, which is a product change
+  // rather than a performance one.
+  //
+  // The city is escaped because it reaches a regex. Without that, a saved
+  // search for "P.ne" would match "Pune".
+  //
+  // A search with no city — "" is the schema default — still matches every
+  // city, as it always did. `$exists: false` and `null` cover documents written
+  // before the default existed or inserted straight through the driver.
+  const searches = await SavedSearch.find({
+    isActive: true,
+    $or: [
+      { "filters.city": { $in: ["", null] } },
+      { "filters.city": { $exists: false } },
+      { "filters.city": { $regex: `^${escapeRegExp(city)}$`, $options: "i" } },
+    ],
+  }).lean();
+
   if (!searches.length) return [];
 
-  const city = (property.address?.city || "").toLowerCase();
   const price = property.price;
   const entries = [];
 
   for (const search of searches) {
     const f = search.filters || {};
-    if (f.city && city !== f.city.toLowerCase()) continue;
 
+    // The price bucket stays in JavaScript, deliberately. It compares against
+    // three hard-coded thresholds rather than a stored bound, so there is no
+    // indexable predicate to push down — expressing it as $lt/$gte clauses
+    // would be more code saying the same thing, further from the buckets it
+    // encodes, for no measured gain.
     if (f.priceRange && typeof price === "number") {
       const matchPrice =
         f.priceRange === "low" ? price < 5000000
