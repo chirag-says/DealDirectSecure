@@ -1,9 +1,24 @@
 'use client';
 import React, { useState } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { FaMapMarkerAlt, FaPhoneAlt, FaWhatsapp, FaEnvelope, FaCheckCircle, FaFilePdf, FaBed, FaBath, FaRulerCombined, FaCompass, FaCouch } from 'react-icons/fa';
-import { Building2, CheckCircle, ChevronLeft, ChevronRight, Layers, ListChecks, Shield, MapPin, Home, Calendar, TreePine, Key, Building, BarChart3 } from 'lucide-react';
+import { Building2, CheckCircle, ChevronLeft, ChevronRight, Layers, ListChecks, Shield, MapPin, Home, Calendar, TreePine, Key, Building, BarChart3, HardHat, Landmark, FileText, Award, PlayCircle, X } from 'lucide-react';
 import ddAdminPfp from '../../../assets/clientadminpfp.png';
+
+// Leaflet reads `window` at module scope, so this cannot be server-rendered —
+// it would not degrade the map, it would throw and take the page with it.
+const ProjectLocationMap = dynamic(
+  () => import('../../../components/Projects/ProjectLocationMap'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="bg-white rounded-2xl border border-slate-200 p-5">
+        <div className="h-72 rounded-xl bg-slate-100 animate-pulse" />
+      </div>
+    ),
+  }
+);
 
 const FALLBACK = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800";
 const STATUS_BADGE = { "New Launch": "bg-indigo-600 text-white", "Under Construction": "bg-red-600 text-white", "Ready To Move": "bg-emerald-600 text-white", "Completed": "bg-slate-600 text-white" };
@@ -85,6 +100,9 @@ function UnitTypeCard({ ut, projectId }) {
 
 export default function ProjectDetailContent({ project, unitTypes = [], campaigns = [] }) {
   const p = project;
+  // Full-size viewer for plan drawings. A master plan is dense line art; the
+  // page-level thumbnail exists to be clicked, not to be read.
+  const [zoomed, setZoomed] = useState(null);
   const status = p.basics?.status || "New Launch";
   const loc = [p.location?.locality, p.location?.microMarket, p.location?.city, p.location?.state].filter(Boolean).join(", ");
   const exteriorImages = toArray(p.media?.exteriorImages);
@@ -114,13 +132,24 @@ export default function ProjectDetailContent({ project, unitTypes = [], campaign
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <span className={`text-xs font-bold px-3 py-1.5 rounded-lg ${STATUS_BADGE[status]}`}>{status}</span>
               <span className="text-xs text-slate-600 px-3 py-1.5 rounded-lg border border-slate-200 font-medium bg-white">{p.basics?.subType || p.basics?.category}</span>
+              {/* The registration NUMBER, not just a badge.
+                  "RERA Verified" with no number is precisely the pattern state
+                  regulators penalise — MahaRERA and GujRERA both require the
+                  number displayed prominently in advertisements, and a listing
+                  page is an advertising surface. */}
               {p.basics?.reraNumber && (
-                <span className="text-xs text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 font-medium flex items-center gap-1.5">
+                <a
+                  href="https://maharera.maharashtra.gov.in/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Verify this registration on the state RERA register"
+                  className="text-xs text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 font-medium flex items-center gap-1.5 hover:bg-emerald-100 transition"
+                >
                   <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
                     <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3 5.5L6.5 2" stroke="white" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </span>
-                  RERA Verified
-                </span>
+                  RERA: {p.basics?.reraNumber}
+                </a>
               )}
               {p.basics?.isVastuCompliant && (
                 <span className="text-xs text-violet-700 px-3 py-1.5 rounded-lg border border-violet-200 bg-violet-50 font-medium">Vastu</span>
@@ -162,6 +191,147 @@ export default function ProjectDetailContent({ project, unitTypes = [], campaign
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* ── LOCATION MAP ──
+              Coordinates are filled on 7 of 7 live projects and were rendered
+              on none of them. The component guards its own empty case, so it
+              is safe to mount unconditionally. */}
+          <ProjectLocationMap project={p} />
+
+          {/* ── WALKTHROUGH VIDEO ── */}
+          {p.media?.walkthroughVideoUrl && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5">
+              <h2 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <PlayCircle size={16} /> Project Walkthrough
+              </h2>
+              <a href={p.media.walkthroughVideoUrl} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-3 bg-slate-50 hover:bg-slate-100 rounded-xl px-4 py-3.5 transition group">
+                <span className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                  <PlayCircle size={18} className="text-red-600" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-800">Watch the walkthrough</p>
+                  <p className="text-xs text-slate-400 truncate">Opens in a new tab</p>
+                </div>
+              </a>
+            </div>
+          )}
+
+          {/* ── CONSTRUCTION UPDATES ──
+              Admins can post these with photos and a completion percentage,
+              and nothing has ever displayed them. For an under-construction
+              project this is the strongest trust signal the data model holds:
+              proof that something is actually being built. */}
+          {p.constructionUpdates?.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5">
+              <h2 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <HardHat size={16} /> Construction Progress
+              </h2>
+              <div className="space-y-5">
+                {[...p.constructionUpdates]
+                  .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+                  .map((u, i) => (
+                    <div key={i} className="relative pl-5 border-l-2 border-slate-100 last:pb-0">
+                      <span className="absolute -left-[7px] top-1 w-3 h-3 rounded-full bg-indigo-500 border-2 border-white" />
+                      <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                        <p className="font-semibold text-slate-800 text-sm">{u.title}</p>
+                        <span className="text-xs text-slate-400">{fmtDate(u.date)}</span>
+                      </div>
+                      {typeof u.percentComplete === 'number' && (
+                        <div className="mt-2 mb-2">
+                          <div className="flex justify-between text-[11px] text-slate-400 mb-1">
+                            <span>Completion</span><span className="font-semibold text-indigo-600">{u.percentComplete}%</span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5">
+                            <div className="h-1.5 rounded-full bg-indigo-500 transition-all"
+                              style={{ width: `${Math.min(100, Math.max(0, u.percentComplete))}%` }} />
+                          </div>
+                        </div>
+                      )}
+                      {u.description && <p className="text-sm text-slate-600 mt-1 leading-relaxed">{u.description}</p>}
+                      {toArray(u.images).length > 0 && (
+                        <div className="grid grid-cols-3 gap-2 mt-3">
+                          {toArray(u.images).map((img, j) => (
+                            <img key={j} src={img} alt={`${u.title} ${j + 1}`}
+                              className="w-full h-24 object-cover rounded-lg border border-slate-100"
+                              onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK; }} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── ABOUT THE DEVELOPER ──
+              The Builder model documents this block explicitly and only the
+              name and logo ever reached a page. Contact details are absent by
+              design: DealDirect is the sole point of contact, and the public
+              API strips builder phone and email for exactly that reason. */}
+          {p.builder && (p.builder.description || p.builder.yearEstablished ||
+            p.builder.totalProjectsDelivered || toArray(p.builder.operatingCities).length > 0) && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5">
+              <h2 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <Landmark size={16} /> About the Developer
+              </h2>
+              <div className="flex items-start gap-4">
+                {p.builder.logoUrl && (
+                  <img src={p.builder.logoUrl} alt={p.builder.company || p.builder.name}
+                    className="w-14 h-14 rounded-xl object-cover border border-slate-200 shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <p className="font-bold text-slate-900">{p.builder.company || p.builder.name}</p>
+                  {p.builder.description && (
+                    <p className="text-sm text-slate-600 mt-1.5 leading-relaxed">{p.builder.description}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
+                {p.builder.yearEstablished && (
+                  <div className="bg-slate-50 rounded-xl px-4 py-3">
+                    <p className="text-[11px] text-slate-400">Established</p>
+                    <p className="font-bold text-slate-800 text-sm">{p.builder.yearEstablished}</p>
+                  </div>
+                )}
+                {p.builder.totalProjectsDelivered > 0 && (
+                  <div className="bg-slate-50 rounded-xl px-4 py-3">
+                    <p className="text-[11px] text-slate-400">Projects delivered</p>
+                    <p className="font-bold text-slate-800 text-sm">{p.builder.totalProjectsDelivered}</p>
+                  </div>
+                )}
+                {p.builder.totalSqFtDelivered && (
+                  <div className="bg-slate-50 rounded-xl px-4 py-3">
+                    <p className="text-[11px] text-slate-400">Area delivered</p>
+                    <p className="font-bold text-slate-800 text-sm">{p.builder.totalSqFtDelivered}</p>
+                  </div>
+                )}
+              </div>
+
+              {toArray(p.builder.operatingCities).length > 0 && (
+                <div className="mt-3">
+                  <p className="text-[11px] text-slate-400 mb-1.5">Operating in</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {toArray(p.builder.operatingCities).map((c, i) => (
+                      <span key={i} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">{c}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {Array.isArray(p.builder.awards) && p.builder.awards.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {p.builder.awards.map((a, i) => (
+                    <div key={i} className="flex items-center gap-2 text-sm text-slate-600">
+                      <Award size={13} className="text-amber-500 shrink-0" />
+                      {a.name}{a.year ? ` · ${a.year}` : ''}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -272,13 +442,70 @@ export default function ProjectDetailContent({ project, unitTypes = [], campaign
               </div>
             )}
 
-            {/* ── DOCUMENTS (moved from left) ── */}
-            {(p.documents?.reraCertificateUrl || p.media?.brochureUrl) && (
+            {/* ── DOCUMENTS ──
+                Every uploaded document, not just two. The commencement and
+                occupancy certificates and the approval list were all being
+                collected and none of them reached a page — and the OC is the
+                document that proves a completed project is legally occupiable,
+                which is the single paper a buyer of a finished flat asks for. */}
+            {(() => {
+              const docs = [
+                [p.media?.brochureUrl, 'Project Brochure', FaFilePdf, 'red'],
+                [p.documents?.reraCertificateUrl, 'RERA Certificate', Shield, 'green'],
+                [p.documents?.occupancyCertificateUrl, 'Occupancy Certificate', FileText, 'green'],
+                [p.documents?.commencementCertificateUrl, 'Commencement Certificate', FileText, 'slate'],
+                [p.documents?.environmentalClearanceUrl, 'Environmental Clearance', FileText, 'slate'],
+              ].filter(([url]) => Boolean(url));
+
+              const approvals = toArray(p.documents?.approvalDocumentUrls);
+              if (docs.length === 0 && approvals.length === 0) return null;
+
+              const tone = {
+                red: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100',
+                green: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100',
+                slate: 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100',
+              };
+
+              return (
+                <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                  <h3 className="font-bold text-slate-900 mb-3">Documents</h3>
+                  <div className="space-y-2">
+                    {docs.map(([url, label, Icon, colour], i) => (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                        className={`w-full flex items-center gap-2 px-4 py-2.5 border rounded-xl text-sm font-medium transition ${tone[colour]}`}>
+                        <Icon size={14} /> {label}
+                      </a>
+                    ))}
+                    {approvals.map((url, i) => (
+                      <a key={`ap-${i}`} href={url} target="_blank" rel="noopener noreferrer"
+                        className={`w-full flex items-center gap-2 px-4 py-2.5 border rounded-xl text-sm font-medium transition ${tone.slate}`}>
+                        <FileText size={14} /> Approval Document {approvals.length > 1 ? i + 1 : ''}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── BANK APPROVALS ──
+                A home-loan trust signal every competing portal shows, stored
+                here and never rendered. Buyers read "SBI approved" as "the
+                title has been checked by someone with money at risk". */}
+            {Array.isArray(p.bankApprovals) && p.bankApprovals.length > 0 && (
               <div className="bg-white rounded-2xl border border-slate-200 p-5">
-                <h3 className="font-bold text-slate-900 mb-3">Documents</h3>
+                <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
+                  <Landmark size={15} /> Home Loans Available
+                </h3>
                 <div className="space-y-2">
-                  {p.media?.brochureUrl && <a href={p.media.brochureUrl} target="_blank" rel="noopener noreferrer" className="w-full flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-700 border border-red-200 rounded-xl text-sm font-medium hover:bg-red-100 transition"><FaFilePdf /> Download Brochure</a>}
-                  {p.documents?.reraCertificateUrl && <a href={p.documents.reraCertificateUrl} target="_blank" rel="noopener noreferrer" className="w-full flex items-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 border border-green-200 rounded-xl text-sm font-medium hover:bg-green-100 transition"><Shield size={14} /> RERA Certificate</a>}
+                  {p.bankApprovals.map((b, i) => (
+                    <div key={i} className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <CheckCircle size={13} className="text-emerald-500 shrink-0" />
+                        <span className="text-sm font-medium text-slate-700 truncate">{b.bankName}</span>
+                      </div>
+                      {b.loanType && <span className="text-[11px] text-slate-400 shrink-0 ml-2">{b.loanType}</span>}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -295,17 +522,61 @@ export default function ProjectDetailContent({ project, unitTypes = [], campaign
                 </ul>
               </div>
             )}
-            {masterPlanImages[0] && (
+            {/* ── MASTER PLAN ──
+                `h-48 object-cover` crushed a site-layout drawing into a strip
+                of decorative noise — tower labels and the legend cropped away,
+                which is the entire content of a master plan. object-contain
+                preserves it, and clicking opens it full size, because a plan
+                readable at 12rem is not a plan.
+                All images render, not only the first. */}
+            {masterPlanImages.length > 0 && (
               <div className="bg-white border border-slate-200 rounded-2xl p-5">
                 <h3 className="font-bold text-slate-900 mb-3">Master Plan</h3>
-                <div className="relative h-48 rounded-xl overflow-hidden">
-                  <img src={masterPlanImages[0]} alt="Master Plan" className="w-full h-full object-cover" onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK; }} />
+                <div className="space-y-2">
+                  {masterPlanImages.map((img, i) => (
+                    <button key={i} onClick={() => setZoomed(img)}
+                      className="block w-full rounded-xl overflow-hidden bg-slate-50 border border-slate-100 hover:border-indigo-300 transition group">
+                      <img src={img} alt={`Master Plan ${masterPlanImages.length > 1 ? i + 1 : ''}`}
+                        className="w-full max-h-72 object-contain"
+                        onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK; }} />
+                      <span className="block text-[11px] text-slate-400 group-hover:text-indigo-500 py-1.5 transition">
+                        Click to enlarge
+                      </span>
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Full-size plan viewer. Backdrop click and Escape both close it. */}
+      {zoomed && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setZoomed(null)}
+          onKeyDown={(e) => e.key === 'Escape' && setZoomed(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Master plan"
+          tabIndex={-1}
+        >
+          <button
+            onClick={() => setZoomed(null)}
+            aria-label="Close"
+            className="absolute top-4 right-4 p-2 bg-white/90 rounded-full hover:bg-white transition"
+          >
+            <X size={18} className="text-slate-800" />
+          </button>
+          <img
+            src={zoomed}
+            alt="Master plan, full size"
+            className="max-w-full max-h-full object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

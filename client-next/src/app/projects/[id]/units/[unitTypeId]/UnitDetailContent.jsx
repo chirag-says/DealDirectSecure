@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { FaBed, FaBath, FaRulerCombined, FaCompass, FaFilePdf, FaPhoneAlt, FaWhatsapp } from 'react-icons/fa';
-import { Shield, CheckCircle, Check, Upload, Loader2, X, AlertTriangle, ChevronRight, Home } from 'lucide-react';
+import { Shield, CheckCircle, Check, Upload, Loader2, X, AlertTriangle, ChevronRight, Home, PlayCircle } from 'lucide-react';
 import { bookingApi } from '../../../../../utils/api';
 import { useAuth } from '../../../../../context/AuthContext';
 import { toast } from 'react-toastify';
@@ -264,6 +264,27 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
                   <div><p className="text-xs font-semibold text-gray-400 mb-2">3D VIEW</p><img src={ut.floorPlans.threeDUrl} alt="3D Floor Plan" className="w-full rounded-lg border border-gray-100 object-contain max-h-72 bg-gray-50"/></div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Video tour.
+              Stored on the unit type (floorPlans.videoUrl) and never rendered.
+              Linked rather than embedded: the field is free-text and may hold a
+              YouTube, Vimeo or Drive URL, and an iframe built from an unvetted
+              URL is an embedding decision, not a display one. */}
+          {ut.floorPlans?.videoUrl && (
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <h2 className="font-bold text-gray-900 mb-3">Video Tour</h2>
+              <a href={ut.floorPlans.videoUrl} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-3 bg-gray-50 hover:bg-gray-100 rounded-xl px-4 py-3.5 transition">
+                <span className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                  <PlayCircle size={18} className="text-red-600" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-800">Watch the unit tour</p>
+                  <p className="text-xs text-gray-400 truncate">Opens in a new tab</p>
+                </div>
+              </a>
             </div>
           )}
 
