@@ -11,6 +11,23 @@ import { Readable } from "stream";
 import { escapeRegExp } from "../utils/escapeRegExp.js";
 import { handleDeleteGuard } from "../utils/deleteGuard.js";
 import { deleteProjectAggregate } from "../utils/aggregateDelete.js";
+import Builder2 from "../models/Builder.js";
+import UnitType2 from "../models/UnitType.js";
+import AuditLog from "../models/AuditLog.js";
+import {
+  evaluateProjectReadiness, isPubliclyVisible, publicProjectFilter,
+} from "../utils/projectPublishGuard.js";
+
+/** Load a project with everything the readiness rules need to judge it. */
+const loadForReadiness = async (projectId) => {
+  const project = await Project.findById(projectId).lean();
+  if (!project) return null;
+  const [builder, unitTypes] = await Promise.all([
+    Builder2.findById(project.builder).lean(),
+    UnitType2.find({ project: project._id }).lean(),
+  ]);
+  return { project, context: { builder, unitTypes } };
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -285,8 +302,10 @@ export const getProject = async (req, res) => {
       return res.status(404).json({ success: false, message: "Project not found." });
     }
 
-    // Inactive/deactivated projects are not publicly viewable.
-    if (!isAdmin && project.isActive === false) {
+    // Drafts are not publicly viewable, and neither are deactivated records.
+    // isPubliclyVisible falls back to `isActive` when `publication` is absent,
+    // so projects created before the lifecycle field keep working.
+    if (!isAdmin && !isPubliclyVisible(project)) {
       return res.status(404).json({ success: false, message: "Project not found." });
     }
 
@@ -312,11 +331,14 @@ export const listProjects = async (req, res) => {
     const { search = "", city, category, status, isActive, page = 1, limit = 20 } = req.query;
 
     const filter = {};
-    // Public callers may only ever see active projects, regardless of query param.
+    // Public callers may only ever see PUBLISHED projects, regardless of query
+    // param. The filter carries the same legacy fallback as isPubliclyVisible:
+    // records without a `publication` field are judged on `isActive`.
     if (req.isAdminViewer === true) {
       if (isActive !== undefined) filter.isActive = isActive === "true";
+      if (req.query.publication) filter["publication.status"] = req.query.publication;
     } else {
-      filter.isActive = true;
+      Object.assign(filter, publicProjectFilter());
     }
     if (city) filter["location.city"] = { $regex: escapeRegExp(city), $options: "i" };
     if (category) filter["basics.category"] = category;
@@ -356,8 +378,8 @@ export const listProjects = async (req, res) => {
 export const listProjectsByBuilder = async (req, res) => {
   try {
     const filter = { builder: req.params.builderId };
-    // Public callers only see active projects; admins see all.
-    if (req.isAdminViewer !== true) filter.isActive = true;
+    // Public callers only see published projects; admins see all.
+    if (req.isAdminViewer !== true) Object.assign(filter, publicProjectFilter());
 
     const projects = await Project.find(filter)
       .sort({ createdAt: -1 })
@@ -475,6 +497,127 @@ export const addConstructionUpdate = async (req, res) => {
     });
   } catch (error) {
     console.error("[projectController.addConstructionUpdate]", error);
+    return res.status(500).json({ success: false, message: "Server error." });
+  }
+};
+
+// ── Readiness (Admin) ─────────────────────────────────────────────────────────
+// GET /api/projects/:id/readiness — the full checklist, passing rules included.
+export const getProjectReadiness = async (req, res) => {
+  try {
+    const loaded = await loadForReadiness(req.params.id);
+    if (!loaded) return res.status(404).json({ success: false, message: "Project not found." });
+
+    const readiness = evaluateProjectReadiness(loaded.project, loaded.context);
+    return res.status(200).json({
+      success: true,
+      data: { ...readiness, status: loaded.project.publication?.status || "published" },
+    });
+  } catch (error) {
+    console.error("[projectController.getProjectReadiness]", error);
+    return res.status(500).json({ success: false, message: "Server error." });
+  }
+};
+
+// ── Publish (Admin) ───────────────────────────────────────────────────────────
+// POST /api/projects/:id/publish
+export const publishProject = async (req, res) => {
+  try {
+    const loaded = await loadForReadiness(req.params.id);
+    if (!loaded) return res.status(404).json({ success: false, message: "Project not found." });
+
+    const readiness = evaluateProjectReadiness(loaded.project, loaded.context);
+
+    // 422, not 400: the request is well-formed, the resource is not ready. The
+    // blockers travel in the body because a refusal an admin cannot act on is
+    // just an obstacle.
+    if (!readiness.canPublish) {
+      return res.status(422).json({
+        success: false,
+        code: "NOT_READY_TO_PUBLISH",
+        message: "This project is not ready to publish.",
+        blockers: readiness.blockers,
+        warnings: readiness.warnings,
+        checklist: readiness.checklist,
+      });
+    }
+
+    await Project.updateOne(
+      { _id: loaded.project._id },
+      {
+        $set: {
+          "publication.status": "published",
+          "publication.publishedAt": new Date(),
+          "publication.publishedBy": req.admin._id,
+          // Snapshot: what we knowingly published without. A recomputed
+          // checklist cannot answer that once the data moves on.
+          "publication.checklistAtPublish": readiness.checklist.map(
+            ({ rule, level, passed }) => ({ rule, level, passed })
+          ),
+          // Kept in step so anything still reading the old field agrees.
+          isActive: true,
+        },
+      }
+    );
+
+    await AuditLog.log({
+      admin: req.admin._id,
+      category: "property_management",
+      action: "project_published",
+      resourceType: "Project",
+      resourceId: loaded.project._id,
+      description: `Published project "${loaded.project.basics?.name || loaded.project._id}"`,
+      req,
+      severity: "medium",
+      metadata: { warnings: readiness.warnings.map((w) => w.rule) },
+    }).catch((e) => console.error("[Project] audit write failed:", e.message));
+
+    return res.status(200).json({
+      success: true,
+      message: "Project published.",
+      warnings: readiness.warnings,
+      checklist: readiness.checklist,
+    });
+  } catch (error) {
+    console.error("[projectController.publishProject]", error);
+    return res.status(500).json({ success: false, message: "Server error." });
+  }
+};
+
+// ── Unpublish (Admin) ─────────────────────────────────────────────────────────
+// POST /api/projects/:id/unpublish — back to draft.
+//
+// Deliberately does NOT touch bookings, campaigns or inventory. Taking a
+// listing off the site is a visibility decision; money already taken against it
+// stays exactly as it was.
+export const unpublishProject = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id).lean();
+    if (!project) return res.status(404).json({ success: false, message: "Project not found." });
+
+    await Project.updateOne(
+      { _id: project._id },
+      { $set: { "publication.status": "draft", isActive: false } }
+    );
+
+    await AuditLog.log({
+      admin: req.admin._id,
+      category: "property_management",
+      action: "project_unpublished",
+      resourceType: "Project",
+      resourceId: project._id,
+      description: `Unpublished project "${project.basics?.name || project._id}"`,
+      req,
+      severity: "medium",
+      metadata: { reason: req.body?.reason || null },
+    }).catch((e) => console.error("[Project] audit write failed:", e.message));
+
+    return res.status(200).json({
+      success: true,
+      message: "Project unpublished. Existing bookings are unaffected.",
+    });
+  } catch (error) {
+    console.error("[projectController.unpublishProject]", error);
     return res.status(500).json({ success: false, message: "Server error." });
   }
 };

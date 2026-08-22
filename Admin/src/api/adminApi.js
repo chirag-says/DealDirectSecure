@@ -375,6 +375,31 @@ export const projectApi = {
         const response = await adminApi.get('/api/projects', { params });
         return response.data;
     },
+
+    /**
+     * The publish checklist for a project — every rule, passing ones included.
+     *
+     * Computed server-side by utils/projectPublishGuard.js, which is also what
+     * the publish endpoint enforces. Deliberately not reimplemented here: a
+     * checklist evaluated twice is a checklist that eventually disagrees with
+     * itself, and the admin-facing copy is the half that goes stale.
+     */
+    getReadiness: async (id) => {
+        const response = await adminApi.get(`/api/projects/${id}/readiness`);
+        return response.data;
+    },
+
+    /** Make a draft project public. Refuses with 422 + blockers if not ready. */
+    publish: async (id) => {
+        const response = await adminApi.post(`/api/projects/${id}/publish`, {});
+        return response.data;
+    },
+
+    /** Take a published project back to draft. Bookings are unaffected. */
+    unpublish: async (id, reason) => {
+        const response = await adminApi.post(`/api/projects/${id}/unpublish`, { reason });
+        return response.data;
+    },
     getById: async (id) => {
         const response = await adminApi.get(`/api/projects/${id}`);
         return response.data;

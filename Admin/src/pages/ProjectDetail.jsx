@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { projectApi, unitTypeApi, campaignApi } from "../api/adminApi";
-import { Plus, Building2, IndianRupee, Home, Layers, ChevronRight, Trash2, ToggleLeft, ToggleRight, HardHat, Upload, X } from "lucide-react";
+import { Plus, Building2, IndianRupee, Home, Layers, ChevronRight, Trash2, HardHat, Upload, X, Eye, EyeOff, CheckCircle2, AlertTriangle, XCircle, Circle } from "lucide-react";
 
 const badge = (status) => {
   const map = {
@@ -26,16 +26,23 @@ export default function ProjectDetail() {
   const [updateImages, setUpdateImages] = useState([]);
   const [postingUpdate, setPostingUpdate] = useState(false);
 
+  const [readiness, setReadiness] = useState(null);
+  const [publishing, setPublishing] = useState(false);
+
   const load = async () => {
     try {
-      const [pRes, uRes, cRes] = await Promise.all([
+      const [pRes, uRes, cRes, rRes] = await Promise.all([
         projectApi.getById(id),
         unitTypeApi.getByProject(id),
         campaignApi.getByProject(id),
+        // Readiness must never block the page: a project that fails to
+        // evaluate should still be viewable and editable.
+        projectApi.getReadiness(id).catch(() => null),
       ]);
       setProject(pRes.data || pRes);
       setUnitTypes(uRes.data || []);
       setCampaigns(cRes.data || []);
+      setReadiness(rRes?.data || null);
     } catch {
       toast.error("Failed to load project.");
     } finally {
@@ -45,12 +52,44 @@ export default function ProjectDetail() {
 
   useEffect(() => { load(); }, [id]);
 
-  const toggleProjectActive = async () => {
+  const publishStatus = project?.publication?.status
+    // Records predating the lifecycle field carry only isActive, and the server
+    // reads them the same way. Showing "draft" for a project that is live on the
+    // site would be a lie the admin would act on.
+    ?? (project?.isActive === false ? "draft" : "published");
+
+  const doPublish = async () => {
+    setPublishing(true);
     try {
-      await projectApi.update(id, { isActive: !project.isActive });
-      setProject(p => ({ ...p, isActive: !p.isActive }));
-      toast.success(`Project ${project.isActive ? "deactivated" : "activated"}.`);
-    } catch { toast.error("Failed to update status."); }
+      const res = await projectApi.publish(id);
+      toast.success(res.message || "Project published.");
+      await load();
+    } catch (e) {
+      const body = e?.response?.data;
+      if (body?.blockers?.length) {
+        // Name the first blocker in the toast; the panel lists them all. A
+        // toast that only says "not ready" makes the admin hunt.
+        toast.error(`Cannot publish: ${body.blockers[0].message}`);
+        setReadiness({ ...body, status: "draft" });
+      } else {
+        toast.error(body?.message || "Failed to publish.");
+      }
+    } finally { setPublishing(false); }
+  };
+
+  const doUnpublish = async () => {
+    if (!window.confirm(
+      "Take this project off the public site?\n\n" +
+      "Existing bookings and campaigns are not affected."
+    )) return;
+    setPublishing(true);
+    try {
+      await projectApi.unpublish(id);
+      toast.success("Project unpublished.");
+      await load();
+    } catch (e) {
+      toast.error(e?.response?.data?.message || "Failed to unpublish.");
+    } finally { setPublishing(false); }
   };
 
   const deleteUnitType = async (utId) => {
@@ -114,17 +153,84 @@ export default function ProjectDetail() {
           <p className="text-gray-500 text-sm mt-1">{loc}</p>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={toggleProjectActive}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${p.isActive ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-green-50 text-green-600 hover:bg-green-100"}`}>
-            {p.isActive ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-            {p.isActive ? "Deactivate" : "Activate"}
-          </button>
+          {publishStatus === "published" ? (
+            <button onClick={doUnpublish} disabled={publishing}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-60">
+              <EyeOff size={16} /> Unpublish
+            </button>
+          ) : (
+            <button onClick={doPublish} disabled={publishing || readiness?.canPublish === false}
+              title={readiness?.canPublish === false
+                ? "Complete the required items below first"
+                : "Make this project visible to buyers"}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed">
+              <Eye size={16} /> {publishing ? "Publishing…" : "Publish"}
+            </button>
+          )}
           <button onClick={() => navigate(`/project/${id}/add-unit-type`)}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
             <Plus size={16} /> Add Unit Type
           </button>
         </div>
       </div>
+
+      {/* ── Readiness ──────────────────────────────────────────────────────
+          Shows PASSING rules too, not only failures. An admin who can see
+          only complaints cannot tell progress from stagnation, and the census
+          says the trailing steps of the wizard are exactly where attention
+          runs out. */}
+      {readiness && (
+        <div className={`rounded-xl border p-5 ${
+          publishStatus === "published"
+            ? "bg-green-50/50 border-green-200"
+            : readiness.canPublish ? "bg-blue-50/50 border-blue-200" : "bg-amber-50/50 border-amber-200"
+        }`}>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+              {publishStatus === "published"
+                ? <><Eye size={16} className="text-green-600" /> Live on the site</>
+                : readiness.canPublish
+                  ? <><CheckCircle2 size={16} className="text-blue-600" /> Ready to publish</>
+                  : <><AlertTriangle size={16} className="text-amber-600" /> Not ready to publish</>}
+            </h3>
+            <span className="text-xs text-gray-500">
+              {readiness.checklist?.filter(c => c.passed).length}/{readiness.checklist?.length} complete
+            </span>
+          </div>
+
+          {readiness.blockers?.length > 0 && (
+            <div className="mb-3">
+              <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1.5">Required</p>
+              <ul className="space-y-1.5">
+                {readiness.blockers.map(b => (
+                  <li key={b.rule} className="flex items-start gap-2 text-sm text-gray-700">
+                    <XCircle size={14} className="text-amber-600 shrink-0 mt-0.5" /> {b.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {readiness.warnings?.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                Recommended — these never block publishing
+              </p>
+              <ul className="space-y-1 opacity-80">
+                {readiness.warnings.map(w => (
+                  <li key={w.rule} className="flex items-start gap-2 text-sm text-gray-600">
+                    <Circle size={12} className="text-gray-400 shrink-0 mt-1" /> {w.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {readiness.blockers?.length === 0 && readiness.warnings?.length === 0 && (
+            <p className="text-sm text-gray-600">Everything on the checklist is complete.</p>
+          )}
+        </div>
+      )}
 
       {/* Stats bar */}
       <div className="grid grid-cols-4 gap-4">

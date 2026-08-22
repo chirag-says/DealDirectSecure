@@ -232,6 +232,42 @@ const projectSchema = new mongoose.Schema(
     // ── Denormalized Campaign Count (updated by GroupBuyCampaign hooks) ──────
     activeCampaignCount: { type: Number, default: 0, min: 0 },
 
+    // ── Publication lifecycle ─────────────────────────────────────────────────
+    //
+    // Separate from `basics.status`, which describes CONSTRUCTION (New Launch →
+    // Completed). This describes the LISTING: is the public allowed to see it.
+    // Conflating the two is the classic mistake — a Ready To Move project can
+    // still be a half-typed draft.
+    //
+    // Defaults to draft. Every field above is optional so an admin can save a
+    // half-transcribed brochure, and this is the moment where "finished" gets
+    // asserted, by a person, against utils/projectPublishGuard.js.
+    //
+    // `isActive` below is NOT removed. Records created before this field exists
+    // carry only `isActive`, and the public read falls back to it — see
+    // isPubliclyVisible(). Dropping it would have 404'd every live project on
+    // deploy.
+    publication: {
+      status: {
+        type: String,
+        enum: ["draft", "published"],
+        default: "draft",
+        index: true,
+      },
+      publishedAt: { type: Date, default: null },
+      publishedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin", default: null },
+      // What the checklist said at the moment of publishing. A snapshot, not a
+      // live view: it answers "what did we knowingly publish without", which a
+      // recomputed checklist cannot once the data has moved on.
+      checklistAtPublish: [
+        {
+          rule: { type: String },
+          level: { type: String, enum: ["block", "warn"] },
+          passed: { type: Boolean },
+        },
+      ],
+    },
+
     // ── Meta ──────────────────────────────────────────────────────────────────
     isActive: { type: Boolean, default: true },
     unitTypeCount: { type: Number, default: 0, min: 0 }, // denormalized for listing cards

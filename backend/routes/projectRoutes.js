@@ -15,6 +15,9 @@ import {
   updateProject,
   addConstructionUpdate,
   deleteProject,
+  getProjectReadiness,
+  publishProject,
+  unpublishProject,
 } from "../controllers/projectController.js";
 import { protectAdmin, attachAdminIfPresent } from "../middleware/authAdmin.js";
 import { memoryUpload, memoryUploadWithDocs, uploadConcurrencyGuard } from "../middleware/upload.js";
@@ -103,6 +106,13 @@ router.post(
   handleMulterError,
   addConstructionUpdate
 );
+
+// ── Publication lifecycle (Admin) ─────────────────────────────────────────────
+// Registered before the generic "/:id" handlers above would ever match, and
+// kept together so the three halves of the lifecycle are obvious in one place.
+router.get("/:id/readiness", protectAdmin, getProjectReadiness);
+router.post("/:id/publish", protectAdmin, publishProject);
+router.post("/:id/unpublish", protectAdmin, unpublishProject);
 
 router.delete("/:id", protectAdmin, deleteProject);
 
