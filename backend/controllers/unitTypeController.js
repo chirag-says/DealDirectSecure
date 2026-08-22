@@ -10,6 +10,7 @@ import { Readable } from "stream";
 import { handleDeleteGuard } from "../utils/deleteGuard.js";
 import { deleteUnitTypeAggregate } from "../utils/aggregateDelete.js";
 import AuditLog from "../models/AuditLog.js";
+import { destroyAssets, replaceAsset } from "../utils/cloudinaryAssets.js";
 import {
   applyInventoryDelta, assertInventoryValid, InventoryError,
 } from "../utils/inventoryInvariant.js";
@@ -244,17 +245,14 @@ export const updateUnitType = async (req, res) => {
     // Update floor plan uploads if provided
     if (files.twoDFloorPlan?.[0]) {
       const folder = `${unitType.builder}/${unitType.project}`;
-      unitType.floorPlans.twoDUrl = await uploadToCloudinary(
-        files.twoDFloorPlan[0].buffer,
-        folder
-      );
+      const uploaded = await uploadToCloudinary(files.twoDFloorPlan[0].buffer, folder);
+      // Replacing a plan used to orphan the previous one, on every edit.
+      unitType.floorPlans.twoDUrl = await replaceAsset(unitType.floorPlans.twoDUrl, uploaded);
     }
     if (files.threeDFloorPlan?.[0]) {
       const folder = `${unitType.builder}/${unitType.project}`;
-      unitType.floorPlans.threeDUrl = await uploadToCloudinary(
-        files.threeDFloorPlan[0].buffer,
-        folder
-      );
+      const uploaded = await uploadToCloudinary(files.threeDFloorPlan[0].buffer, folder);
+      unitType.floorPlans.threeDUrl = await replaceAsset(unitType.floorPlans.threeDUrl, uploaded);
     }
 
     // Merge allowed fields.

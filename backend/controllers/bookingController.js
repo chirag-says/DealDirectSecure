@@ -26,6 +26,23 @@ import { Readable } from "stream";
 import { reverseMembershipForCancelledBooking } from "../utils/campaignMemberState.js";
 import AuditLog from "../models/AuditLog.js";
 
+/**
+ * Append to the running admin note instead of replacing it.
+ *
+ * `adminNotes` was assigned outright on every verification and rejection, so a
+ * three-cycle history read as whatever was typed last. The race path already
+ * appended — it was the only one that did — and this makes the rest agree.
+ *
+ * contactHistory[] is the structured record; this stays because existing
+ * bookings carry notes in it and the verify modal shows it.
+ */
+const appendNote = (existing, addition) => {
+  const next = addition?.trim();
+  if (!next) return existing;
+  const stamp = new Date().toISOString().slice(0, 10);
+  return existing?.trim() ? `${existing.trim()}\n[${stamp}] ${next}` : `[${stamp}] ${next}`;
+};
+
 // ── Helper: record an admin action on a booking ───────────────────────────────
 /**
  * Write one audit entry for a money-touching admin action.
@@ -524,7 +541,7 @@ export const verifyPayment = async (req, res) => {
       booking.payment.verifiedBy = req.admin._id;
       booking.status = "confirmed";
       booking.statusHistory.push({ status: "confirmed", changedBy: "admin", note: adminNotes || "Payment verified" });
-      booking.adminNotes = adminNotes || booking.adminNotes;
+      booking.adminNotes = appendNote(booking.adminNotes, adminNotes);
       booking.reviewedBy = req.admin._id;
       booking.reviewedAt = new Date();
       await booking.save();
@@ -567,7 +584,7 @@ export const verifyPayment = async (req, res) => {
       booking.payment.rejectionReason = adminNotes || "Payment could not be verified";
       booking.status = "enquiry";
       booking.statusHistory.push({ status: "enquiry", changedBy: "admin", note: `Payment rejected: ${adminNotes}` });
-      booking.adminNotes = adminNotes || booking.adminNotes;
+      booking.adminNotes = appendNote(booking.adminNotes, adminNotes);
       booking.reviewedBy = req.admin._id;
       booking.reviewedAt = new Date();
       await booking.save();
@@ -683,7 +700,7 @@ export const updateBookingStatus = async (req, res) => {
 
     const previousStatus = booking.status;
     booking.status = status;
-    if (adminNotes) booking.adminNotes = adminNotes;
+    booking.adminNotes = appendNote(booking.adminNotes, adminNotes);
     booking.reviewedBy = req.admin._id;
     booking.reviewedAt = new Date();
     booking.statusHistory.push({

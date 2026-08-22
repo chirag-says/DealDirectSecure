@@ -744,7 +744,10 @@ export const getProperties = async (req, res) => {
         { isActive: { $exists: false } }
       ],
       isBanned: { $ne: true },
-      status: { $nin: ['rejected', 'suspended', 'draft', 'pending'] }
+      // Same dead vocabulary as the visibility check below: 'rejected',
+      // 'suspended' and 'draft' are not in the Property status enum. 'inactive'
+      // is, and now genuinely hides a listing.
+      status: { $nin: ['pending', 'inactive'] }
     };
 
     // ── Feed separation ──────────────────────────────────────────────────────
@@ -833,11 +836,18 @@ export const getPropertyById = async (req, res) => {
 
     // SECURITY: Check if property is publicly viewable
     // Allow viewing if: approved AND not banned AND active
+    // 'rejected', 'suspended' and 'draft' were in this list and are NOT in the
+    // Property status enum — the guard tested for values nothing can produce.
+    //
+    // 'inactive' is added, which is a real behaviour change (ratified
+    // 2026-08-22): the enum has carried it all along and it did nothing, so two
+    // fields both claimed to mean inactive and only isActive worked.
+    const HIDDEN_STATUSES = ['pending', 'inactive'];
     const isPubliclyViewable =
       prop.isApproved === true &&
       prop.isBanned !== true &&
       prop.isActive !== false &&
-      !['rejected', 'suspended', 'draft', 'pending'].includes(prop.status);
+      !HIDDEN_STATUSES.includes(prop.status);
 
     if (!isPubliclyViewable) {
       // Don't reveal that the property exists but is hidden
@@ -1648,8 +1658,16 @@ export const markInterested = async (req, res) => {
     }
 
     // Enforce: a buyer can only be interested in up to 5 properties
+    // Only LIVE listings consume a slot.
+    //
+    // The cap counted every property the user had ever shown interest in,
+    // including sold and inactive ones, so a buyer whose five interests all
+    // sold was locked out — with nothing telling them to go and un-save five
+    // dead listings first.
     const currentInterestCount = await Property.countDocuments({
       "interestedUsers.user": userId,
+      status: { $nin: ["sold", "rented", "inactive"] },
+      isActive: { $ne: false },
     });
 
     if (currentInterestCount >= 5) {

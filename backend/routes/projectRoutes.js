@@ -18,6 +18,8 @@ import {
   getProjectReadiness,
   publishProject,
   unpublishProject,
+  removeProjectMedia,
+  reorderProjectMedia,
 } from "../controllers/projectController.js";
 import { protectAdmin, attachAdminIfPresent } from "../middleware/authAdmin.js";
 import { memoryUpload, memoryUploadWithDocs, uploadConcurrencyGuard } from "../middleware/upload.js";
@@ -113,6 +115,11 @@ router.post(
 router.get("/:id/readiness", protectAdmin, getProjectReadiness);
 router.post("/:id/publish", protectAdmin, publishProject);
 router.post("/:id/unpublish", protectAdmin, unpublishProject);
+
+// ── Media management (Admin) ──────────────────────────────────────────────────
+// Removal destroys the Cloudinary asset; reorder must be a permutation.
+router.delete("/:id/media/:field", protectAdmin, removeProjectMedia);
+router.put("/:id/media/:field/order", protectAdmin, reorderProjectMedia);
 
 router.delete("/:id", protectAdmin, deleteProject);
 

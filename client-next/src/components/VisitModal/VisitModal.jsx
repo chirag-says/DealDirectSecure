@@ -42,12 +42,15 @@ const VisitModal = ({ isOpen, onClose, propertyTitle, onConfirm }) => {
             return;
         }
 
-        // Fallback: simulate API call when no onConfirm handler is provided
-        setTimeout(() => {
-            setLoading(false);
-            toast.success("Visit scheduled successfully! Check your email for details.");
-            onClose();
-        }, 1500);
+        // No handler, no visit.
+        //
+        // This used to wait 1500ms and announce "Visit scheduled successfully!"
+        // with no API call behind it. There is no visit entity anywhere in the
+        // system — no model, no route, no admin screen — so nothing was ever
+        // scheduled. Telling a buyer their visit is booked when nothing recorded
+        // it is the defect; refusing is the honest answer.
+        setLoading(false);
+        toast.error("Site visits can only be requested from a property conversation.");
     };
 
     return (

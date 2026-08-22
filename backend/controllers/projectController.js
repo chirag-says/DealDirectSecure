@@ -11,6 +11,7 @@ import { Readable } from "stream";
 import { escapeRegExp } from "../utils/escapeRegExp.js";
 import { handleDeleteGuard } from "../utils/deleteGuard.js";
 import { deleteProjectAggregate } from "../utils/aggregateDelete.js";
+import { destroyAssets, replaceAsset } from "../utils/cloudinaryAssets.js";
 import Builder2 from "../models/Builder.js";
 import UnitType2 from "../models/UnitType.js";
 import AuditLog from "../models/AuditLog.js";
@@ -358,13 +359,16 @@ export const listProjects = async (req, res) => {
       filter.$text = { $search: search.trim() };
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    // Capped like searchProperties. An unbounded limit on a public endpoint is
+    // the shape of every list-endpoint problem this codebase has had.
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 60);
+    const skip = (Math.max(Number(page), 1) - 1) * safeLimit;
 
     const [projects, total] = await Promise.all([
       Project.find(filter)
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit))
+        .limit(safeLimit)
         .populate("builder", "name company logoUrl")
         .lean(),
       Project.countDocuments(filter),
@@ -376,7 +380,8 @@ export const listProjects = async (req, res) => {
       pagination: {
         total,
         page: Number(page),
-        pages: Math.ceil(total / Number(limit)),
+        limit: safeLimit,
+        pages: Math.ceil(total / safeLimit),
       },
     });
   } catch (error) {
@@ -508,6 +513,110 @@ export const addConstructionUpdate = async (req, res) => {
     });
   } catch (error) {
     console.error("[projectController.addConstructionUpdate]", error);
+    return res.status(500).json({ success: false, message: "Server error." });
+  }
+};
+
+/**
+ * Media fields an admin may manage, and how each is stored.
+ *
+ * An allow-list rather than "any key under media": the same reasoning as the
+ * upload field allow-list in projectRoutes.js. A path taken from a URL and used
+ * to index into a document is a path someone will eventually point somewhere
+ * interesting.
+ */
+const MEDIA_ARRAY_FIELDS = new Set([
+  "exteriorImages", "droneImages", "masterPlan", "locationMap",
+  "constructionProgressImages", "amenityImages",
+]);
+
+// ── DELETE /api/projects/:id/media/:field ─────────────────────────────────────
+// Remove images from a media array AND destroy them in Cloudinary.
+export const removeProjectMedia = async (req, res) => {
+  try {
+    const { field } = req.params;
+    if (!MEDIA_ARRAY_FIELDS.has(field)) {
+      return res.status(400).json({
+        success: false,
+        message: `field must be one of: ${[...MEDIA_ARRAY_FIELDS].join(", ")}`,
+      });
+    }
+
+    const urls = Array.isArray(req.body?.urls) ? req.body.urls.filter(Boolean) : [];
+    if (urls.length === 0) {
+      return res.status(400).json({ success: false, message: "No urls supplied." });
+    }
+
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ success: false, message: "Project not found." });
+
+    const current = Array.isArray(project.media?.[field]) ? project.media[field] : [];
+    const removing = new Set(urls);
+
+    // Filter preserves order. Order is the gallery order and index 0 is the
+    // listing hero, so a removal that reshuffles the rest silently changes the
+    // card on every page that renders it.
+    project.media[field] = current.filter((u) => !removing.has(u));
+    await project.save();
+
+    // Only after the document is saved. A destroy that succeeds against a
+    // failed save leaves a URL pointing at nothing, which renders as a broken
+    // image rather than as one fewer image.
+    const assets = await destroyAssets([...removing].filter((u) => current.includes(u)));
+
+    return res.status(200).json({
+      success: true,
+      message: `Removed ${current.length - project.media[field].length} image(s).`,
+      data: { [field]: project.media[field], assets },
+    });
+  } catch (error) {
+    console.error("[projectController.removeProjectMedia]", error);
+    return res.status(500).json({ success: false, message: "Server error." });
+  }
+};
+
+// ── PUT /api/projects/:id/media/:field/order ──────────────────────────────────
+// Reorder a media array. The first image is the listing hero everywhere.
+export const reorderProjectMedia = async (req, res) => {
+  try {
+    const { field } = req.params;
+    if (!MEDIA_ARRAY_FIELDS.has(field)) {
+      return res.status(400).json({
+        success: false,
+        message: `field must be one of: ${[...MEDIA_ARRAY_FIELDS].join(", ")}`,
+      });
+    }
+
+    const urls = Array.isArray(req.body?.urls) ? req.body.urls.filter(Boolean) : [];
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ success: false, message: "Project not found." });
+
+    const current = Array.isArray(project.media?.[field]) ? project.media[field] : [];
+
+    // A reorder must be a permutation of exactly what is already there.
+    // Without this, "reorder" becomes an unaudited replace: any URL could be
+    // written into the gallery, including one pointing at another site.
+    const sameSet =
+      urls.length === current.length &&
+      new Set(urls).size === urls.length &&
+      urls.every((u) => current.includes(u));
+
+    if (!sameSet) {
+      return res.status(400).json({
+        success: false,
+        code: "NOT_A_PERMUTATION",
+        message: "A reorder must contain exactly the images already on this field.",
+      });
+    }
+
+    project.media[field] = urls;
+    await project.save();
+
+    return res.status(200).json({
+      success: true, message: "Order updated.", data: { [field]: urls },
+    });
+  } catch (error) {
+    console.error("[projectController.reorderProjectMedia]", error);
     return res.status(500).json({ success: false, message: "Server error." });
   }
 };

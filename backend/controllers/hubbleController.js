@@ -15,6 +15,7 @@ import {
   validateHubbleToken,
   isHubbleConfigured,
 } from "../services/hubbleService.js";
+import crypto from "crypto";
 import User from "../models/userModel.js";
 import Reward from "../models/Reward.js";
 
@@ -23,6 +24,23 @@ import Reward from "../models/Reward.js";
  * Shared helper used by SSO and Coin endpoints.
  * Returns true if valid, sends error response and returns false otherwise.
  */
+/**
+ * Constant-time comparison of the shared secret.
+ *
+ * `!==` was the original, and it short-circuits on the first differing byte —
+ * measurable in principle, and free to fix. timingSafeEqual throws when the
+ * buffers differ in length, so the length is checked first: that leaks the
+ * length, which is not the secret.
+ *
+ * The single place this comparison happens. There used to be two inline copies
+ * with different response shapes, and hardening one left the other on `!==`.
+ */
+function secretMatches(provided, expected) {
+  const a = Buffer.from(String(provided ?? ""), "utf8");
+  const b = Buffer.from(String(expected ?? ""), "utf8");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 function verifyHubbleSecret(req, res) {
   const hubbleSecret = req.headers["x-hubble-secret"];
   const expectedSecret = process.env.HUBBLE_WEBHOOK_SECRET;
@@ -33,9 +51,33 @@ function verifyHubbleSecret(req, res) {
     return false;
   }
 
-  if (!hubbleSecret || hubbleSecret !== expectedSecret) {
+  if (!secretMatches(hubbleSecret, expectedSecret)) {
     console.warn(`[HubbleCtrl] Invalid X-Hubble-Secret from ${req.ip}`);
     res.status(401).json({ success: false, message: "Unauthorized" });
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * The same check, with the response shape Hubble's SSO endpoint expects.
+ *
+ * SSO answers `{ userId: null }` rather than `{ success, message }` because
+ * that is the contract Hubble's servers parse. Only the body differs — the
+ * comparison itself is shared, so it cannot drift again.
+ */
+function verifySsoSecret(req, res) {
+  const expectedSecret = process.env.HUBBLE_WEBHOOK_SECRET;
+  if (!expectedSecret) {
+    console.error("[HubbleCtrl] HUBBLE_WEBHOOK_SECRET not configured");
+    res.status(500).json({ userId: null });
+    return false;
+  }
+
+  if (!secretMatches(req.headers["x-hubble-secret"], expectedSecret)) {
+    console.warn(`[HubbleCtrl] SSO request with invalid X-Hubble-Secret from ${req.ip}`);
+    res.status(401).json({ userId: null });
     return false;
   }
 
@@ -134,21 +176,14 @@ export const getHubbleToken = async (req, res) => {
  */
 export const handleHubbleSSO = async (req, res) => {
   try {
-    // 1. Verify the X-Hubble-Secret header
-    const hubbleSecret = req.headers["x-hubble-secret"];
-    const expectedSecret = process.env.HUBBLE_WEBHOOK_SECRET;
-
-    if (!expectedSecret) {
-      console.error("[HubbleCtrl] HUBBLE_WEBHOOK_SECRET not configured");
-      return res.status(500).json({ userId: null });
-    }
-
-    if (!hubbleSecret || hubbleSecret !== expectedSecret) {
-      console.warn(
-        `[HubbleCtrl] SSO request with invalid X-Hubble-Secret from ${req.ip}`
-      );
-      return res.status(401).json({ userId: null });
-    }
+    // 1. Verify the X-Hubble-Secret header.
+    //
+    // Through the shared helper, not a second inline copy. There WERE two
+    // copies of this check with slightly different response shapes, and
+    // hardening one of them left the other comparing with `!==` — which
+    // mutation testing caught only because the source assertion matched the
+    // wrong occurrence. One check, one place.
+    if (!verifySsoSecret(req, res)) return;
 
     // 2. Extract and validate the token
     const { token } = req.body;

@@ -155,7 +155,38 @@ export const updateCampaign = async (req, res) => {
     if (body.startDate !== undefined) campaign.duration.startDate = body.startDate;
     if (body.endDate !== undefined) campaign.duration.endDate = body.endDate;
     if (body.discountPerBuyer !== undefined) campaign.discountPerBuyer = Number(body.discountPerBuyer);
-    if (body.status !== undefined) campaign.status = body.status;
+    // Cancelling or completing a campaign with unhandled paid members.
+    //
+    // This used to be a plain assignment, so an admin could cancel a campaign
+    // and leave members sitting at status "active", tokenStatus "paid" against
+    // a cancelled campaign — money taken, obligation recorded nowhere. It is
+    // the same shape assertSelfExitAllowed exists to prevent on the user side,
+    // reachable through the admin edit instead.
+    //
+    // Refused rather than auto-refunded: what happens to those tokens is the
+    // parked refund-policy decision, and inventing an answer here would be
+    // deciding it silently.
+    if (body.status !== undefined && body.status !== campaign.status) {
+      const TERMINAL = ["cancelled", "completed"];
+      if (TERMINAL.includes(body.status)) {
+        const paidMembers = await CampaignMember.countDocuments({
+          campaign: campaign._id,
+          status: "active",
+          tokenStatus: "paid",
+        });
+        if (paidMembers > 0) {
+          return res.status(409).json({
+            success: false,
+            code: "CAMPAIGN_HAS_PAID_MEMBERS",
+            message:
+              `${paidMembers} member${paidMembers === 1 ? " has" : "s have"} paid a token on this ` +
+              `campaign. Settle or refund them before marking it ${body.status}.`,
+            paidMembers,
+          });
+        }
+      }
+      campaign.status = body.status;
+    }
     if (body.adminNotes !== undefined) campaign.adminNotes = body.adminNotes;
     if (body.perks !== undefined) {
       campaign.perks = typeof body.perks === "string"

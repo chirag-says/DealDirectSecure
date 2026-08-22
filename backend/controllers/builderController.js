@@ -38,13 +38,15 @@ export const listBuilders = async (req, res) => {
       ];
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    // Same cap as the project list and searchProperties.
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 60);
+    const skip = (Math.max(Number(page), 1) - 1) * safeLimit;
 
     const [builders, total] = await Promise.all([
       Builder.find(filter)
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit))
+        .limit(safeLimit)
         .populate("addedBy", "name email")
         .lean(),
       Builder.countDocuments(filter),
@@ -73,8 +75,8 @@ export const listBuilders = async (req, res) => {
       pagination: {
         total,
         page: Number(page),
-        limit: Number(limit),
-        totalPages: Math.ceil(total / Number(limit)),
+        limit: safeLimit,
+        totalPages: Math.ceil(total / safeLimit),
       },
     });
   } catch (err) {

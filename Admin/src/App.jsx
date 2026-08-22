@@ -32,7 +32,6 @@ import AdminBlogEditor from "./pages/AdminBlogEditor";
 import RewardsManagement from "./pages/RewardsManagement";
 import DealVerifications from "./pages/DealVerifications";
 import PopularProperties from "./pages/PopularProperties";
-import SiteVisitManagement from "./pages/SiteVisitManagement";
 import GroupBuyManagement from "./pages/GroupBuyManagement";
 import BuilderManagement from "./pages/BuilderManagement";
 import BuilderDetail from "./pages/BuilderDetail";
@@ -43,67 +42,70 @@ import ProjectDetail from "./pages/ProjectDetail";
 import CreateUnitType from "./pages/CreateUnitType";
 import CreateCampaign from "./pages/CreateCampaign";
 
+/**
+ * Routes that render without panel chrome.
+ *
+ * Login and the two MFA steps run before the admin holds a full session, so a
+ * navigation sidebar there advertises pages they cannot open yet. Change
+ * password is NOT in this set: it is reachable from the header menu by an
+ * admin who is already signed in, and stripping their navigation would strand
+ * them on it.
+ */
+const CHROMELESS_ROUTES = new Set([
+  "/admin/login",
+  "/admin/mfa-setup",
+  "/admin/mfa-verify",
+]);
+
 const Layout = ({ isSidebarOpen, toggleSidebar, children }) => {
   const location = useLocation();
+  const chromeless = CHROMELESS_ROUTES.has(location.pathname);
 
-  // Hide header + sidebar on login page
-  const isLoginPage = location.pathname === "/admin/login";
-
-  // Determine sidebar width classes based on isSidebarOpen
+  // Open: full width. Closed: off-canvas on mobile, icon rail on desktop.
   const sidebarClasses = isSidebarOpen
-    ? "w-64 translate-x-0" // Open: full width, no translate
-    : "w-64 -translate-x-full lg:w-20 lg:translate-x-0"; // Closed: hidden on mobile, mini on desktop
+    ? "w-60 translate-x-0"
+    : "w-60 -translate-x-full lg:w-16 lg:translate-x-0";
+
+  if (chromeless) {
+    return (
+      <div className="min-h-screen bg-canvas font-sans text-ink-body">
+        {children}
+      </div>
+    );
+  }
 
   return (
-    <div className="h-screen flex flex-col font-sans text-gray-800 bg-gray-50 relative overflow-hidden">
-      {/* Header */}
-      {!isLoginPage && (
-        <header className="w-full shadow bg-white z-40 relative">
-          <Header toggleSidebar={toggleSidebar} />
-        </header>
-      )}
+    <div className="h-screen flex flex-col font-sans text-ink-body bg-canvas overflow-hidden">
+      {/*
+        Header renders its own <header> element, so this is a plain wrapper.
+        It used to be a second <header> with its own shadow, which stacked two
+        elevations on one edge and nested a landmark inside a landmark.
+      */}
+      <Header toggleSidebar={toggleSidebar} isSidebarOpen={isSidebarOpen} />
 
-      {/* Main content area */}
-      <div className="flex flex-1 h-full overflow-hidden relative">
-        {/* Sidebar */}
-        {!isLoginPage && (
-          <>
-            {/* Mobile Overlay */}
-            <div
-              className={`fixed inset-0 bg-black/50 z-40 lg:hidden transition-opacity duration-300 ${isSidebarOpen ? "opacity-100 visible" : "opacity-0 invisible"
-                }`}
-              onClick={toggleSidebar}
-            />
+      <div className="flex flex-1 min-h-0 relative">
+        {/* Mobile scrim */}
+        <div
+          className={`fixed inset-0 bg-ink/40 z-40 lg:hidden transition-opacity duration-200 ${isSidebarOpen ? "opacity-100 visible" : "opacity-0 invisible"
+            }`}
+          onClick={toggleSidebar}
+          aria-hidden="true"
+        />
 
-            {/* Sidebar Component */}
-            <aside
-              className={`bg-white shadow-md transition-all duration-300 ease-in-out z-50
-                fixed lg:static inset-y-0 left-0 h-full ${sidebarClasses} 
-              `}
-            >
-              <Sidebar isOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
-            </aside>
-          </>
-        )}
-
-        {/* Main Content Area/Pages */}
-        <main
-          className="flex-1 transition-all duration-300 ease-in-out overflow-y-auto overflow-x-hidden p-4 sm:p-6 w-full"
+        <aside
+          className={`bg-sidebar border-r border-line transition-[width,transform] duration-200 ease-out z-50
+            fixed lg:static inset-y-0 left-0 h-full ${sidebarClasses}`}
         >
+          <Sidebar isOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
+        </aside>
+
+        {/*
+          The only scroll container and the only page padding in the app.
+          Pages render their content directly — no page should open its own
+          <main>, set its own background, or add its own outer padding.
+        */}
+        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6">
           {children}
-          {/* Footer */}
-          {!isLoginPage && (
-            <footer className="w-full bg-white p-4 shadow-md mt-6 border-t border-gray-200">
-              <div className="flex flex-col md:flex-row items-center justify-center text-sm text-gray-500">
-                {/* Copyright Section */}
-                <p className="mb-2 md:mb-0">
-                  &copy; {new Date().getFullYear()}{" "}
-                  <strong className="text-blue-600">Admin Panel</strong>. All
-                  rights reserved.
-                </p>
-              </div>
-            </footer>
-          )}
         </main>
       </div>
     </div>
@@ -281,14 +283,6 @@ function AppContent() {
           element={
             <AdminProtectedRoute>
               <PopularProperties />
-            </AdminProtectedRoute>
-          }
-        />
-        <Route
-          path="/site-visits"
-          element={
-            <AdminProtectedRoute>
-              <SiteVisitManagement />
             </AdminProtectedRoute>
           }
         />

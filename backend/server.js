@@ -480,6 +480,19 @@ app.use(cors(corsOptions));
 // SOCKET.IO SETUP - Secure Configuration
 // ============================================
 
+// Chat is a complete stack — Socket.IO, its models, seven routes and an admin
+// moderation page — that no client mounts. Off by default: idle attack surface
+// and per-boot cost for zero users. Nothing is deleted; set CHAT_ENABLED=true
+// to bring it back.
+//
+// Declared HERE rather than beside the other flags further down, because the
+// connection handler below runs during module evaluation and a const referenced
+// before its declaration throws rather than reading as undefined.
+//
+// Before chat ships for real: socketUserMap below is in-process, which pins the
+// whole feature to a single instance.
+const CHAT_ENABLED = process.env.CHAT_ENABLED === 'true';
+
 const io = new Server(httpServer, {
   cors: {
     origin: allowedOrigins,
@@ -495,7 +508,7 @@ const onlineUsers = new Map();
 // Store socket-to-userId mapping for authorization
 const socketUserMap = new Map();
 
-io.on("connection", (socket) => {
+if (CHAT_ENABLED) io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
   // ============================================
@@ -919,7 +932,7 @@ app.use("/api/categories", categoryRoutes);
 // app.use("/api/subcategories", subcategoryRoutes);
 app.use("/api/properties", propertyRoutes);
 app.use("/api/leads", leadRoutes);
-app.use("/api/chat", chatRoutes);
+if (CHAT_ENABLED) app.use("/api/chat", chatRoutes);
 app.use("/api/contact", contactRoutes);
 // ============================================
 // AGREEMENTS — HIDDEN (client decision, 2026-08-01)
