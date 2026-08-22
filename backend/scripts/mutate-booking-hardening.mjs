@@ -38,7 +38,8 @@ const MUTATIONS = [
     id: 'token-guard-gone',
     label: '₹0 bookings are accepted again',
     file: CTRL,
-    from: 'if (!(tokenAmount > 0)) {',
+    // Stage 4 added the enquiry exemption; the anchor moved with it.
+    from: 'if (!isEnquiry && !(tokenAmount > 0)) {',
     to: 'if (false) {',
   },
   {
