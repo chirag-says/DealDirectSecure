@@ -181,6 +181,12 @@ test('no state-changing route became accidentally exempt', async (t) => {
     ['post', '/api/chat/message/send'],
     ['post', '/api/chat/conversation/start'],
     ['delete', '/api/users/me'],
+    // Project bookings — the path that takes real money over UPI. Added in
+    // Stage 2; they were the only money-adjacent user routes left off the list,
+    // which already covered campaign join for exactly the same reason.
+    ['post', '/api/bookings'],
+    ['post', '/api/bookings/000000000000000000000000/payment'],
+    ['post', '/api/bookings/000000000000000000000000/cancel'],
   ];
 
   for (const [method, path] of GUARDED) {
@@ -191,7 +197,7 @@ test('no state-changing route became accidentally exempt', async (t) => {
     });
   }
 
-  await t.test('the guarded list still has thirteen entries in server.js', () => {
+  await t.test('the guarded list still matches server.js entry for entry', () => {
     // If a route is added to the app without being added here, this count
     // drifts and the new route goes untested.
     const server = readFileSync(new URL('../../server.js', import.meta.url), 'utf8');

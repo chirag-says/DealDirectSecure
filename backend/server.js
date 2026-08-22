@@ -874,6 +874,15 @@ app.post("/api/properties/:id/report", csrfGuard);
 app.post("/api/campaigns/:id/join", csrfGuard);
 app.post("/api/campaigns/:id/exit", csrfGuard);
 
+// — Project bookings: the path that takes real money —
+// Creation and payment submission are both cookie-authenticated and
+// state-changing. They were the only money-adjacent user routes missing from
+// this list, which already covers campaign join for the same reason.
+// Cancellation is here too: it is a state change on the user's own record.
+app.post("/api/bookings", csrfGuard);
+app.post("/api/bookings/:id/payment", csrfGuard);
+app.post("/api/bookings/:id/cancel", csrfGuard);
+
 // — Contact form: spam vector —
 app.post("/api/contact", csrfGuard);
 

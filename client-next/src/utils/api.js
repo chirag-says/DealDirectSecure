@@ -207,7 +207,7 @@ api.interceptors.response.use(
                 const isAuthCheck = response.config?.url?.includes('/users/me');
 
                 if (!isAuthCheck) {
-                    console.warn('🔒 Session expired or unauthorized');
+                    console.warn('Session expired or unauthorized');
 
                     // Call the auth error handler if set (AuthContext handles clearing state)
                     if (onAuthError) {
@@ -222,7 +222,7 @@ api.interceptors.response.use(
 
             // Handle forbidden errors
             if (status === 403) {
-                console.warn('🚫 Access forbidden');
+                console.warn('Access forbidden');
 
                 if (onAuthError) {
                     onAuthError({
@@ -560,6 +560,19 @@ export const bookingApi = {
      */
     getMyBookings: async () => {
         const response = await api.get('/bookings/my');
+        return response.data;
+    },
+
+    /**
+     * Withdraw your own booking before it is confirmed.
+     *
+     * Allowed from `enquiry` and `payment_submitted` only — once a booking is
+     * confirmed a unit is held out of inventory, and releasing that is an admin
+     * action. NOT a refund: if a payment was already submitted, the UTR and
+     * screenshot stay on the record and the response says a refund may be due.
+     */
+    cancel: async (bookingId, reason) => {
+        const response = await api.post(`/bookings/${bookingId}/cancel`, { reason });
         return response.data;
     },
 };

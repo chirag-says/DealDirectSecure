@@ -11,6 +11,7 @@ import {
   verifyPayment,
   updateBookingStatus,
   getPaymentConfig,
+  cancelOwnBooking,
 } from "../controllers/bookingController.js";
 import { authMiddleware } from "../middleware/authUser.js";
 import { protectAdmin } from "../middleware/authAdmin.js";
@@ -28,6 +29,10 @@ router.post(
   memoryUpload.single("screenshot"),
   submitPayment
 );
+
+// Withdraw your own booking before it is confirmed. Ownership is checked in the
+// controller, as it is for payment submission.
+router.post("/:id/cancel", authMiddleware, cancelOwnBooking);
 
 // ── Authenticated user ─────────────────────────────────────────────────────────
 router.get("/my", authMiddleware, getMyBookings);

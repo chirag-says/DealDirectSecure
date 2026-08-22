@@ -31,6 +31,13 @@ const auditLogSchema = new mongoose.Schema(
                 "user_management",
                 "property_management",
                 "lead_management",
+                // Money. Project bookings and group-buy memberships are settled
+                // by an admin eyeballing a UPI reference and a screenshot —
+                // there is no gateway to appeal to later, so who approved what
+                // has to be recorded somewhere that outlives the document.
+                // Added rather than folded into property_management: an audit
+                // category that lies about what happened is worse than none.
+                "booking_management",
                 "report_management",
                 "settings",
                 "security",

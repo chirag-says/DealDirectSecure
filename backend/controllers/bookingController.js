@@ -23,6 +23,38 @@ import { cloudinary } from "../middleware/upload.js";
 import { sendBookingAlert, sendGeneralNotification } from "../utils/emailService.js";
 import { Readable } from "stream";
 import { reverseMembershipForCancelledBooking } from "../utils/campaignMemberState.js";
+import AuditLog from "../models/AuditLog.js";
+
+// ── Helper: record an admin action on a booking ───────────────────────────────
+/**
+ * Write one audit entry for a money-touching admin action.
+ *
+ * `statusHistory` on the document is good and stays, but it is not an audit
+ * log: it is deleted with the booking and cannot be queried by admin or by
+ * date. Payments here are settled by a human reading a UPI reference, with no
+ * gateway to reconstruct the decision from afterwards.
+ *
+ * Never throws. An audit write failing must not roll back a verification that
+ * has already moved inventory and told the buyer they are confirmed — the
+ * error is logged loudly instead.
+ */
+const auditBooking = async (req, booking, action, metadata = {}) => {
+  try {
+    await AuditLog.log({
+      admin: req.admin?._id,
+      category: "booking_management",
+      action,
+      resourceType: "ProjectBooking",
+      resourceId: booking._id,
+      description: `${action} on booking ${String(booking._id).slice(-8).toUpperCase()}`,
+      req,
+      severity: "medium",
+      metadata,
+    });
+  } catch (err) {
+    console.error(`[Booking] AUDIT WRITE FAILED for ${action} on ${booking._id}:`, err.message);
+  }
+};
 
 // ── Helper: Sync a confirmed booking to the Group Buy campaign ────────────────
 // When a booking is confirmed/completed, auto-enroll the buyer as a paid member
@@ -121,8 +153,59 @@ export const createBooking = async (req, res) => {
     if (!project) return res.status(404).json({ success: false, message: "Project not found." });
     if (!unitType) return res.status(404).json({ success: false, message: "Unit type not found." });
     if (!unitType.isActive) return res.status(400).json({ success: false, message: "This unit type is not available for booking." });
-    if (unitType.inventory?.availableUnits === 0) {
-      return res.status(400).json({ success: false, message: "No units available for this configuration." });
+
+    // Inventory must be CONFIGURED, not merely non-zero.
+    //
+    // The old test was `availableUnits === 0`, which is false for undefined. A
+    // unit type whose inventory was never filled in therefore accepted
+    // enquiries and payments, and every verification then failed the $gte:1
+    // decrement and auto-cancelled with "REFUND DUE" — money taken against
+    // stock that never existed, by construction rather than by accident.
+    if (!(unitType.inventory?.availableUnits >= 1)) {
+      return res.status(400).json({
+        success: false,
+        message: "No units are available for this configuration.",
+        code: "NO_INVENTORY",
+      });
+    }
+
+    // Resolve the token amount BEFORE creating anything, and refuse zero.
+    //
+    // Three of eight real unit types in the development database carry no
+    // paymentTerms.bookingAmount. Where the project has no legacy fallback
+    // either, this resolved to 0 and the client rendered "Pay exactly ₹0",
+    // after which an admin was asked to verify a payment of nothing.
+    //
+    // The resolution order is unchanged and still mirrors the client's.
+    const tokenAmount =
+      unitType.paymentTerms?.bookingAmount ?? project.financials?.bookingAmount ?? 0;
+
+    if (!(tokenAmount > 0)) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking is not configured for this unit type yet. Please contact us.",
+        code: "BOOKING_NOT_CONFIGURED",
+      });
+    }
+
+    // One open enquiry per user per unit type.
+    //
+    // Nothing stopped a user creating hundreds of enquiries on the same unit,
+    // which is admin-queue noise rather than data damage — but the queue is
+    // how bookings get seen at all. Cancelled and terminal bookings do not
+    // count, so withdrawing frees the slot immediately.
+    const openStates = ["enquiry", "payment_submitted"];
+    const alreadyOpen = await ProjectBooking.countDocuments({
+      user: req.user._id,
+      unitType: unitTypeId,
+      status: { $in: openStates },
+    });
+    if (alreadyOpen > 0) {
+      return res.status(409).json({
+        success: false,
+        message: "You already have an open enquiry for this unit type.",
+        code: "DUPLICATE_ENQUIRY",
+      });
     }
 
     const booking = await ProjectBooking.create({
@@ -135,19 +218,10 @@ export const createBooking = async (req, res) => {
       clientEmail: clientEmail?.trim() || undefined,
       notes: notes?.trim() || undefined,
       status: "enquiry",
-      // Unit-level first, project-level only as a legacy fallback.
-      //
-      // createProject stopped writing project.financials when booking amounts
-      // moved to UnitType.paymentTerms (projectController.js), so reading the
-      // project alone resolved to 0 for every project created since. The client
-      // quoted the real unit-level amount and the user paid it, while the
-      // figure stored here — the one shown in the admin verification modal and
-      // in both the confirmation and rejection emails — was ₹0.
-      //
-      // This mirrors the client's own resolution order in
-      // UnitDetailContent.jsx, so the quoted and persisted amounts agree.
-      "payment.tokenAmount":
-        unitType.paymentTerms?.bookingAmount ?? project.financials?.bookingAmount ?? 0,
+      // Resolved and validated above. Unit-level first, project-level only as a
+      // legacy fallback — the same order the client uses, so the quoted and the
+      // persisted amounts always agree.
+      "payment.tokenAmount": tokenAmount,
       statusHistory: [{ status: "enquiry", changedBy: "user", note: "Booking enquiry created" }],
     });
 
@@ -284,7 +358,7 @@ export const listBookings = async (req, res) => {
 export const verifyPayment = async (req, res) => {
   try {
     const { id } = req.params;
-    const { action, adminNotes } = req.body; // action: "approve" | "reject"
+    const { action, adminNotes, overrideDuplicateUtr } = req.body; // action: "approve" | "reject"
 
     if (!["approve", "reject"].includes(action)) {
       return res.status(400).json({ success: false, message: "action must be 'approve' or 'reject'" });
@@ -299,6 +373,50 @@ export const verifyPayment = async (req, res) => {
     }
 
     if (action === "approve") {
+      // A UTR that already backs another live booking.
+      //
+      // `payment.utrNumber` is indexed but not unique, and nothing compared it
+      // across bookings — so one real ₹50,000 transfer could be screenshotted
+      // into two bookings and the verifying admin would see nothing unusual in
+      // either. This does not block the legitimate cases (a bank re-using a
+      // reference across retries, a corrected typo); it makes them a decision
+      // that is stated and recorded rather than one made unknowingly.
+      //
+      // Cancelled and rejected bookings are excluded: a withdrawn attempt must
+      // not block the buyer re-submitting the same genuine payment.
+      const utr = booking.payment?.utrNumber?.trim();
+      if (utr) {
+        const duplicates = await ProjectBooking.find({
+          _id: { $ne: booking._id },
+          "payment.utrNumber": utr,
+          status: { $nin: ["cancelled"] },
+        })
+          .select("clientName status payment.tokenAmount payment.status createdAt")
+          .lean();
+
+        if (duplicates.length > 0 && !overrideDuplicateUtr) {
+          return res.status(409).json({
+            success: false,
+            code: "DUPLICATE_UTR",
+            message:
+              `UTR ${utr} is already recorded against ${duplicates.length} other ` +
+              `booking${duplicates.length === 1 ? "" : "s"}. Confirm the payment is genuinely ` +
+              `separate, then re-submit with an explanatory note.`,
+            duplicates,
+          });
+        }
+
+        // An override is only an override if it says why. The note is the
+        // whole audit trail for a deliberate duplicate approval.
+        if (duplicates.length > 0 && overrideDuplicateUtr && !adminNotes?.trim()) {
+          return res.status(400).json({
+            success: false,
+            code: "OVERRIDE_NEEDS_NOTE",
+            message: "Approving a duplicate UTR requires a note explaining why.",
+          });
+        }
+      }
+
       // ORDERING: secure inventory BEFORE persisting the confirmation.
       //
       // This previously saved the booking as confirmed + payment verified and
@@ -407,6 +525,17 @@ export const verifyPayment = async (req, res) => {
       // 4. Sync to Group Buy campaign — auto-enroll as paid member
       syncBookingToCampaign(booking, req.admin._id).catch(() => {});
 
+      // 5. Audit. statusHistory already records the transition, but it lives on
+      //    the booking and dies with it, and it cannot answer "what did this
+      //    admin approve last week". Awaited, unlike the notification: the
+      //    record of who released money is not fire-and-forget.
+      await auditBooking(req, booking, "booking_payment_verified", {
+        tokenAmount: booking.payment.tokenAmount,
+        utrNumber: booking.payment.utrNumber,
+        overrodeDuplicateUtr: Boolean(overrideDuplicateUtr),
+        note: adminNotes || null,
+      });
+
     } else {
       // Reject — revert so client can resubmit
       booking.payment.status = "rejected";
@@ -431,6 +560,12 @@ export const verifyPayment = async (req, res) => {
           null, null
         ).catch(() => {});
       }
+
+      await auditBooking(req, booking, "booking_payment_rejected", {
+        tokenAmount: booking.payment.tokenAmount,
+        utrNumber: booking.payment.utrNumber,
+        reason: adminNotes || null,
+      });
     }
 
     return res.json({
@@ -556,10 +691,91 @@ export const updateBookingStatus = async (req, res) => {
       await reverseMembershipForCancelledBooking(booking, previousStatus);
     }
 
+    await auditBooking(req, booking, "booking_status_changed", {
+      from: previousStatus,
+      to: status,
+      releasedInventory: releasesInventory,
+      note: adminNotes || null,
+    });
+
     return res.json({ success: true, data: { status: booking.status, previousStatus } });
   } catch (err) {
     console.error("[Booking] updateBookingStatus error:", err);
     return res.status(500).json({ success: false, message: "Failed to update booking status." });
+  }
+};
+
+/**
+ * States a user may withdraw from themselves.
+ *
+ * Deliberately stops short of `confirmed`: at that point a unit is held out of
+ * inventory and, on the group-buy path, a membership exists. Releasing those is
+ * an admin decision with side effects, and it already has a route.
+ *
+ * `payment_submitted` IS included. A user who paid and wants out should not have
+ * to wait for an admin to notice — but see below on what cancelling does NOT do.
+ */
+export const USER_CANCELLABLE_STATES = ["enquiry", "payment_submitted"];
+
+// ── POST /api/bookings/:id/cancel ─────────────────────────────────────────────
+// Withdraw your own booking before it is confirmed.
+export const cancelOwnBooking = async (req, res) => {
+  try {
+    const booking = await ProjectBooking.findById(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Booking not found." });
+    }
+
+    // Ownership, checked the same way submitPayment checks it.
+    if (!booking.user || booking.user.toString() !== req.user._id.toString()) {
+      console.warn(
+        `⚠️ IDOR attempt: user ${req.user._id} tried to cancel booking owned by ${booking.user}`
+      );
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to cancel this booking.",
+      });
+    }
+
+    if (!USER_CANCELLABLE_STATES.includes(booking.status)) {
+      return res.status(400).json({
+        success: false,
+        code: "NOT_CANCELLABLE",
+        message:
+          booking.status === "cancelled"
+            ? "This booking is already cancelled."
+            : `A booking in "${booking.status}" can only be changed by our team. Please contact us.`,
+      });
+    }
+
+    const previousStatus = booking.status;
+    const reason = req.body?.reason?.trim();
+
+    // NOT a refund, and the payment fields are not touched.
+    //
+    // If the buyer already submitted a UTR and a screenshot, that evidence is
+    // the only record the money moved — there is no gateway behind it. It stays
+    // exactly as submitted; what changes is the booking's status. The response
+    // says so rather than implying the money comes back automatically.
+    booking.status = "cancelled";
+    booking.statusHistory.push({
+      status: "cancelled",
+      changedBy: "user",
+      note: reason ? `Cancelled by user: ${reason}` : "Cancelled by user",
+    });
+    await booking.save();
+
+    const hadPayment = previousStatus === "payment_submitted";
+    return res.json({
+      success: true,
+      message: hadPayment
+        ? "Booking cancelled. If you have already paid, contact us and we will arrange the refund — your payment details are on record."
+        : "Booking cancelled.",
+      data: { status: booking.status, previousStatus, refundMayBeDue: hadPayment },
+    });
+  } catch (err) {
+    console.error("[Booking] cancelOwnBooking error:", err);
+    return res.status(500).json({ success: false, message: "Failed to cancel booking." });
   }
 };
 

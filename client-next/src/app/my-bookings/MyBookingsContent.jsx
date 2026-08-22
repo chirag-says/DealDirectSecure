@@ -7,6 +7,7 @@ import {
   Calendar, IndianRupee, Check, Circle, ShieldCheck, ExternalLink
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'react-toastify';
 import { bookingApi } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 
@@ -118,11 +119,42 @@ function ResubmitForm({ bookingId, onSuccess }) {
 }
 
 /* ── Booking Card ── */
+/**
+ * States a buyer may withdraw from themselves.
+ *
+ * Mirrors USER_CANCELLABLE_STATES in bookingController.js. Confirmed bookings
+ * are excluded on both sides: a unit is held out of inventory by then, and
+ * releasing it is an admin action with side effects.
+ */
+const CANCELLABLE = ['enquiry', 'payment_submitted'];
+
 function BookingCard({ booking, onRefresh }) {
   const [showResubmit, setShowResubmit] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const cfg = STATUS[booking.status] || STATUS.enquiry;
   const Icon = cfg.icon;
   const rejected = booking.payment?.status === 'rejected';
+  const canCancel = CANCELLABLE.includes(booking.status);
+
+  const doCancel = async () => {
+    setCancelling(true);
+    try {
+      const res = await bookingApi.cancel(booking._id, '');
+      if (!res.success) throw new Error(res.message);
+      toast.success(
+        res.data?.refundMayBeDue
+          ? 'Booking cancelled. We will contact you about the refund.'
+          : 'Booking cancelled.'
+      );
+      setConfirmCancel(false);
+      onRefresh?.();
+    } catch (e) {
+      toast.error(e?.response?.data?.message || e.message || 'Could not cancel this booking.');
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow duration-200">
@@ -241,6 +273,51 @@ function BookingCard({ booking, onRefresh }) {
               Go back and pay <ArrowRight size={14} />
             </Link>
           </div>
+        </div>
+      )}
+
+      {/* Withdraw.
+          Deliberately quiet — a text button, not a red one. Cancelling is a
+          legitimate, reversible-by-rebooking action, not a destructive one, and
+          the confirm step below carries the only warning that matters: if money
+          was already sent, cancelling does not return it automatically. */}
+      {canCancel && (
+        <div className="px-5 pb-5">
+          {confirmCancel ? (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
+              <p className="text-sm text-slate-700 font-medium">Cancel this booking?</p>
+              {booking.status === 'payment_submitted' && (
+                <p className="text-xs text-amber-700 mt-1">
+                  You have already submitted a payment. Cancelling does not refund it
+                  automatically — we will contact you to arrange it. Your payment details
+                  stay on record.
+                </p>
+              )}
+              <div className="flex items-center gap-2 mt-3">
+                <button
+                  onClick={doCancel}
+                  disabled={cancelling}
+                  className="px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-semibold hover:bg-slate-900 transition disabled:opacity-60 inline-flex items-center gap-1.5"
+                >
+                  {cancelling ? <><Loader2 size={12} className="animate-spin" /> Cancelling…</> : 'Yes, cancel'}
+                </button>
+                <button
+                  onClick={() => setConfirmCancel(false)}
+                  disabled={cancelling}
+                  className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs font-semibold hover:bg-white transition"
+                >
+                  Keep it
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmCancel(true)}
+              className="text-xs text-slate-400 hover:text-slate-700 font-medium transition"
+            >
+              Cancel this booking
+            </button>
+          )}
         </div>
       )}
     </div>
