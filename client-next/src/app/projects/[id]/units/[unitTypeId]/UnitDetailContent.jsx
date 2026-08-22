@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { FaBed, FaBath, FaRulerCombined, FaCompass, FaFilePdf, FaPhoneAlt, FaWhatsapp } from 'react-icons/fa';
-import { Shield, Users, Calendar, CheckCircle, Upload, Loader2, X, AlertTriangle, ChevronRight, Home, Tag, TrendingDown } from 'lucide-react';
+import { Shield, CheckCircle, Check, Upload, Loader2, X, AlertTriangle, ChevronRight, Home } from 'lucide-react';
 import { bookingApi } from '../../../../../utils/api';
 import { useAuth } from '../../../../../context/AuthContext';
 import { toast } from 'react-toastify';
@@ -89,7 +89,7 @@ function BookingModal({ ut, project, onClose, user }) {
         {/* Step bar */}
         <div className="flex border-b border-gray-100">
           {['Details','Payment','Proof','Done'].map((s,i)=>(
-            <div key={i} className={`flex-1 text-center py-2.5 text-xs font-semibold transition border-b-2 ${step===i+1?'border-blue-600 text-blue-600':step>i+1?'border-green-400 text-green-600':'border-transparent text-gray-400'}`}>{step>i+1?'✓ ':''}{s}</div>
+            <div key={i} className={`flex-1 inline-flex items-center justify-center gap-1 py-2.5 text-xs font-semibold transition border-b-2 ${step===i+1?'border-blue-600 text-blue-600':step>i+1?'border-green-400 text-green-600':'border-transparent text-gray-400'}`}>{step>i+1 && <Check size={12} aria-hidden="true"/>}{s}</div>
           ))}
         </div>
         {/* Body */}
@@ -155,37 +155,6 @@ function BookingModal({ ut, project, onClose, user }) {
   );
 }
 
-/* ── Campaign Card ── */
-function CampaignCard({ c, effectivePrice, onBook }) {
-  const active = c.status === 'active';
-  const joined = c.memberCount || 0;
-  const maxBuyers = c.buyerTargets?.maxBuyers;
-  const minBuyers = c.buyerTargets?.minBuyers;
-  const pct = Math.min(100, Math.round((joined / (maxBuyers || minBuyers || 1)) * 100));
-  const discount = c.discountPerBuyer || 0;
-  const groupBuyPrice = effectivePrice ? effectivePrice - discount : null;
-  const savings = effectivePrice && discount ? Math.round((discount / effectivePrice) * 100) : 0;
-  const ends = c.endDate ? new Date(c.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
-  return (
-    <div className={`rounded-xl border p-4 ${active && pct < 100 ? 'border-blue-200 bg-blue-50/40' : 'border-gray-200 bg-white opacity-60'}`}>
-      <div className="flex items-start justify-between mb-3">
-        <div><p className="font-semibold text-gray-900 text-sm">{c.name}</p>{ends && <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1"><Calendar size={10}/>Ends {ends}</p>}</div>
-        {savings > 0 && <span className="text-xs font-bold px-2 py-1 bg-green-100 text-green-700 rounded-full flex items-center gap-1"><TrendingDown size={10}/>{savings}% off</span>}
-      </div>
-      <div className="mb-3">
-        <div className="flex justify-between text-xs text-gray-400 mb-1"><span className="flex items-center gap-1"><Users size={10}/>{joined}/{maxBuyers || minBuyers} joined</span><span className="font-semibold text-blue-600">{pct}% full</span></div>
-        <div className="bg-gray-200 rounded-full h-1.5"><div className="bg-blue-500 h-1.5 rounded-full" style={{width:`${pct}%`}}/></div>
-      </div>
-      <div className="flex items-center justify-between">
-        <div>
-          {groupBuyPrice && <p className="font-bold text-gray-900">{fmt(groupBuyPrice)} <span className="text-xs font-normal text-gray-400 line-through">{fmt(effectivePrice)}</span></p>}
-        </div>
-        {active && pct < 100 && <button onClick={onBook} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold text-xs hover:bg-blue-700 transition">Join Now</button>}
-      </div>
-    </div>
-  );
-}
-
 /* ── Spec Tabs ── */
 function SpecsSection({ specs }) {
   const [tab, setTab] = useState(0);
@@ -222,6 +191,10 @@ function SpecsSection({ specs }) {
 
 /* ── Main Page ── */
 export default function UnitDetailContent({ unitType:ut, campaigns=[], project, projectId }) {
+  // `campaigns` is accepted and deliberately unrendered (Stage 1): the terms
+  // exist but nothing enforces them. The prop stays so page.js needs no change
+  // when the mechanic lands. See utils/relatedProperties.js for the cost of
+  // letting a page silently stop using data it is handed.
   const [showModal, setShowModal] = useState(false);
   const { isAuthenticated, user } = useAuth();
   const router = useRouter();
@@ -323,13 +296,13 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
             </div>
           )}
 
-          {/* Campaigns */}
-          {campaigns.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl p-5">
-              <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Tag size={15} className="text-blue-500"/>Group Buy Campaigns</h2>
-              <div className="space-y-3">{campaigns.map(c => <CampaignCard key={c._id} c={c} effectivePrice={price} onBook={handleBookClick}/>)}</div>
-            </div>
-          )}
+          {/* GROUP BUY — buyer-facing section removed (Stage 1).
+              The terms are stored and admin-authorable, and nothing enforces
+              them: no code reads paidMemberCount >= minBuyers, applies
+              discountPerBuyer to a price, or notifies anyone when a goal is
+              met. Advertising a discount no code will honour is the defect.
+              The `campaigns` prop is still accepted so page.js needs no
+              change when the mechanic lands. */}
 
           {/* Interior Photo Gallery — Feature 3 */}
           {ut.photos?.length > 0 && (

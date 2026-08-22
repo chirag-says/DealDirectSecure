@@ -1,8 +1,8 @@
 'use client';
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { FaMapMarkerAlt, FaPhoneAlt, FaWhatsapp, FaEnvelope, FaCheckCircle, FaFilePdf, FaBed, FaBath, FaRulerCombined, FaCompass, FaCouch, FaUsers, FaGift, FaFire } from 'react-icons/fa';
-import { Building2, CheckCircle, ChevronLeft, ChevronRight, Layers, Star, Shield, MapPin, Home, Calendar, TreePine, Key, TowerControl, Building, BarChart3, Users, Zap } from 'lucide-react';
+import { FaMapMarkerAlt, FaPhoneAlt, FaWhatsapp, FaEnvelope, FaCheckCircle, FaFilePdf, FaBed, FaBath, FaRulerCombined, FaCompass, FaCouch } from 'react-icons/fa';
+import { Building2, CheckCircle, ChevronLeft, ChevronRight, Layers, ListChecks, Shield, MapPin, Home, Calendar, TreePine, Key, Building, BarChart3 } from 'lucide-react';
 import ddAdminPfp from '../../../assets/clientadminpfp.png';
 
 const FALLBACK = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800";
@@ -170,56 +170,13 @@ export default function ProjectDetailContent({ project, unitTypes = [], campaign
         <div className="space-y-4">
           <div className="space-y-4">
 
-            {/* ── GROUP BUY BANNER ── */}
-            {campaigns.length > 0 && campaigns.map((c) => {
-              const discount = c.discountPerBuyer || 0;
-              const fmtDiscount = discount >= 1e7 ? `₹${(discount/1e7).toFixed(discount % 1e7 === 0 ? 0 : 2)} Cr` : discount >= 1e5 ? `₹${(discount/1e5).toFixed(0)} L` : `₹${discount.toLocaleString('en-IN')}`;
-              const progress = c.buyerTargets?.minBuyers ? Math.min(100, Math.round(((c.memberCount || 0) / c.buyerTargets.minBuyers) * 100)) : 0;
-              const unitName = typeof c.unitType === 'object' ? c.unitType.config?.name : null;
 
-              return (
-                <div key={c._id} className="bg-slate-900 rounded-2xl overflow-hidden">
-                  {/* Header strip */}
-                  <div className="px-5 pt-4 pb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">Group Buy</span>
-                    </div>
-                    {unitName && <span className="text-[10px] text-slate-500 font-medium">{unitName}</span>}
-                  </div>
-
-                  {/* Discount */}
-                  <div className="px-5 pb-4">
-                    <p className="text-3xl font-extrabold text-white tracking-tight leading-none">{fmtDiscount} <span className="text-emerald-400 text-lg font-bold">OFF</span></p>
-                    <p className="text-xs text-slate-400 mt-1.5">per buyer · {c.buyerTargets?.minBuyers}+ buyers needed</p>
-                  </div>
-
-                  {/* Divider + Progress */}
-                  <div className="px-5 pb-4">
-                    <div className="flex justify-between text-[10px] text-slate-500 mb-1.5 font-medium">
-                      <span>{c.memberCount || 0} joined</span>
-                      <span>{c.buyerTargets?.maxBuyers ? `${Math.max(0, c.buyerTargets.maxBuyers - (c.memberCount || 0))} left` : `min ${c.buyerTargets?.minBuyers}`}</span>
-                    </div>
-                    <div className="w-full bg-slate-800 rounded-full h-1">
-                      <div className="h-1 rounded-full bg-emerald-400 transition-all duration-500" style={{ width: `${progress}%` }} />
-                    </div>
-                  </div>
-
-                  {/* Perks */}
-                  {c.perks?.length > 0 && (
-                    <div className="px-5 pb-4 space-y-2">
-                      {c.perks.map((perk, i) => (
-                        <div key={i} className="flex items-center gap-2.5">
-                          <FaCheckCircle size={10} className="text-emerald-400 flex-shrink-0" />
-                          <span className="text-xs text-slate-300">{perk}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
+            {/* GROUP BUY — buyer-facing sections removed (Stage 1).
+                The terms are stored and admin-authorable, and nothing enforces
+                them: no code reads paidMemberCount >= minBuyers, applies
+                discountPerBuyer to any price, or notifies anyone when a goal is
+                met. Advertising a discount no code will honour is the defect.
+                Restore when the mechanic exists. */}
             {/* ── DealDirect Contact Card ── */}
             <div className="bg-white border border-slate-200 rounded-2xl p-5">
               <div className="flex items-center gap-3 mb-5">
@@ -328,7 +285,7 @@ export default function ProjectDetailContent({ project, unitTypes = [], campaign
 
             {highlights.length > 0 && (
               <div className="bg-gradient-to-br from-[#1a1145] to-[#2d1b4e] rounded-2xl p-5 text-white">
-                <h3 className="font-bold mb-4 flex items-center gap-2"><Star size={16} className="text-amber-400" /> Highlights</h3>
+                <h3 className="font-bold mb-4 flex items-center gap-2"><ListChecks size={16} className="text-slate-400" /> Highlights</h3>
                 <ul className="space-y-3">
                   {highlights.map((h, i) => (
                     <li key={i} className="flex items-start gap-2.5 text-sm text-slate-200 leading-relaxed">
