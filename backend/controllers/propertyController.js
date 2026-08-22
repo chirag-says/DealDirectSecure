@@ -1660,6 +1660,26 @@ export const markInterested = async (req, res) => {
       });
     }
 
+    // Legacy builder-feed listings: refuse, and say where they went.
+    //
+    // These have a builder and no owner. Interest on them recorded the tap into
+    // `interestedUsers`, incremented `likes`, and then did nothing at all — the
+    // lead and the notification are both gated on `property.owner`, so a buyer
+    // believed they had registered interest with a seller and the signal went
+    // nowhere. The stratum is already excluded from every public feed, so this
+    // is only reachable by direct URL.
+    //
+    // Refused rather than wired up: builder inventory belongs on /projects,
+    // which is where it now lives with a real enquiry path behind it.
+    if (property.builder && !property.owner) {
+      return res.status(400).json({
+        success: false,
+        code: "LEGACY_BUILDER_LISTING",
+        message: "This listing has moved to our Builder Projects section — please enquire there.",
+        redirectTo: "/projects",
+      });
+    }
+
     // Check if user is the owner (can't be interested in own property)
     if (property.owner && property.owner.toString() === userId.toString()) {
       return res.status(400).json({ success: false, message: "You cannot express interest in your own property" });

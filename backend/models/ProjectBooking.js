@@ -60,6 +60,48 @@ const projectBookingSchema = new mongoose.Schema(
       maxlength: [500, "Notes cannot exceed 500 characters"],
     },
 
+    // ── How this record started ───────────────────────────────────────────────
+    //
+    // Both an enquiry and a booking are the same document in the same `enquiry`
+    // status; what differs is what the buyer was asked for. Until now the only
+    // buyer CTA on a project opened with a QR code and a demand for money, and
+    // seven live projects produced zero bookings. This lets a buyer ask a
+    // question, and lets an admin tell the two apart in the queue.
+    source: {
+      type: String,
+      enum: ["enquiry", "booking"],
+      default: "booking",
+      index: true,
+    },
+
+    // ── Pipeline ──────────────────────────────────────────────────────────────
+    //
+    // `adminNotes` below is a single mutable string: every verification or
+    // rejection cycle overwrote the previous note. Lead already models this
+    // properly, and project demand deserves the same — who called, when, and
+    // what happened.
+    contactHistory: [
+      {
+        action: {
+          type: String,
+          enum: ["called", "emailed", "whatsapp", "met", "site_visit", "note"],
+          default: "note",
+        },
+        note: { type: String, trim: true, maxlength: 1000 },
+        by: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
+        at: { type: Date, default: Date.now },
+      },
+    ],
+
+    // Which admin owns this one. Without it, "who is handling this?" has no
+    // answer and every enquiry is everybody's and nobody's.
+    assignedTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+      default: null,
+      index: true,
+    },
+
     // ── Status Lifecycle ──────────────────────────────────────────────────────
     // enquiry → payment_submitted → confirmed → cancelled / completed
     status: {

@@ -309,6 +309,17 @@ export const getProject = async (req, res) => {
       return res.status(404).json({ success: false, message: "Project not found." });
     }
 
+    // Count the view — public reads only.
+    //
+    // Counting admin previews would make the funnel measure the team rather
+    // than the market, which for a vertical with seven projects and zero
+    // bookings is the one number that has to be honest. Fire-and-forget: a
+    // counter write must never turn a listing into a 500.
+    if (!isAdmin) {
+      Project.updateOne({ _id: project._id }, { $inc: { views: 1 } })
+        .catch((e) => console.error("[Project] view count failed:", e.message));
+    }
+
     // Strip internal-only fields from the public response.
     if (!isAdmin) {
       delete project.createdBy;

@@ -268,6 +268,14 @@ const projectSchema = new mongoose.Schema(
       ],
     },
 
+    // ── Demand instrumentation ────────────────────────────────────────────────
+    //
+    // Property has had a `views` counter all along; Project had nothing, so
+    // nothing could distinguish "nobody looks at the builder vertical" from
+    // "people look and never enquire". Those need opposite responses, and for
+    // seven projects with zero bookings the difference is the whole question.
+    views: { type: Number, default: 0, min: 0 },
+
     // ── Meta ──────────────────────────────────────────────────────────────────
     isActive: { type: Boolean, default: true },
     unitTypeCount: { type: Number, default: 0, min: 0 }, // denormalized for listing cards

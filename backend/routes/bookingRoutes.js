@@ -12,6 +12,8 @@ import {
   updateBookingStatus,
   getPaymentConfig,
   cancelOwnBooking,
+  addBookingContact,
+  assignBooking,
 } from "../controllers/bookingController.js";
 import { authMiddleware } from "../middleware/authUser.js";
 import { protectAdmin } from "../middleware/authAdmin.js";
@@ -42,5 +44,9 @@ router.get("/payment-config", authMiddleware, getPaymentConfig);
 router.get("/", protectAdmin, listBookings);
 router.put("/:id/verify", protectAdmin, verifyPayment);
 router.put("/:id/status", protectAdmin, updateBookingStatus);
+
+// Pipeline: work an enquiry like a lead.
+router.post("/:id/contact", protectAdmin, addBookingContact);
+router.put("/:id/assign", protectAdmin, assignBooking);
 
 export default router;

@@ -13,6 +13,7 @@
  *   PUT  /api/bookings/:id/verify   — verify / reject payment
  *   PUT  /api/bookings/:id/status   — update booking status
  */
+import mongoose from "mongoose";
 import ProjectBooking from "../models/ProjectBooking.js";
 import UnitType from "../models/UnitType.js";
 import Project from "../models/Project.js";
@@ -139,7 +140,16 @@ const uploadToCloudinary = (buffer, options = {}) =>
 // Create an enquiry booking (step 1 — before payment)
 export const createBooking = async (req, res) => {
   try {
-    const { projectId, unitTypeId, clientName, clientPhone, clientEmail, notes } = req.body;
+    const { projectId, unitTypeId, clientName, clientPhone, clientEmail, notes, intent } = req.body;
+
+    // An enquiry is a question; a booking is a payment.
+    //
+    // Same document, same `enquiry` status — what differs is what the buyer was
+    // asked for, and therefore which guards apply. Asking a question must not be
+    // gated on the thing that gates paying: three of eight real unit types have
+    // no booking amount, and those are exactly the ones an admin most needs to
+    // hear demand about.
+    const isEnquiry = intent === "enquiry";
 
     if (!projectId || !unitTypeId || !clientName || !clientPhone) {
       return res.status(400).json({ success: false, message: "projectId, unitTypeId, clientName, and clientPhone are required." });
@@ -180,7 +190,9 @@ export const createBooking = async (req, res) => {
     const tokenAmount =
       unitType.paymentTerms?.bookingAmount ?? project.financials?.bookingAmount ?? 0;
 
-    if (!(tokenAmount > 0)) {
+    // Only a BOOKING needs a payable amount. An enquiry with tokenAmount 0 is
+    // correct — nobody is being asked to pay anything.
+    if (!isEnquiry && !(tokenAmount > 0)) {
       return res.status(400).json({
         success: false,
         message: "Booking is not configured for this unit type yet. Please contact us.",
@@ -218,20 +230,28 @@ export const createBooking = async (req, res) => {
       clientEmail: clientEmail?.trim() || undefined,
       notes: notes?.trim() || undefined,
       status: "enquiry",
+      source: isEnquiry ? "enquiry" : "booking",
       // Resolved and validated above. Unit-level first, project-level only as a
       // legacy fallback — the same order the client uses, so the quoted and the
       // persisted amounts always agree.
       "payment.tokenAmount": tokenAmount,
-      statusHistory: [{ status: "enquiry", changedBy: "user", note: "Booking enquiry created" }],
+      statusHistory: [{
+        status: "enquiry",
+        changedBy: "user",
+        note: isEnquiry ? "Enquiry submitted" : "Booking enquiry created",
+      }],
     });
 
     return res.status(201).json({
       success: true,
-      message: "Booking created. Please complete the token payment.",
+      message: isEnquiry
+        ? "Thanks — our team will call you shortly."
+        : "Booking created. Please complete the token payment.",
       data: {
         bookingId: booking._id,
         tokenAmount: booking.payment.tokenAmount,
         status: booking.status,
+        source: booking.source,
       },
     });
   } catch (err) {
@@ -330,15 +350,20 @@ export const getMyBookings = async (req, res) => {
 // Admin: list all bookings with optional filters
 export const listBookings = async (req, res) => {
   try {
-    const { status, projectId, page = 1, limit = 20 } = req.query;
+    const { status, projectId, source, assignedTo, page = 1, limit = 20 } = req.query;
     const filter = {};
     if (status) filter.status = status;
     if (projectId) filter.project = projectId;
+    // Enquiries and bookings share a queue and a status; the source is what
+    // lets an admin work them differently.
+    if (source) filter.source = source;
+    if (assignedTo) filter.assignedTo = assignedTo === "none" ? null : assignedTo;
 
     const [bookings, total] = await Promise.all([
       ProjectBooking.find(filter)
         .populate("project", "basics.name")
         .populate("unitType", "config")
+        .populate("assignedTo", "name email")
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(Number(limit))
@@ -702,6 +727,72 @@ export const updateBookingStatus = async (req, res) => {
   } catch (err) {
     console.error("[Booking] updateBookingStatus error:", err);
     return res.status(500).json({ success: false, message: "Failed to update booking status." });
+  }
+};
+
+// ── POST /api/bookings/:id/contact ────────────────────────────────────────────
+// Admin: record a contact attempt.
+//
+// Appends. `adminNotes` is one mutable string and every verification cycle
+// overwrote the last note, so the record of a three-call chase was whatever was
+// typed most recently. Lead has modelled this properly all along.
+export const addBookingContact = async (req, res) => {
+  try {
+    const { action = "note", note } = req.body;
+    const ALLOWED = ["called", "emailed", "whatsapp", "met", "site_visit", "note"];
+    if (!ALLOWED.includes(action)) {
+      return res.status(400).json({
+        success: false, message: `action must be one of: ${ALLOWED.join(", ")}`,
+      });
+    }
+    if (!note?.trim()) {
+      return res.status(400).json({ success: false, message: "A note is required." });
+    }
+
+    const booking = await ProjectBooking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ success: false, message: "Booking not found." });
+
+    booking.contactHistory.push({
+      action, note: note.trim(), by: req.admin._id, at: new Date(),
+    });
+    await booking.save();
+
+    return res.json({
+      success: true,
+      message: "Contact recorded.",
+      data: { contactHistory: booking.contactHistory },
+    });
+  } catch (err) {
+    console.error("[Booking] addBookingContact error:", err);
+    return res.status(500).json({ success: false, message: "Failed to record contact." });
+  }
+};
+
+// ── PUT /api/bookings/:id/assign ──────────────────────────────────────────────
+// Admin: take ownership of an enquiry, or hand it over. `adminId: null` clears.
+export const assignBooking = async (req, res) => {
+  try {
+    const { adminId } = req.body;
+
+    const booking = await ProjectBooking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ success: false, message: "Booking not found." });
+
+    if (adminId) {
+      const exists = await mongoose.model("Admin").exists({ _id: adminId });
+      if (!exists) return res.status(400).json({ success: false, message: "No such admin." });
+    }
+
+    booking.assignedTo = adminId || null;
+    await booking.save();
+
+    return res.json({
+      success: true,
+      message: adminId ? "Assigned." : "Assignment cleared.",
+      data: { assignedTo: booking.assignedTo },
+    });
+  } catch (err) {
+    console.error("[Booking] assignBooking error:", err);
+    return res.status(500).json({ success: false, message: "Failed to assign." });
   }
 };
 

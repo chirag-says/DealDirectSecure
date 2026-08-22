@@ -12,6 +12,7 @@ import {
   listByProject,
   updateUnitType,
   deleteUnitType,
+  adjustInventory,
 } from "../controllers/unitTypeController.js";
 import { protectAdmin, attachAdminIfPresent } from "../middleware/authAdmin.js";
 import { memoryUpload, uploadConcurrencyGuard } from "../middleware/upload.js";
@@ -48,6 +49,10 @@ router.put(
   ]),
   updateUnitType
 );
+
+// Inventory corrections: one field, a signed delta, and a reason. Replaces the
+// wholesale overwrite that used to be possible through PUT /:id.
+router.post("/:id/inventory/adjust", protectAdmin, adjustInventory);
 
 router.delete("/:id", protectAdmin, deleteUnitType);
 

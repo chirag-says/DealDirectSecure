@@ -155,6 +155,88 @@ function BookingModal({ ut, project, onClose, user }) {
   );
 }
 
+/* ── Enquiry Modal ──
+   The low-commitment door. Deliberately one step and no payment framing: a QR
+   code was the only thing on offer before this, and seven live projects have
+   produced zero bookings. Sends intent:'enquiry', which the API records as
+   source:'enquiry' and exempts from the booking-amount requirement — asking a
+   question must not be gated on the thing that gates paying. */
+function EnquiryModal({ ut, project, onClose, user }) {
+  const [form, setForm] = useState({
+    name: user?.name || '',
+    phone: user?.phone || '',
+    email: user?.email || '',
+    notes: '',
+  });
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState('');
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const submit = async () => {
+    if (!form.name.trim() || !form.phone.trim()) { setErr('Name and phone are required.'); return; }
+    setErr(''); setLoading(true);
+    try {
+      const d = await bookingApi.create({
+        unitTypeId: ut._id,
+        projectId: project?._id,
+        clientName: form.name,
+        clientPhone: form.phone,
+        clientEmail: form.email,
+        notes: form.notes,
+        intent: 'enquiry',
+      });
+      if (!d.success) throw new Error(d.message);
+      setDone(true);
+    } catch (e) {
+      setErr(e?.response?.data?.message || e.message || 'Could not send your enquiry.');
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
+      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div>
+            <p className="font-bold text-gray-900 text-base">Enquire about {ut?.config?.name}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{project?.basics?.name}</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition"><X size={15} /></button>
+        </div>
+
+        <div className="px-5 py-5 space-y-4">
+          {done ? (
+            <div className="text-center py-6">
+              <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+                <CheckCircle size={32} className="text-green-500" />
+              </div>
+              <p className="font-bold text-gray-900 text-lg mb-1">Enquiry sent</p>
+              <p className="text-gray-500 text-sm mb-5">Our team will call you shortly. No payment is needed.</p>
+              <button onClick={onClose} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition">Close</button>
+            </div>
+          ) : (<>
+            {err && <p className="text-sm text-red-600 bg-red-50 border border-red-200 px-4 py-2.5 rounded-lg flex items-center gap-2"><AlertTriangle size={14} />{err}</p>}
+            <p className="text-sm text-gray-500">
+              Ask us anything about this unit — availability, pricing, site visits. No payment at this stage.
+            </p>
+            <div className="space-y-3">
+              <div><label className="text-xs font-semibold text-gray-500 block mb-1">Full Name *</label><input className={inp} value={form.name} onChange={e => set('name', e.target.value)} /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-xs font-semibold text-gray-500 block mb-1">Phone *</label><input className={inp} type="tel" placeholder="10-digit" value={form.phone} onChange={e => set('phone', e.target.value)} /></div>
+                <div><label className="text-xs font-semibold text-gray-500 block mb-1">Email</label><input className={inp} type="email" placeholder="Optional" value={form.email} onChange={e => set('email', e.target.value)} /></div>
+              </div>
+              <div><label className="text-xs font-semibold text-gray-500 block mb-1">Your question</label><textarea className={`${inp} resize-none`} rows={3} placeholder="e.g. which floors are still available?" value={form.notes} onChange={e => set('notes', e.target.value)} /></div>
+            </div>
+            <button onClick={submit} disabled={loading} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition disabled:opacity-60 flex items-center justify-center gap-2">
+              {loading ? <><Loader2 size={15} className="animate-spin" />Sending…</> : 'Send enquiry'}
+            </button>
+          </>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Spec Tabs ── */
 function SpecsSection({ specs }) {
   const [tab, setTab] = useState(0);
@@ -196,6 +278,7 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
   // when the mechanic lands. See utils/relatedProperties.js for the cost of
   // letting a page silently stop using data it is handed.
   const [showModal, setShowModal] = useState(false);
+  const [showEnquiry, setShowEnquiry] = useState(false);
   const { isAuthenticated, user } = useAuth();
   const router = useRouter();
   const price = ut.pricing?.effectivePrice;
@@ -212,9 +295,19 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
     setShowModal(true);
   };
 
+  const handleEnquireClick = () => {
+    if (!isAuthenticated || !user) {
+      toast.info('Please login to enquire');
+      router.push(`/login?from=/projects/${projectId}/units/${ut._id}`);
+      return;
+    }
+    setShowEnquiry(true);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {showModal && <BookingModal ut={ut} project={project} user={user} onClose={()=>setShowModal(false)}/>}
+      {showEnquiry && <EnquiryModal ut={ut} project={project} user={user} onClose={()=>setShowEnquiry(false)}/>}
 
       {/* Breadcrumb */}
       <div className="bg-white border-b border-gray-200 px-4 py-3">
@@ -443,7 +536,17 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
                     ))}
                   </div>
                 )}
+                {/* Two doors, not one.
+                    Until now the only way in was the booking modal, which opens
+                    with a QR code and a demand for money — and seven live
+                    projects have produced zero bookings. Enquiring is the
+                    low-commitment path most buyers actually want first, and it
+                    works even on unit types with no booking amount configured. */}
                 <button onClick={handleBookClick} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition">Book This Unit</button>
+                <button onClick={handleEnquireClick}
+                  className="w-full py-2.5 border border-blue-200 text-blue-700 rounded-xl font-semibold text-sm hover:bg-blue-50 transition">
+                  Enquire — no payment needed
+                </button>
                 <Link href={`/projects/${projectId}`} className="w-full py-2.5 border border-gray-200 text-gray-600 rounded-xl font-semibold text-sm hover:bg-gray-50 transition flex items-center justify-center">← Back to Project</Link>
               </div>
             </div>
@@ -474,7 +577,7 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
       {/* Mobile sticky CTA */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3 z-40">
         <div className="flex-1"><p className="font-bold text-gray-900">{price ? fmt(price) : 'Price on request'}</p>{ut.inventory?.availableUnits!=null && <p className="text-xs text-green-600">{ut.inventory.availableUnits} units available</p>}</div>
-        <button onClick={handleBookClick} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition">Book Now</button>
+        <div className="flex gap-2"><button onClick={handleEnquireClick} className="px-4 py-2.5 border border-blue-200 text-blue-700 rounded-xl font-semibold text-sm">Enquire</button><button onClick={handleBookClick} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition">Book Now</button></div>
       </div>
       <div className="h-20 lg:hidden"/>
     </div>

@@ -9,6 +9,10 @@ import { cloudinary } from "../middleware/upload.js";
 import { Readable } from "stream";
 import { handleDeleteGuard } from "../utils/deleteGuard.js";
 import { deleteUnitTypeAggregate } from "../utils/aggregateDelete.js";
+import AuditLog from "../models/AuditLog.js";
+import {
+  applyInventoryDelta, assertInventoryValid, InventoryError,
+} from "../utils/inventoryInvariant.js";
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 /**
@@ -253,8 +257,14 @@ export const updateUnitType = async (req, res) => {
       );
     }
 
-    // Merge allowed fields
-    const directFields = ["config", "area", "furnishing", "parking", "specifications", "floorPlans", "pricing", "inventory", "highlights"];
+    // Merge allowed fields.
+    //
+    // `inventory` is NOT here. It used to be, and a wholesale overwrite could
+    // silently contradict the confirmed bookings the engine counts atomically —
+    // one careless edit undoing the $gte:1 decrement discipline. Corrections go
+    // through POST /:id/inventory/adjust, which moves one field by a signed
+    // delta, keeps the invariant true and records a reason.
+    const directFields = ["config", "area", "furnishing", "parking", "specifications", "floorPlans", "pricing", "highlights"];
     directFields.forEach((key) => {
       if (body[key] !== undefined) {
         try {
@@ -335,6 +345,84 @@ export const updateUnitType = async (req, res) => {
       const messages = Object.values(error.errors).map((e) => e.message);
       return res.status(400).json({ success: false, message: messages.join(", ") });
     }
+    return res.status(500).json({ success: false, message: "Server error." });
+  }
+};
+
+// ── POST /api/unit-types/:id/inventory/adjust ─────────────────────────────────
+/**
+ * Correct inventory by a signed delta, with a reason.
+ *
+ * Corrections are legitimately needed — builders sell through channels
+ * DealDirect cannot see, and the booking-cancel path already logs "inventory
+ * may need manual correction". What was wrong was the SHAPE: an admin could
+ * PUT an entire inventory object, overwriting counters the booking engine
+ * maintains atomically, with nothing recorded about why.
+ *
+ * A delta composes with a concurrent booking; an assignment races it.
+ */
+export const adjustInventory = async (req, res) => {
+  try {
+    const { field, delta, reason } = req.body;
+
+    if (!reason?.trim()) {
+      return res.status(400).json({
+        success: false,
+        code: "REASON_REQUIRED",
+        message: "A reason is required — an unexplained inventory change cannot be reconciled later.",
+      });
+    }
+
+    const unitType = await UnitType.findById(req.params.id);
+    if (!unitType) {
+      return res.status(404).json({ success: false, message: "Unit type not found." });
+    }
+
+    const project = await Project.findById(unitType.project).select("overview.totalTowers").lean();
+
+    let result;
+    try {
+      result = applyInventoryDelta(unitType.inventory?.toObject?.() ?? unitType.inventory ?? {}, {
+        field,
+        delta: Number(delta),
+        totalTowers: project?.overview?.totalTowers,
+      });
+    } catch (err) {
+      if (err instanceof InventoryError) {
+        return res.status(err.status).json({ success: false, code: err.code, message: err.message });
+      }
+      throw err;
+    }
+
+    const before = {
+      totalUnits: unitType.inventory?.totalUnits,
+      availableUnits: unitType.inventory?.availableUnits,
+      bookedUnits: unitType.inventory?.bookedUnits,
+      blockedUnits: unitType.inventory?.blockedUnits,
+    };
+
+    unitType.inventory = { ...result.inventory, towerAllocation: unitType.inventory?.towerAllocation || [] };
+    await unitType.save();
+
+    await AuditLog.log({
+      admin: req.admin._id,
+      category: "booking_management",
+      action: "unit_inventory_adjusted",
+      resourceType: "UnitType",
+      resourceId: unitType._id,
+      description: `Inventory adjusted on "${unitType.config?.name || unitType._id}": ${result.summary}`,
+      req,
+      severity: "medium",
+      metadata: { field, delta: Number(delta), reason: reason.trim(), before, after: result.inventory },
+    }).catch((e) => console.error("[UnitType] audit write failed:", e.message));
+
+    return res.status(200).json({
+      success: true,
+      message: `Inventory updated — ${result.summary}.`,
+      data: { inventory: unitType.inventory },
+    });
+  } catch (error) {
+    console.error("[unitTypeController.adjustInventory]", error);
     return res.status(500).json({ success: false, message: "Server error." });
   }
 };
