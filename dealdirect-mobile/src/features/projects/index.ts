@@ -37,3 +37,5 @@ export {
   usePaymentConfig,
   useSubmitBookingPayment,
 } from './bookings';
+
+export { BookingRow, type BookingRowProps } from './components/BookingRow';

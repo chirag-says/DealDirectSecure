@@ -27,6 +27,8 @@ import {
   clearRecentlyViewed,
   useRecentlyViewed,
 } from '@/features/properties';
+import { BookingRow, useMyBookings } from '@/features/projects';
+import { ShortlistRow, removeFromShortlist, useShortlist } from '@/features/shortlist';
 import { gesture, radius, screenPadding, spacing, tabBarClearance, useTheme } from '@/theme';
 import {
   EmptyState,
@@ -41,31 +43,51 @@ import {
 } from '@/ui';
 
 /**
- * Saved.
+ * Activity — everything the user has in flight.
  *
  * ---------------------------------------------------------------------------
- * THE FIRST TAB IS "INTERESTED", NOT "FAVOURITES", AND THAT IS NOT A WORD GAME
+ * WHY THIS IS NOT "SAVED" ANY MORE — 2026-08-24
+ *
+ * It used to hold one list and one set of alerts, which described a storage
+ * bucket rather than a person's situation. Somebody looking for a home has
+ * four things going at once: the flats they are turning over, the owners they
+ * have written to, the searches they are watching, and the units they have put
+ * money or a name against. Those were spread across a tab, a profile link and a
+ * deep-linked screen, so nowhere in the app answered "where am I up to".
+ *
+ * Four segments now, in the order the user moves through them:
+ *
+ *   Shortlist   considering       device-local, free, unlimited
+ *   Enquiries   contacted         server, capped at 5, owner notified
+ *   Searches    watching          server, alerting
+ *   Bookings    committed         server, money or a callback
+ *
+ * ---------------------------------------------------------------------------
+ * SHORTLIST AND ENQUIRIES ARE TWO LISTS, AND THE SPLIT IS THE WHOLE POINT
  *
  * `GET /properties/saved` reads the same `interestedUsers` array that
- * `POST /properties/interested/:id` writes. There is one list. Everything on
- * it was an announcement: the owner was emailed, a lead exists, and they hold
- * the user's name, email and phone.
+ * `POST /properties/interested/:id` writes. There is one server list, and
+ * everything on it was an announcement: the owner was emailed and messaged on
+ * WhatsApp, a lead exists, and they hold the user's name, email and phone.
+ * It is capped at five.
  *
  * Calling that "Favourites" would be the single most misleading label in the
- * app — it implies private, free and unlimited, and it is none of those. The
- * heading says what it is, and the count line is functional rather than
- * decorative because the backend refuses a sixth listing anywhere in the app.
- * This screen is where a user comes to make room.
+ * app — it implies private, free and unlimited, and it is none of those. So it
+ * is called Enquiries, which is what it is, and the count line stays because
+ * the backend refuses a sixth anywhere in the app and this is where a user
+ * comes to make room.
  *
- * The two segments are genuinely different objects — listings you acted on,
- * and standing alerts — so they are segments rather than one merged feed.
+ * The list that label was hiding — the twenty flats you are still deciding
+ * between — now exists separately, in `features/shortlist`, and creates no
+ * lead, notifies nobody and is capped by nothing. It is on this device only,
+ * which the segment says out loud rather than hiding; see that module.
  */
 
-type Segment = 'listings' | 'searches';
+type Segment = 'shortlist' | 'enquiries' | 'searches' | 'bookings';
 
 export default function ActivityScreen() {
   const router = useRouter();
-  const [segment, setSegment] = useState<Segment>('listings');
+  const [segment, setSegment] = useState<Segment>('shortlist');
 
   return (
     <Screen edges={['top']}>
@@ -76,12 +98,150 @@ export default function ActivityScreen() {
         <Segmented options={SEGMENTS} value={segment} onChange={setSegment} />
       </View>
 
-      {segment === 'listings' ? (
+      {segment === 'shortlist' ? (
+        <ShortlistList onOpenSearch={() => router.push('/(tabs)')} />
+      ) : segment === 'enquiries' ? (
         <InterestedList onOpenSearch={() => router.push('/(tabs)')} />
-      ) : (
+      ) : segment === 'searches' ? (
         <SearchesList />
+      ) : (
+        <BookingsList />
       )}
     </Screen>
+  );
+}
+
+/**
+ * The shortlist.
+ *
+ * Needs no account and makes no request: it replays snapshots from disk, the
+ * same mechanism `recentlyViewed` uses and for the same reason — refetching to
+ * draw a row would inflate the view counter of everything the user is
+ * considering. See `features/shortlist/store.ts`.
+ *
+ * The footnote about the device is not fine print. A user who assumes this
+ * syncs will lose work on their next phone and blame the app; saying so is the
+ * cost of shipping the honest version of the feature before the server has one.
+ */
+function ShortlistList({ onOpenSearch }: { onOpenSearch: () => void }) {
+  const router = useRouter();
+  const theme = useTheme();
+  const items = useShortlist();
+
+  const openProperty = useCallback((id: string) => router.push(`/property/${id}`), [router]);
+
+  if (items.length === 0) {
+    return (
+      <NothingSavedYet
+        onSelectProperty={openProperty}
+        renderPrompt={(compact) => (
+          <EmptyState
+            compact={compact}
+            icon={
+              <View
+                className="items-center justify-center rounded-full"
+                style={{ width: 72, height: 72, backgroundColor: theme.colors.accentMuted }}
+              >
+                <Ionicons name="bookmark" size={30} color={theme.colors.accent} />
+              </View>
+            }
+            title="Nothing shortlisted yet"
+            description="Tap Save on a listing to keep it here while you decide. The owner is not told, and there is no limit."
+            actionLabel="Search listings"
+            onAction={onOpenSearch}
+          />
+        )}
+      />
+    );
+  }
+
+  return (
+    <FlashList
+      data={items}
+      keyExtractor={(item) => item.property.id}
+      contentContainerStyle={{
+        paddingHorizontal: screenPadding,
+        paddingBottom: tabBarClearance,
+      }}
+      ItemSeparatorComponent={RowSeparator}
+      ListFooterComponent={
+        <Text variant="caption" tone="muted" className="mt-lg text-center">
+          Your shortlist is kept on this device. Owners are not notified.
+        </Text>
+      }
+      renderItem={({ item }) => (
+        <ShortlistRow entry={item} onPress={openProperty} onRemove={removeFromShortlist} />
+      )}
+    />
+  );
+}
+
+/**
+ * Bookings and enquiries against builder units.
+ *
+ * The same rows `/projects/bookings` renders, from the same hook — this
+ * segment is where they belong, and that screen stays reachable because it is
+ * deep-linked from notifications. `BookingRow` is shared rather than copied so
+ * the enquiry-versus-booking distinction has one implementation.
+ */
+function BookingsList() {
+  const router = useRouter();
+  const { bookings, isLoading, isRefreshing, error, refresh, signedIn } = useMyBookings();
+
+  // Loading first: during the cold-start session probe nobody is "signed out"
+  // yet, they are unknown, and a sign-in prompt shown to a returning user for
+  // half a second is a lie the app then retracts.
+  if (isLoading) {
+    return (
+      <View style={{ paddingHorizontal: screenPadding }}>
+        {[0, 1].map((i) => (
+          <Skeleton key={i} height={88} className="mb-base" radius={radius.lg} />
+        ))}
+      </View>
+    );
+  }
+
+  if (!signedIn) {
+    return (
+      <SignInPrompt
+        icon="calendar-outline"
+        title="Your bookings"
+        description="Units you have booked or enquired about appear here."
+      />
+    );
+  }
+
+  if (error) return <ErrorState title="Could not load your bookings" onRetry={refresh} />;
+
+  if (bookings.length === 0) {
+    return (
+      <EmptyState
+        title="No bookings yet"
+        description="Book a unit or send an enquiry from any project to see it here."
+        actionLabel="Browse projects"
+        onAction={() => router.push('/projects')}
+      />
+    );
+  }
+
+  return (
+    <FlashList
+      data={bookings}
+      keyExtractor={(item) => item._id}
+      contentContainerStyle={{
+        paddingHorizontal: screenPadding,
+        paddingBottom: tabBarClearance,
+      }}
+      refreshing={isRefreshing}
+      onRefresh={refresh}
+      renderItem={({ item }) => (
+        <BookingRow
+          booking={item}
+          className=""
+          onPress={() => router.push(`/projects/booking/${item._id}`)}
+        />
+      )}
+    />
   );
 }
 
@@ -110,10 +270,14 @@ const CardSeparator = () => <View style={{ height: spacing.base }} />;
 const RowSeparator = () => <View style={{ height: spacing.md }} />;
 
 const SEGMENTS = [
-  // "Interested", not "Favourites": adding to this list emails the owner and
+  // Shortlist first: it is the widest list, the cheapest act, and the one a
+  // user opens this tab to look through.
+  { label: 'Shortlist', value: 'shortlist' as const },
+  // "Enquiries", not "Favourites": adding to this list emails the owner and
   // creates a lead. See `features/properties/interest.ts`.
-  { label: 'Interested', value: 'listings' as const },
+  { label: 'Enquiries', value: 'enquiries' as const },
   { label: 'Searches', value: 'searches' as const },
+  { label: 'Bookings', value: 'bookings' as const },
 ];
 
 function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {

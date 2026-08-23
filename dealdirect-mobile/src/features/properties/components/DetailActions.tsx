@@ -3,9 +3,11 @@ import { useCallback } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ShortlistButton } from '@/features/shortlist';
 import { screenPadding, spacing, useTheme } from '@/theme';
 import { Button, Text } from '@/ui';
 import type { InterestState } from '../interest';
+import type { RailProperty } from './PropertyRailCard';
 
 /**
  * The action bar, pinned to the bottom of the detail screen.
@@ -52,6 +54,13 @@ import type { InterestState } from '../interest';
 export interface DetailActionsProps {
   interest: InterestState;
   /**
+   * The listing, for the shortlist control beside the enquiry.
+   *
+   * Passed as the snapshot the shortlist stores rather than the full summary,
+   * so this bar cannot hand it a shape the store will not keep.
+   */
+  property: RailProperty;
+  /**
    * Enquiry slots left, or null when unknown (signed out, or the saved list
    * has not resolved). Null must not disable the button — the server is the
    * authority on the cap and will say so.
@@ -70,6 +79,7 @@ export interface DetailActionsProps {
 
 export function DetailActions({
   interest,
+  property,
   remaining,
   onRequestEnquire,
   onHeightChange,
@@ -119,22 +129,35 @@ export function DetailActions({
         outOfSlots={outOfSlots}
       />
 
-      <Button
-        label={interest.isInterested ? "You're interested" : "I'm interested"}
-        variant={interest.isInterested ? 'secondary' : 'primary'}
-        loading={busy}
-        // Disabled only for the one refusal this client can predict. Every
-        // other rejection belongs to the server, which words it better and
-        // stays correct if the rule changes.
-        disabled={outOfSlots}
-        onPress={handlePress}
-        fullWidth
-        leading={
-          interest.isInterested ? (
-            <Ionicons name="checkmark" size={17} color={theme.colors.textPrimary} />
-          ) : undefined
-        }
-      />
+      {/*
+        Shortlist first, enquiry second, and the order is the reading order for
+        a reason: the cheap act is on the left where a thumb rests, the one with
+        consequences is the deliberate reach. The shortlist keeps its natural
+        width and the enquiry takes the rest, so the primary action is still
+        unmistakably primary.
+      */}
+      <View className="flex-row items-stretch" style={{ gap: spacing.sm }}>
+        <ShortlistButton property={property} />
+
+        <View className="flex-1">
+          <Button
+            label={interest.isInterested ? "You're interested" : "I'm interested"}
+            variant={interest.isInterested ? 'secondary' : 'primary'}
+            loading={busy}
+            // Disabled only for the one refusal this client can predict. Every
+            // other rejection belongs to the server, which words it better and
+            // stays correct if the rule changes.
+            disabled={outOfSlots}
+            onPress={handlePress}
+            fullWidth
+            leading={
+              interest.isInterested ? (
+                <Ionicons name="checkmark" size={17} color={theme.colors.textPrimary} />
+              ) : undefined
+            }
+          />
+        </View>
+      </View>
     </View>
   );
 }

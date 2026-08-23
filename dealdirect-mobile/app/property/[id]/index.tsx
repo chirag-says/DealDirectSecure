@@ -615,6 +615,7 @@ export default function PropertyDetailScreen() {
       */}
       <DetailActions
         interest={interest}
+        property={property}
         remaining={enquiriesLeft}
         onRequestEnquire={() => setEnquiring(true)}
         onHeightChange={setActionBarHeight}

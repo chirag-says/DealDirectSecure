@@ -72,6 +72,10 @@ export { PropertyRail, type PropertyRailProps } from './components/PropertyRail'
 export {
   PropertyRailCard,
   type PropertyRailCardProps,
+  // The structural subset a card needs, and the shape the shortlist and
+  // recently-viewed stores persist. See its own note for why it is not
+  // `PropertySummary`.
+  type RailProperty,
 } from './components/PropertyRailCard';
 export {
   recordView,
