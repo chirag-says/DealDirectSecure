@@ -2,6 +2,7 @@ import React from 'react';
 
 import { Screen, ScreenHeader } from '@/ui';
 import { useAuth } from '../AuthProvider';
+import type { PendingIntent } from '../pendingIntent';
 import { SignInPrompt } from './SignInPrompt';
 
 /**
@@ -43,6 +44,8 @@ export interface RequireAuthProps {
   icon?: React.ComponentProps<typeof SignInPrompt>['icon'];
   /** Where the header's back control goes. */
   backTo?: string;
+  /** Passed to the prompt so signing in returns to what was interrupted. */
+  intent?: PendingIntent;
   children: React.ReactNode;
 }
 
@@ -52,6 +55,7 @@ export function RequireAuth({
   promptDescription,
   icon,
   backTo,
+  intent,
   children,
 }: RequireAuthProps) {
   const { status } = useAuth();
@@ -62,7 +66,12 @@ export function RequireAuth({
     return (
       <Screen>
         <ScreenHeader title={title} backTo={backTo} />
-        <SignInPrompt icon={icon} title={promptTitle} description={promptDescription} />
+        <SignInPrompt
+          icon={icon}
+          title={promptTitle}
+          description={promptDescription}
+          intent={intent}
+        />
       </Screen>
     );
   }

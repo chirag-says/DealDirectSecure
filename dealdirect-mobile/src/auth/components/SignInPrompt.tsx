@@ -4,6 +4,7 @@ import { View } from 'react-native';
 
 import { radius, spacing, useTheme } from '@/theme';
 import { Button, Text } from '@/ui';
+import { setPendingIntent, type PendingIntent } from '../pendingIntent';
 
 /**
  * The signed-out state of a screen that needs an account.
@@ -53,6 +54,17 @@ export interface SignInPromptProps {
    * is the same dead end this component was built to stop — just one level up.
    */
   compact?: boolean;
+  /**
+   * What the user was trying to do, recorded before they leave for the auth
+   * screens so that signing in returns them to it.
+   *
+   * Optional, and absent on most callers for a reason: a prompt that fills a
+   * TAB is not interrupting anything — the user chose to look at Activity, and
+   * after signing in they should be on Activity, which is where they already
+   * are. It matters on the screens reached mid-task, above all the reward claim
+   * a notification sends someone to when their session has lapsed.
+   */
+  intent?: PendingIntent;
 }
 
 export function SignInPrompt({
@@ -60,6 +72,7 @@ export function SignInPrompt({
   description,
   icon = 'lock-closed-outline',
   compact = false,
+  intent,
 }: SignInPromptProps) {
   const router = useRouter();
   const theme = useTheme();
@@ -95,7 +108,10 @@ export function SignInPrompt({
         label="Sign in"
         align="center"
         className="mt-xl"
-        onPress={() => router.push('/(auth)/login')}
+        onPress={() => {
+          if (intent) setPendingIntent(intent);
+          router.push('/(auth)/login');
+        }}
       />
 
       {/* The path a new user actually needs, and the one all six of these
@@ -106,7 +122,10 @@ export function SignInPrompt({
         variant="ghost"
         align="center"
         className="mt-xs"
-        onPress={() => router.push('/(auth)/register')}
+        onPress={() => {
+          if (intent) setPendingIntent(intent);
+          router.push('/(auth)/register');
+        }}
       />
     </View>
   );

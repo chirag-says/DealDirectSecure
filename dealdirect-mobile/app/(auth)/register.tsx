@@ -9,6 +9,7 @@ import {
   AuthShell,
   normalizeIndianMobile,
   registerSchema,
+  resumeAfterAuth,
   useAuth,
   type RegisterValues,
 } from '@/auth';
@@ -75,7 +76,7 @@ export default function RegisterScreen() {
           ...values,
           referralCode: values.referralCode?.trim() || undefined,
         });
-        router.replace('/(tabs)');
+        resumeAfterAuth();
       }
     } catch (error) {
       if (!(error instanceof ApiError)) {

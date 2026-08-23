@@ -5,7 +5,7 @@ import { Linking, ScrollView, View, type LayoutChangeEvent } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError } from '@/api';
-import { useAuth } from '@/auth';
+import { setPendingIntent, useAuth } from '@/auth';
 import {
   useCampaignsForUnitType,
   useCreateBooking,
@@ -37,12 +37,20 @@ type Intent = 'booking' | 'enquiry';
 export default function UnitTypeScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { unitTypeId } = useLocalSearchParams<{ unitTypeId: string }>();
+  const { unitTypeId, resume } = useLocalSearchParams<{ unitTypeId: string; resume?: string }>();
   const { unitType, isLoading, error, refresh } = useUnitTypeDetail(unitTypeId);
   const { campaigns } = useCampaignsForUnitType(unitTypeId);
   const { status } = useAuth();
   const insets = useSafeAreaInsets();
-  const [intent, setIntent] = useState<Intent | null>(null);
+  /**
+   * `resume` carries which CTA a guest pressed before signing in, so the sheet
+   * they asked for opens on arrival. Validated against the two real values
+   * rather than cast: a deep link must not be able to raise a payment sheet on
+   * its own say-so.
+   */
+  const [intent, setIntent] = useState<Intent | null>(
+    resume === 'booking' || resume === 'enquiry' ? resume : null
+  );
 
   const projectId =
     typeof unitType?.project === 'object' ? unitType.project?._id : unitType?.project;
@@ -78,6 +86,11 @@ export default function UnitTypeScreen() {
   // is what the website does too.
   const openSheet = (next: Intent) => {
     if (!isAuthenticated) {
+      // Which of the two CTAs was pressed is recorded, not just the unit: the
+      // book and enquire paths differ in what they ask for and what they cost,
+      // so returning a signed-in user to the wrong sheet would be worse than
+      // returning them to neither. See `auth/pendingIntent.ts`.
+      setPendingIntent({ kind: 'unit', unitTypeId, intent: next });
       router.push('/(auth)/login');
       return;
     }

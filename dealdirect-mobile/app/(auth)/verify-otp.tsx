@@ -5,7 +5,14 @@ import { Controller, useForm } from 'react-hook-form';
 import { Pressable } from 'react-native';
 
 import { ApiError } from '@/api';
-import { AuthResult, AuthShell, useAuth, verifyOtpSchema, type VerifyOtpValues } from '@/auth';
+import {
+  AuthResult,
+  AuthShell,
+  resumeAfterAuth,
+  useAuth,
+  verifyOtpSchema,
+  type VerifyOtpValues,
+} from '@/auth';
 import { gesture } from '@/theme';
 import { Button, Input, Text, useToast } from '@/ui';
 
@@ -66,7 +73,7 @@ export default function VerifyOtpScreen() {
     setFormError(null);
     try {
       await verifyOtp(email, values.otp, referralCode);
-      router.replace('/(tabs)');
+      resumeAfterAuth();
     } catch (error) {
       setFormError(
         error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'

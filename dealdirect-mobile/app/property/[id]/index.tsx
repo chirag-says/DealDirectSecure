@@ -10,6 +10,7 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 
+import { setPendingIntent } from '@/auth';
 import { WEB_URL } from '@/config/env';
 import {
   DetailActions,
@@ -112,13 +113,24 @@ const MEANINGFUL_VIEW_COUNT = 10;
 export default function PropertyDetailScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, resume } = useLocalSearchParams<{ id: string; resume?: string }>();
 
   const { property, isLoading, isMissing, error, refresh } = usePropertyDetail(id);
 
   const [reporting, setReporting] = useState(false);
 
-  const [enquiring, setEnquiring] = useState(false);
+  /**
+   * `resume: 'enquire'` means the user pressed "I'm interested" as a guest and
+   * has just signed in. The sheet opens on arrival so the act they started is
+   * the act they finish, rather than the app returning them to the listing and
+   * making them press the same button twice.
+   *
+   * Only this one value is honoured. Anything else in the param is ignored, so
+   * a stale or hand-written link opens the listing and does nothing more — a
+   * deep link must never be able to raise a confirmation the user did not ask
+   * for.
+   */
+  const [enquiring, setEnquiring] = useState(resume === 'enquire');
 
   /**
    * Enquiry slots left, or null when unknown.
@@ -186,7 +198,13 @@ export default function PropertyDetailScreen() {
   // Declared before the early returns: hooks cannot be called conditionally,
   // and the loading and 404 branches below both return before the action bar.
   const interest = useInterest(id, {
-    onRequiresAuth: () => router.push('/(auth)/login'),
+    // Records the listing and the act before leaving, so signing in returns
+    // here with the confirmation raised rather than dropping the user on the
+    // Search tab to find this listing again. See `auth/pendingIntent.ts`.
+    onRequiresAuth: () => {
+      setPendingIntent({ kind: 'enquire', propertyId: id });
+      router.push('/(auth)/login');
+    },
   });
 
   // Local view history, written once per listing. The backend counts its own

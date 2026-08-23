@@ -96,6 +96,11 @@ export const PREF_KEYS = {
   /** The last search that had criteria, replayed as "Continue your search". */
   resumeSearch: 'search.resume',
   /**
+   * What the user was doing when the app asked them to sign in. Short-lived
+   * and single-use; see `auth/pendingIntent.ts`.
+   */
+  pendingIntent: 'auth.pendingIntent',
+  /**
    * Listings the user is considering. DEVICE-LOCAL, and deliberately not the
    * interested list — see `features/shortlist/store.ts`.
    */

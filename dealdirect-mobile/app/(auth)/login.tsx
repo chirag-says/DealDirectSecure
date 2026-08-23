@@ -5,7 +5,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { Pressable, View } from 'react-native';
 
 import { ApiError } from '@/api';
-import { AuthShell, loginSchema, useAuth, type LoginValues } from '@/auth';
+import { AuthShell, loginSchema, resumeAfterAuth, useAuth, type LoginValues } from '@/auth';
 import { gesture } from '@/theme';
 import { Button, Input, Text } from '@/ui';
 
@@ -40,7 +40,7 @@ export default function LoginScreen() {
 
     try {
       await login(values);
-      router.replace('/(tabs)');
+      resumeAfterAuth();
     } catch (error) {
       if (!(error instanceof ApiError)) {
         setFormError('Something went wrong. Please try again.');

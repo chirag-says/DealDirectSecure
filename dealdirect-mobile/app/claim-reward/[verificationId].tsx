@@ -25,12 +25,18 @@ import { Button, ErrorState, Screen, ScreenHeader, Skeleton, Text } from '@/ui';
  * `alreadyClaimed: true` as a 200, not an error.
  */
 export default function ClaimRewardRoute() {
+  const { verificationId } = useLocalSearchParams<{ verificationId: string }>();
+
   return (
     <RequireAuth
       title="Deal reward"
       promptTitle="Sign in to claim this reward"
-      promptDescription="This reward belongs to your account. Sign in, then open the notification again to claim it — nothing is lost in the meantime."
+      // The copy no longer asks the user to go and find the notification
+      // again: the claim is recorded as a pending intent, so signing in comes
+      // straight back here and claims.
+      promptDescription="This reward belongs to your account. Sign in and we will bring you straight back to it — nothing is lost in the meantime."
       icon="gift-outline"
+      intent={{ kind: 'claimReward', verificationId }}
     >
       <ClaimRewardScreen />
     </RequireAuth>

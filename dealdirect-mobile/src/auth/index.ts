@@ -28,3 +28,12 @@ export { AuthResult, type AuthResultProps, type AuthResultTone } from './compone
 export { OwnerOnly, type OwnerOnlyProps } from './components/OwnerOnly';
 export { SignInPrompt, type SignInPromptProps } from './components/SignInPrompt';
 export { RequireAuth, type RequireAuthProps } from './components/RequireAuth';
+
+export {
+  clearPendingIntent,
+  consumePendingIntent,
+  hrefForPendingIntent,
+  resumeAfterAuth,
+  setPendingIntent,
+  type PendingIntent,
+} from './pendingIntent';
