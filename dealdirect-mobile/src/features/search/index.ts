@@ -44,6 +44,12 @@ export {
   readRecentSearches,
   removeRecentSearch,
 } from './recent';
+export {
+  clearResumableSearch,
+  recordResumableSearch,
+  useResumableSearch,
+  type ResumableSearch,
+} from './resume';
 
 export { SearchBar, SearchTrigger, type SearchBarProps } from './components/SearchBar';
 export {
@@ -63,3 +69,4 @@ export {
 export { CompareBar, type CompareBarProps } from './components/CompareBar';
 export { CompareSheet, type CompareSheetProps } from './components/CompareSheet';
 export { SearchScreen } from './components/SearchScreen';
+export { ResumeSearchCard, type ResumeSearchCardProps } from './components/ResumeSearchCard';

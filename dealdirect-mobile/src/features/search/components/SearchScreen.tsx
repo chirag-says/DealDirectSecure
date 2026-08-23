@@ -1,14 +1,21 @@
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 
+import { BrowseRow, PopularSearches, RecentlyViewed, Section } from '@/features/home';
 import { PropertyList, type ListingIntent, type PropertySummary } from '@/features/properties';
 import { EnquirySheet, useSaveToggle } from '@/features/saved';
 import { SaveSearchSheet } from '@/features/savedSearches';
-import { gesture } from '@/theme';
+import { gesture, spacing } from '@/theme';
 import type { PropertySuggestion } from '@/types/backend/property';
 import { PressableScale, Screen, Text } from '@/ui';
-import { CITY_OPTIONS, DEFAULT_FILTERS, findPriceBand, type SearchFilters } from '../filters';
+import {
+  CITY_OPTIONS,
+  DEFAULT_FILTERS,
+  findPriceBand,
+  hasAnyCriteria,
+  type SearchFilters,
+} from '../filters';
 import {
   RELATED_THRESHOLD,
   useCompareSelection,
@@ -17,11 +24,13 @@ import {
   useRelatedProperties,
   useSuggestions,
 } from '../hooks';
+import { clearResumableSearch, recordResumableSearch, useResumableSearch } from '../resume';
 import { CompareBar } from './CompareBar';
 import { CompareSheet } from './CompareSheet';
 import { FilterSheet } from './FilterSheet';
 import { FiltersButton, QuickFilterBar } from './QuickFilterBar';
 import { RelatedProperties } from './RelatedProperties';
+import { ResumeSearchCard } from './ResumeSearchCard';
 import { ResultsToolbar } from './ResultsToolbar';
 import { SearchBar } from './SearchBar';
 import { RecentSearches, SuggestionList } from './SuggestionList';
@@ -130,6 +139,8 @@ export function SearchScreen() {
   const [comparing, setComparing] = useState(false);
   const compare = useCompareSelection();
   const save = useSaveToggle();
+  const router = useRouter();
+  const resumable = useResumableSearch();
 
   /**
    * Filters arriving by route param.
@@ -210,6 +221,37 @@ export function SearchScreen() {
     showResults && !feed.isInitialLoading && feed.items.length < RELATED_THRESHOLD;
   const relatedIds = useMemo(() => feed.items.map((item) => item.id), [feed.items]);
   const related = useRelatedProperties(filters, relatedIds, relatedEnabled);
+
+  /**
+   * The idle state: no query, no intent, no facets — the tab as it opens.
+   *
+   * This is what decides whether the discovery block appears, and it is a
+   * property of the FILTERS rather than of the results, so it stays true while
+   * the corpus is still loading. That matters: the header renders in the
+   * loading and error branches of `PropertyList` too, so a returning user sees
+   * their search to resume before the feed has answered.
+   */
+  const idle = !hasAnyCriteria(filters);
+
+  /**
+   * Remember a search worth resuming, once it has an answer.
+   *
+   * Written after the feed settles rather than at the moment of the tap,
+   * because the card is worth tapping only if it can say how much was there.
+   * `recordResumableSearch` ignores criteria-less filter sets and no-op
+   * rewrites, so this costs nothing on the browse-everything path and does not
+   * keep renewing its own expiry while the user scrolls.
+   */
+  useEffect(() => {
+    if (idle || feed.isInitialLoading) return;
+    recordResumableSearch(filters, feed.total);
+  }, [idle, filters, feed.isInitialLoading, feed.total]);
+
+  const resumeSearch = useCallback((next: SearchFilters) => {
+    setFilters(next);
+    setInput(next.query);
+    setEditing(false);
+  }, []);
 
   const commit = useCallback(
     (term: string) => {
@@ -385,23 +427,72 @@ export function SearchScreen() {
         <PropertyList
           feed={feed}
           header={
-            feed.total > 0 ? (
-              <ResultsToolbar
-                total={feed.total}
-                density={density}
-                onToggleDensity={() =>
-                  setDensity((current) => (current === 'card' ? 'row' : 'card'))
-                }
-                comparing={comparing}
-                compareCount={compare.items.length}
-                onToggleCompare={toggleCompareMode}
-                onSaveSearch={() => setSaveSheetOpen(true)}
-                // Switching density while comparing would strand the selection
-                // on a view that cannot show it, so the control leaves with the
-                // mode rather than being disabled inside it.
-                showDensity={!comparing}
-              />
-            ) : undefined
+            <>
+              {/*
+                THE IDLE STATE — 2026-08-24.
+
+                What the tab shows before it has been asked anything: the
+                search to resume, what you were looking at, and a way in by
+                type. It is the LIST HEADER rather than a separate screen, and
+                that is the whole design:
+
+                  - It scrolls away. The moment the user is reading results,
+                    the discovery content is gone rather than competing.
+                  - It disappears entirely once any criterion is set, so it
+                    can never sit above filtered results claiming attention
+                    they have already directed elsewhere.
+                  - It costs NOTHING. The resume card and the recently-viewed
+                    rail replay disk snapshots; the browse tiles are a static
+                    table. Not one of them issues a request, which is what
+                    lets this exist at all against a 20-per-minute limiter the
+                    feed below is already spending from.
+
+                The Home screen this replaces had seven sections and five of
+                them were queries. That is the mistake being avoided, not the
+                idea of discovery.
+              */}
+              {idle ? (
+                <View style={{ gap: spacing.lg }}>
+                  {resumable ? (
+                    <ResumeSearchCard
+                      search={resumable}
+                      onResume={resumeSearch}
+                      onDismiss={clearResumableSearch}
+                    />
+                  ) : null}
+
+                  {/* Renders null with no history, so a first session drops
+                      straight to the browse tiles. */}
+                  <RecentlyViewed onSelectProperty={(id) => router.push(`/property/${id}`)} />
+
+                  <Section title="Browse by type">
+                    <BrowseRow onSelect={commit} />
+                  </Section>
+
+                  <Section title="Popular searches">
+                    <PopularSearches onSelect={commit} />
+                  </Section>
+                </View>
+              ) : null}
+
+              {feed.total > 0 ? (
+                <ResultsToolbar
+                  total={feed.total}
+                  density={density}
+                  onToggleDensity={() =>
+                    setDensity((current) => (current === 'card' ? 'row' : 'card'))
+                  }
+                  comparing={comparing}
+                  compareCount={compare.items.length}
+                  onToggleCompare={toggleCompareMode}
+                  onSaveSearch={() => setSaveSheetOpen(true)}
+                  // Switching density while comparing would strand the selection
+                  // on a view that cannot show it, so the control leaves with the
+                  // mode rather than being disabled inside it.
+                  showDensity={!comparing}
+                />
+              ) : null}
+            </>
           }
           emptyTitle="No matches"
           emptyDescription="Try fewer filters, or search a nearby city or locality instead."

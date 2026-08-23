@@ -91,8 +91,15 @@ export const draftStorage = createStore({ id: 'dd.drafts' });
 export const PREF_KEYS = {
   themePreference: 'theme.preference',
   recentSearches: 'search.recent',
-  /** Listings opened, most recent first. Feeds Home's "Recently Viewed". */
+  /** Listings opened, most recent first. Feeds Search's "Recently viewed". */
   recentlyViewed: 'property.recentlyViewed',
+  /** The last search that had criteria, replayed as "Continue your search". */
+  resumeSearch: 'search.resume',
+  /**
+   * Listings the user is considering. DEVICE-LOCAL, and deliberately not the
+   * interested list — see `features/shortlist/store.ts`.
+   */
+  shortlist: 'property.shortlist',
   /** Whether the local-notification permission prompt has been shown once
    *  (M13). Asked at most once ever, not on every Messages tab visit. */
   notificationPermissionAsked: 'notifications.permissionAsked',

@@ -29,12 +29,25 @@ export { Section, type SectionProps } from './components/Section';
 export { RecentlyViewed, type RecentlyViewedProps } from './components/RecentlyViewed';
 export { IntentCards, type IntentCardsProps } from './components/IntentCards';
 export { BrowseRow, PopularSearches, type BrowseRowProps } from './components/BrowseRow';
-export { Hero, type HeroProps } from './components/Hero';
-export { HeroSearchField, type HeroSearchFieldProps } from './components/HeroSearchField';
 export { CityGrid, type CityGridProps } from './components/CityGrid';
 export { CollectionRail, type CollectionRailProps } from './components/CollectionRail';
-export { CtaBanner, type CtaBannerProps } from './components/CtaBanner';
-// `AboutDealDirect` ("Why DealDirect") and `TrustStrip` ("verified properties /
-// direct owners / no hidden fees") were removed from Home on 2026-08-22 and
-// deleted rather than left orphaned here. Both are in git history if the pitch
-// is ever wanted back.
+
+/*
+ * WHAT IS NO LONGER HERE, AND WHY.
+ *
+ * `AboutDealDirect` ("Why DealDirect") and `TrustStrip` ("verified properties /
+ * direct owners / no hidden fees") were removed on 2026-08-22.
+ *
+ * `Hero`, `HeroSearchField` and `CtaBanner` followed on 2026-08-24, when the
+ * Home tab itself did. The hero carried the website's headline — "Buy, Rent &
+ * Sell Properties Directly from Owners. No middleman. No commission fees." —
+ * and the banner closed the screen with "Ready to find your home?". Both were
+ * addressed to a stranger who had not decided yet, which is not who opens an
+ * installed app. The search field they wrapped is now the tab's own, and the
+ * bell they carried is now the Updates tab.
+ *
+ * All five are in git history if the pitch is ever wanted back.
+ *
+ * What survives here is what a search tool can use: the static browse tables,
+ * the city and collection data, and the rails that read from disk.
+ */
