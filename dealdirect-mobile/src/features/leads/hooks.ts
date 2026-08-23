@@ -22,7 +22,16 @@ import type {
 
 const PAGE_SIZE = 20;
 
-export function useLeads(status?: LeadStatus) {
+/**
+ * The owner's leads, optionally filtered by status.
+ *
+ * `enabled` defaults to true for the owner screens, which are all behind
+ * `OwnerOnly`. Home passes the role check in, because it renders for buyers and
+ * guests and must not request leads on their behalf. See the same note on
+ * `useMyProperties`.
+ */
+export function useLeads(status?: LeadStatus, options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true;
   const params = status ? { status, limit: PAGE_SIZE } : { limit: PAGE_SIZE };
 
   const query = useInfiniteQuery({
@@ -34,16 +43,30 @@ export function useLeads(status?: LeadStatus) {
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
       lastPage.pagination.page < lastPage.pagination.pages ? lastPage.pagination.page + 1 : undefined,
+    enabled,
     staleTime: 15_000,
   });
 
   const leads = query.data?.pages.flatMap((page) => page.data) ?? [];
   const stats = query.data?.pages[0]?.stats;
+  /**
+   * The server's count for this filter, not `leads.length`.
+   *
+   * `leads` holds however many pages have been fetched, so counting it reports
+   * "20" for an owner with sixty. `pagination.total` is the figure the server
+   * computed for the same query, and it is the only honest one to display.
+   *
+   * `stats` is typed `unknown` deliberately — the endpoint's shape for it is
+   * not pinned down — so anything wanting a number should read this instead of
+   * reaching into it.
+   */
+  const total = query.data?.pages[0]?.pagination.total ?? null;
 
   return {
     leads,
     stats,
-    isLoading: query.isPending,
+    total,
+    isLoading: enabled && query.isPending,
     isRefreshing: query.isRefetching && !query.isFetchingNextPage,
     isFetchingMore: query.isFetchingNextPage,
     hasMore: query.hasNextPage,

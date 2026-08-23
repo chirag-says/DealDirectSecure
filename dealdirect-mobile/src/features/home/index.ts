@@ -1,13 +1,19 @@
 /**
- * Home feature: discovery and navigation only.
+ * Home feature: the personal command centre.
  *
- * Home owns no browsing. Every affordance here routes to the one canonical
- * results screen with a filter prefilled, so there is a single infinite scroll,
- * a single filter sheet and a single sort in the app. Nothing on this screen
- * paginates.
+ * Home owns no browsing and no inventory. Every affordance here routes to
+ * Search, so there is a single infinite scroll, a single filter sheet and a
+ * single sort in the app. Nothing on this screen paginates.
  *
- * The editorial half of the screen is driven entirely by `collections.ts`. To
- * add a row, add a row to that table.
+ * The test for anything added here is whether it is ABOUT THIS USER. Content
+ * that describes the product belongs on the website; content that lists
+ * properties belongs on Search.
+ *
+ * `collections.ts`, `useCityCounts` and `usePopularListings` remain exported
+ * and are currently unused by any screen — they were the old Home's editorial
+ * rails, each costing one request against a 20-per-minute limiter. They are
+ * kept because they are correct and cheap to remount if Search ever wants a
+ * browse surface; nothing on Home should call them.
  */
 
 export { BROWSE_SHORTCUTS, POPULAR_SEARCHES, type BrowseShortcut } from './catalog';
@@ -30,6 +36,14 @@ export { RecentlyViewed, type RecentlyViewedProps } from './components/RecentlyV
 export { IntentCards, type IntentCardsProps } from './components/IntentCards';
 export { BrowseRow, PopularSearches, type BrowseRowProps } from './components/BrowseRow';
 export { CityGrid, type CityGridProps } from './components/CityGrid';
+export { HomeGreeting, type HomeGreetingProps } from './components/HomeGreeting';
+export {
+  ActivitySnapshot,
+  type ActivitySnapshotProps,
+  type SnapshotTile,
+} from './components/ActivitySnapshot';
+export { UpdatesPreview, type UpdatesPreviewProps } from './components/UpdatesPreview';
+export { ListingCard, type ListingCardProps, type ListingCardState } from './components/ListingCard';
 export { CollectionRail, type CollectionRailProps } from './components/CollectionRail';
 
 /*

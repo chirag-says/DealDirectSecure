@@ -82,7 +82,7 @@ export default function ChatListScreen() {
           title="No conversations yet"
           description="Message an owner from any listing to start one."
           actionLabel="Browse listings"
-          onAction={() => router.push('/(tabs)')}
+          onAction={() => router.push('/(tabs)/search')}
         />
       ) : (
         <FlatList

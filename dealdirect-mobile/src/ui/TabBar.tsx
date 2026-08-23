@@ -36,50 +36,65 @@ import { Text } from './Text';
  * ---------------------------------------------------------------------------
  * THE ACTIVE TAB EXPANDS; THE OTHERS ARE ICON-ONLY
  *
- * Four labels shown permanently is four pieces of text competing at 11pt, and
- * on a 360pt screen "Properties" either truncates or forces every other label
- * to shrink with it. Showing the label only for the tab you are ON solves the
- * width problem and produces the strongest possible active state — the
- * selected tab is a different SHAPE, not just a different colour, which
- * survives both low contrast and colour blindness.
+ * Five labels shown permanently is five pieces of text competing at 11pt, and
+ * on a 360pt screen they either truncate or force each other to shrink.
+ * Showing the label only for the tab you are ON solves the width problem and
+ * produces the strongest possible active state — the selected tab is a
+ * different SHAPE, not just a different colour, which survives both low
+ * contrast and colour blindness.
  *
  * The trade is real and worth naming: an inactive tab is an icon with no
- * caption. That is acceptable here and nowhere near universally — the four
- * glyphs are magnifier, heart, bell and person, which are the four most
- * conventional icons in mobile software. It would NOT be acceptable for a
- * domain-specific icon, and a fifth destination should bring its label back
- * rather than push this pattern further.
+ * caption. That is acceptable here and nowhere near universally — the five
+ * glyphs are house, magnifier, heart, bell and person, which are among the
+ * most conventional icons in mobile software. It would NOT be acceptable for a
+ * domain-specific icon.
+ *
+ * Five is the ceiling for this pattern, and it is now at it. A sixth
+ * destination must not be added by shrinking the label; it would mean either
+ * an edge-to-edge bar with permanent captions, or accepting that one of the
+ * five does not deserve a slot. When the question comes up, the second answer
+ * is usually the right one — see the note on the Post action below.
  *
  * Every tab keeps its `accessibilityLabel` regardless, so a screen reader
  * always announces the destination whether or not it is painted.
  *
  * ---------------------------------------------------------------------------
- * POST IS AN ACTION IN A NAVIGATION BAR, DELIBERATELY
+ * THE POST ACTION LEFT THE DOCK — 2026-08-24
  *
- * The standing guidance is that a tab bar holds destinations only. This holds
- * one action, because posting a property is the single thing an owner opens
- * this app to do and burying it inside Profile would cost more than the rule
- * is worth. It is marked as an action rather than a destination by being the
- * only filled, circular, brand-coloured element here, and it never takes the
- * selected state.
+ * This bar used to carry a raised, red, circular Post button after a hairline
+ * separator, on the reasoning that "posting a property is the single thing an
+ * owner opens this app to do". Restoring Home made that claim testable against
+ * the space available, and it failed twice over.
+ *
+ * Geometry first. Five destinations plus the action needs about 385pt with the
+ * expanding label; a 411dp device offers 379 inside the outer padding and a
+ * 360dp device offers 328. It does not fit, and the fix cannot be to shrink
+ * the label, because the label is the whole selected state.
+ *
+ * Product second, and this is the real reason. An owner account is capped at
+ * ONE listing, enforced server-side in a transaction. A buyer pressing Post
+ * meets an upgrade wall; an owner who already has a listing would be refused,
+ * which is why `owner/properties` hides its own add control in that state. So
+ * the permanent slot was unusable in the large majority of sessions — the
+ * single worst thing to spend a scarce destination on.
+ *
+ * Posting is not gone and is not harder to reach. It is a card on Home that
+ * says something different depending on who is looking: an owner with no
+ * listing is invited to post, an owner with one sees it and their leads, and a
+ * buyer is told what becoming an owner involves. A permanent button that 400s
+ * for most of the people who press it is worse than a card that adapts.
+ *
+ * With the action gone, this is what a tab bar is supposed to be: destinations
+ * only, five of them, no exceptions to explain.
  *
  * ---------------------------------------------------------------------------
- * THE ACTION IS RED; THE SELECTED TAB IS NOT — changed 2026-08-15
+ * THE SELECTED TAB IS ACCENT, NOT BRAND — kept from 2026-08-15
  *
- * That claim above — "the only brand-coloured element here" — stopped being
- * true when the selected tab was given a `brandMuted` pill and brand-red icon
- * and label. The dock then held two red objects side by side, one a
- * destination and one an action, and the reported symptom was that the post
- * button "competes with the navigation". It was not the button. It was that
- * nothing distinguished it.
- *
- * `colors.ts` already says which is which: brand is "the brand mark colour.
- * Not an action colour", accent is "the primary action colour". The selected
- * tab now takes the accent, and red means exactly one thing in this bar.
- *
- * The separator before the action is the second half. Four destinations, a
- * hairline, one action — the grouping is stated rather than inferred from the
- * fact that the last item happens to look different.
+ * `colors.ts` says which is which: brand is "the brand mark colour. Not an
+ * action colour", accent is "the primary action colour". The selected tab
+ * takes the accent. That distinction was introduced when two red objects sat
+ * side by side here and the post button appeared to "compete with the
+ * navigation"; it outlives the button and stays.
  */
 
 /**
@@ -92,7 +107,8 @@ import { Text } from './Text';
  * unreadable. Magnifier, heart, bell, person.
  */
 const TABS: Record<string, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
-  index: { label: 'Search', icon: 'search' },
+  index: { label: 'Home', icon: 'home' },
+  search: { label: 'Search', icon: 'search' },
   activity: { label: 'Activity', icon: 'heart' },
   updates: { label: 'Updates', icon: 'notifications' },
   profile: { label: 'Profile', icon: 'person' },
@@ -104,10 +120,17 @@ const ITEM_HEIGHT = 40;
 const ICON_SIZE = 22;
 
 /**
- * Ceiling on the expanded label, so "Properties" cannot push the pill past the
+ * Ceiling on the expanded label, so a long word cannot push the pill past the
  * screen on a narrow device. The label is single-line and ellipsises into this.
+ *
+ * Tightened from 72 when the fifth destination arrived. The widest label in the
+ * set is "Activity" at roughly 52pt, so 64 clears every real label and leaves
+ * the cap doing what it is for — bounding a translation, not truncating
+ * English. Five items at 46pt plus one expanded to about 110 plus gaps and
+ * padding lands near 328pt, which fits a 360dp screen inside its 16pt outer
+ * padding.
  */
-const LABEL_MAX_WIDTH = 72;
+const LABEL_MAX_WIDTH = 64;
 
 /**
  * MOTION — three separate decisions, and the separation is the point.
@@ -156,11 +179,9 @@ function dockEntering() {
   };
 }
 
-export interface TabBarProps extends BottomTabBarProps {
-  onPost: () => void;
-}
+export type TabBarProps = BottomTabBarProps;
 
-export function TabBar({ state, navigation, onPost }: TabBarProps) {
+export function TabBar({ state, navigation }: TabBarProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
@@ -247,44 +268,6 @@ export function TabBar({ state, navigation, onPost }: TabBarProps) {
           );
         })}
 
-        {/* Destinations end here. */}
-        <View
-          style={{
-            width: 1,
-            alignSelf: 'stretch',
-            marginLeft: spacing.xs,
-            marginVertical: spacing.md,
-            backgroundColor: theme.colors.border,
-          }}
-        />
-
-        {/* The one action. Circular, filled, and now the only red thing in the
-            dock — see the module doc. */}
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel="Post a property"
-          onPress={onPost}
-          activeScale={0.9}
-          style={{
-            width: ITEM_HEIGHT,
-            height: ITEM_HEIGHT,
-            marginLeft: spacing.xs,
-            borderRadius: radius.full,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: theme.colors.brand,
-            // Raised off the dock rather than sitting flush in it. A filled
-            // disc with no depth on a white pill reads as a swatch; a small
-            // shadow is what makes it read as a button on top of a surface.
-            shadowColor: theme.colors.brand,
-            shadowOpacity: 0.35,
-            shadowRadius: 8,
-            shadowOffset: { width: 0, height: 3 },
-            elevation: 4,
-          }}
-        >
-          <Ionicons name="add" size={24} color={theme.colors.textOnAccent} />
-        </PressableScale>
       </Animated.View>
     </View>
   );

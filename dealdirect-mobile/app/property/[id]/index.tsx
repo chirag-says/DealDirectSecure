@@ -299,7 +299,7 @@ export default function PropertyDetailScreen() {
           title="Listing no longer available"
           description="It may have been sold, rented, or taken down by its owner."
           actionLabel="Back to search"
-          onAction={() => router.replace('/(tabs)')}
+          onAction={() => router.replace('/(tabs)/search')}
         />
       </Screen>
     );

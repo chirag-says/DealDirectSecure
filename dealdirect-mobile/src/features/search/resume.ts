@@ -153,3 +153,18 @@ export function clearResumableSearch(): void {
 export function useResumableSearch(): ResumableSearch | null {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
+
+/**
+ * A one-shot read, for the screen that ACTS on the stored search rather than
+ * displaying it.
+ *
+ * Home subscribes (`useResumableSearch`) because its card must appear and
+ * disappear as the store changes. Search reads once inside its route effect,
+ * because subscribing there would re-run the effect every time the user
+ * narrowed their search and stamp the stored filters back over the ones they
+ * were editing — the same fight the effect's `appliedRouteKey` guard exists to
+ * prevent.
+ */
+export function readResumableSearch(): ResumableSearch | null {
+  return getSnapshot();
+}

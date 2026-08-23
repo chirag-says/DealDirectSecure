@@ -17,19 +17,32 @@ import { clearListingDraft } from './draft';
 import { buildAddFormData, buildEditFormData } from './formData';
 import type { CategorizedPhoto, ListingFormValues } from './types';
 
-export function useMyProperties() {
+/**
+ * The signed-in owner's listings.
+ *
+ * `enabled` defaults to true, which is right for the owner screens: every one
+ * of them sits behind `OwnerOnly`, so by the time this runs the caller is known
+ * to be an owner. Home is the exception — it renders for guests and buyers too
+ * and must not ask the server for listings they cannot have — so it passes the
+ * role check in explicitly. A hook cannot opt out of running; only its query
+ * can.
+ */
+export function useMyProperties(options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true;
+
   const query = useQuery({
     queryKey: qk.myProperties(),
     queryFn: async () => {
       const response = await call(propertiesEndpoints.myProperties);
       return response.data;
     },
+    enabled,
     staleTime: 30_000,
   });
 
   return {
     properties: query.data ?? ([] as Property[]),
-    isLoading: query.isPending,
+    isLoading: enabled && query.isPending,
     isRefreshing: query.isRefetching,
     error: query.error,
     refresh: () => void query.refetch(),

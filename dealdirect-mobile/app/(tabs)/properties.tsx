@@ -18,5 +18,5 @@ import { Redirect, useLocalSearchParams } from 'expo-router';
 export default function PropertiesRedirect() {
   const params = useLocalSearchParams();
 
-  return <Redirect href={{ pathname: '/(tabs)', params }} />;
+  return <Redirect href={{ pathname: '/(tabs)/search', params }} />;
 }
