@@ -16,5 +16,4 @@
  */
 
 export { useBlogFeed, useBlogPost } from './blog';
-export { FAQ_CATEGORIES, type FaqCategory, type FaqEntry } from './faq';
 export { LEGAL_LINKS, SUPPORT_CONTACT, type ExternalPage } from './pages';

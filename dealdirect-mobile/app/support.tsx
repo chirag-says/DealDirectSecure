@@ -1,35 +1,55 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
-import { useState } from 'react';
-import { Linking, Pressable, ScrollView, View } from 'react-native';
+import { Linking, ScrollView } from 'react-native';
 
-import { FAQ_CATEGORIES, LEGAL_LINKS, SUPPORT_CONTACT, type FaqEntry } from '@/features/content';
+import { LEGAL_LINKS, SUPPORT_CONTACT } from '@/features/content';
 import { screenPadding, scrollBottomPadding, useTheme } from '@/theme';
-import {
-  Card,
-  ListGroup,
-  ListRow,
-  Screen,
-  ScreenHeader,
-  SectionLabel,
-  Text,
-} from '@/ui';
+import { ListGroup, ListRow, Screen, ScreenHeader, Text } from '@/ui';
 
 /**
- * Help & about — the FAQ, how to reach a human, and the links out to the
- * website's legal pages.
+ * Help & support — how to reach a human, the legal links, and the build.
  *
- * One screen rather than the website's seven (`/about`, `/why-us`, `/faq`,
- * `/contact`, `/privacy`, `/terms`, `/press-impressions`). Seven separate
- * routes carrying a paragraph each is a website's information architecture,
- * not an app's: on a phone this is one place you go when you are stuck or
- * curious. The two pages with real substance behind them (About, Why
- * DealDirect) and the two legal ones open on the web — see
- * `features/content/pages.ts` for why legal text is deliberately not copied
- * into the binary.
+ * ---------------------------------------------------------------------------
+ * THE FAQ IS GONE — 2026-08-24
  *
- * Press & impressions is not offered at all. It is a marketing surface aimed
- * at journalists, and nothing about it belongs in a buyer's or owner's app.
+ * This screen carried eleven questions in four collapsible categories, copied
+ * verbatim from the website's `/faq` page. Reproducing the copy was the right
+ * call at the time and the wrong artefact: an FAQ is what a website builds
+ * when it cannot answer a question at the moment the question occurs. An app
+ * can.
+ *
+ * Every entry was checked before it was deleted rather than after:
+ *
+ *   "What is DealDirect?" and "Is it really broker-free?" are the pitch. The
+ *   person reading them has installed the app. They belong on the website,
+ *   which still has them.
+ *
+ *   "Can I edit or delete my post?", "How do I report a listing?" and "How do
+ *   I refer someone?" are answered by the interface — the buttons exist, on
+ *   the screens where those things happen. A help entry describing a visible
+ *   control is a symptom, not documentation.
+ *
+ *   "Why can I only post one property?" was the one entry carrying information
+ *   the app never showed. It has moved to `owner/properties`, which is where
+ *   an owner is standing when they wonder. See the note there.
+ *
+ *   "How do I earn rewards?" and "What can I do with my points?" are already
+ *   stated on the Rewards screen, in its empty state and its redemption card.
+ *
+ *   "Is my data safe?" is a privacy question with a legal answer, and the
+ *   privacy policy is linked below. A paraphrase in a binary that cannot be
+ *   corrected without a store release is the exact hazard `content/index.ts`
+ *   describes for terms.
+ *
+ * What is left is what an app's help screen is for: reaching a human, the
+ * legal source of truth, and which build you are on when you do.
+ *
+ * The website's seven content routes (`/about`, `/why-us`, `/faq`, `/contact`,
+ * `/privacy`, `/terms`, `/press-impressions`) remain the website's. The two
+ * legal ones open there — see `features/content/pages.ts` for why legal text
+ * is deliberately not copied into the binary. Press & impressions is not
+ * offered at all: it is aimed at journalists, and nothing about it belongs in
+ * a buyer's or owner's app.
  */
 export default function SupportScreen() {
   const theme = useTheme();
@@ -39,7 +59,7 @@ export default function SupportScreen() {
 
   return (
     <Screen edges={['top']}>
-      <ScreenHeader title="Help & about" backTo="/(tabs)/profile" />
+      <ScreenHeader title="Help & support" backTo="/(tabs)/profile" />
 
       <ScrollView
         contentContainerStyle={{
@@ -64,25 +84,6 @@ export default function SupportScreen() {
             onPress={() => void Linking.openURL(`tel:${SUPPORT_CONTACT.phone}`)}
           />
         </ListGroup>
-
-        <Text variant="title3" className="mb-base mt-2xl">
-          Frequently asked
-        </Text>
-
-        {FAQ_CATEGORIES.map((category) => (
-          <View key={category.title} className="mb-lg">
-            <SectionLabel>{category.title}</SectionLabel>
-            <Card>
-              {category.questions.map((entry, index) => (
-                <FaqRow
-                  key={entry.q}
-                  entry={entry}
-                  isLast={index === category.questions.length - 1}
-                />
-              ))}
-            </Card>
-          </View>
-        ))}
 
         {/* Omitted entirely when no web origin is configured, rather than
             rendering links that would open nothing. */}
@@ -110,38 +111,5 @@ export default function SupportScreen() {
         ) : null}
       </ScrollView>
     </Screen>
-  );
-}
-
-/** Collapsed by default: the questions are the index, the answers are the detail. */
-function FaqRow({ entry, isLast }: { entry: FaqEntry; isLast: boolean }) {
-  const theme = useTheme();
-  const [open, setOpen] = useState(false);
-
-  return (
-    <View className={isLast ? '' : 'border-b border-border'}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        accessibilityLabel={entry.q}
-        onPress={() => setOpen((current) => !current)}
-        className="flex-row items-center py-md active:opacity-60"
-      >
-        <Text variant="body" className="flex-1 pr-md">
-          {entry.q}
-        </Text>
-        <Ionicons
-          name={open ? 'chevron-up' : 'chevron-down'}
-          size={17}
-          color={theme.colors.textMuted}
-        />
-      </Pressable>
-
-      {open ? (
-        <Text variant="callout" tone="secondary" className="pb-md">
-          {entry.a}
-        </Text>
-      ) : null}
-    </View>
   );
 }

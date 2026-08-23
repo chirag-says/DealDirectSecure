@@ -209,6 +209,24 @@ function MyPropertiesScreenContent() {
               </Card>
             );
           })}
+
+          {/*
+            THE ONE-LISTING RULE, SAID WHERE IT BITES.
+
+            The cap is enforced twice already — the server refuses a second
+            listing, and the header hides the add control while one exists —
+            but until now it was never EXPLAINED anywhere an owner would look.
+            The answer lived in the ported FAQ under "Why can I only post one
+            property?", four taps away on a help screen, which is where a
+            website puts it and the worst place for it.
+
+            An owner who wants to list a second flat and finds no button reads
+            that as the app being broken. One line here is the whole fix.
+          */}
+          <Text variant="caption" tone="muted" className="mt-md text-center">
+            Owner accounts can hold one active listing. Close or delete this one
+            to post another.
+          </Text>
         </Refreshable>
       )}
 

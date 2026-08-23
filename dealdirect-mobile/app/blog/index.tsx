@@ -10,6 +10,30 @@ import { EmptyState, ErrorState, Image, Screen, ScreenHeader, Skeleton, Text } f
 /**
  * Blog list.
  *
+ * ---------------------------------------------------------------------------
+ * REACHABLE BY DEEP LINK ONLY — 2026-08-24
+ *
+ * Nothing in the app navigates here any more. The row that did was in
+ * Profile's link directory, and it went when that directory did.
+ *
+ * The reasoning is the division of labour between the two products: the
+ * website exists to explain DealDirect and to be found, and its articles are
+ * SEO surface — they earn their keep by ranking, which an app cannot do. An
+ * app's job is to help someone search, shortlist, enquire and manage, and a
+ * content channel competes with that for the one thing a phone screen does not
+ * have, which is room. Every competitor keeps its articles on the web for the
+ * same reason.
+ *
+ * The routes stay on disk rather than being deleted, because `dealdirect://`
+ * covers the whole route tree and a post shared from the website should open
+ * rather than 404. That also means the screens must keep working: this one is
+ * unchanged, and `[slug]` still renders through its HTML stripper, which is a
+ * known limitation recorded as W12 rather than a regression introduced here.
+ *
+ * Whether to delete these two routes outright is a product decision, not an
+ * engineering one, and it is open.
+ *
+ * ---------------------------------------------------------------------------
  * `FlashList` because this is unbounded and paginated, matching the choice
  * made for search results, leads and notifications. Posts are addressed by
  * SLUG downstream, not by id — see `features/content/blog.ts`.
@@ -21,7 +45,7 @@ export default function BlogListScreen() {
 
   return (
     <Screen edges={['top']}>
-      <ScreenHeader title="Blog" backTo="/(tabs)/profile" />
+      <ScreenHeader title="Blog" backTo="/(tabs)" />
 
       {feed.isLoading ? (
         <View className="gap-base px-base pt-md">
