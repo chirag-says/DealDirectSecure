@@ -1,9 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
+  useDerivedValue,
   useReducedMotion,
   useSharedValue,
   withSpring,
@@ -88,6 +89,63 @@ import { Text } from './Text';
  * only, five of them, no exceptions to explain.
  *
  * ---------------------------------------------------------------------------
+ * THE WIDTH BUDGET IS FIXED AT ONE LABEL, AND THE DOCK OWNS IT — 2026-08-24
+ *
+ * The bug this fixes: switching tabs showed both pills expanded at once,
+ * colliding and clipping.
+ *
+ * The cause was not the animation curves. It was that each `TabItem` owned its
+ * own `shape` value and animated its own WIDTH, with nothing anywhere
+ * constraining the SUM of those widths — while the dock hugged its children
+ * (`alignSelf: 'center'`, no width). Three consequences, all of them layout:
+ *
+ *   1. Two children grew and shrank independently, so the total could exceed
+ *      the resting width. `maxWidth: '100%'` then made Yoga compress the
+ *      children to fit, which is the clipping.
+ *   2. Because the dock hugs and centres, its own frame was recomputed every
+ *      frame and its left edge moved, sliding every sibling sideways WHILE
+ *      they were morphing. That is the "fighting for layout space".
+ *   3. `SPRING_LABEL` is underdamped — damping 32 against stiffness 350 is a
+ *      ratio of 0.855 — so the growing label overshoots past its measured
+ *      width before settling. Two overshooting springs make the peak worse
+ *      than the arithmetic suggests, and an interrupted switch leaves three
+ *      tabs with non-zero width at once.
+ *
+ * The fix is a single source of truth for the geometry. The dock holds one
+ * transition — a snapshot distribution `fromDist`, a `toIndex`, and a progress
+ * `t` — and every tab DERIVES its expansion from it:
+ *
+ *     expansion(i) = fromDist[i] + ((i === toIndex ? 1 : 0) - fromDist[i]) * t
+ *
+ * The sum over all tabs is then `Σfrom + (1 - Σfrom) * t`, and since every
+ * distribution this produces sums to 1, that is **exactly 1 for any t** —
+ * including t > 1 while the spring overshoots, because the overshoot multiplies
+ * a set of deltas that already sum to zero. The width budget cannot bulge. It
+ * is not a tuning that makes collision unlikely; it is arithmetic that makes it
+ * impossible.
+ *
+ * Interruption is handled by the snapshot: retargeting samples the CURRENT
+ * distribution as it is being painted and animates from there, so a tap
+ * mid-flight retargets continuously and never jumps. Three tabs may hold
+ * fractional widths at once and their total is still one label.
+ *
+ * Every label shares ONE slot width — the widest measured label — so the total
+ * content width is `constant + slot * 1`, identical in every state. The dock
+ * therefore never resizes at all, at rest or in motion, which removes the
+ * re-centring in (2). Space is handed from the shrinking pill to the growing
+ * one and the icons between them slide across to follow it, which is what a
+ * physical segmented control does.
+ *
+ * WHAT MOVED BETWEEN THE THREE CURVES: `marginLeft` used to animate on the ink
+ * timing. Margin is layout, so it now animates on the expansion with the width;
+ * leaving it on a separate curve would have put a second, unconstrained
+ * quantity back into the budget. Ink keeps the label's opacity, colour keeps
+ * the icon crossfade, and both are free to run on their own timings because
+ * neither occupies space. The pill background follows the expansion rather
+ * than the colour timing, which is what guarantees a shrinking pill cannot
+ * still be painting a full-strength background while the next one arrives.
+ *
+ * ---------------------------------------------------------------------------
  * THE SELECTED TAB IS ACCENT, NOT BRAND — kept from 2026-08-15
  *
  * `colors.ts` says which is which: brand is "the brand mark colour. Not an
@@ -120,6 +178,26 @@ const ITEM_HEIGHT = 40;
 const ICON_SIZE = 22;
 
 /**
+ * THE DOCK'S FIXED GEOMETRY, stated once.
+ *
+ * These are the same numbers the styles below apply, pulled out so the
+ * available-width clamp cannot drift from the layout it is protecting. If a
+ * padding changes down there and not here, the dock starts overflowing again
+ * on narrow devices and nothing catches it.
+ *
+ * An inactive item is `max(minimum touch target, horizontal padding + icon)`.
+ */
+const ITEM_BASE_WIDTH = Math.max(touchTarget.min, spacing.md * 2 + ICON_SIZE);
+/** Between items, from the dock's `gap`. */
+const ITEM_GAP = spacing.xs;
+/** The dock's own left+right padding. */
+const DOCK_PADDING = spacing.sm * 2;
+/** The gap between an expanded label and its icon. */
+const LABEL_MARGIN = spacing.sm;
+/** The outer container's left+right padding, outside the pill. */
+const SCREEN_PADDING = spacing.base * 2;
+
+/**
  * Ceiling on the expanded label, so a long word cannot push the pill past the
  * screen on a narrow device. The label is single-line and ellipsises into this.
  *
@@ -131,6 +209,14 @@ const ICON_SIZE = 22;
  * padding.
  */
 const LABEL_MAX_WIDTH = 64;
+
+/**
+ * Narrower than this and the label is dropped rather than truncated.
+ *
+ * Roughly four characters at footnote size. Under it the expanded tab shows a
+ * stub — "Ac…" — which communicates less than the icon does and looks broken.
+ */
+const LABEL_LEGIBILITY_FLOOR = 32;
 
 /**
  * MOTION — three separate decisions, and the separation is the point.
@@ -179,6 +265,34 @@ function dockEntering() {
   };
 }
 
+/**
+ * The expansion each tab should have, part-way through a transition.
+ *
+ * Shared by the dock (to snapshot the current state before retargeting) and by
+ * every tab (to derive its own width), so the two can never disagree about the
+ * geometry. Marked `worklet` because tabs call it on the UI thread.
+ *
+ * Any distribution this returns sums to 1 when `from` does, which is the
+ * invariant the whole dock rests on — see the module doc.
+ */
+function expansionFor(from: readonly number[], toIndex: number, t: number, index: number): number {
+  'worklet';
+  const start = from[index] ?? 0;
+  const target = index === toIndex ? 1 : 0;
+  const value = start + (target - start) * t;
+  // Clamped only against spring overshoot, which is a few percent. It can raise
+  // a value that undershot below zero and lower one that overshot past one; in
+  // both cases it moves the total TOWARDS 1, never away from it.
+  return value < 0 ? 0 : value > 1 ? 1 : value;
+}
+
+/** The dock's transition, handed to every tab so they share one geometry. */
+interface TabTransition {
+  t: SharedValue<number>;
+  toIndex: SharedValue<number>;
+  fromDist: SharedValue<number[]>;
+}
+
 export type TabBarProps = BottomTabBarProps;
 
 export function TabBar({ state, navigation }: TabBarProps) {
@@ -187,6 +301,120 @@ export function TabBar({ state, navigation }: TabBarProps) {
   const reduceMotion = useReducedMotion();
 
   const visible = state.routes.filter((route) => TABS[route.name]);
+  const count = visible.length;
+
+  /**
+   * Which of the VISIBLE tabs is selected.
+   *
+   * `state.index` indexes `state.routes`, which includes the redirect-only and
+   * dark routes this bar filters out, so it cannot be used directly. A focused
+   * route that is not in the bar — the moment a `dealdirect://properties` link
+   * lands on its redirect — gives -1, and the dock deliberately holds its last
+   * state through it rather than collapsing every pill for a frame.
+   */
+  const focusedKey = state.routes[state.index]?.key;
+  const activeIndex = visible.findIndex((route) => route.key === focusedKey);
+
+  /**
+   * THE ONE TRANSITION. See the module doc for why this lives here rather than
+   * inside each tab.
+   *
+   * `fromDist` is where every tab was when the current transition began,
+   * `toIndex` is where the expansion is going, and `t` walks between them.
+   */
+  const t = useSharedValue(1);
+  const toIndex = useSharedValue(activeIndex);
+  const fromDist = useSharedValue<number[]>(
+    Array.from({ length: count }, (_, i) => (i === activeIndex ? 1 : 0))
+  );
+
+  useEffect(() => {
+    if (activeIndex < 0) return;
+    if (toIndex.value === activeIndex) return;
+
+    // Sample the distribution AS IT IS BEING PAINTED, then animate from there.
+    // This is what makes an interrupted switch continuous: a tab caught
+    // half-expanded keeps its exact width and carries on from it, instead of
+    // snapping to a fresh 0 or 1.
+    fromDist.value = Array.from({ length: count }, (_, i) =>
+      expansionFor(fromDist.value, toIndex.value, t.value, i)
+    );
+    toIndex.value = activeIndex;
+
+    t.value = 0;
+    t.value = reduceMotion ? 1 : withSpring(1, SPRING_LABEL);
+  }, [activeIndex, count, reduceMotion, fromDist, toIndex, t]);
+
+  /**
+   * One slot width for every label, so the content width is the same in every
+   * state and the dock never resizes.
+   *
+   * Measured from the labels themselves rather than hard-coded: the widest of
+   * them decides, capped so a long translation cannot push the dock off-screen.
+   * Until the first measurement lands the slot is 0, which simply means no tab
+   * shows a label yet — that happens once, under the dock's entrance.
+   */
+  const [labelWidths, setLabelWidths] = useState<Record<string, number>>({});
+
+  const reportLabelWidth = useCallback((name: string, width: number) => {
+    setLabelWidths((current) =>
+      current[name] === width ? current : { ...current, [name]: width }
+    );
+  }, []);
+
+  /**
+   * The width the dock is allowed to occupy, and the slot that fits inside it.
+   *
+   * ---------------------------------------------------------------------------
+   * THIS IS THE CONSTRAINT THAT WAS MISSING, AND THE ONE THAT CAUSED THE BUG
+   *
+   * React Native children default to `flexShrink: 0`. When a row's content is
+   * wider than its container they do NOT compress to fit the way a browser's
+   * flexbox would — they overflow, and since this container is a rounded pill
+   * with no `overflow: 'hidden'`, they spill past its edge and over each other.
+   * That is the collision, and it is absolute rather than relative: it depends
+   * on the device width, not on the animation.
+   *
+   * The arithmetic, with five tabs: 5 items at 46 plus four 4pt gaps plus 16pt
+   * of dock padding plus an 8pt label margin is 270pt before the label. A 52pt
+   * label makes 322, which fits a 360dp screen with 6pt to spare and does NOT
+   * fit a 320dp one. Raise the system font size and the label measures wider
+   * still, and a 360dp screen overflows too. The previous dock — four tabs, a
+   * separator and the post action — came to almost exactly the same number and
+   * had the same failure.
+   *
+   * So the slot is clamped to what is genuinely left over. On a narrow device
+   * or at a large text size the label simply gets less room and ellipsises,
+   * which is a legible degradation; overflowing the pill is not. `LABEL_MAX_WIDTH`
+   * still applies as the design ceiling.
+   */
+  const { width: windowWidth } = useWindowDimensions();
+
+  const labelSlot = useMemo(() => {
+    const measured = Object.values(labelWidths);
+    if (measured.length === 0) return 0;
+
+    const fixed =
+      count * ITEM_BASE_WIDTH +
+      Math.max(0, count - 1) * ITEM_GAP +
+      DOCK_PADDING +
+      LABEL_MARGIN;
+    const available = windowWidth - SCREEN_PADDING - fixed;
+    const slot = Math.min(LABEL_MAX_WIDTH, Math.max(...measured), available);
+
+    /*
+      Below the legibility floor, drop the label entirely rather than shipping
+      a stub of one.
+
+      A 320dp device leaves about 18pt for the label, which renders "A…" — a
+      selected state that says less than the icon above it already does and
+      reads as a rendering fault. The dock's own doc explains that every glyph
+      here is deliberately conventional precisely so it can stand alone, so
+      icon-only is a state this design already supports. The accessibility
+      label is unaffected: a screen reader announces the destination either way.
+    */
+    return slot < LABEL_LEGIBILITY_FLOOR ? 0 : Math.max(0, slot);
+  }, [labelWidths, count, windowWidth]);
 
   return (
     <View
@@ -221,6 +449,11 @@ export function TabBar({ state, navigation }: TabBarProps) {
           // Hugs its contents and centres, instead of spanning the width. A
           // full-bleed pill is a bar with rounded ends; this reads as an
           // object sitting on top of the page.
+          //
+          // Hugging is only safe because the content width is now INVARIANT:
+          // one shared label slot times an expansion budget that always sums to
+          // one. Yoga measures the same width every frame, so the dock has
+          // nothing to re-centre. It was not safe before, and that was the bug.
           alignSelf: 'center',
           maxWidth: '100%',
           height: DOCK_HEIGHT,
@@ -244,7 +477,7 @@ export function TabBar({ state, navigation }: TabBarProps) {
           elevation: 12,
         }}
       >
-        {visible.map((route) => {
+        {visible.map((route, index) => {
           const spec = TABS[route.name];
           if (!spec) return null;
 
@@ -252,22 +485,23 @@ export function TabBar({ state, navigation }: TabBarProps) {
             <TabItem
               key={route.key}
               spec={spec}
-              focused={state.routes[state.index]?.key === route.key}
+              index={index}
+              focused={index === activeIndex}
               reduceMotion={reduceMotion}
+              labelSlot={labelSlot}
+              onMeasureLabel={reportLabelWidth}
+              transition={{ t, toIndex, fromDist }}
               onPress={() => {
                 // `navigate`, not a raw dispatch, so a repeat visit returns to
                 // the existing screen instead of pushing a duplicate of it.
                 //
                 // Only ever called for a tab that is NOT already selected —
-                // `TabItem` withholds the handler while focused. The earlier
-                // comment here claimed a tap on the active tab popped its stack
-                // to the root, which this dock has never actually done.
+                // `TabItem` withholds the handler while focused.
                 navigation.navigate(route.name);
               }}
             />
           );
         })}
-
       </Animated.View>
     </View>
   );
@@ -326,76 +560,88 @@ function TabIcon({
  * One destination.
  *
  * ---------------------------------------------------------------------------
- * ONE INTERACTION, ONE SET OF DRIVEN VALUES — rewritten 2026-08-22
+ * IT NO LONGER OWNS ITS OWN WIDTH — rewritten 2026-08-24
  *
- * This previously ran three unrelated mechanisms for a single state change:
- * `LinearTransition` measured and sprang the pill's width, `FadeIn`/`FadeOut`
- * animated a label that React mounted and unmounted, and `withTiming` moved the
- * colour. Nothing coordinated them, and the resulting faults were real rather
- * than theoretical:
+ * The previous version kept a per-tab `shape` spring and animated its label
+ * width from it. That is what let two tabs claim width at the same time, with
+ * nothing able to see both — the collision described in the module doc.
  *
- *   - The label did not EXIST until `focused` flipped, so the pill began
- *     resizing before there was anything to reveal, and the text then appeared
- *     on top of a shape that was still travelling.
- *   - Deselect faded out over 120ms while select faded in over 190ms, with an
- *     unmount in between, so a switch could show a window with NO label on
- *     either tab while both pills were mid-flight. That reads as a jump.
- *   - Under a fast triple-tap all of it — mount, unmount, two entering
- *     animations, a layout transition and three timings — raced, and the
- *     outcome depended on frame timing rather than on the code.
+ * Width is now DERIVED, not owned. `expansion` reads the dock's one transition
+ * and computes this tab's share of a budget that always totals one label. A tab
+ * cannot widen itself; it can only be given more of the budget as another gives
+ * its share back, which is the coordination the bug was missing.
  *
- * Now `focused` drives three shared values and nothing else. The label is
- * always mounted and its width is animated directly, so the pill's size is a
- * CONSEQUENCE of the label's width rather than a separately measured animation
- * chasing it. Interrupting mid-flight just retargets the springs.
+ * What each curve drives now, and why:
  *
- * The three curves are still distinct, because they animate different kinds of
- * property — see the module doc. Distinct curves from one state is what the
- * reference does too; distinct MECHANISMS was the bug.
+ *   expansion  spring   width, margin, pill opacity. Everything that OCCUPIES
+ *                       SPACE, plus the background, so a pill cannot still be
+ *                       painting at full strength while it hands its width over.
+ *   ink        timing   label opacity. Free-running: text that fades does not
+ *                       take up room, so it cannot affect the budget.
+ *   colour     timing   icon crossfade and label colour. Also free-running,
+ *                       for the same reason.
+ *
+ * The label stays MOUNTED in every state — no conditional render, no
+ * `FadeIn`/`FadeOut`, no `LinearTransition`. Its width is animated directly,
+ * so the pill's size is a consequence of the label rather than a separate
+ * measured animation chasing it, and an interrupted switch simply retargets.
  */
 function TabItem({
   spec,
+  index,
   focused,
   reduceMotion,
+  labelSlot,
+  transition,
+  onMeasureLabel,
   onPress,
 }: {
   spec: { label: string; icon: keyof typeof Ionicons.glyphMap };
+  index: number;
   focused: boolean;
   reduceMotion: boolean;
+  /** Shared by every tab, so the content width is identical in every state. */
+  labelSlot: number;
+  transition: TabTransition;
+  onMeasureLabel: (name: string, width: number) => void;
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const { t, toIndex, fromDist } = transition;
 
   /**
-   * The label's natural width, measured once from an off-layout copy.
+   * This tab's share of the width budget.
    *
-   * An animated width needs a concrete target, and the reference hard-codes 72
-   * for every item. That works there because its bar is a fixed 320 wide; this
-   * dock hugs its contents, so a fixed 72 would pad "Home" with about 37pt of
-   * nothing and make the pill wider than the word inside it.
-   *
-   * Measuring happens once, on mount, and never during a transition — so it
-   * does not reintroduce the measure-while-animating coupling this rewrite
-   * removed. Capped, so a long translation cannot push the dock off-screen.
+   * Derived on the UI thread from the dock's transition, so it is always
+   * consistent with every sibling's share by construction rather than by
+   * timing. See `expansionFor` and the module doc.
    */
-  const [labelWidth, setLabelWidth] = useState(0);
+  const expansion = useDerivedValue(() =>
+    expansionFor(fromDist.value, toIndex.value, t.value, index)
+  );
 
-  const shape = useSharedValue(focused ? 1 : 0);
+  /**
+   * The two free-running curves.
+   *
+   * Neither occupies space, so neither needs to be part of the shared budget —
+   * which is exactly why they are allowed to keep their own timings and their
+   * own start points. They are also what stops the handoff reading as a hard
+   * cut: the label fades slightly ahead of the width closing, and the icon
+   * crossfades independently of both.
+   */
   const ink = useSharedValue(focused ? 1 : 0);
   const colour = useSharedValue(focused ? 1 : 0);
 
   useEffect(() => {
     const to = focused ? 1 : 0;
     if (reduceMotion) {
-      shape.value = to;
       ink.value = to;
       colour.value = to;
       return;
     }
-    shape.value = withSpring(to, SPRING_LABEL);
     ink.value = withTiming(to, { duration: INK_MS });
     colour.value = withTiming(to, { duration: COLOR_MS });
-  }, [focused, reduceMotion, shape, ink, colour]);
+  }, [focused, reduceMotion, ink, colour]);
 
   /**
    * The selected pill, as a solid layer whose OPACITY animates.
@@ -407,22 +653,24 @@ function TabItem({
    * RGB, so every midpoint is a semi-transparent SLATE: the pill flashed dirty
    * grey on its way in and again on its way out.
    *
-   * Animating opacity on a correctly-coloured layer blends against whatever is
-   * actually behind it, which is what the CSS the reference relies on does.
+   * Driven by `expansion` rather than by the colour timing, so the background
+   * is exactly as strong as the pill is wide. Two pills can therefore never
+   * both look active: their opacities sum to the same one as their widths.
    */
-  const pillStyle = useAnimatedStyle(() => ({ opacity: colour.value }));
+  const pillStyle = useAnimatedStyle(() => ({ opacity: expansion.value }));
 
   /**
-   * Width springs; margin and opacity tween. `overflow: 'hidden'` is what makes
-   * a width change read as a reveal instead of a squash.
+   * Width and margin from the shared budget; opacity from ink.
+   * `overflow: 'hidden'` is what makes a width change read as a reveal rather
+   * than a squash.
    */
   const labelStyle = useAnimatedStyle(
     () => ({
-      width: labelWidth * shape.value,
-      marginLeft: spacing.sm * ink.value,
+      width: labelSlot * expansion.value,
+      marginLeft: spacing.sm * expansion.value,
       opacity: ink.value,
     }),
-    [labelWidth]
+    [labelSlot]
   );
 
   return (
@@ -467,7 +715,7 @@ function TabItem({
           numberOfLines={1}
           style={{
             /*
-              PINNED to the measured width, and this is the fix for the label
+              PINNED to the slot width, and this is the fix for the label
               appearing to type itself out.
 
               A `Text` inside a container whose width is animating gets
@@ -480,7 +728,7 @@ function TabItem({
               the React Native equivalent: the text stops reflowing, overflows
               the shrinking clip, and is revealed rather than rebuilt.
             */
-            width: labelWidth || undefined,
+            width: labelSlot || undefined,
             color: theme.colors.accent,
             fontWeight: '600',
           }}
@@ -492,7 +740,8 @@ function TabItem({
       {/*
         The measuring copy. Absolutely positioned so it contributes nothing to
         layout, and hidden from accessibility so the label is not announced
-        twice.
+        twice. Its width is reported up to the dock, which takes the widest and
+        hands the same slot back to every tab.
       */}
       <View
         style={styles.measure}
@@ -508,7 +757,7 @@ function TabItem({
           style={{ alignSelf: 'flex-start', fontWeight: '600' }}
           onLayout={(event) => {
             const measured = Math.ceil(event.nativeEvent.layout.width);
-            if (measured > 0) setLabelWidth(measured);
+            if (measured > 0) onMeasureLabel(spec.label, measured);
           }}
         >
           {spec.label}
