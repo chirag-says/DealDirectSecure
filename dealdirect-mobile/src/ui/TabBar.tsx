@@ -45,7 +45,7 @@ import { Text } from './Text';
  *
  * The trade is real and worth naming: an inactive tab is an icon with no
  * caption. That is acceptable here and nowhere near universally — the four
- * glyphs are home, magnifier, heart and person, which are the four most
+ * glyphs are magnifier, heart, bell and person, which are the four most
  * conventional icons in mobile software. It would NOT be acceptable for a
  * domain-specific icon, and a fifth destination should bring its label back
  * rather than push this pattern further.
@@ -82,11 +82,19 @@ import { Text } from './Text';
  * fact that the last item happens to look different.
  */
 
-/** Drawn in this order. A registered route absent from this map is skipped. */
+/**
+ * Drawn in this order. A registered route absent from this map is skipped,
+ * which is what keeps the redirect-only routes (`properties`, `saved`) and the
+ * dark `chat` route out of the dock without this file knowing about them.
+ *
+ * Every icon here is a general-purpose glyph, which the module doc above
+ * requires: an inactive tab shows no label, so a domain-specific icon would be
+ * unreadable. Magnifier, heart, bell, person.
+ */
 const TABS: Record<string, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
-  index: { label: 'Home', icon: 'home' },
-  properties: { label: 'Properties', icon: 'search' },
-  saved: { label: 'Saved', icon: 'heart' },
+  index: { label: 'Search', icon: 'search' },
+  activity: { label: 'Activity', icon: 'heart' },
+  updates: { label: 'Updates', icon: 'notifications' },
   profile: { label: 'Profile', icon: 'person' },
 };
 
