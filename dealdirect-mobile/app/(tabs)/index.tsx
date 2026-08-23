@@ -1,79 +1,85 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
+import { RefreshControl, View } from 'react-native';
 
 import { qk } from '@/api';
 import { useAuth } from '@/auth';
 import {
   ActivitySnapshot,
-  BrowseRow,
-  HomeGreeting,
+  CityGrid,
+  CityPickerSheet,
+  CollectionRail,
+  HOME_COLLECTION_IDS,
+  HomeHero,
   ListingCard,
   RecentlyViewed,
   Section,
   UpdatesPreview,
+  findCollection,
+  setSelectedCity,
+  usePopularListings,
+  useSelectedCity,
   type ListingCardState,
   type SnapshotTile,
 } from '@/features/home';
-import { useMyProperties } from '@/features/listings';
 import { useLeads } from '@/features/leads';
+import { useMyProperties } from '@/features/listings';
 import { resolveNotificationTarget, useNotifications } from '@/features/notifications';
+import { PropertyRail, type ListingIntent } from '@/features/properties';
+import { ProjectRail, useRecentProjects } from '@/features/projects';
 import { useSavedProperties } from '@/features/saved';
 import { useSavedSearches } from '@/features/savedSearches';
-import {
-  ResumeSearchCard,
-  SearchTrigger,
-  clearResumableSearch,
-  useResumableSearch,
-} from '@/features/search';
+import { ResumeSearchCard, clearResumableSearch, useResumableSearch } from '@/features/search';
 import { useShortlist } from '@/features/shortlist';
-import { screenPadding, spacing, tabBarClearance } from '@/theme';
+import { ToolsRow } from '@/features/tools';
+import { Reveal, RevealScrollView } from '@/lib';
+import { screenPadding, spacing, tabBarClearance, useTheme } from '@/theme';
 import type { AppNotification } from '@/types/backend/notification';
-import { Refreshable, Screen } from '@/ui';
+import type { PropertySearchParams } from '@/types/backend/property';
+import { Screen } from '@/ui';
 
 /**
- * Home — "what should I do next?".
+ * Home — where a session starts.
  *
  * ---------------------------------------------------------------------------
- * WHAT THIS IS, AND WHAT IT IS NOT
+ * THE SHAPE, AND THE TWO MISTAKES IT SITS BETWEEN
  *
- * Home was a marketing landing page, then for one iteration it did not exist
- * at all — folded into Search on the argument that a search tool is what an app
- * opens with. That was half right. Search IS the tool, but nothing in the app
- * then answered the question a returning user actually arrives with, which is
- * not "what exists" but "what is happening with mine".
+ * This screen has been wrong in both directions. It began as the website's
+ * landing page: a pitch headline, a benefits strip, a "why choose us" block and
+ * a closing "Ready to find your home?" slab, none of which a person who has
+ * already installed the app needs. Then it was deleted outright and folded into
+ * Search, which fixed the marketing and lost the thing a returning user
+ * actually opens with — no surface answered "what is happening with mine".
  *
- * So this screen is a command centre, and the test for every block on it is
- * whether it is ABOUT THIS USER. A greeting, a way into search, what they have
- * in flight, what changed, what they were looking at, and the one card that
- * covers listing a property. Nothing here explains DealDirect, and nothing
- * here browses inventory — inventory is Search, one tap away, and duplicating
- * it would recreate the two-tabs-one-job problem this app already had.
+ * What it is now is the shape the large Indian portals converged on:
  *
- * It is deliberately SHORT. Every section can be absent, and most are for a
- * new user: a guest with no history sees a greeting, a search field, a browse
- * row and the listing card, and that is the whole screen. It fills in as the
- * user does things, which is what makes it feel like theirs.
+ *   Hero            who, where, what, and a field to say it in
+ *   Recent activity what you already have in flight
+ *   Inventory       popular listings, new projects, curated rails, cities
+ *   Tools           the calculators, next to the priciest inventory
+ *
+ * The hero carries ONE claim, above the search field rather than in front of
+ * it. Everything below the hero is either the user's own activity or live
+ * inventory. Nothing on this screen explains the company.
  *
  * ---------------------------------------------------------------------------
- * REQUEST BUDGET
+ * REQUEST BUDGET, AND WHY `Reveal` IS NOT OPTIONAL
  *
- * A guest fires ZERO requests here. The shortlist, the resumable search and
- * recently-viewed are all MMKV snapshots, and the browse tiles are a static
- * table.
+ * `/properties/search` allows 20 requests per minute per IP, shared by everyone
+ * behind a carrier NAT, and every inventory rail below is one of them. Sections
+ * under the fold are wrapped in `Reveal`, which withholds the MOUNT — and so
+ * the query — until the section is about a screen away. The hero is static and
+ * paints before anything resolves, so the screen is never blank.
  *
- * A signed-in buyer fires three, and not one of them is new: `saved`,
- * `saved-searches/mine` and `notifications` are the same queries Activity and
- * Updates run, sharing TanStack's cache by key. Opening Home first makes
- * Activity instant rather than costing anything extra.
- *
- * An owner fires two more, `my-properties` and `leads`, both shared with the
- * owner hub. `/properties/search` — the endpoint limited to 20 requests a
- * minute across everyone behind a carrier NAT — is not called here at all. The
- * old Home called it five times.
+ * The activity blocks cost nothing extra: shortlist, resume and recently-viewed
+ * are MMKV snapshots, and saved / saved-searches / notifications are the same
+ * queries Activity and Updates run, shared by key. A guest fires no personal
+ * requests at all.
  */
 export default function HomeScreen() {
   const router = useRouter();
+  const theme = useTheme();
   const queryClient = useQueryClient();
   const { status, user } = useAuth();
 
@@ -81,27 +87,48 @@ export default function HomeScreen() {
   const isOwner = user?.role === 'owner';
 
   const [refreshing, setRefreshing] = useState(false);
+  const [cityPickerOpen, setCityPickerOpen] = useState(false);
+
+  const city = useSelectedCity();
 
   /* Local, free, and correct while signed out. */
   const shortlist = useShortlist();
   const resumable = useResumableSearch();
 
-  /* Shared with Activity. Both hooks no-op when signed out. */
+  /* Shared with Activity and Updates; all no-op when signed out. */
   const saved = useSavedProperties();
   const searches = useSavedSearches();
-
-  /* Shared with Updates. */
   const notifications = useNotifications();
 
-  /* Owner only, and gated at the QUERY rather than by not calling the hook —
-     hooks cannot be called conditionally. Neither of these is auth-gated
-     internally (the owner screens they were written for sit behind
-     `OwnerOnly`), so without this a guest's Home would fire two requests it
-     has no business making and take two 401s for them. */
+  /* Owner only, gated at the query because hooks cannot be called
+     conditionally. Neither of these is auth-gated internally. */
   const ownerProperties = useMyProperties({ enabled: signedIn && isOwner });
   const ownerLeads = useLeads('new', { enabled: signedIn && isOwner });
 
-  const openSearch = useCallback(() => router.push('/(tabs)/search'), [router]);
+  /**
+   * Every affordance lands on Search, which owns results, pagination, filters
+   * and compare. Home never renders a feed of its own.
+   *
+   * The selected city rides along on all of them, which is what makes the
+   * hero's city chip mean something rather than decorate the top of the screen.
+   */
+  const openSearch = useCallback(
+    (
+      params?: PropertySearchParams & {
+        search?: string;
+        listingType?: ListingIntent;
+        browse?: string;
+      }
+    ) => {
+      const merged = { ...(params ?? {}) } as Record<string, string>;
+      if (city && !merged.city) merged.city = city.id;
+      if (Object.keys(merged).length === 0) merged.browse = '1';
+      router.push({ pathname: '/(tabs)/search', params: merged });
+    },
+    [router, city]
+  );
+
+  const openProperty = useCallback((id: string) => router.push(`/property/${id}`), [router]);
 
   const openActivity = useCallback(
     (segment: string) => router.push({ pathname: '/(tabs)/activity', params: { segment } }),
@@ -109,9 +136,8 @@ export default function HomeScreen() {
   );
 
   /**
-   * Notification taps go through the same resolver the Updates tab uses, which
-   * validates the target rather than following a server-supplied `actionUrl`.
-   * Home must not be a second, laxer way into the same navigation.
+   * Notification taps go through the same validated resolver the Updates tab
+   * uses. Home must not be a second, laxer way into the same navigation.
    */
   const openNotification = useCallback(
     (notification: AppNotification) => {
@@ -153,16 +179,16 @@ export default function HomeScreen() {
         onPress: () => openActivity('searches'),
       },
     ];
-  }, [signedIn, shortlist.length, saved.isLoading, saved.used, searches.isLoading, searches.items.length, openActivity]);
+  }, [
+    signedIn,
+    shortlist.length,
+    saved.isLoading,
+    saved.used,
+    searches.isLoading,
+    searches.items.length,
+    openActivity,
+  ]);
 
-  /**
-   * Which listing card to draw, and where it goes.
-   *
-   * The routing mirrors what the dock's Post action used to do — guests to
-   * login, everyone else to the owner surface — with the buyer case now
-   * landing on Profile, where the phone-verification upgrade actually lives,
-   * rather than on a form that would refuse them.
-   */
   const listingState = useMemo<ListingCardState>(() => {
     if (!signedIn) return { kind: 'guest' };
     if (!isOwner) return { kind: 'buyer' };
@@ -171,33 +197,24 @@ export default function HomeScreen() {
     return { kind: 'ownerListed', newLeads: ownerLeads.total };
   }, [signedIn, isOwner, ownerProperties.isLoading, ownerProperties.properties, ownerLeads.total]);
 
-  const openListingCard = useCallback(() => {
-    if (!signedIn) {
-      router.push('/(auth)/login');
-      return;
-    }
-    if (!isOwner) {
-      router.push('/(tabs)/profile');
-      return;
-    }
-    if ((ownerProperties.properties?.length ?? 0) === 0) {
-      router.push('/owner/property/new');
-      return;
-    }
-    router.push('/owner/properties');
+  const openListing = useCallback(() => {
+    if (!signedIn) return router.push('/(auth)/login');
+    if (!isOwner) return router.push('/(tabs)/profile');
+    if ((ownerProperties.properties?.length ?? 0) === 0) return router.push('/owner/property/new');
+    return router.push('/owner/properties');
   }, [signedIn, isOwner, ownerProperties.properties, router]);
 
   /**
-   * Prefix invalidation over the keys this screen reads, so a query added here
-   * later is covered without anyone remembering to come back. Nothing invalid-
-   * ates `qk.properties`: Home makes no search request, and invalidating it
-   * would spend the search limiter on a pull the user made to refresh their own
-   * activity.
+   * Prefix invalidation over the keys this screen reads, so a query added later
+   * is covered without anyone remembering to come back here. Unrevealed
+   * sections have no cache entry, so this costs only what is on screen.
    */
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: qk.properties }),
+        queryClient.invalidateQueries({ queryKey: qk.projects }),
         queryClient.invalidateQueries({ queryKey: qk.savedProperties() }),
         queryClient.invalidateQueries({ queryKey: qk.notifications }),
         queryClient.invalidateQueries({ queryKey: qk.savedSearches }),
@@ -207,68 +224,225 @@ export default function HomeScreen() {
     }
   }, [queryClient]);
 
+  const hasUnread = notifications.items.some((item) => !item.isRead);
+
   return (
-    <Screen edges={['top']}>
-      <Refreshable
+    // The screen's own background is the brand colour so the safe area above
+    // the hero is filled by the hero rather than by a white strip; the scroll
+    // content paints the page colour back over everything below it.
+    <Screen edges={['top']} style={{ backgroundColor: theme.colors.brand }}>
+      <RevealScrollView
         contentContainerStyle={{
-          paddingHorizontal: screenPadding,
           paddingBottom: tabBarClearance,
-          gap: spacing.lg,
+          backgroundColor: theme.colors.background,
         }}
-        refreshing={refreshing}
-        onRefresh={signedIn ? onRefresh : undefined}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.colors.brand}
+            colors={[theme.colors.brand]}
+          />
+        }
       >
-        <HomeGreeting
+        <HomeHero
           name={user?.name}
           avatarUri={user?.profileImage}
+          city={city}
+          hasUnread={hasUnread}
           onOpenProfile={() => router.push('/(tabs)/profile')}
+          onOpenUpdates={() => router.push('/(tabs)/updates')}
+          onOpenCityPicker={() => setCityPickerOpen(true)}
+          onSearch={() => openSearch()}
+          onIntent={(intent) =>
+            intent === 'projects' ? router.push('/projects') : openSearch({ listingType: intent })
+          }
+          onListProperty={openListing}
         />
 
-        {/* The one control every visit starts from. A trigger rather than a
-            live field: typing belongs on Search, which owns the suggestion
-            panel, the recent-search history and the results underneath. Two
-            editable search fields in one app is two places for the query to
-            live. */}
-        <SearchTrigger onPress={openSearch} />
+        {/* The user's own things, directly under the hero and above any
+            inventory: a returning user's answer is far more often something
+            they already touched than something a rail picked. Every block here
+            renders null when it has nothing, so a first session drops straight
+            through to the listings. */}
+        <View style={{ paddingHorizontal: screenPadding, gap: spacing.lg, paddingTop: spacing.lg }}>
+          {tiles.length > 0 ? <ActivitySnapshot tiles={tiles} /> : null}
 
-        {tiles.length > 0 ? <ActivitySnapshot tiles={tiles} /> : null}
+          {resumable ? (
+            <ResumeSearchCard
+              search={resumable}
+              onResume={() => router.push({ pathname: '/(tabs)/search', params: { resume: '1' } })}
+              onDismiss={clearResumableSearch}
+            />
+          ) : null}
 
-        {resumable ? (
-          <ResumeSearchCard
-            search={resumable}
-            /* Search reads the stored record itself; passing filters through
-               the query string would drop the four client-only facets. */
-            onResume={() => router.push({ pathname: '/(tabs)/search', params: { resume: '1' } })}
-            onDismiss={clearResumableSearch}
+          {signedIn ? (
+            <UpdatesPreview
+              items={notifications.items}
+              onOpen={openNotification}
+              onSeeAll={() => router.push('/(tabs)/updates')}
+            />
+          ) : null}
+        </View>
+
+        {/* Replays a disk snapshot, so it is the one row that costs nothing and
+            the only one not deferred — it should be on screen the instant a
+            returning user opens the app. */}
+        <RecentlyViewed onSelectProperty={openProperty} />
+
+        <Reveal placeholder={<SectionPlaceholder />}>
+          <PopularListings onViewAll={openSearch} onSelectProperty={openProperty} />
+        </Reveal>
+
+        <Reveal placeholder={<SectionPlaceholder />}>
+          <BuilderProjects
+            onSelectProject={(id) => router.push(`/projects/${id}`)}
+            onViewAll={() => router.push('/projects')}
           />
-        ) : null}
+        </Reveal>
 
-        {signedIn ? (
-          <UpdatesPreview
-            items={notifications.items}
-            onOpen={openNotification}
-            onSeeAll={() => router.push('/(tabs)/updates')}
-          />
-        ) : null}
+        <View style={{ paddingHorizontal: screenPadding, paddingTop: spacing.lg }}>
+          <ListingCard state={listingState} onPress={openListing} />
+        </View>
 
-        <ListingCard state={listingState} onPress={openListingCard} />
+        {/*
+          The research tools, directly under the builder projects.
 
-        {/* Replays a disk snapshot, so it costs nothing and works signed out.
-            Renders null with no history. */}
-        <RecentlyViewed onSelectProperty={(id) => router.push(`/property/${id}`)} />
+          Builder inventory is the most expensive thing on this screen and the
+          most likely to be out of a given buyer's reach, so the question it
+          raises is "what can I actually afford?". Answering that in the next
+          section rather than four rails later is the whole point of the
+          placement.
+        */}
+        <Reveal placeholder={<SectionPlaceholder height={220} />}>
+          <Section
+            title="Work out your budget"
+            subtitle="Before you fall for something you cannot buy"
+          >
+            <ToolsRow onOpen={(route) => router.push(route)} />
+          </Section>
+        </Reveal>
 
-        {/* The one browse affordance on Home, and it is here because a first
-            session has nothing else: no history, no searches, nothing in
-            flight. Static table, no request. Everything deeper — collections,
-            cities, projects — is Search's job. */}
-        <Section title="Browse by type">
-          <BrowseRow
-            onSelect={(term) =>
-              router.push({ pathname: '/(tabs)/search', params: { search: term } })
-            }
-          />
-        </Section>
-      </Refreshable>
+        {/*
+          The editorial rails. Each is revealed separately, so its query fires
+          only as it approaches the viewport — and each unmounts itself if it
+          cannot meet its own `minResults`. See `HOME_COLLECTION_IDS` for why
+          this is three rows and not the full registry of fifteen.
+        */}
+        {HOME_COLLECTION_IDS.map((id) => {
+          const collection = findCollection(id);
+          if (!collection) return null;
+          return (
+            <Reveal key={id} placeholder={<SectionPlaceholder />}>
+              <CollectionRail
+                collection={collection}
+                onViewAll={openSearch}
+                onSelectProperty={openProperty}
+              />
+            </Reveal>
+          );
+        })}
+
+        <Reveal placeholder={<SectionPlaceholder height={300} />}>
+          <Section title="Explore by city" subtitle="Every count below is live inventory">
+            <CityGrid onSelect={(search) => openSearch({ search })} />
+          </Section>
+        </Reveal>
+      </RevealScrollView>
+
+      <CityPickerSheet
+        visible={cityPickerOpen}
+        selected={city}
+        onSelect={setSelectedCity}
+        onClose={() => setCityPickerOpen(false)}
+      />
     </Screen>
   );
+}
+
+/**
+ * Most viewed.
+ *
+ * The subtitle changes with `isComplete`, and that is not decoration. While the
+ * whole corpus fits in one page the ranking is genuinely the most-viewed
+ * listings on DealDirect. Once it does not, the row is showing the most viewed
+ * among the newest hundred, which is a weaker claim, and the copy stops making
+ * the stronger one.
+ */
+function PopularListings({
+  onViewAll,
+  onSelectProperty,
+}: {
+  onViewAll: (params: PropertySearchParams & { browse?: string }) => void;
+  onSelectProperty: (id: string) => void;
+}) {
+  const { items, isLoading, isComplete } = usePopularListings();
+
+  if (!isLoading && items.length === 0) return null;
+
+  return (
+    <Section
+      title="Popular right now"
+      subtitle={isComplete ? 'Most viewed homes right now' : 'Most viewed among our newest listings'}
+      actionLabel="View all"
+      onAction={() => onViewAll({ sort: 'newest', browse: '1' })}
+    >
+      <PropertyRail
+        items={items}
+        loading={isLoading}
+        onSelect={onSelectProperty}
+        accessibilityLabel="Popular listings"
+        showIndicator
+      />
+    </Section>
+  );
+}
+
+/**
+ * Builder developments, newest first.
+ *
+ * Sorted server-side by `createdAt`, which is the only ordering `listProjects`
+ * offers, so "recent" is what the endpoint natively returns rather than a
+ * ranking invented here. This is also the only surface in the app where builder
+ * inventory appears at all: `/properties/search` excludes builder-posted
+ * listings by design.
+ */
+function BuilderProjects({
+  onSelectProject,
+  onViewAll,
+}: {
+  onSelectProject: (id: string) => void;
+  onViewAll: () => void;
+}) {
+  const { items, isLoading, total } = useRecentProjects();
+
+  if (!isLoading && items.length === 0) return null;
+
+  return (
+    <Section
+      title="New projects"
+      subtitle="Direct from the builder"
+      // Only offer "View all" when there is more than the rail already shows. A
+      // link to a screen holding the same five cards is a dead end wearing a
+      // chevron.
+      actionLabel={total > items.length ? 'View all' : undefined}
+      onAction={total > items.length ? onViewAll : undefined}
+    >
+      <ProjectRail
+        items={items}
+        loading={isLoading}
+        onSelect={onSelectProject}
+        accessibilityLabel="Builder projects"
+      />
+    </Section>
+  );
+}
+
+/**
+ * Occupies roughly the height of a real section while unrevealed, so sections
+ * below do not slide upward as each one loads and drag the content the user is
+ * reading out from under them.
+ */
+function SectionPlaceholder({ height = 320 }: { height?: number }) {
+  return <View style={{ height }} />;
 }

@@ -95,6 +95,8 @@ export const PREF_KEYS = {
   recentlyViewed: 'property.recentlyViewed',
   /** The last search that had criteria, replayed as "Continue your search". */
   resumeSearch: 'search.resume',
+  /** `City.id` the user is shopping in. Absent means everywhere. */
+  selectedCity: 'home.city',
   /**
    * What the user was doing when the app asked them to sign in. Short-lived
    * and single-use; see `auth/pendingIntent.ts`.

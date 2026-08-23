@@ -37,6 +37,9 @@ export { IntentCards, type IntentCardsProps } from './components/IntentCards';
 export { BrowseRow, PopularSearches, type BrowseRowProps } from './components/BrowseRow';
 export { CityGrid, type CityGridProps } from './components/CityGrid';
 export { HomeGreeting, type HomeGreetingProps } from './components/HomeGreeting';
+export { HomeHero, type HomeHeroProps } from './components/HomeHero';
+export { CityPickerSheet, type CityPickerSheetProps } from './components/CityPickerSheet';
+export { setSelectedCity, useSelectedCity } from './city';
 export {
   ActivitySnapshot,
   type ActivitySnapshotProps,
