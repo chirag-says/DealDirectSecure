@@ -53,6 +53,142 @@ did NOT update the docs, say so explicitly — that is a debt marker.
 
 ---
 
+## 2026-08-24 — Mobile Phase 1: the app stops being shaped like the website (mobile only)
+
+**Files changed**
+- `app/(tabs)/_layout.tsx`, `src/ui/TabBar.tsx` — tab set is now Search / Activity / Updates / Profile. `properties`, `saved` and `chat` are registered `href: null`.
+- `app/(tabs)/index.tsx` — was Home (marketing landing page); now mounts the search engine.
+- `src/features/search/components/SearchScreen.tsx` — NEW. The former `app/(tabs)/properties.tsx`, moved verbatim (diff of the old route body against it is four hunks, all doc comments). Gained an idle-state list header.
+- `src/features/search/resume.ts`, `components/ResumeSearchCard.tsx` — NEW. "Continue your search": last filter set + result count, MMKV, 14-day expiry.
+- `app/(tabs)/activity.tsx` — was `saved.tsx`. Four segments: Shortlist, Enquiries, Searches, Bookings. Accepts a validated `segment` param.
+- `app/(tabs)/updates.tsx` — was `app/notifications.tsx`, promoted to a tab.
+- `src/features/shortlist/**` — NEW feature module (store + row + button).
+- `src/auth/pendingIntent.ts` — NEW. Return-to-intent across login/register/OTP.
+- `app/(tabs)/profile.tsx` — link directory removed.
+- `app/support.tsx`, `src/features/content/faq.ts` (deleted) — ported FAQ removed.
+- `app/(tabs)/properties.tsx`, `app/(tabs)/saved.tsx`, `app/notifications.tsx` — now redirects.
+- Deleted: `src/features/home/components/{Hero,HeroSearchField,CtaBanner}.tsx`, `src/ui/BottomNavBar.tsx` (orphan, 369 lines).
+- `src/features/projects/components/BookingRow.tsx` — NEW, extracted from `app/projects/bookings.tsx` and shared with Activity.
+- `src/storage/mmkv.ts` — three new `PREF_KEYS`: `resumeSearch`, `shortlist`, `pendingIntent`.
+
+**Reason**
+The functional review (`DEALDIRECT-APP-FUNCTIONAL-REVIEW.md`) found the codebase genuinely native but the PRODUCT shaped like the website: a marketing home screen, a Profile tab that was the app's sitemap, ported FAQ and blog, and navigation organised around the company's destinations rather than the user's activity. Phase 1 changes the shape only.
+
+**Architectural impact**
+- **A future session must not assume `/(tabs)/properties` is a screen.** It is a param-forwarding redirect; the search screen is `/(tabs)` and its implementation is `features/search/components/SearchScreen`.
+- **There are now TWO save concepts and they must never be merged.** `features/shortlist` is device-local, creates no Lead, notifies nobody, and imports no API client — that last part is the enforcement, not a convention. `features/saved` (`useSaveToggle` → `POST /properties/interested/:id`) remains the capped, owner-notifying enquiry. Wiring a shortlist control to the interest endpoint would silently email owners.
+- New invariant: every `resume` route param is validated against the values its screen expects, so a deep link can open a screen but can never raise a confirmation or payment sheet.
+- `PendingIntent` is single-use and expires in 15 minutes; it persists to MMKV because the owner-registration OTP flow can be killed by the OS while the user reads an SMS.
+- The Search tab's idle state issues **no** network requests. Anything added there must keep that property — `/properties/search` is limited to 20/min per IP shared behind carrier NAT.
+- Updates deliberately has **no** dock badge and derives "unread" from the 100 rows it already holds, because `GET /notifications/unread-count` does not exist.
+
+**Migration notes**
+None. No backend change, no schema change, no env var. Deploys independently as a mobile-only release.
+
+**Docs updated**
+None yet — this is a debt marker. `AI/FILE_MAP.md` and `AI/COMPONENT_INDEX.md` still describe the Home tab, `app/(tabs)/saved.tsx` and `app/notifications.tsx` at their old paths. `DEALDIRECT-MOBILE-PARITY-AUDIT.md` §4 and §9 are now stale on routes and navigation. `DEALDIRECT-APP-TRANSFORMATION-PHASE0.md` holds the plan this executed.
+
+**Verification**
+`tsc --noEmit` clean, `expo lint` 0 errors / 12 pre-existing warnings, `expo export` (Android) bundles. **No flow has been run on a device or emulator — DEVICE VERIFICATION PENDING.**
+
+## 2026-08-22 — Mobile: Hubble redemption in-app, unit-page depth, and a third dead-field defect
+
+**Files changed** — `dealdirect-mobile/` only; **no backend file was touched** and no endpoint, schema or env var was added.
+- Added: `app/rewards/redeem.tsx`, `src/features/rewards/hubble.ts`, `plugins/withUpiQueries.js`, `src/ui/BottomNavBar.tsx`
+- Modified: `src/api/endpoints/rewards.ts`, `src/types/backend/rewards.ts`, `src/types/backend/project.ts`, `src/features/rewards/index.ts`, `app/rewards/index.tsx`, `app/projects/unit/[unitTypeId].tsx`, `app.config.js`, `src/ui/{TabBar,PressableScale}.tsx`, `app/(tabs)/index.tsx`, `src/features/home/{cities.ts,index.ts}`
+- Deleted: `src/features/home/components/{TrustStrip,AboutDealDirect}.tsx`
+- Dependencies added: `react-native-webview`, `lucide-react-native`, `react-native-svg` — **all three are native; an OTA update cannot deliver any of this.**
+
+**Rewards redemption (reverses half of D3).** D3 recorded redemption as a separate workstream because it moves real money; Chirag asked for it in-app on 2026-08-22. Implemented as the Hubble SDK hosted in a WebView, consuming the two client-facing routes that already existed (`GET /api/rewards/hubble/config`, `GET /api/rewards/hubble/token`). The other four Hubble routes are server-to-server behind `X-Hubble-Secret` and are Hubble's to call.
+
+Three constraints drove the design:
+1. **The WebView must never call the DealDirect API.** `api/client.ts` documents why: `requireCsrf` waves through requests with no `Origin`, which is the native client's exemption, and a WebView *does* send `Origin` — twelve write routes would answer `CSRF_ORIGIN_REJECTED`. Compliant by construction here: the WebView loads `sdk.myhubble.money`, and the session is fetched natively and passed in via the URL.
+2. **The session is deliberately outside TanStack.** The SSO token is single-use with a five-minute server-side life, so a cached one is always spent or expired; and the config carries `appSecret`, which the MMKV persister would write to disk. Both live in component state. Config is fetched **before** the token so a 503 does not burn a perishable credential.
+3. **Internal-URL matching is on HOST, not the SDK base URL.** Matching the base URL alone sends Razorpay to the system browser: the user pays outside the WebView and the SDK never sees the result.
+
+UPI handoff needs native declarations on both platforms or `Linking.openURL` fails silently. `/android` and `/ios` are gitignored prebuild output here, so this is a config plugin (`plugins/withUpiQueries.js`), verified through `expo config --type introspect`. **The scheme/package list is the common Indian set and has NOT been confirmed with Hubble** — their guide asks for exactly that review.
+
+**Unit-page depth (W6).** Added area/configuration, price breakdown, all-inclusive cost sheet, specifications, availability with tower allocation, interiors grouped by room, and the video-tour link. GST, stamp duty and registration are computed for display only and stay **out** of `effectivePrice`, matching the server's pre-save hook and the website — folding taxes into a list price would misstate every cross-project comparison. The cost sheet hides itself when none of the three is configured, because a "total" equal to the price above it implies there is nothing more to pay.
+
+**Third dead-field defect, same class as the previous two.** `UnitType.floorPlans` is `{twoDUrl, threeDUrl, videoUrl}`; the mobile type declared `twoDFloorPlan`/`threeDFloorPlan`. Both reads were permanently `undefined`, so **the floor plan at the top of the unit screen never rendered once**. With `inventory.available` (2026-08-22, earlier) and the `wallet.balance`/`payment.utr` pair (F1/F5, 2026-08-13), that is three separate cases of a mobile type inventing field names. The registry is accurate about ROUTES and has been repeatedly wrong about nested FIELD paths; a contract test asserting adapters against recorded fixtures would have caught all three.
+
+**Also in this pass:** the dock was made genuinely floating (absolutely positioned, so the navigator reserves no strip), its selection animation rebuilt onto one coordinated set of shared values, and two motion bugs fixed — `interpolateColor` from `'transparent'` (which is *black* at zero alpha, so the pill flashed grey mid-transition; now an opacity-animated solid layer) and a label that re-ellipsised every frame inside the shrinking clip (now pinned to its measured width). Home lost the trust strip and the "Why DealDirect" pitch, gained Ranchi in Explore by City (the only live city with inventory and no tile), and moved the budget tools under Builder Projects.
+
+**Migration notes**
+None — client-side only. `tsc --noEmit` clean, `expo lint` 0 errors (12 pre-existing warnings), `expo export --platform android` succeeds, config plugin verified by introspection. **Nothing in this entry has been run on a device.** For redemption that gap matters more than usual: the UPI handoff can only be proven on real hardware with real UPI apps installed, and the backend needs `HUBBLE_*` env vars set or `/config` returns 503 (which the screen renders as "unavailable", not an error).
+
+**Docs updated**
+This file. `DEALDIRECT-MOBILE-PARITY-AUDIT.md` and the implementation plan still list W6 as outstanding and rewards as display-only; both are now stale on those two points.
+
+---
+
+## 2026-08-22 — Mobile Phase 2 (part): guest guards + `listingType` deploy question settled (mobile only)
+
+**Files changed**
+- `dealdirect-mobile/` only. Added `src/auth/components/RequireAuth.tsx`; modified `src/auth/index.ts`, `app/settings/{sessions,change-password,delete-account}.tsx`, `app/claim-reward/[verificationId].tsx`, and `app/projects/booking/[bookingId].tsx`.
+
+**W8 — guest guards.** Four routes rendered for a signed-out user and failed at the request, turning "not signed in" into "something is broken": the three settings sub-screens and the reward-claim screen, which is reached from a notification tap — precisely when a session may have lapsed. New `RequireAuth` is `OwnerOnly` with the role assertion removed, and follows its convention of rendering children while `status === 'restoring'` so a cold start never flashes a refusal at a signed-in user. Consequence for anything placed behind it: the screen must tolerate a moment with no user, which is what the query layer's `enabled` guards are for. `claim-reward` additionally gates its auto-claim effect on a DECIDED session — firing during the probe would spend the `attempted` ref on a request guaranteed to 401.
+
+**W10 — `listingType` is deployed; the constraint is withdrawn.** The plan carried a deploy-ordering risk: mobile sends `listingType` on every Buy/Rent search, and if production lacked the 2026-08-03 backend change the toggle would silently no-op. Measured directly against production with read-only GETs on `/api/properties/search`: baseline **31**, `rent` **21**, `sale` **10**, `nonsense` **31**. The partition is exact (21 + 10 = 31) and an unrecognised value degrades to "no filter" rather than "no results". **The param is live.** No store build needs to wait on a backend deploy for this.
+
+**Two Phase 1 defects found by self-review and fixed in the same pass** (`app/projects/booking/[bookingId].tsx`)
+1. **"Booking not found" immediately after a successful booking.** The screen finds its booking in the cached `GET /bookings/my` list. Arriving straight from the booking sheet, that list is one item out of date and a background refetch is in flight — `isPending` is false when cached data exists, so the loading branch did not catch it and the empty state won. Now `!booking && isRefreshing` reads as loading.
+2. **An enquiry quoted a token amount.** The server resolves and persists `payment.tokenAmount` for an enquiry too, so an enquiry on a unit that has a booking amount displayed "Token amount: ₹X" to a buyer who had just been told no payment was needed. Suppressed when the booking is enquiry-only.
+
+**Architectural impact**
+`RequireAuth` is the standard gate for account-scoped routes with no role requirement; `OwnerOnly` remains correct where a role matters. Neither is security — both routes stay enforced server-side.
+
+**Not done in this phase**
+**W9 (crash reporting) is not started.** It adds `@sentry/react-native`, a native module: it needs a full rebuild, which would invalidate the dev build currently installed for manual device testing, and a mobile-specific Sentry DSN that does not exist yet. Deferred deliberately rather than half-applied.
+
+**Migration notes**
+None. Client-side only. `tsc --noEmit` clean, `expo lint` 0 errors (12 warnings, all pre-existing), `expo export --platform android` succeeds, and the debug build runs clean on an emulator against production with no redbox. **Individual flows still not exercised end-to-end.**
+
+**Docs updated**
+`DEALDIRECT-MOBILE-PARITY-AUDIT.md` (PA-8 marked resolved with the measurement, status banner added), `DEALDIRECT-MOBILE-IMPLEMENTATION-PLAN.md` (new §2b status table), this file.
+
+---
+
+## 2026-08-22 — Mobile Phase 1: four P0 parity defects fixed (mobile only; backend untouched)
+
+**Files changed**
+- `dealdirect-mobile/` only. **No file under `backend/`, `client-next/` or `Admin/` was modified**, and no endpoint, schema or env var was added — every fix conforms the client to contracts the production backend already enforces.
+- Added: `src/config/features.ts`
+- Modified: `src/api/{client,errors,index}.ts`, `src/api/endpoints/{projects,users}.ts`, `src/auth/AuthProvider.tsx`, `src/types/backend/{common,project,user}.ts`, `src/features/projects/{bookings,campaigns,index}.ts`, `src/features/profile/hooks.ts`, `app/projects/{[id],bookings}.tsx`, `app/projects/booking/[bookingId].tsx`, `app/projects/unit/[unitTypeId].tsx`, `app/projects/campaign/[campaignId].tsx`, `app/settings/delete-account.tsx`
+
+**Reason**
+Phase 1 of `DEALDIRECT-MOBILE-IMPLEMENTATION-PLAN.md`. Seven backend/web commits between 2026-08-13 and 2026-08-22 changed the projects and bookings contracts; none touched mobile, which had been frozen since `982b85d`. Four defects were user-visible.
+
+**The four fixes**
+
+1. **Account deletion never worked.** `useDeleteAccount` sent no body; `deleteAccount` requires `{password}` and answers 400 `PASSWORD_REQUIRED` without one. Every deletion attempt from the app failed — the one flow App Store review is guaranteed to exercise. The screen now collects the password, maps 401 `INVALID_PASSWORD` to a field error, and reports `retainedListings` when the cascade keeps deal evidence back. The typed word stays `DELETE` rather than the website's `DELETE-<email>`: the password is the authorisation, the phrase is a speed bump, and a 30-character phrase is a desktop-keyboard decision.
+
+2. **Bookings were behind the contract.** Mobile sent no `intent`, so every submission was a booking and was refused with `BOOKING_NOT_CONFIGURED` on the three-of-eight unit types with no `paymentTerms.bookingAmount` — exactly where the website now offers a working enquiry. Added: the `intent: 'enquiry'` path as a second CTA, `POST /bookings/:id/cancel` (absent from the registry entirely), and specific copy plus a next step for `NO_INVENTORY`, `BOOKING_NOT_CONFIGURED` and 409 `DUPLICATE_ENQUIRY`. An enquiry no longer lands on a payment form quoting ₹0.
+
+3. **No global session teardown.** A session revoked mid-run (password change elsewhere, fingerprint revocation, admin block) was noticed only by the four calls `AuthProvider` makes itself; every other screen showed a generic error while the app went on rendering as signed-in. `setSessionFatalObserver` now reports any session-fatal response to the auth layer, which decides. Guarded twice — a guest cannot be logged out, and the provider's own calls are excluded — because the cost of a false positive is discarding a working session.
+
+4. **Group buy is gated off** (`GROUP_BUY_ENABLED = false`). The website deleted its entire group-buy render in `79461c3` because nothing applies `discountPerBuyer`; mobile was left as the only client taking memberships and payment proof for a mechanic with no completion engine, and exit is refused once `tokenStatus` is `paid`. The flag is applied at the data layer, so a surface that never asks for campaigns cannot render one. All wiring stays on disk; flipping the flag is the whole of the change when the mechanic ships.
+
+**Contract corrections found while verifying** (all read fields that do not exist, in the F1/F5/F6 class)
+- `UnitType.inventory` is `{ totalUnits, availableUnits, bookedUnits, blockedUnits }`, **not** `{ total, available }`. Both read sites (`app/projects/[id].tsx`, `app/projects/unit/[unitTypeId].tsx`) were permanently `undefined`, so the availability chip never rendered and a sold-out unit never disabled its own button — the buyer filled in the form and met `NO_INVENTORY` at submit.
+- `UnitType.paymentTerms` and `Project.financials` are now typed rather than `Record<string, unknown>`, because the token resolution needs `bookingAmount` from both, in that order.
+- `ProjectBooking` gained `source`, `contactHistory`, `assignedTo`; `Project` gained `publication` and `views`; `ProjectListParams.limit` documents the server's clamp to 60.
+- `BackendErrorCode` gained the eight client-facing codes the backend already emits.
+
+**Architectural impact**
+- **A session-fatal response from anywhere now ends the session.** `AUTH_OWNED_PATHS` in `AuthProvider.tsx` is the exclusion list; anything the auth layer calls on its own behalf must be added to it or it will race the handler.
+- **401 no longer implies a dead session.** `INVALID_PASSWORD` is a password re-check inside an authenticated request; `SESSION_SAFE_401_CODES` in `api/errors.ts` keeps it out of both `kindForStatus` and `isSessionFatal`. Without that exception the new global handler would log a user out for a typo, clearing storage on the way.
+- **`useMyBookings` is now auth-gated and reports `signedIn`.** Screens must check `isLoading` **before** `signedIn`: during the cold-start probe nobody is signed out, they are undecided, and a sign-in prompt shown to a returning user is a claim the app then retracts.
+- Project visibility is `publication.status`-driven, not `isActive`. `basics.status` is a construction stage and must never be read as visibility.
+
+**Migration notes**
+None. Client-side only; no schema, data, endpoint or env change. Verified with `npx tsc --noEmit` (clean), `npx expo lint` (0 errors; 12 warnings, all pre-existing) and `npx expo export --platform android` (succeeds). **Not run on a device and not exercised against a live API** — the behavioural claims above are traced against `backend/controllers/{booking,user}Controller.js` and `backend/models/{UnitType,Project,ProjectBooking}.js`, not observed.
+
+**Docs updated**
+This file. `DEALDIRECT-MOBILE-PARITY-AUDIT.md` findings PA-1 to PA-4 and the inventory correction are now addressed in code; the audit and plan documents still describe them as open and should be re-read against this entry.
+
+---
+
 ## 2026-08-17: Phase 3A.1, four defects fixed (notifications routing, property field contract, upload coupling, multipart bodies)
 
 **Files changed**
