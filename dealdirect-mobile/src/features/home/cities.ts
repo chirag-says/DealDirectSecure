@@ -58,7 +58,15 @@ export interface City {
    * otherwise compile and then send `undefined` as a search term at runtime.
    */
   aliases: readonly [string, ...string[]];
-  image: ImageSourcePropType;
+  /**
+   * Optional since 2026-08-22.
+   *
+   * `CityGrid` builds its tiles from type alone and stops reading this — see
+   * the note in that file. The artwork is kept for the twelve cities that have
+   * it, in case a future screen wants it, but a new city is no longer blocked
+   * on someone drawing a landmark for it.
+   */
+  image?: ImageSourcePropType;
 }
 
 /**
@@ -141,6 +149,22 @@ export const CITIES: readonly City[] = [
     label: 'Jaipur',
     aliases: ['jaipur'],
     image: require('../../../assets/home/cities/jaipur.png'),
+  },
+  {
+    /*
+      Added 2026-08-22, and chosen from the data rather than from a list of big
+      Indian cities.
+
+      Tallying `address.city` across the live corpus against this table showed
+      exactly one city holding inventory that had no tile: Ranchi. Every other
+      unmatched spelling was a variant of a city already here. Adding a
+      thirteenth metro with no listings behind it would have changed nothing on
+      screen — the grid drops any city whose count is zero — so this is the one
+      addition that actually produces a tile.
+    */
+    id: 'ranchi',
+    label: 'Ranchi',
+    aliases: ['ranchi'],
   },
 ];
 

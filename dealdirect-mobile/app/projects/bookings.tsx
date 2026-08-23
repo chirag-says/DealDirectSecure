@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { FlatList, View } from 'react-native';
 
+import { SignInPrompt } from '@/auth';
 import { useMyBookings } from '@/features/projects';
 import type { ProjectBooking } from '@/types/backend/project';
 import { Badge, Card, EmptyState, ErrorState, Screen, ScreenHeader, Skeleton, Text } from '@/ui';
@@ -12,24 +13,34 @@ import { Badge, Card, EmptyState, ErrorState, Screen, ScreenHeader, Skeleton, Te
  */
 export default function MyBookingsScreen() {
   const router = useRouter();
-  const { bookings, isLoading, isRefreshing, error, refresh } = useMyBookings();
+  const { bookings, isLoading, isRefreshing, error, refresh, signedIn } = useMyBookings();
 
   return (
     <Screen>
       <ScreenHeader title="My bookings" backTo="/(tabs)/profile" />
 
+      {/* Loading is checked FIRST: during the cold-start session probe nobody
+          is "signed out" yet, they are unknown, and a sign-in prompt shown to a
+          returning user for half a second is a lie the app then retracts. */}
       {isLoading ? (
         <View className="px-base">
           {[0, 1].map((i) => (
             <Skeleton key={i} height={88} className="mb-base" radius={12} />
           ))}
         </View>
+      ) : !signedIn ? (
+        /* Not an error state. This screen is deep-linkable and sits behind a
+           profile row, so arriving signed-out is ordinary, not a failure. */
+        <SignInPrompt
+          title="Sign in to see your bookings"
+          description="Your enquiries, bookings and payment history are tied to your account."
+        />
       ) : error ? (
         <ErrorState title="Could not load your bookings" onRetry={refresh} />
       ) : bookings.length === 0 ? (
         <EmptyState
           title="No bookings yet"
-          description="Book a unit from any project to see it here."
+          description="Book a unit or send an enquiry from any project to see it here."
           actionLabel="Browse projects"
           onAction={() => router.push('/projects')}
         />
@@ -53,6 +64,14 @@ function BookingRow({ booking, onPress }: { booking: ProjectBooking; onPress: ()
   const projectName = typeof booking.project === 'object' ? booking.project?.basics?.name : undefined;
   const unitName = typeof booking.unitType === 'object' ? booking.unitType?.config?.name : undefined;
 
+  const tokenAmount = booking.payment?.tokenAmount ?? 0;
+  /*
+    An enquiry and a booking both begin life in `status: 'enquiry'`, so the
+    status alone cannot tell them apart — and they owe the reader different
+    things. One is waiting on a phone call, the other on a payment.
+  */
+  const isEnquiryOnly = booking.source === 'enquiry' || tokenAmount <= 0;
+
   /*
     `Card`'s own `onPress`, not a wrapping `Pressable`. The bare Pressable this
     used carried no `style` callback and no accessible label, so the row gave
@@ -75,13 +94,22 @@ function BookingRow({ booking, onPress }: { booking: ProjectBooking; onPress: ()
               {unitName}
             </Text>
           ) : null}
-          {booking.payment?.tokenAmount ? (
-            <Text variant="footnote" tone="secondary" className="mt-xs">
-              Token ₹{booking.payment.tokenAmount.toLocaleString('en-IN')}
-            </Text>
-          ) : null}
+          <Text variant="footnote" tone="secondary" className="mt-xs">
+            {isEnquiryOnly
+              ? 'Enquiry · no payment needed'
+              : `Token ₹${tokenAmount.toLocaleString('en-IN')}`}
+          </Text>
         </View>
-      <Badge label={booking.status} tone={booking.status === 'confirmed' ? 'success' : 'neutral'} />
+      <Badge
+        label={booking.status === 'enquiry' && isEnquiryOnly ? 'enquiry' : booking.status}
+        tone={
+          booking.status === 'confirmed'
+            ? 'success'
+            : booking.status === 'cancelled'
+              ? 'danger'
+              : 'neutral'
+        }
+      />
     </Card>
   );
 }

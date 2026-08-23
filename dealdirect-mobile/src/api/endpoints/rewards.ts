@@ -1,16 +1,21 @@
 /**
  * Rewards endpoints. Mounted at `/api/rewards`
- * (backend/routes/rewardsRoutes.js).
+ * (backend/routes/rewardsRoutes.js), except the Hubble pair, which is mounted
+ * one level deeper at `/api/rewards/hubble` (backend/routes/hubbleRoutes.js).
  *
- * The RewardPort catalogue routes and the Hubble gift-card SDK routes exist on
- * the backend but are not declared here. The catalogue is a legacy surface the
- * website keeps for compatibility, and Hubble is a web-SDK integration with no
- * native equivalent. Neither is in the approved mobile scope. They are
- * catalogued in docs/API_CONTRACT.md so the omission is a recorded decision
- * rather than an oversight.
+ * The RewardPort catalogue routes are still not declared here: that is a legacy
+ * surface the website keeps for compatibility and it is not in mobile scope.
+ *
+ * The Hubble SDK routes WERE excluded on the same grounds until 2026-08-22,
+ * when redemption was brought into the app — see `app/rewards/redeem.tsx`. Only
+ * the two routes a client is allowed to call are declared. The other four
+ * (`/sso`, `/balance`, `/debit`, `/reverse`) are server-to-server, guarded by
+ * the `X-Hubble-Secret` header, and are Hubble's to call, never ours.
  */
 
 import type {
+  HubbleConfigResponse,
+  HubbleTokenResponse,
   ReferralCodeResponse,
   ReferralsResponse,
   RedeemRewardRequest,
@@ -35,6 +40,28 @@ export const rewardsEndpoints = {
     path: '/rewards/wallet',
     auth: 'user',
     envelope: 'keyed',
+  }),
+
+  hubbleConfig: defineEndpoint<void, HubbleConfigResponse>({
+    method: 'GET',
+    path: '/rewards/hubble/config',
+    auth: 'user',
+    envelope: 'keyed',
+    note:
+      'Returns `config: {clientId, appSecret, sdkBaseUrl, theme}`. 503 when the integration ' +
+      'is unconfigured, which is a normal state in dev, not a fault. Carries a SECRET: never ' +
+      'log it, never persist it, never put it in a query key that is cached to disk.',
+  }),
+
+  hubbleToken: defineEndpoint<void, HubbleTokenResponse>({
+    method: 'GET',
+    path: '/rewards/hubble/token',
+    auth: 'user',
+    envelope: 'keyed',
+    note:
+      'A SINGLE-USE SSO token, valid five minutes, held in an in-process Map on the server. ' +
+      'Fetch one immediately before opening the SDK and throw it away afterwards — a cached ' +
+      'token is either already spent or already expired, and both fail the same silent way.',
   }),
 
   transactions: defineEndpoint<PaginationParams, TransactionsResponse>({

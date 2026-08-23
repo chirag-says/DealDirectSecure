@@ -4,13 +4,18 @@
  *
  * Public GET routes use `attachAdminIfPresent`, which widens visibility to
  * inactive records for an admin session. The mobile app never holds one, so it
- * always sees the active-only view.
+ * sees the PUBLISHED view: since 2026-08-22 a project is publicly readable only
+ * when `publication.status` is `published` (records predating the field fall
+ * back to `isActive`). A newly created project is a draft and will simply not
+ * appear here until an admin publishes it.
  *
  * Builder-posted properties are excluded from the regular property feeds, so
  * this vertical is the only way they surface.
  */
 
 import type {
+  CancelBookingRequest,
+  CancelBookingResponse,
   CreateBookingRequest,
   CreateBookingResponse,
   GroupBuyCampaign,
@@ -139,7 +144,21 @@ export const bookingsEndpoints = {
     envelope: 'data',
     note:
       'Requires login despite reading like a public lead form. Required fields are projectId, ' +
-      'unitTypeId, clientName and clientPhone.',
+      'unitTypeId, clientName and clientPhone. Send `intent: "enquiry"` to ask without paying — ' +
+      'that is the ONLY way to reach a unit type with no bookingAmount configured, which is ' +
+      'three of the eight real ones. Refuses with NO_INVENTORY, BOOKING_NOT_CONFIGURED or ' +
+      '409 DUPLICATE_ENQUIRY; each is actionable and deserves its own message.',
+  }),
+
+  cancel: defineEndpoint<CancelBookingRequest, CancelBookingResponse, { id: ObjectId }>({
+    method: 'POST',
+    path: ({ id }) => `/bookings/${id}/cancel`,
+    auth: 'user',
+    envelope: 'data',
+    note:
+      'Buyer self-withdrawal, allowed only from `enquiry` or `payment_submitted` ' +
+      '(400 NOT_CANCELLABLE otherwise). NOT a refund: payment evidence is left exactly as ' +
+      'submitted and `data.refundMayBeDue` says whether a human needs to arrange one.',
   }),
 
   submitPayment: defineEndpoint<FormData, OkEnvelope, { id: ObjectId }>({

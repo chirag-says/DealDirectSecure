@@ -117,6 +117,31 @@ export interface ChangePasswordRequest {
   newPassword: string;
 }
 
+/**
+ * `DELETE /users/me`.
+ *
+ * The password is REQUIRED. `deleteAccount` refuses a body without one
+ * (400 `PASSWORD_REQUIRED`) and re-checks it against the hash
+ * (401 `INVALID_PASSWORD`) before deleting anything — this is the only
+ * confirmation that matters, since a typed phrase proves nothing about who is
+ * holding the phone.
+ */
+export interface DeleteAccountRequest {
+  password: string;
+}
+
+export interface DeleteAccountResponse {
+  success: true;
+  message: string;
+  /**
+   * Listings the cascade deliberately KEPT: a listing tied to a pending or
+   * approved deal verification, or to a live agreement, is evidence in someone
+   * else's transaction. Present only when the count is non-zero, and worth
+   * showing — the success message promises the listings are gone.
+   */
+  retainedListings?: number;
+}
+
 // --- Response bodies ------------------------------------------------------
 
 /**

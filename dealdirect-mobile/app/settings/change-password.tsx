@@ -4,11 +4,26 @@ import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
 import { ApiError } from '@/api';
+import { RequireAuth } from '@/auth';
 import { useChangePassword } from '@/features/profile';
 import { useTheme } from '@/theme';
 import { Button, Input, KeyboardAvoider, Screen, ScreenHeader, Text } from '@/ui';
 
-export default function ChangePasswordScreen() {
+export default function ChangePasswordRoute() {
+  return (
+    <RequireAuth
+      title="Change password"
+      promptTitle="Change your password"
+      promptDescription="Sign in first — changing a password needs the account it belongs to."
+      icon="key-outline"
+      backTo="/settings"
+    >
+      <ChangePasswordScreen />
+    </RequireAuth>
+  );
+}
+
+function ChangePasswordScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { changePassword, isPending, error, reset } = useChangePassword();
@@ -42,7 +57,7 @@ export default function ChangePasswordScreen() {
 
   return (
     <Screen>
-      <ScreenHeader title="Change password" />
+      <ScreenHeader title="Change password" backTo="/settings" />
 
       <KeyboardAvoider className="flex-1">
         <ScrollView contentContainerStyle={{ padding: 24 }} keyboardShouldPersistTaps="handled">

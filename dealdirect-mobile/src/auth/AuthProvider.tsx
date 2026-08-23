@@ -9,7 +9,14 @@ import React, {
   useState,
 } from 'react';
 
-import { ApiError, call, isSessionFatal, setResponseObserver, usersEndpoints } from '@/api';
+import {
+  ApiError,
+  call,
+  isSessionFatal,
+  setResponseObserver,
+  setSessionFatalObserver,
+  usersEndpoints,
+} from '@/api';
 import { clearUserScopedStorage } from '@/storage';
 import type { User } from '@/types/backend/user';
 import {
@@ -55,6 +62,33 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/**
+ * Requests this provider makes on its own behalf, and already handles.
+ *
+ * Two reasons a path is here. `/users/me` is the session probe: all three call
+ * sites below catch a dead session themselves and choose the right outcome
+ * (silent on cold start, explanatory after login), so letting the global
+ * handler fire as well would race them and overwrite the reason. `/users/login`
+ * and the registration pair answer bad credentials with a 401 carrying no code,
+ * which normalises to `session` — indistinguishable, from the transport layer,
+ * from a revoked cookie. Logout needs no teardown announcement; it is one.
+ */
+const AUTH_OWNED_PATHS = [
+  '/users/me',
+  '/users/login',
+  '/users/logout',
+  '/users/register',
+  '/users/register-direct',
+  '/users/verify-otp',
+] as const;
+
+function isAuthOwnedPath(url: string): boolean {
+  return AUTH_OWNED_PATHS.some((path) => url.startsWith(path));
+}
+
+/** Shown on the login screen after a session ends underneath the user. */
+const SESSION_ENDED_MESSAGE = 'Your session ended. Please sign in again.';
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<AuthStatus>('restoring');
@@ -63,6 +97,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Guards against several concurrent 401s each triggering their own teardown.
   const endingRef = useRef(false);
+
+  // The global handler below runs outside React's render cycle, so it cannot
+  // close over `status` without going stale. A ref is the current value.
+  const statusRef = useRef<AuthStatus>('restoring');
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   const endSession = useCallback(
     async (reason: string | null) => {
@@ -94,8 +135,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setResponseObserver(() => {
       void captureSessionCookie();
     });
-    return () => setResponseObserver(null);
-  }, []);
+
+    /**
+     * One dead-session response from anywhere in the app ends the session.
+     *
+     * Guarded twice, because the cost of a false positive is throwing out a
+     * working session. A guest cannot be logged out, so nothing happens unless
+     * the app currently believes it is authenticated — which is also what keeps
+     * a failed login (401, no code) from tearing down the screen the user is
+     * standing on. And the calls this provider makes itself are excluded, since
+     * each already handles the same failure with better information.
+     */
+    setSessionFatalObserver((error, url) => {
+      if (statusRef.current !== 'authenticated') return;
+      if (isAuthOwnedPath(url)) return;
+      void endSession(error.details.blockReason ?? SESSION_ENDED_MESSAGE);
+    });
+
+    return () => {
+      setResponseObserver(null);
+      setSessionFatalObserver(null);
+    };
+  }, [endSession]);
 
   const fetchMe = useCallback(async (): Promise<User> => {
     const response = await call(usersEndpoints.me);

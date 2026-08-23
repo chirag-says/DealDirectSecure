@@ -138,3 +138,35 @@ export interface RedeemRewardResponse {
   redemption: unknown;
   newBalance: number;
 }
+
+// --- Hubble gift-card SDK ---------------------------------------------------
+//
+// Redemption is not an API this app calls; it is a web SDK the app hosts. The
+// two types below are the entire client-facing surface — the app fetches them,
+// builds a URL, and hands the rest to Hubble. Everything else in that
+// integration (`/sso`, `/balance`, `/debit`, `/reverse`) is Hubble calling the
+// backend with a shared secret, which is why the wallet can be debited without
+// this client ever being told a balance changed.
+
+/** `GET /rewards/hubble/config`. 503 when the integration is unconfigured. */
+export interface HubbleConfigResponse {
+  success: true;
+  config: {
+    clientId: string;
+    /**
+     * A credential, and it travels in the SDK URL because that is the
+     * integration Hubble documents. Treat it as write-only: never log it,
+     * never persist it, never let it reach an error report.
+     */
+    appSecret: string;
+    /** Environment-specific. Do not hardcode — dev and prod differ. */
+    sdkBaseUrl: string;
+    theme?: string;
+  };
+}
+
+/** `GET /rewards/hubble/token`. Single-use, five-minute SSO token. */
+export interface HubbleTokenResponse {
+  success: true;
+  token: string;
+}

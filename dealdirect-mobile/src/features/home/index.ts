@@ -34,5 +34,7 @@ export { HeroSearchField, type HeroSearchFieldProps } from './components/HeroSea
 export { CityGrid, type CityGridProps } from './components/CityGrid';
 export { CollectionRail, type CollectionRailProps } from './components/CollectionRail';
 export { CtaBanner, type CtaBannerProps } from './components/CtaBanner';
-export { AboutDealDirect } from './components/AboutDealDirect';
-export { TrustStrip } from './components/TrustStrip';
+// `AboutDealDirect` ("Why DealDirect") and `TrustStrip` ("verified properties /
+// direct owners / no hidden fees") were removed from Home on 2026-08-22 and
+// deleted rather than left orphaned here. Both are in git history if the pitch
+// is ever wanted back.

@@ -33,6 +33,7 @@ export {
 export {
   useMyBookings,
   useCreateBooking,
+  useCancelBooking,
   usePaymentConfig,
   useSubmitBookingPayment,
 } from './bookings';

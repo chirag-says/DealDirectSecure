@@ -247,7 +247,9 @@ export default function ProjectDetailScreen() {
 function UnitTypeRow({ unitType, onPress }: { unitType: UnitType; onPress: () => void }) {
   const theme = useTheme();
   const price = unitType.pricing?.effectivePrice ?? unitType.pricing?.basePrice;
-  const available = unitType.inventory?.available;
+  // `availableUnits`, not `available` — the latter is not a field on this model
+  // and read `undefined` every time, so this row never showed a count.
+  const available = unitType.inventory?.availableUnits;
 
   // `Card`'s own `onPress`, not a wrapping `Pressable` — that one carried no
   // `style` callback, so the row acknowledged a touch with nothing at all.

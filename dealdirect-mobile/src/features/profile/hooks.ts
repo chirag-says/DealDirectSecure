@@ -139,11 +139,20 @@ export function useRevokeSession() {
 
 // --- Delete account ------------------------------------------------------
 
+/**
+ * Permanent account deletion.
+ *
+ * The password is not optional and never was: `deleteAccount` refuses a body
+ * without one and re-checks it against the hash before touching any data. This
+ * sent no body at all, so every deletion attempt from the app came back 400
+ * `PASSWORD_REQUIRED` — the one flow App Store review is guaranteed to exercise.
+ */
 export function useDeleteAccount() {
   const { logout } = useAuth();
 
   const mutation = useMutation({
-    mutationFn: () => call(usersEndpoints.deleteAccount),
+    mutationFn: (password: string) =>
+      call(usersEndpoints.deleteAccount, { data: { password } }),
     // The account no longer exists server-side once this resolves, so the
     // local session is torn down the same way a normal logout would.
     onSuccess: () => logout(),

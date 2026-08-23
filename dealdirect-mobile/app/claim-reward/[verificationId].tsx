@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { ApiError } from '@/api';
+import { RequireAuth, useAuth } from '@/auth';
 import { useClaimDealReward } from '@/features/rewards';
 import { useTheme } from '@/theme';
 import type { ClaimDealRewardResponse } from '@/types/backend/property';
@@ -23,9 +24,23 @@ import { Button, ErrorState, Screen, ScreenHeader, Skeleton, Text } from '@/ui';
  * `claimDealReward` is safe to call more than once — a repeat returns
  * `alreadyClaimed: true` as a 200, not an error.
  */
-export default function ClaimRewardScreen() {
+export default function ClaimRewardRoute() {
+  return (
+    <RequireAuth
+      title="Deal reward"
+      promptTitle="Sign in to claim this reward"
+      promptDescription="This reward belongs to your account. Sign in, then open the notification again to claim it — nothing is lost in the meantime."
+      icon="gift-outline"
+    >
+      <ClaimRewardScreen />
+    </RequireAuth>
+  );
+}
+
+function ClaimRewardScreen() {
   const router = useRouter();
   const theme = useTheme();
+  const { status } = useAuth();
   const { verificationId } = useLocalSearchParams<{ verificationId: string }>();
   const { claim, isPending, error } = useClaimDealReward();
 
@@ -33,6 +48,11 @@ export default function ClaimRewardScreen() {
   const attempted = useRef(false);
 
   useEffect(() => {
+    // `RequireAuth` renders its children while the session is still restoring,
+    // so claiming has to wait for a DECIDED session. Firing during the probe
+    // sends a request that is guaranteed to 401, and `attempted` would then
+    // block the real attempt a second later.
+    if (status !== 'authenticated') return;
     if (!verificationId || attempted.current) return;
     attempted.current = true;
     claim(verificationId)
@@ -40,7 +60,7 @@ export default function ClaimRewardScreen() {
       .catch(() => {
         // surfaced via `error` below
       });
-  }, [verificationId, claim]);
+  }, [status, verificationId, claim]);
 
 
   return (
@@ -48,7 +68,7 @@ export default function ClaimRewardScreen() {
       <ScreenHeader title="Deal reward" />
 
       <View className="flex-1 items-center justify-center px-xl">
-        {isPending && !result ? (
+        {(isPending || status === 'restoring') && !result ? (
           <View className="w-full items-center">
             <Skeleton width={72} height={72} radius={36} />
             <Skeleton width={160} height={20} className="mt-lg" />

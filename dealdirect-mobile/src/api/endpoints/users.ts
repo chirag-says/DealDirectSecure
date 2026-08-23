@@ -9,6 +9,8 @@
 import type {
   AuthResponse,
   ChangePasswordRequest,
+  DeleteAccountRequest,
+  DeleteAccountResponse,
   ForgotPasswordRequest,
   LoginRequest,
   ProfileResponse,
@@ -145,12 +147,16 @@ export const usersEndpoints = {
     envelope: 'ok',
   }),
 
-  deleteAccount: defineEndpoint<void, OkEnvelope>({
+  deleteAccount: defineEndpoint<DeleteAccountRequest, DeleteAccountResponse>({
     method: 'DELETE',
     path: '/users/me',
     auth: 'user',
-    envelope: 'ok',
-    note: 'Required by App Store policy to be reachable in-app. Already implemented backend-side.',
+    envelope: 'keyed',
+    note:
+      'Required by App Store policy to be reachable in-app. Takes a BODY on a DELETE: ' +
+      '`{ password }` is mandatory (400 PASSWORD_REQUIRED without it, 401 INVALID_PASSWORD ' +
+      'if wrong). Cascades across 12 collections; listings holding deal evidence are kept ' +
+      'and counted back as `retainedListings`.',
   }),
 
   sessions: defineEndpoint<void, SessionsResponse>({

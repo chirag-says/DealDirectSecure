@@ -27,3 +27,4 @@ export { AuthShell, type AuthShellProps } from './components/AuthShell';
 export { AuthResult, type AuthResultProps, type AuthResultTone } from './components/AuthResult';
 export { OwnerOnly, type OwnerOnlyProps } from './components/OwnerOnly';
 export { SignInPrompt, type SignInPromptProps } from './components/SignInPrompt';
+export { RequireAuth, type RequireAuthProps } from './components/RequireAuth';

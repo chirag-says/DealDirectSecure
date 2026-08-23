@@ -1,7 +1,7 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
 
 import { API_URL } from '@/config/env';
-import { normalizeError } from './errors';
+import { type ApiError, isSessionFatal, normalizeError } from './errors';
 import { sessionHeaders } from './userAgent';
 
 /**
@@ -50,6 +50,27 @@ export function setResponseObserver(observer: (() => void) | null): void {
   onResponse = observer;
 }
 
+/**
+ * Called when ANY request fails with a dead session.
+ *
+ * Without this, a session revoked mid-run (a password change on another device,
+ * a fingerprint revocation, an admin block) was only noticed by the four calls
+ * the auth layer makes itself. Every other screen showed a generic error while
+ * the app went on rendering as signed-in — the user retried, got the same
+ * error, and had no way to learn that signing in again was the fix.
+ *
+ * This reports; it does not decide. The auth layer owns the teardown, because
+ * it is the only place that knows whether the app currently believes it is
+ * authenticated and which requests it makes on its own behalf.
+ */
+let onSessionFatal: ((error: ApiError, url: string) => void) | null = null;
+
+export function setSessionFatalObserver(
+  observer: ((error: ApiError, url: string) => void) | null
+): void {
+  onSessionFatal = observer;
+}
+
 function attachInterceptors(instance: AxiosInstance): AxiosInstance {
   instance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     // The User-Agent here is load-bearing for session integrity: the backend
@@ -71,7 +92,11 @@ function attachInterceptors(instance: AxiosInstance): AxiosInstance {
       // A 401 may still have cleared cookies server-side, so the observer runs
       // on failures too.
       onResponse?.();
-      return Promise.reject(normalizeError(error));
+      const normalized = normalizeError(error);
+      if (isSessionFatal(normalized)) {
+        onSessionFatal?.(normalized, error?.config?.url ?? '');
+      }
+      return Promise.reject(normalized);
     }
   );
 

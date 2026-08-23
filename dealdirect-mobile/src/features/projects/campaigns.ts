@@ -1,8 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { call, campaignsEndpoints, qk } from '@/api';
+import { GROUP_BUY_ENABLED } from '@/config/features';
 import type { ObjectId } from '@/types/backend/common';
 
+/**
+ * Group buy is held (see `config/features.ts`). The flag is applied here, at
+ * the data layer, rather than only in the screens: a surface that never asks
+ * for campaigns cannot render one by accident, and the request is not spent.
+ */
 export function useCampaignsForUnitType(unitTypeId: ObjectId) {
   const query = useQuery({
     queryKey: qk.campaignsByUnitType(unitTypeId),
@@ -13,7 +19,7 @@ export function useCampaignsForUnitType(unitTypeId: ObjectId) {
       });
       return response.data;
     },
-    enabled: Boolean(unitTypeId),
+    enabled: GROUP_BUY_ENABLED && Boolean(unitTypeId),
     staleTime: 60_000,
   });
 

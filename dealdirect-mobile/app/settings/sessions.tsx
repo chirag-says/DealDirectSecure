@@ -1,15 +1,30 @@
 import { Alert, FlatList, Pressable, View } from 'react-native';
 
+import { RequireAuth } from '@/auth';
 import { useRevokeSession, useSessions } from '@/features/profile';
 import type { UserSessionSummary } from '@/types/backend/user';
 import { Badge, Card, EmptyState, ErrorState, Screen, ScreenHeader, Skeleton, Text, useToast } from '@/ui';
+
+export default function SessionsRoute() {
+  return (
+    <RequireAuth
+      title="Active devices"
+      promptTitle="Your active devices"
+      promptDescription="Sign in to see everywhere your account is currently signed in, and to sign out a device you no longer use."
+      icon="phone-portrait-outline"
+      backTo="/settings"
+    >
+      <SessionsScreen />
+    </RequireAuth>
+  );
+}
 
 /**
  * Active devices. `GET /users/sessions` returns every session that would
  * otherwise be silently trusted, so this is also the recovery path for "I
  * think someone else is signed into my account."
  */
-export default function SessionsScreen() {
+function SessionsScreen() {
   const { sessions, isLoading, isRefreshing, error, refresh } = useSessions();
   const { revoke, pendingId } = useRevokeSession();
   const toast = useToast();
@@ -34,7 +49,7 @@ export default function SessionsScreen() {
 
   return (
     <Screen>
-      <ScreenHeader title="Active devices" />
+      <ScreenHeader title="Active devices" backTo="/settings" />
 
       {isLoading ? (
         <View className="px-base">

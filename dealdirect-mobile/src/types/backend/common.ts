@@ -66,7 +66,24 @@ export type BackendErrorCode =
   | 'AUTH_RATE_LIMITED'
   | 'SEARCH_RATE_LIMITED'
   | 'TRANSACTION_RATE_LIMITED'
-  | 'WEBHOOK_RATE_LIMITED';
+  | 'WEBHOOK_RATE_LIMITED'
+  // Account deletion (controllers/userController.js). INVALID_PASSWORD arrives
+  // with a 401, which is the ONE 401 on this API that does not mean the session
+  // is over — see the note on it in api/errors.ts.
+  | 'PASSWORD_REQUIRED'
+  | 'INVALID_PASSWORD'
+  // Bookings and inventory (controllers/bookingController.js). Every one of
+  // these is a refusal the buyer can act on, so each needs its own copy and its
+  // own next step rather than a generic error line.
+  | 'NO_INVENTORY'
+  | 'BOOKING_NOT_CONFIGURED'
+  | 'DUPLICATE_ENQUIRY'
+  | 'NOT_CANCELLABLE'
+  // Properties (controllers/propertyController.js)
+  | 'LEGACY_BUILDER_LISTING'
+  | 'DELETE_BLOCKED_DEPENDENTS'
+  // Group buy (controllers/campaignController.js)
+  | 'CAMPAIGN_MEMBER_PAYMENT_PROTECTED';
 
 /**
  * The error body. Note that `message` is a STRING here. On a small number of

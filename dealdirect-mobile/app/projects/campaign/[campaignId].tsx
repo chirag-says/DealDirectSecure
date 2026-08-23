@@ -5,6 +5,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Alert, Pressable, ScrollView, View } from 'react-native';
 
 import { ApiError } from '@/api';
+import { GROUP_BUY_ENABLED } from '@/config/features';
 import { optionalNativeModule } from '@/config/optionalNative';
 import {
   useCampaignDetail,
@@ -185,6 +186,26 @@ export default function CampaignScreen() {
           ) : null}
         </Card>
 
+        {!GROUP_BUY_ENABLED ? (
+          /*
+            The hold, stated plainly.
+
+            An empty screen would read as a loading failure, and a disabled
+            "Join" button would read as "full" or "not for you". Neither is
+            true: the group exists and the offer is real, it just cannot be
+            honoured yet. Saying so is the only version of this that does not
+            mislead. No action is offered because the one that mattered — pay a
+            token — is the one that cannot be undone.
+          */
+          <Card className="mt-base">
+            <Text variant="bodyEmphasis">Not open for joining yet</Text>
+            <Text variant="footnote" tone="secondary" className="mt-xs">
+              Group buying is being finalised. You can see how this group is doing, but
+              joining and token payments are closed until the discount can be applied to a
+              booking automatically. Nothing you do here would be honoured before then.
+            </Text>
+          </Card>
+        ) : (
         <Card className="mt-base">
           <Text variant="bodyEmphasis">Joining this group</Text>
           <Text variant="footnote" tone="secondary" className="mt-xs mb-base">
@@ -238,29 +259,32 @@ export default function CampaignScreen() {
             </Pressable>
           ) : null}
         </Card>
+        )}
 
-        <Card className="mt-base">
-          <Text variant="bodyEmphasis">Payment proof</Text>
-          <Text variant="footnote" tone="secondary" className="mt-xs mb-base">
-            Already joined? Upload a screenshot of your token payment.
-          </Text>
-
-          {uploadError instanceof ApiError ? (
-            <Text variant="footnote" tone="danger" className="mb-base">
-              {uploadError.message}
+        {GROUP_BUY_ENABLED ? (
+          <Card className="mt-base">
+            <Text variant="bodyEmphasis">Payment proof</Text>
+            <Text variant="footnote" tone="secondary" className="mt-xs mb-base">
+              Already joined? Upload a screenshot of your token payment.
             </Text>
-          ) : null}
-          {proofSubmitted ? (
-            <Badge label="Submitted" tone="success" className="mb-base" />
-          ) : null}
 
-          <Button
-            label="Upload payment proof"
-            variant="secondary"
-            loading={isUploading}
-            onPress={() => void handleUploadProof()}
-          />
-        </Card>
+            {uploadError instanceof ApiError ? (
+              <Text variant="footnote" tone="danger" className="mb-base">
+                {uploadError.message}
+              </Text>
+            ) : null}
+            {proofSubmitted ? (
+              <Badge label="Submitted" tone="success" className="mb-base" />
+            ) : null}
+
+            <Button
+              label="Upload payment proof"
+              variant="secondary"
+              loading={isUploading}
+              onPress={() => void handleUploadProof()}
+            />
+          </Card>
+        ) : null}
       </ScrollView>
     </Screen>
   );

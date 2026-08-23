@@ -78,6 +78,10 @@ const config = {
     // that needs an FCM/APNs device-token pipeline the backend does not have,
     // tracked separately as a change request. See docs/HANDOFF.md.
     'expo-notifications',
+    // UPI app handoff for the Hubble rewards WebView. Declares the iOS query
+    // schemes and the Android 11+ <queries> block — without them the OS hides
+    // other apps from this one and a payment silently fails to open anything.
+    './plugins/withUpiQueries',
   ],
 
   experiments: {

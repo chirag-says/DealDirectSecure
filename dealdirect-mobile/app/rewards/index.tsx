@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Linking, Share, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Share, View } from 'react-native';
 
 import { useAuth, SignInPrompt } from '@/auth';
 import { useReferral, useTransactions, useWallet } from '@/features/rewards';
@@ -175,18 +176,15 @@ function TierProgressCard({ progress }: { progress: NextTierProgress }) {
  * which is what shipped before, once the backend routes were removed.
  */
 function RedeemCard() {
+  const router = useRouter();
+
   return (
     <Card className="mt-base">
       <Text variant="bodyEmphasis">Redeem your points</Text>
       <Text variant="footnote" tone="secondary" className="mb-base mt-xs">
-        Redemption happens on the DealDirect website, where the full rewards
-        catalogue lives.
+        Spend your points on gift cards and vouchers, without leaving the app.
       </Text>
-      <Button
-        label="Open rewards on the web"
-        variant="secondary"
-        onPress={() => void Linking.openURL('https://dealdirect.in/rewards/dashboard')}
-      />
+      <Button label="Browse rewards" onPress={() => router.push('/rewards/redeem')} />
     </Card>
   );
 }

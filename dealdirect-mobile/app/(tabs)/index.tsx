@@ -5,7 +5,6 @@ import { RefreshControl, View } from 'react-native';
 
 import { qk } from '@/api';
 import {
-  AboutDealDirect,
   CityGrid,
   CollectionRail,
   CtaBanner,
@@ -13,7 +12,6 @@ import {
   Hero,
   RecentlyViewed,
   Section,
-  TrustStrip,
   findCollection,
   usePopularListings,
 } from '@/features/home';
@@ -22,7 +20,7 @@ import { PropertyRail, type ListingIntent } from '@/features/properties';
 import { ProjectRail, useRecentProjects } from '@/features/projects';
 import { ToolsRow } from '@/features/tools';
 import { Reveal, RevealScrollView } from '@/lib';
-import { spacing, useTheme } from '@/theme';
+import { tabBarClearance, useTheme } from '@/theme';
 import type { PropertySearchParams } from '@/types/backend/property';
 
 /**
@@ -31,13 +29,15 @@ import type { PropertySearchParams } from '@/types/backend/property';
  *   Hero              white header, search, "Find Your Dream Home", Buy/Rent/Post
  *   Recently viewed   replayed from disk, no request, absent on a first session
  *   Popular Listings  ranked by view count
- *   Trust strip       three claims about how the product works
  *   Builder Projects  newest builder developments
+ *   Budget tools      affordability and EMI, straight after the priciest inventory
  *   Collection rails  three of fifteen, each gated on live counts
- *   Budget tools      affordability and EMI
- *   Why DealDirect    the pitch, once, as three numbered lines
  *   Explore by City   live counts
  *   CTA
+ *
+ * The trust strip ("verified properties / direct owners / no hidden fees") and
+ * the "Why DealDirect" pitch were both removed on 2026-08-22. Home now carries
+ * inventory and the tools to price it, and nothing that only asserts something.
  *
  * Nothing here paginates and nothing here filters. Every affordance routes to
  * the one canonical results screen with a filter prefilled, so the app has a
@@ -136,7 +136,11 @@ export default function HomeScreen() {
   return (
     <View className="flex-1 bg-background">
         <RevealScrollView
-          contentContainerStyle={{ paddingBottom: spacing['2xl'] }}
+          // The dock floats over this scroll view rather than sitting below it,
+          // so the last section has to clear it or the CTA ends up behind the
+          // pill. Every other tab screen already pays this; Home was the one
+          // that did not, back when the dock still reserved its own strip.
+          contentContainerStyle={{ paddingBottom: tabBarClearance }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -175,14 +179,26 @@ export default function HomeScreen() {
             />
           </Reveal>
 
-          <Reveal placeholder={<SectionPlaceholder height={96} />}>
-            <View className="pt-2xl">
-              <TrustStrip />
-            </View>
-          </Reveal>
-
           <Reveal placeholder={<SectionPlaceholder />}>
             <BuilderProjects onSelectProject={openProject} onViewAll={() => router.push('/projects')} />
+          </Reveal>
+
+          {/*
+            The research tools, directly under the builder projects.
+
+            Builder inventory is the most expensive thing on this screen and the
+            most likely to be out of a given buyer's reach, so the question it
+            raises is "what can I actually afford?". Answering that in the next
+            section rather than four rails later is the whole point of the
+            placement. `ToolsRow` explains the count.
+          */}
+          <Reveal placeholder={<SectionPlaceholder height={220} />}>
+            <Section
+              title="Work out your budget"
+              subtitle="Before you fall for something you cannot buy"
+            >
+              <ToolsRow onOpen={(route) => router.push(route)} />
+            </Section>
           </Reveal>
 
           {/*
@@ -204,26 +220,6 @@ export default function HomeScreen() {
               </Reveal>
             );
           })}
-
-          {/*
-            The research tools, between the inventory and the pitch. Housing's
-            home carries six of these; we carry the two that have something
-            behind them. `ToolsRow` explains both the placement and the count.
-          */}
-          <Reveal placeholder={<SectionPlaceholder height={220} />}>
-            <Section
-              title="Work out your budget"
-              subtitle="Before you fall for something you cannot buy"
-            >
-              <ToolsRow onOpen={(route) => router.push(route)} />
-            </Section>
-          </Reveal>
-
-          <Reveal placeholder={<SectionPlaceholder height={280} />}>
-            <View className="pt-3xl">
-              <AboutDealDirect />
-            </View>
-          </Reveal>
 
           <Reveal placeholder={<SectionPlaceholder height={300} />}>
             <Section title="Explore by City" subtitle="Every count below is live inventory">

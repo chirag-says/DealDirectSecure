@@ -75,8 +75,22 @@ const SESSION_FATAL_CODES: ReadonlySet<string> = new Set<BackendErrorCode>([
   'ACCOUNT_DEACTIVATED',
 ]);
 
+/**
+ * The exceptions to "401 means the session is over".
+ *
+ * `DELETE /users/me` re-checks the account password inside an ALREADY
+ * authenticated request and answers a wrong one with 401 `INVALID_PASSWORD`.
+ * Read as a dead session that would log the user out for a typo — and since the
+ * teardown clears storage and routes to login, the mistake would be invisible
+ * and unrecoverable in one step. It is a validation failure on a field.
+ */
+const SESSION_SAFE_401_CODES: ReadonlySet<string> = new Set<BackendErrorCode>([
+  'INVALID_PASSWORD',
+]);
+
 export function isSessionFatal(error: unknown): boolean {
   if (!(error instanceof ApiError)) return false;
+  if (error.code && SESSION_SAFE_401_CODES.has(error.code)) return false;
   if (error.code && SESSION_FATAL_CODES.has(error.code)) return true;
   return error.kind === 'session';
 }
@@ -116,7 +130,11 @@ function describeTarget(config: { baseURL?: string; url?: string } | undefined):
 }
 
 function kindForStatus(status: number, code: BackendErrorCode | undefined): ApiErrorKind {
-  if (status === 401) return 'session';
+  if (status === 401) {
+    // Almost always a dead session. The one exception is a password re-check
+    // inside an authenticated request — see SESSION_SAFE_401_CODES.
+    return code && SESSION_SAFE_401_CODES.has(code) ? 'validation' : 'session';
+  }
   if (status === 403) {
     // 403 is overloaded: a blocked or deactivated account is a session failure,
     // while a role or ownership rejection is a permission failure the user
