@@ -77,7 +77,7 @@ export default function ActivityScreen() {
       </View>
 
       {segment === 'listings' ? (
-        <InterestedList onOpenSearch={() => router.push('/(tabs)/properties')} />
+        <InterestedList onOpenSearch={() => router.push('/(tabs)')} />
       ) : (
         <SearchesList />
       )}
@@ -394,7 +394,7 @@ function SearchesList() {
       // rather than a no-op, so it browses everything.
       if (Object.keys(params).length === 0) params.browse = '1';
 
-      router.push({ pathname: '/(tabs)/properties', params });
+      router.push({ pathname: '/(tabs)', params });
     },
     [router]
   );
@@ -440,7 +440,7 @@ function SearchesList() {
         title="No saved searches"
         description="Run a search, then save it to be alerted when new listings match."
         actionLabel="Search listings"
-        onAction={() => router.push('/(tabs)/properties')}
+        onAction={() => router.push('/(tabs)')}
       />
     );
   }

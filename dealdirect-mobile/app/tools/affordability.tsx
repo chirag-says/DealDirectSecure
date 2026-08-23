@@ -243,7 +243,7 @@ export default function AffordabilityScreen() {
               align="center"
               onPress={() =>
                 router.push({
-                  pathname: '/properties',
+                  pathname: '/(tabs)',
                   params: { priceBand: band.id, listingType: 'sale' },
                 })
               }

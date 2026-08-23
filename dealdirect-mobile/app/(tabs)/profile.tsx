@@ -236,7 +236,7 @@ function PublicSections() {
         <ListRow
           icon="search-outline"
           label="Browse properties"
-          onPress={() => router.push('/(tabs)/properties')}
+          onPress={() => router.push('/(tabs)')}
         />
         <ListRow
           icon="business-outline"

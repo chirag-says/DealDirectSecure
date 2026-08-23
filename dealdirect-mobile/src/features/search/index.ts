@@ -62,3 +62,4 @@ export {
 } from './components/RelatedProperties';
 export { CompareBar, type CompareBarProps } from './components/CompareBar';
 export { CompareSheet, type CompareSheetProps } from './components/CompareSheet';
+export { SearchScreen } from './components/SearchScreen';
