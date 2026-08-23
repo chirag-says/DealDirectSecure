@@ -43,15 +43,21 @@ import {
  *
  * It used to be a full-height sign-in prompt and nothing else, on the grounds
  * that "nothing here has a public reading". That was wrong, and checkably so:
- * of the eight destinations this screen indexes, five need no account at all.
- * Browsing listings, builder projects, the blog, both calculators and the help
- * page all work signed out.
+ * builder projects, both calculators and the help page all work signed out.
  *
- * So a guest gets the prompt at the top and then the half of the index that
+ * So a guest gets the prompt at the top and then the half of the screen that
  * works for them, rather than a dead end covering destinations that were
  * available the whole time. `PublicSections` is the shared half; both branches
  * render the same component, so a route added there cannot appear for one kind
  * of user and not the other.
+ *
+ * ---------------------------------------------------------------------------
+ * IT IS NO LONGER THE APP'S INDEX — 2026-08-24
+ *
+ * Profile used to carry a link to every destination in the product, because it
+ * was the only screen that could. Search, Activity and Updates now carry their
+ * own, so the rows that repeated them are gone; see `PublicSections` for what
+ * was kept and the reachability check behind each one.
  */
 export default function ProfileScreen() {
   const router = useRouter();
@@ -148,43 +154,15 @@ export default function ProfileScreen() {
 
         {isOwner ? <OwnerCard /> : <UpgradeCard />}
 
-        {/*
-          EVERY DESTINATION IN THE APP, GROUPED BY WHOSE THING IT IS.
-          Profile is the only complete index of the app — Home shows discovery,
-          the dock shows four tabs, and everything else is reachable from here
-          or nowhere. So the test for this list is coverage, not brevity.
+        <PublicSections />
 
-          Three groups: things that are YOURS, things that are the PRODUCT,
-          then the account itself.
-        */}
-        <ListGroup title="Your activity" className="mt-xl">
-          <ListRow
-            icon="heart-outline"
-            label="Interested listings"
-            detail="Properties you have enquired about"
-            onPress={() => router.push('/(tabs)/saved')}
-          />
-          <ListRow
-            icon="notifications-outline"
-            label="Notifications"
-            onPress={() => router.push('/notifications')}
-          />
+        <ListGroup title="Account" className="mt-xl">
           <ListRow
             icon="gift-outline"
             label="Rewards"
             detail="Points, tier and referrals"
             onPress={() => router.push('/rewards')}
           />
-          <ListRow
-            icon="calendar-outline"
-            label="My bookings"
-            onPress={() => router.push('/projects/bookings')}
-          />
-        </ListGroup>
-
-        <PublicSections />
-
-        <ListGroup title="Account" className="mt-xl">
           <ListRow
             icon="settings-outline"
             label="Settings"
@@ -211,21 +189,40 @@ export default function ProfileScreen() {
 }
 
 /**
- * Everything on this screen that works without an account.
+ * The destinations that work without an account.
  *
  * Rendered by BOTH branches, and that is the point rather than a convenience:
- * the previous version listed these only for signed-in users, so a guest was
- * shown a wall in front of five destinations that were open the whole time.
- * Sharing one component means a route added here cannot go missing for one
- * kind of user.
+ * an earlier version listed these only for signed-in users, so a guest was
+ * shown a wall in front of destinations that were open the whole time. Sharing
+ * one component means a route added here cannot go missing for one kind of user.
  *
- * The calculators get their own group rather than folding into "Explore".
- * Browsing listings and working out a budget are different activities, and a
- * row reading "What can I afford?" under a heading that otherwise means "look
- * at things" is a category error the reader has to see past. They are listed
- * here as well as on Home because Home's copy sits behind `Reveal` most of a
- * scroll down a long screen — right for finding them once, useless for going
- * back to one.
+ * ---------------------------------------------------------------------------
+ * THIS USED TO BE THE APP'S SITEMAP — cut back 2026-08-24
+ *
+ * It carried three groups and a comment declaring that "the test for this list
+ * is coverage, not brevity", because Profile was the only complete index of the
+ * app. That is a website's footer, and it was the right structure for a screen
+ * whose siblings were a landing page and a listings section.
+ *
+ * With Search, Activity and Updates as tabs, most of it was duplication:
+ * "Browse properties" is the first tab, "Notifications" is the fourth,
+ * "Interested listings" and "My bookings" are two segments of Activity. Those
+ * rows are gone. A row that repeats a tab is not navigation, it is noise that
+ * makes the account screen longer.
+ *
+ * What stays is what is genuinely reachable from nowhere else. Every one was
+ * checked before the deletion rather than after:
+ *
+ *   Builder projects   only entry point in the app; the rail that used to
+ *                      carry it went with Home.
+ *   The calculators    inline EMI exists on a listing, but affordability is a
+ *                      pre-search question with no home of its own.
+ *   Help & support     nothing else links to it.
+ *   Appearance         a device preference, and the one setting a guest can
+ *                      reach.
+ *
+ * Blog is deliberately NOT here any more — see `support.tsx` and the content
+ * decision it records. The routes stay on disk for deep links.
  */
 function PublicSections() {
   const router = useRouter();
@@ -234,18 +231,19 @@ function PublicSections() {
     <>
       <ListGroup title="Explore" className="mt-xl">
         <ListRow
-          icon="search-outline"
-          label="Browse properties"
-          onPress={() => router.push('/(tabs)')}
-        />
-        <ListRow
           icon="business-outline"
           label="Builder projects"
+          detail="New developments, direct from the builder"
           onPress={() => router.push('/projects')}
         />
-        <ListRow icon="newspaper-outline" label="Blog" onPress={() => router.push('/blog')} />
       </ListGroup>
 
+      {/*
+        The calculators get their own group rather than folding into "Explore".
+        Browsing listings and working out a budget are different activities, and
+        a row reading "What can I afford?" under a heading that otherwise means
+        "look at things" is a category error the reader has to see past.
+      */}
       <ListGroup title="Plan your purchase" className="mt-xl">
         <ListRow
           icon="wallet-outline"
@@ -263,7 +261,7 @@ function PublicSections() {
       <ListGroup title="Help" className="mt-xl">
         <ListRow
           icon="help-circle-outline"
-          label="Help & about"
+          label="Help & support"
           onPress={() => router.push('/support')}
         />
       </ListGroup>

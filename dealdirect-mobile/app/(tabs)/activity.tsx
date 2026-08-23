@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { FlashList } from '@shopify/flash-list';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 
@@ -87,7 +87,20 @@ type Segment = 'shortlist' | 'enquiries' | 'searches' | 'bookings';
 
 export default function ActivityScreen() {
   const router = useRouter();
-  const [segment, setSegment] = useState<Segment>('shortlist');
+
+  /**
+   * Which segment to open on.
+   *
+   * Set by callers that know what they are sending the user to look at — a
+   * saved-search notification means the Searches segment, not whichever one
+   * happens to be first. Validated against the union rather than cast, so a
+   * stale or hand-written link lands on the default instead of rendering
+   * nothing.
+   */
+  const params = useLocalSearchParams<{ segment?: string }>();
+  const requested = SEGMENTS.find((option) => option.value === params.segment)?.value;
+
+  const [segment, setSegment] = useState<Segment>(requested ?? 'shortlist');
 
   return (
     <Screen edges={['top']}>

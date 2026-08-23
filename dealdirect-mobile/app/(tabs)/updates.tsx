@@ -66,8 +66,9 @@ export default function UpdatesScreen() {
       if (target.kind === 'property') router.push(`/property/${target.id}`);
       else if (target.kind === 'leads') router.push('/owner/leads');
       else if (target.kind === 'dealReward') router.push(`/claim-reward/${target.verificationId}`);
-      // A saved-search match: the search that matched lives on Activity.
-      else router.push('/(tabs)/activity');
+      // A saved-search match. Landing on Activity's default segment would make
+      // the user find the search themselves, so the segment is named.
+      else router.push({ pathname: '/(tabs)/activity', params: { segment: 'searches' } });
     },
     [markRead, router]
   );
