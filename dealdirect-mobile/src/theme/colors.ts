@@ -23,6 +23,11 @@ export const palette = {
   red700: '#B91C1C',
   red500: '#EF4444',
   red100: '#FEE2E2',
+  // The DealDirect brand mark red. Kept distinct from the red600/red500 that
+  // `danger` also draws from: the brand and an alert must be free to move
+  // independently, and they are two different reds — a brighter, more saturated
+  // brand against a deeper alert.
+  redBrand: '#F33F40',
 
   green600: '#16A34A',
   green500: '#22C55E',
@@ -169,7 +174,7 @@ export const lightColors: ColorScheme = {
   accentPressed: palette.blue700,
   accentMuted: palette.blue100,
 
-  brand: palette.red600,
+  brand: palette.redBrand,
   brandMuted: palette.red100,
 
   success: palette.green600,
@@ -199,7 +204,7 @@ export const darkColors: ColorScheme = {
   accentPressed: palette.blue600,
   accentMuted: palette.blue950,
 
-  brand: palette.red500,
+  brand: palette.redBrand,
   brandMuted: '#3B0A0A',
 
   success: palette.green500,
