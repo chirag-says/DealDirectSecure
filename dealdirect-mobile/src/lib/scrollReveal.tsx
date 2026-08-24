@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
-import Animated, {
+import {
   runOnJS,
   useAnimatedReaction,
   useAnimatedScrollHandler,
@@ -63,8 +63,37 @@ interface ScrollRevealValue {
 const ScrollRevealContext = createContext<ScrollRevealValue | null>(null);
 
 /**
- * Wraps the scrolling surface. Use the returned handler and layout callback on
- * an `Animated.ScrollView`; `RevealScrollView` below does that for you.
+ * Supplies a reveal host to a scroll view a screen builds itself.
+ *
+ * `RevealScrollView` covers the common case. This exists for the screen that
+ * also needs the scroll offset for its own chrome — Home drives a sticky
+ * header from it — because that header renders OUTSIDE the scroll view and so
+ * cannot read the context from within it. Composing here means there is still
+ * exactly one scroll listener on the UI thread rather than a second one added
+ * alongside.
+ */
+export function ScrollRevealProvider({
+  value,
+  children,
+}: {
+  value: ScrollRevealValue;
+  children: React.ReactNode;
+}) {
+  return <ScrollRevealContext.Provider value={value}>{children}</ScrollRevealContext.Provider>;
+}
+
+/**
+ * Wraps the scrolling surface.
+ *
+ * Put the returned handler and layout callback on an `Animated.ScrollView` and
+ * the context on a `ScrollRevealProvider` around it. Five lines, and it hands
+ * the screen the scroll offset — which Home needs for its sticky header, and
+ * which a wrapper component could only have hidden.
+ *
+ * There WAS a `RevealScrollView` that did this in one component. It was
+ * deleted on 2026-08-24 when Home, its only consumer, outgrew it: the header
+ * renders outside the scroll view and so cannot read the context from within
+ * it. It is in git history if a screen ever wants the simple path back.
  */
 export function useScrollRevealHost() {
   const offset = useSharedValue(0);
@@ -86,38 +115,7 @@ export function useScrollRevealHost() {
   return { context, onScroll, onLayout };
 }
 
-export interface RevealScrollViewProps
-  extends React.ComponentProps<typeof Animated.ScrollView> {
-  children: React.ReactNode;
-}
-
-/**
- * A scroll view whose direct children can use `Reveal`.
- *
- * The "direct children" part is a real constraint, not a style preference:
- * `Reveal` reads its own `onLayout` y, which is measured against its immediate
- * parent. Nest one inside another `View` and its y is relative to that view,
- * the comparison against the scroll offset is meaningless, and the section
- * either loads immediately or never. Sections go at the top level of this
- * scroll view.
- */
-export function RevealScrollView({ children, ...rest }: RevealScrollViewProps) {
-  const { context, onScroll, onLayout } = useScrollRevealHost();
-
-  return (
-    <ScrollRevealContext.Provider value={context}>
-      <Animated.ScrollView
-        onScroll={onScroll}
-        onLayout={onLayout}
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={false}
-        {...rest}
-      >
-        {children}
-      </Animated.ScrollView>
-    </ScrollRevealContext.Provider>
-  );
-}
+export type { ScrollRevealValue };
 
 export interface RevealProps {
   children: React.ReactNode;

@@ -38,6 +38,10 @@ export { BrowseRow, PopularSearches, type BrowseRowProps } from './components/Br
 export { CityGrid, type CityGridProps } from './components/CityGrid';
 export { HomeGreeting, type HomeGreetingProps } from './components/HomeGreeting';
 export { HomeHero, type HomeHeroProps } from './components/HomeHero';
+export {
+  HomeStickyHeader,
+  type HomeStickyHeaderProps,
+} from './components/HomeStickyHeader';
 export { CityPickerSheet, type CityPickerSheetProps } from './components/CityPickerSheet';
 export { setSelectedCity, useSelectedCity } from './city';
 export {

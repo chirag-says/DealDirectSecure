@@ -1,7 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, View } from 'react-native';
+import { RefreshControl, View, type LayoutChangeEvent } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { qk } from '@/api';
 import { useAuth } from '@/auth';
@@ -12,6 +13,7 @@ import {
   CollectionRail,
   HOME_COLLECTION_IDS,
   HomeHero,
+  HomeStickyHeader,
   ListingCard,
   RecentlyViewed,
   Section,
@@ -33,7 +35,7 @@ import { useSavedSearches } from '@/features/savedSearches';
 import { ResumeSearchCard, clearResumableSearch, useResumableSearch } from '@/features/search';
 import { useShortlist } from '@/features/shortlist';
 import { ToolsRow } from '@/features/tools';
-import { Reveal, RevealScrollView } from '@/lib';
+import { Reveal, ScrollRevealProvider, useScrollRevealHost } from '@/lib';
 import { screenPadding, spacing, tabBarClearance, useTheme } from '@/theme';
 import type { AppNotification } from '@/types/backend/notification';
 import type { PropertySearchParams } from '@/types/backend/property';
@@ -88,6 +90,30 @@ export default function HomeScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
+
+  /**
+   * The scroll host.
+   *
+   * Home needs the offset for two things — the reveal system below the fold,
+   * and the sticky header above it — and the header renders OUTSIDE the scroll
+   * view, so it cannot read the context from within. Owning the host means
+   * both are driven by the SAME shared value and there is still exactly one
+   * scroll listener on the UI thread.
+   */
+  const { context: scrollHost, onScroll, onLayout } = useScrollRevealHost();
+
+  /**
+   * The hero's real height, which is the handover point for the sticky header.
+   *
+   * Measured rather than assumed: the hero grows with the user's text size and
+   * with the length of the selected city, so a constant would hand over early
+   * on a large-text device and leave a bare gap on a small one.
+   */
+  const [heroHeight, setHeroHeight] = useState(0);
+  const onHeroLayout = useCallback(
+    (event: LayoutChangeEvent) => setHeroHeight(event.nativeEvent.layout.height),
+    []
+  );
 
   const city = useSelectedCity();
 
@@ -230,22 +256,34 @@ export default function HomeScreen() {
     // The screen's own background is the brand colour so the safe area above
     // the hero is filled by the hero rather than by a white strip; the scroll
     // content paints the page colour back over everything below it.
-    <Screen edges={['top']} style={{ backgroundColor: theme.colors.brand }}>
-      <RevealScrollView
-        contentContainerStyle={{
-          paddingBottom: tabBarClearance,
-          backgroundColor: theme.colors.background,
-        }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={theme.colors.brand}
-            colors={[theme.colors.brand]}
-          />
-        }
-      >
-        <HomeHero
+    // `edges` is empty and the hero paints its own safe area, because the
+    // sticky header has to be able to sit UNDER the status bar. A `Screen` that
+    // insets the top would leave a strip of page colour above a bar whose whole
+    // purpose is to be the top of the screen.
+    <Screen edges={[]} style={{ backgroundColor: theme.colors.brand }}>
+      <ScrollRevealProvider value={scrollHost}>
+        <Animated.ScrollView
+          onScroll={onScroll}
+          onLayout={onLayout}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingBottom: tabBarClearance,
+            backgroundColor: theme.colors.background,
+          }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.colors.brand}
+              colors={[theme.colors.brand]}
+              // Clear of the sticky header, or the spinner appears behind it.
+              progressViewOffset={56}
+            />
+          }
+        >
+          <View onLayout={onHeroLayout}>
+            <HomeHero
           name={user?.name}
           avatarUri={user?.profileImage}
           city={city}
@@ -257,8 +295,9 @@ export default function HomeScreen() {
           onIntent={(intent) =>
             intent === 'projects' ? router.push('/projects') : openSearch({ listingType: intent })
           }
-          onListProperty={openListing}
-        />
+            onListProperty={openListing}
+            />
+          </View>
 
         {/* The user's own things, directly under the hero and above any
             inventory: a returning user's answer is far more often something
@@ -347,8 +386,23 @@ export default function HomeScreen() {
           <Section title="Explore by city" subtitle="Every count below is live inventory">
             <CityGrid onSelect={(search) => openSearch({ search })} />
           </Section>
-        </Reveal>
-      </RevealScrollView>
+          </Reveal>
+        </Animated.ScrollView>
+      </ScrollRevealProvider>
+
+      {/* Rendered AFTER the scroll view so it paints above it, and outside the
+          provider because it is chrome rather than revealable content. */}
+      <HomeStickyHeader
+        scrollY={scrollHost.offset}
+        heroHeight={heroHeight}
+        name={user?.name}
+        avatarUri={user?.profileImage}
+        hasUnread={hasUnread}
+        cityLabel={city?.label}
+        onOpenProfile={() => router.push('/(tabs)/profile')}
+        onOpenUpdates={() => router.push('/(tabs)/updates')}
+        onSearch={() => openSearch()}
+      />
 
       <CityPickerSheet
         visible={cityPickerOpen}

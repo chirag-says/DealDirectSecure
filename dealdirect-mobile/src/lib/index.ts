@@ -4,8 +4,8 @@ export { decodeHtmlEntities } from './htmlEntities';
 export { relativeDay, isRecent } from './relativeTime';
 export {
   Reveal,
-  RevealScrollView,
+  ScrollRevealProvider,
   useScrollRevealHost,
+  type ScrollRevealValue,
   type RevealProps,
-  type RevealScrollViewProps,
 } from './scrollReveal';

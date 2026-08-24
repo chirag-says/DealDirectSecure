@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { ScrollView, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ListingIntent } from '@/features/properties';
 import { gesture, radius, screenPadding, spacing, touchTarget, useTheme, withAlpha } from '@/theme';
@@ -81,6 +82,7 @@ export function HomeHero({
   onListProperty,
 }: HomeHeroProps) {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
 
   /**
    * Text on the brand fill, not the page's text colours.
@@ -98,6 +100,16 @@ export function HomeHero({
       style={{
         backgroundColor: theme.colors.brand,
         paddingHorizontal: screenPadding,
+        /*
+          The hero owns its safe area, because the screen no longer does.
+
+          `Screen` used to inset the top, but the sticky header has to be able
+          to sit UNDER the status bar — an inset screen would leave a strip of
+          page colour above a bar whose entire job is to be the top of the
+          screen. So the inset moved here, to the block that is actually at the
+          top when nothing is scrolled.
+        */
+        paddingTop: insets.top + spacing.sm,
         paddingBottom: spacing.lg,
         // Rounded only at the bottom: the block runs under the status bar and
         // ends in a curve, so the content below reads as sliding out from
