@@ -4,12 +4,16 @@ import { EMPTY_LISTING_FORM, type CategorizedPhoto, type ListingFormValues } fro
 const asString = (value: unknown): string => (value === undefined || value === null ? '' : String(value));
 
 export function propertyToFormValues(property: Property): ListingFormValues {
-  const category: ListingFormValues['categoryName'] =
-    property.categoryName === 'Commercial' ? 'Commercial' : 'Residential';
+  /*
+    The stored category, verbatim.
 
+    This used to collapse anything that was not exactly `Commercial` down to
+    `Residential`, which silently rewrote a `Land & Plots` listing's category
+    the moment its owner opened Edit — and then submitted the rewrite.
+  */
   return {
     ...EMPTY_LISTING_FORM,
-    categoryName: category,
+    categoryName: property.categoryName ?? 'Residential',
     propertyTypeName: property.propertyTypeName ?? '',
     listingType: /rent/i.test(property.listingType ?? '') ? 'Rent' : 'Sale',
     title: property.title ?? '',

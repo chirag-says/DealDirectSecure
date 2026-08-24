@@ -256,7 +256,12 @@ export function buildEditFormData(
   appendIfPresent(form, 'locality', values.locality);
   appendIfPresent(form, 'landmark', values.landmark);
 
-  const bucket = values.categoryName === 'Residential' ? 'residential' : 'commercial';
+  // `Commercial` is the special case and everything else is residential-shaped
+  // — the same rule `photoCategoriesFor` applies, so the bucket a photo is
+  // filed under always matches the category list it was labelled from. Keyed
+  // the other way round these two disagreed for `Land & Plots`, filing photos
+  // labelled with residential keys into the commercial bucket.
+  const bucket = values.categoryName === 'Commercial' ? 'commercial' : 'residential';
   const existingByCategory: Record<string, string[]> = {};
   for (const photo of existingPhotos) {
     (existingByCategory[photo.category] ??= []).push(photo.uri);

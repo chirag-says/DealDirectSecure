@@ -30,4 +30,13 @@ export interface SubCategory extends Partial<Timestamps> {
 export interface PropertyType extends Partial<Timestamps> {
   _id: ObjectId;
   name: string;
+  /**
+   * The owning category, as a raw id.
+   *
+   * `/propertyTypes/list-propertytype` returns `.lean()` documents, so this is
+   * present and unpopulated. It is what makes the type list groupable: the
+   * model's uniqueness constraint is `{ category, name }`, so a type name is
+   * only meaningful under its category and must never be matched by name alone.
+   */
+  category?: ObjectId;
 }

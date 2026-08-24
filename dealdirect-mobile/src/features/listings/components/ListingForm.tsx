@@ -3,12 +3,23 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image as RNImage, Pressable, ScrollView, View } from 'react-native';
 
 import { useTheme, type Theme } from '@/theme';
-import { Button, Card, Chip, DateField, Input, KeyboardAvoider, Select, Sheet, Text } from '@/ui';
-import { captureListingImage, canCapture, pickListingImages } from '../imagePicker';
+import {
+  Button,
+  Card,
+  Chip,
+  DateField,
+  Input,
+  KeyboardAvoider,
+  Select,
+  Sheet,
+  Skeleton,
+  Text,
+  useToast,
+} from '@/ui';
+import { captureListingImage, canCapture, canPickImages, pickListingImages } from '../imagePicker';
+import { useListingTaxonomy } from '../taxonomy';
 import {
   AMENITIES,
-  COMMERCIAL_TYPES,
-  RESIDENTIAL_TYPES,
   photoCategoriesFor,
   photoCategoryLabel,
   type CategorizedPhoto,
@@ -63,23 +74,53 @@ export function ListingForm({
   const set = <K extends keyof ListingFormValues>(key: K, value: ListingFormValues[K]) =>
     onChange({ ...values, [key]: value });
 
-  const propertyTypeOptions = useMemo(
-    () =>
-      (values.categoryName === 'Residential' ? RESIDENTIAL_TYPES : COMMERCIAL_TYPES).map((t) => ({
-        label: t,
-        value: t,
-      })),
-    [values.categoryName]
+  /*
+    The vocabulary comes from the server. See `taxonomy.ts` for why a constant
+    here was failing half of all submissions at the final step.
+  */
+  const taxonomy = useListingTaxonomy();
+  const toast = useToast();
+
+  const activeCategory = useMemo(
+    () => taxonomy.categories.find((c) => c.name === values.categoryName) ?? null,
+    [taxonomy.categories, values.categoryName]
   );
 
-  // A property type picked under one category is meaningless under the other.
+  const propertyTypeOptions = useMemo(
+    () => (activeCategory?.types ?? []).map((t) => ({ label: t, value: t })),
+    [activeCategory]
+  );
+
+  /*
+    Keep the selected type valid for the selected category, but ONLY once the
+    real vocabulary is in hand.
+
+    The old version cleared the field against a hardcoded list, which is what
+    wiped an existing listing's property type the instant its owner opened Edit
+    — `Villa`, `Independent House` and `Shop / Retail` are all real stored
+    values that the list did not contain. Waiting for the fetch means a stored
+    value is judged against the server's answer or not at all.
+  */
   useEffect(() => {
-    const valid = (values.categoryName === 'Residential' ? RESIDENTIAL_TYPES : COMMERCIAL_TYPES) as readonly string[];
-    if (values.propertyTypeName && !valid.includes(values.propertyTypeName)) {
-      set('propertyTypeName', '');
+    if (taxonomy.isLoading || taxonomy.categories.length === 0) return;
+    if (!values.propertyTypeName) return;
+    if (activeCategory?.types.includes(values.propertyTypeName)) return;
+
+    /*
+      Before clearing, see whether the type is simply filed under a different
+      category than the form currently shows — which is the normal case when
+      editing a listing whose category the form defaulted. Moving the category
+      to match preserves the owner's data; clearing it destroys it.
+    */
+    const owner = taxonomy.categories.find((c) => c.types.includes(values.propertyTypeName));
+    if (owner) {
+      if (owner.name !== values.categoryName) set('categoryName', owner.name);
+      return;
     }
+
+    set('propertyTypeName', '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [values.categoryName]);
+  }, [values.categoryName, values.propertyTypeName, taxonomy.isLoading, taxonomy.categories, activeCategory]);
 
   const totalPhotos = existingPhotos.length + newPhotos.length;
   const canAddMorePhotos = totalPhotos < MAX_PHOTOS;
@@ -88,7 +129,11 @@ export function ListingForm({
   const stepValid = useMemo(() => {
     switch (step) {
       case 0:
-        return values.propertyTypeName.trim().length > 0;
+        // Both halves, because the server rejects a type that does not sit
+        // under the category submitted alongside it.
+        return (
+          values.categoryName.trim().length > 0 && values.propertyTypeName.trim().length > 0
+        );
       case 1:
         return values.title.trim().length >= 5;
       case 2:
@@ -104,7 +149,13 @@ export function ListingForm({
     const { uris, deniedPermission } = await pickListingImages({
       remainingSlots: MAX_PHOTOS - totalPhotos,
     });
-    if (deniedPermission || uris.length === 0) return;
+    // Refusing permission and picking nothing are different events and were
+    // both silent, so a denied prompt looked exactly like a broken button.
+    if (deniedPermission) {
+      toast.show('Photo access is off. Turn it on in Settings to add photos.', 'neutral');
+      return;
+    }
+    if (uris.length === 0) return;
     onChangeNewPhotos([...newPhotos, ...uris.map((uri) => ({ uri, category: 'other' }))]);
   };
 
@@ -117,7 +168,11 @@ export function ListingForm({
    */
   const handleCapturePhoto = async () => {
     const { uri, deniedPermission } = await captureListingImage();
-    if (deniedPermission || !uri) return;
+    if (deniedPermission) {
+      toast.show('Camera access is off. Turn it on in Settings to take photos.', 'neutral');
+      return;
+    }
+    if (!uri) return;
     onChangeNewPhotos([...newPhotos, { uri, category: 'other' }]);
   };
 
@@ -156,25 +211,53 @@ export function ListingForm({
               <Text variant="bodyEmphasis" className="mb-base">
                 What are you listing?
               </Text>
-              <View className="mb-base flex-row">
-                {(['Residential', 'Commercial'] as const).map((c) => (
-                  <Chip
-                    key={c}
-                    label={c}
-                    selected={values.categoryName === c}
-                    onPress={() => set('categoryName', c)}
-                    className="mr-sm"
-                  />
-                ))}
-              </View>
 
-              <Select
-                label="Property type"
-                placeholder="Choose a type"
-                value={values.propertyTypeName || undefined}
-                options={propertyTypeOptions}
-                onChange={(v) => set('propertyTypeName', v)}
-              />
+              {/*
+                No built-in fallback list. The server refuses any name it does
+                not know, with no near-match of any kind, so offering guesses
+                would cost the owner the whole wizard rather than one retry.
+              */}
+              {taxonomy.isLoading ? (
+                <View className="mb-base gap-sm">
+                  <Skeleton height={36} />
+                  <Skeleton height={48} />
+                </View>
+              ) : taxonomy.categories.length === 0 ? (
+                <View className="mb-base gap-sm">
+                  <Text variant="callout" tone="danger">
+                    {taxonomy.error
+                      ? 'We could not load the property types.'
+                      : 'No property types are available right now.'}
+                  </Text>
+                  <Text variant="footnote" tone="muted">
+                    You need these to publish, so the form cannot continue without
+                    them.
+                  </Text>
+                  <Button label="Try again" variant="secondary" onPress={taxonomy.retry} />
+                </View>
+              ) : (
+                <>
+                  <View className="mb-base flex-row flex-wrap">
+                    {taxonomy.categories.map((c) => (
+                      <Chip
+                        key={c.id}
+                        label={c.name}
+                        selected={values.categoryName === c.name}
+                        onPress={() => set('categoryName', c.name)}
+                        className="mb-sm mr-sm"
+                      />
+                    ))}
+                  </View>
+
+                  <Select
+                    label="Property type"
+                    placeholder="Choose a type"
+                    value={values.propertyTypeName || undefined}
+                    options={propertyTypeOptions}
+                    onChange={(v) => set('propertyTypeName', v)}
+                  />
+                </>
+              )}
 
               <Text variant="bodyEmphasis" className="mb-base mt-lg">
                 For sale or rent?
@@ -460,17 +543,24 @@ export function ListingForm({
                         </Text>
                       </Pressable>
                     ) : null}
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Add photos from gallery"
-                      onPress={() => void handlePickPhotos()}
-                      className="mb-base mr-base h-24 w-24 items-center justify-center rounded-lg border border-dashed border-border"
-                    >
-                      <Ionicons name="images-outline" size={26} color={theme.colors.textMuted} />
-                      <Text variant="caption" tone="muted" className="mt-xs">
-                        Gallery
-                      </Text>
-                    </Pressable>
+                    {/* Gated like the camera tile above it. `pickListingImages`
+                        THROWS when the native module is absent, so an ungated
+                        tile was a dead button plus an unhandled rejection
+                        wherever the module is missing. `canPickImages` existed
+                        for exactly this and was never used. */}
+                    {canPickImages ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Add photos from gallery"
+                        onPress={() => void handlePickPhotos()}
+                        className="mb-base mr-base h-24 w-24 items-center justify-center rounded-lg border border-dashed border-border"
+                      >
+                        <Ionicons name="images-outline" size={26} color={theme.colors.textMuted} />
+                        <Text variant="caption" tone="muted" className="mt-xs">
+                          Gallery
+                        </Text>
+                      </Pressable>
+                    ) : null}
                   </>
                 ) : null}
               </View>

@@ -7,25 +7,22 @@
  * zod schema work with, converted at submit time.
  */
 
-export type ListingCategory = 'Residential' | 'Commercial';
-
-export const RESIDENTIAL_TYPES = [
-  'Apartment / Flat',
-  'Independent House / Villa',
-  'Plot / Land',
-  'Penthouse',
-  'Studio Apartment',
-  'Farmhouse',
-] as const;
-
-export const COMMERCIAL_TYPES = [
-  'Office Space',
-  'Shop / Showroom',
-  'Warehouse / Godown',
-  'Industrial Shed',
-  'Co-working Space',
-  'Commercial Plot',
-] as const;
+/**
+ * A category name as the SERVER spells it.
+ *
+ * A `'Residential' | 'Commercial'` union until 2026-08-24, which was wrong in
+ * both directions: it excluded `Land & Plots`, a real category no owner could
+ * reach from this app, and it implied a closed set the client is not entitled
+ * to decide. The vocabulary is the server's — see `taxonomy.ts` — so this is
+ * the server's string, and the two places that genuinely branch on it treat
+ * `Commercial` as the special case and everything else as residential-shaped.
+ *
+ * The hardcoded `RESIDENTIAL_TYPES`/`COMMERCIAL_TYPES` arrays that sat here
+ * were deleted with it. They had drifted from the names the backend accepts and
+ * were failing six of twelve submissions at the last step; `useListingTaxonomy`
+ * fetches the real list instead.
+ */
+export type ListingCategory = string;
 
 export const AMENITIES = [
   'Lift',

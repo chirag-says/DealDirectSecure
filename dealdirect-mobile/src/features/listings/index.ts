@@ -10,8 +10,6 @@ export { pickListingImages, captureListingImage, canCapture, imagePart } from '.
 export { loadListingDraft, saveListingDraft, clearListingDraft, hasListingDraft } from './draft';
 export {
   EMPTY_LISTING_FORM,
-  RESIDENTIAL_TYPES,
-  COMMERCIAL_TYPES,
   AMENITIES,
   RESIDENTIAL_PHOTO_CATEGORIES,
   COMMERCIAL_PHOTO_CATEGORIES,
@@ -24,3 +22,8 @@ export {
 export { propertyToFormValues, existingCategorizedPhotos } from './editAdapter';
 export { ListingForm, type ListingFormProps } from './components/ListingForm';
 export { CloseDealSheet, type CloseDealSheetProps } from './components/CloseDealSheet';
+export {
+  useListingTaxonomy,
+  type ListingTaxonomy,
+  type TaxonomyCategory,
+} from './taxonomy';
