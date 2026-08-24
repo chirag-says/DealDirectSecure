@@ -221,14 +221,36 @@ export function SearchScreen() {
     appliedRouteKey.current = key;
 
     setInput(search ?? '');
-    setFilters({
+
+    /*
+      A search arriving by ROUTE is parsed, exactly as a typed one is.
+
+      It used to be stored as raw text, which is why arriving from Home's hero
+      with "1 bhk in mumbai" showed the unfiltered corpus and typing the same
+      words into the field here immediately fixed it: `commit` ran the parse and
+      this did not. One query, two behaviours, decided by how the user got here.
+
+      The route's own params are the BASE rather than an overlay, so an explicit
+      `listingType` or `city` from the caller still wins over the same thing
+      inferred from the text — `applyUnderstanding` only fills what is unset.
+
+      The context is empty because this runs on arrival, before any results have
+      been seen. City, BHK, price and type do not need the corpus; an unresolved
+      locality name degrades to a text match, which is what the raw-text
+      behaviour did for every query.
+    */
+    const base: SearchFilters = {
       ...DEFAULT_FILTERS,
       query: search ?? '',
       listingType,
       priceBand,
       city,
       sort: sort ?? DEFAULT_FILTERS.sort,
-    });
+    };
+
+    setFilters(
+      search ? applyUnderstanding(search, base, buildParseContext([])).filters : base
+    );
     setEditing(false);
     if (route.openFilters === '1') setFilterSheetOpen(true);
   }, [

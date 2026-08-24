@@ -82,6 +82,9 @@ export function useSuggestions(input: string): Suggestions {
 /** How many result rows the Home hero previews before offering "See all". */
 const PREVIEW_SIZE = 6;
 
+/** Matches `usePopularListings`' ceiling: the live corpus fits in one page. */
+const CLIENT_FILTER_PAGE_SIZE = 100;
+
 export interface SearchPreview {
   items: PropertySummary[];
   /** Total matches, so "See all N" can be honest before the full page loads. */
@@ -101,6 +104,24 @@ export interface SearchPreview {
  * suggestions endpoint. Bounded to a handful of rows — the hero's "See all"
  * hands the whole query to the Search tab, which owns pagination and filters.
  *
+ * ---------------------------------------------------------------------------
+ * IT MUST RUN THE CLIENT-SIDE FILTER PASS, AND THE FIRST VERSION DID NOT
+ *
+ * This shipped returning the whole corpus for "1 bhk in mumbai" — a Kolkata
+ * showroom above a Pune 3 BHK. The cause is the interaction of two correct
+ * things: the parse CONSUMES the recognised words (`next.query = residual`,
+ * so `search` is empty), and `city`/`bhk`/`categoryName`/`furnishing`/
+ * `constructionStatus` are client-only — `toSearchParams` drops them by
+ * design, because the server's equivalents are unreliable. Parsed filters run
+ * through `toSearchParams` alone therefore state NOTHING, and a criteria-less
+ * search legitimately means "everything".
+ *
+ * So this mirrors `usePropertySearchFeed` exactly: when the parse produced any
+ * client-only filter, it fetches the same bounded page under the same query key
+ * and applies `matchesClientFilters` itself. Sharing the key is not incidental
+ * — "See all" lands on the Search tab, which asks for that identical page, so
+ * the results are already cached and the navigation costs no request at all.
+ *
  * The parse context is empty here on purpose: city, BHK, price and type do not
  * need the corpus to resolve, and a locality NAME the context cannot place
  * degrades to a raw text match rather than to nothing — the same fallback the
@@ -114,22 +135,56 @@ export function useSearchPreview(input: string): SearchPreview {
   const debounced = useDebouncedValue(input.trim(), SUGGESTION_DEBOUNCE_MS);
   const enabled = debounced.length >= MIN_SUGGESTION_LENGTH;
 
-  const params = useMemo(() => {
-    if (!enabled) return null;
-    const { filters } = applyUnderstanding(debounced, DEFAULT_FILTERS, buildParseContext([]));
-    return { ...toSearchParams(filters), limit: PREVIEW_SIZE, page: 1 };
-  }, [debounced, enabled]);
+  const filters = useMemo(
+    () =>
+      enabled
+        ? applyUnderstanding(debounced, DEFAULT_FILTERS, buildParseContext([])).filters
+        : null,
+    [debounced, enabled]
+  );
+
+  const clientMode = filters !== null && hasClientOnlyFilters(filters);
+
+  /*
+    In client mode this is byte-for-byte the params and key
+    `usePropertySearchFeed` builds, so the page the preview fetches IS the page
+    the Search tab will want a moment later. Otherwise a small page is enough,
+    because everything the query stated is expressible server-side.
+  */
+  const params = useMemo(
+    () =>
+      filters
+        ? {
+            ...toSearchParams(filters),
+            limit: clientMode ? CLIENT_FILTER_PAGE_SIZE : PREVIEW_SIZE,
+            page: 1,
+          }
+        : null,
+    [filters, clientMode]
+  );
 
   const query = useQuery({
-    queryKey: qk.collection('search-preview', params ?? {}),
+    queryKey: clientMode
+      ? qk.collection('search-filtered', params ?? {})
+      : qk.collection('search-preview', params ?? {}),
     queryFn: ({ signal }) => fetchPropertyPage(params!, signal),
     enabled: enabled && params !== null,
     staleTime: 60_000,
   });
 
+  const matched = useMemo(() => {
+    const page = query.data?.items ?? [];
+    if (!filters || !clientMode) return page;
+    return page.filter((item) => matchesClientFilters(item, filters));
+  }, [query.data, filters, clientMode]);
+
   return {
-    items: enabled ? (query.data?.items ?? []) : [],
-    total: query.data?.total ?? 0,
+    items: enabled ? matched.slice(0, PREVIEW_SIZE) : [],
+    // In client mode the honest total is what survived the filter within the
+    // bounded page — the same number, and the same ceiling, the Search tab will
+    // report. Taking the server's `total` here would promise results the filter
+    // has already excluded.
+    total: clientMode ? matched.length : (query.data?.total ?? 0),
     // Loading only while there is nothing cached to show, so a refetch behind an
     // existing preview does not flip it back to skeletons.
     isLoading: enabled && query.isPending,
@@ -157,9 +212,6 @@ export function useRecentSearches() {
 
   return { items, add, remove, clear };
 }
-
-/** Matches `usePopularListings`' ceiling: the live corpus fits in one page. */
-const CLIENT_FILTER_PAGE_SIZE = 100;
 
 /**
  * The search results feed, filter-aware.
