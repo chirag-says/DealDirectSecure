@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, View, type LayoutChangeEvent } from 'react-native';
+import { RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { qk } from '@/api';
@@ -103,17 +103,19 @@ export default function HomeScreen() {
   const { context: scrollHost, onScroll, onLayout } = useScrollRevealHost();
 
   /**
-   * The hero's real height, which is the handover point for the sticky header.
-   *
-   * Measured rather than assumed: the hero grows with the user's text size and
-   * with the length of the selected city, so a constant would hand over early
-   * on a large-text device and leave a bare gap on a small one.
+   * The scroll offset at which the hero's search field reaches the header, so
+   * the header's copy can take over at exactly that pixel. Reported by the
+   * hero, which measures its own field — see the handover note in
+   * `HomeHeader`.
    */
-  const [heroHeight, setHeroHeight] = useState(0);
-  const onHeroLayout = useCallback(
-    (event: LayoutChangeEvent) => setHeroHeight(event.nativeEvent.layout.height),
-    []
-  );
+  const [pinOffset, setPinOffset] = useState(0);
+
+  /**
+   * The search text, owned here because the field is rendered TWICE — in the
+   * hero and in the pinned header — and the two are one field to the user.
+   * Whichever is on screen shows what was typed into the other.
+   */
+  const [searchText, setSearchText] = useState('');
 
   const city = useSelectedCity();
 
@@ -286,9 +288,13 @@ export default function HomeScreen() {
             />
           }
         >
-          <View onLayout={onHeroLayout}>
+          <View>
             <HomeHero
               city={city}
+              scrollY={scrollHost.offset}
+              searchValue={searchText}
+              onSearchValueChange={setSearchText}
+              onPinOffsetChange={setPinOffset}
               onOpenCityPicker={() => setCityPickerOpen(true)}
               // The hero field runs the search itself now; an empty term means
               // "browse everything", which `openSearch` already encodes.
@@ -398,14 +404,17 @@ export default function HomeScreen() {
           visible at every scroll position; only its search row reacts. */}
       <HomeHeader
         scrollY={scrollHost.offset}
-        heroHeight={heroHeight}
+        pinOffset={pinOffset}
         name={user?.name}
         avatarUri={user?.profileImage}
         hasUnread={hasUnread}
-        cityLabel={city?.label}
+        city={city}
+        searchValue={searchText}
+        onSearchValueChange={setSearchText}
+        onSubmitSearch={(term) => openSearch(term ? { search: term } : undefined)}
+        onOpenProperty={openProperty}
         onOpenProfile={() => router.push('/(tabs)/profile')}
         onOpenUpdates={() => router.push('/(tabs)/updates')}
-        onSearch={() => openSearch()}
         onListProperty={openListing}
       />
 

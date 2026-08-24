@@ -1,13 +1,20 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image as ExpoImage } from 'expo-image';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedStyle,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ListingIntent } from '@/features/properties';
 import { radius, screenPadding, spacing, touchTarget, useTheme, withAlpha } from '@/theme';
 import { Gradient, PressableScale, Text } from '@/ui';
 import type { City } from '../cities';
-import { HOME_HEADER_ROW } from './HomeHeader';
+import { HOME_HEADER_ROW, SEARCH_PIN_WINDOW } from './HomeHeader';
 import { HomeSearchField } from './HomeSearchField';
 
 /**
@@ -63,6 +70,16 @@ export interface HomeHeroProps {
   /** Open a previewed listing straight from the hero's search dropdown. */
   onOpenProperty: (id: string) => void;
   onIntent: (intent: ListingIntent | 'projects') => void;
+  /** Live scroll offset, for the handover to the pinned header. */
+  scrollY: SharedValue<number>;
+  /** Shared with the header's copy — they are one field. */
+  searchValue: string;
+  onSearchValueChange: (value: string) => void;
+  /**
+   * Reports the scroll offset at which this field reaches the header, so the
+   * header knows exactly when to take over. See the handover note there.
+   */
+  onPinOffsetChange: (offset: number) => void;
 }
 
 const INTENTS: readonly {
@@ -81,9 +98,63 @@ export function HomeHero({
   onSubmitSearch,
   onOpenProperty,
   onIntent,
+  scrollY,
+  searchValue,
+  onSearchValueChange,
+  onPinOffsetChange,
 }: HomeHeroProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+
+  /**
+   * Where this field sits, and therefore when the header takes over.
+   *
+   * Measured rather than derived from the hero's height: the block grows with
+   * the user's text size and with the selected city's name, and a computed
+   * guess would hand over at the wrong pixel on any device that is not the one
+   * it was tuned on. The field's own `y` is exactly the number both sides need.
+   */
+  const [fieldY, setFieldY] = useState(0);
+  const [searchFocused, setSearchFocused] = useState(false);
+
+  const pinOffset = fieldY > 0 ? Math.max(fieldY - insets.top - HOME_HEADER_ROW, 0) : 0;
+
+  useEffect(() => onPinOffsetChange(pinOffset), [pinOffset, onPinOffsetChange]);
+
+  const onFieldLayout = useCallback(
+    (event: LayoutChangeEvent) => setFieldY(event.nativeEvent.layout.y),
+    []
+  );
+
+  /**
+   * The hero's half of the handover.
+   *
+   * Across the pin window this copy is held STILL — translated down by exactly
+   * as much as the scroll moves it up — while it fades out and the header's
+   * copy fades in at the same pixels. Without the counter-translate the two
+   * would drift apart during the crossfade and the handover would read as two
+   * fields briefly, which is the thing being fixed.
+   *
+   * Skipped entirely while focused: the panel hangs off this field, and fading
+   * out what someone is typing into would be worse than any seam.
+   */
+  const fieldStyle = useAnimatedStyle(() => {
+    if (searchFocused || pinOffset <= 0) {
+      return { opacity: 1, transform: [{ translateY: 0 }] };
+    }
+
+    const progress = interpolate(
+      scrollY.value,
+      [pinOffset, pinOffset + SEARCH_PIN_WINDOW],
+      [0, 1],
+      Extrapolation.CLAMP
+    );
+
+    return {
+      opacity: 1 - progress,
+      transform: [{ translateY: SEARCH_PIN_WINDOW * progress }],
+    };
+  }, [pinOffset, searchFocused]);
 
   /**
    * Text on the brand fill, not the page's text colours.
@@ -245,11 +316,16 @@ export function HomeHero({
       {/* How. A real field now: it answers with autocomplete in place and only
           leaves Home on a deliberate search — the submit button, the keyboard's
           search key, or a suggestion tap. See `HomeSearchField`. */}
-      <HomeSearchField
-        city={city}
-        onSubmit={onSubmitSearch}
-        onOpenProperty={onOpenProperty}
-      />
+      <Animated.View onLayout={onFieldLayout} style={fieldStyle}>
+        <HomeSearchField
+          city={city}
+          value={searchValue}
+          onChangeText={onSearchValueChange}
+          onSubmit={onSubmitSearch}
+          onOpenProperty={onOpenProperty}
+          onFocusChange={setSearchFocused}
+        />
+      </Animated.View>
     </View>
   );
 }

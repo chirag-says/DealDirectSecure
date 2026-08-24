@@ -53,6 +53,16 @@ export interface HomeSearchFieldProps {
   /** The scoped city, for the placeholder. The redirect adds the filter. */
   city: City | null;
   /**
+   * The query text, owned by the screen.
+   *
+   * CONTROLLED because Home renders this twice — once in the hero and once in
+   * the pinned header — and they are one field as far as the user is concerned.
+   * Local text state would strand what was typed in the hero the moment the
+   * header's copy took over at the pin.
+   */
+  value: string;
+  onChangeText: (value: string) => void;
+  /**
    * Run a search. Empty term means "browse everything". The caller owns the
    * navigation and rides the selected city along; this component only decides
    * WHEN a search is deliberate enough to leave Home for.
@@ -60,15 +70,37 @@ export interface HomeSearchFieldProps {
   onSubmit: (term: string) => void;
   /** Open a previewed listing directly, without going through the results list. */
   onOpenProperty: (id: string) => void;
+  /** Reported so the pinned header can hold itself open while the panel is up. */
+  onFocusChange?: (focused: boolean) => void;
+  /**
+   * Drop the leading margin. The header's pinned copy has to start at its
+   * container's very top edge, because that edge is where the hero's copy
+   * arrives — see the handover note in `HomeHeader`.
+   */
+  flush?: boolean;
 }
 
-export function HomeSearchField({ city, onSubmit, onOpenProperty }: HomeSearchFieldProps) {
+export function HomeSearchField({
+  city,
+  value,
+  onChangeText,
+  onSubmit,
+  onOpenProperty,
+  onFocusChange,
+  flush = false,
+}: HomeSearchFieldProps) {
   const theme = useTheme();
   const inputStyle = useTextInputStyle();
   const inputRef = useRef<TextInput>(null);
 
-  const [query, setQuery] = useState('');
-  const [focused, setFocused] = useState(false);
+  const query = value;
+  const setQuery = onChangeText;
+  const [focused, setFocusedState] = useState(false);
+
+  const setFocused = (next: boolean) => {
+    setFocusedState(next);
+    onFocusChange?.(next);
+  };
 
   const recent = useRecentSearches();
   // Only queried while focused, so a blurred field with stale text fires
@@ -98,7 +130,7 @@ export function HomeSearchField({ city, onSubmit, onOpenProperty }: HomeSearchFi
   const more = Math.max(preview.total - previewItems.length, 0);
 
   return (
-    <View style={{ marginTop: spacing.base }}>
+    <View style={{ marginTop: flush ? 0 : spacing.base }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
         {/* The field. A real input now, styled as the pill the trigger used to
             imitate. The search glyph moved to the button on the right, where it
