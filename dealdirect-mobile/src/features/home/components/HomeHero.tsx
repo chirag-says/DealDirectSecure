@@ -3,9 +3,10 @@ import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ListingIntent } from '@/features/properties';
-import { gesture, radius, screenPadding, spacing, touchTarget, useTheme, withAlpha } from '@/theme';
-import { Avatar, PressableScale, Text } from '@/ui';
+import { radius, screenPadding, spacing, touchTarget, useTheme, withAlpha } from '@/theme';
+import { PressableScale, Text } from '@/ui';
 import type { City } from '../cities';
+import { HOME_HEADER_ROW } from './HomeHeader';
 
 /**
  * The hero: a brand-coloured block carrying everything a session starts with.
@@ -13,10 +14,14 @@ import type { City } from '../cities';
  * ---------------------------------------------------------------------------
  * WHAT IT IS FOR
  *
- * Five controls, in the order the question gets asked: who am I signed in as,
- * where am I looking, what am I looking for, and the field to say it in. The
- * "List property" pill is the fifth, and it is here rather than in the tab bar
- * because it belongs to the small share of sessions that are selling.
+ * Three controls, in the order the question gets asked: where am I looking,
+ * what am I looking for, and the field to say it in.
+ *
+ * Identity, listing and notifications used to sit in a row at the top of this
+ * block. They moved to `HomeHeader` on 2026-08-24, because they are the frame
+ * the screen lives in rather than content, and a frame must not scroll away.
+ * What is left here is everything that legitimately belongs to the first
+ * screenful and is allowed to leave with it.
  *
  * The city selector is the piece the app never had. Every large Indian portal
  * scopes a session to a city and remembers it; DealDirect's search always
@@ -35,28 +40,14 @@ import type { City } from '../cities';
  * block, the three-benefit strip and the closing "Ready to find your home?"
  * slab. One line, then the tools.
  *
- * ---------------------------------------------------------------------------
- * THE BELL, NOT A TAB
- *
- * Notifications live here rather than in the dock, which is what the portals
- * this is modelled on do and what freed the dock's fifth slot for the Post
- * action. The dot is drawn from rows the app already holds; there is no
- * server-side unread count, so there is no number on it. See `updates.tsx`.
  */
 
 export interface HomeHeroProps {
   /** Signed-in user's name, for the avatar. Absent for a guest. */
-  name?: string;
-  avatarUri?: string;
   city: City | null;
-  /** True when at least one notification in the loaded set is unread. */
-  hasUnread: boolean;
-  onOpenProfile: () => void;
-  onOpenUpdates: () => void;
   onOpenCityPicker: () => void;
   onSearch: () => void;
   onIntent: (intent: ListingIntent | 'projects') => void;
-  onListProperty: () => void;
 }
 
 const INTENTS: readonly {
@@ -70,16 +61,10 @@ const INTENTS: readonly {
 ];
 
 export function HomeHero({
-  name,
-  avatarUri,
   city,
-  hasUnread,
-  onOpenProfile,
-  onOpenUpdates,
   onOpenCityPicker,
   onSearch,
   onIntent,
-  onListProperty,
 }: HomeHeroProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -101,100 +86,28 @@ export function HomeHero({
         backgroundColor: theme.colors.brand,
         paddingHorizontal: screenPadding,
         /*
-          The hero owns its safe area, because the screen no longer does.
+          Padded clear of the pinned header, which sits above this block and
+          never scrolls.
 
-          `Screen` used to inset the top, but the sticky header has to be able
-          to sit UNDER the status bar — an inset screen would leave a strip of
-          page colour above a bar whose entire job is to be the top of the
-          screen. So the inset moved here, to the block that is actually at the
-          top when nothing is scrolled.
+          `Screen` no longer insets the top — the header has to be able to sit
+          UNDER the status bar, and an inset screen would leave a strip of page
+          colour above a bar whose entire job is to be the top of the screen.
+          So the hero pays the inset AND the header's height.
+
+          `HOME_HEADER_ROW` is imported rather than repeated: these two files
+          have to agree on the number exactly, and two constants that must
+          match are one edit away from not matching.
         */
-        paddingTop: insets.top + spacing.sm,
+        paddingTop: insets.top + HOME_HEADER_ROW + spacing.md,
         paddingBottom: spacing.lg,
-        // Rounded only at the bottom: the block runs under the status bar and
-        // ends in a curve, so the content below reads as sliding out from
-        // beneath it rather than butting against a coloured rectangle.
+        // Rounded only at the bottom: the block continues the header's fill
+        // upward and ends in a curve, so the content below reads as sliding
+        // out from beneath it rather than butting against a rectangle.
         borderBottomLeftRadius: radius.xl,
         borderBottomRightRadius: radius.xl,
       }}
     >
-      {/* Row one: identity, the selling action, notifications. */}
-      <View className="flex-row items-center" style={{ gap: spacing.sm }}>
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel="Your account"
-          hitSlop={gesture.hitSlop}
-          onPress={onOpenProfile}
-          activeScale={0.94}
-        >
-          {name ? (
-            <Avatar uri={avatarUri} name={name} size="sm" />
-          ) : (
-            <Ionicons name="person-circle-outline" size={30} color={onBrand} />
-          )}
-        </PressableScale>
-
-        <View className="flex-1" />
-
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel="List your property"
-          onPress={onListProperty}
-          activeScale={0.96}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            height: 36,
-            paddingHorizontal: spacing.base,
-            borderRadius: radius.full,
-            // The page surface on the brand fill, so the pill reads as a raised
-            // object rather than a tint of the panel. Inverts with the theme
-            // like everything else; a hardcoded dark would be wrong in one mode
-            // and unreadable in the other.
-            backgroundColor: theme.colors.surface,
-          }}
-        >
-          <Ionicons name="add" size={16} color={theme.colors.brand} />
-          <Text variant="footnote" style={{ color: theme.colors.brand, fontWeight: '700' }}>
-            List property
-          </Text>
-        </PressableScale>
-
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel={hasUnread ? 'Updates, you have unread items' : 'Updates'}
-          hitSlop={gesture.hitSlop}
-          onPress={onOpenUpdates}
-          activeScale={0.94}
-          style={{
-            width: 36,
-            height: 36,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: radius.full,
-            borderWidth: 1,
-            borderColor: withAlpha(theme.colors.textOnAccent, 0.35),
-          }}
-        >
-          <Ionicons name="notifications-outline" size={18} color={onBrand} />
-          {hasUnread ? (
-            <View
-              style={{
-                position: 'absolute',
-                top: 7,
-                right: 8,
-                width: 8,
-                height: 8,
-                borderRadius: radius.full,
-                backgroundColor: theme.colors.textOnAccent,
-              }}
-            />
-          ) : null}
-        </PressableScale>
-      </View>
-
-      <Text variant="title2" className="mt-lg" style={{ color: onBrand }}>
+      <Text variant="title2" style={{ color: onBrand }}>
         Property, direct from owners
       </Text>
       <Text variant="callout" className="mt-xs" style={{ color: onBrandMuted }}>

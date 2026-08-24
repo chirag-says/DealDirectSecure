@@ -12,8 +12,8 @@ import {
   CityPickerSheet,
   CollectionRail,
   HOME_COLLECTION_IDS,
+  HomeHeader,
   HomeHero,
-  HomeStickyHeader,
   ListingCard,
   RecentlyViewed,
   Section,
@@ -284,18 +284,14 @@ export default function HomeScreen() {
         >
           <View onLayout={onHeroLayout}>
             <HomeHero
-          name={user?.name}
-          avatarUri={user?.profileImage}
-          city={city}
-          hasUnread={hasUnread}
-          onOpenProfile={() => router.push('/(tabs)/profile')}
-          onOpenUpdates={() => router.push('/(tabs)/updates')}
-          onOpenCityPicker={() => setCityPickerOpen(true)}
-          onSearch={() => openSearch()}
-          onIntent={(intent) =>
-            intent === 'projects' ? router.push('/projects') : openSearch({ listingType: intent })
-          }
-            onListProperty={openListing}
+              city={city}
+              onOpenCityPicker={() => setCityPickerOpen(true)}
+              onSearch={() => openSearch()}
+              onIntent={(intent) =>
+                intent === 'projects'
+                  ? router.push('/projects')
+                  : openSearch({ listingType: intent })
+              }
             />
           </View>
 
@@ -391,8 +387,9 @@ export default function HomeScreen() {
       </ScrollRevealProvider>
 
       {/* Rendered AFTER the scroll view so it paints above it, and outside the
-          provider because it is chrome rather than revealable content. */}
-      <HomeStickyHeader
+          provider because it is chrome rather than revealable content. It is
+          visible at every scroll position; only its search row reacts. */}
+      <HomeHeader
         scrollY={scrollHost.offset}
         heroHeight={heroHeight}
         name={user?.name}
@@ -402,6 +399,7 @@ export default function HomeScreen() {
         onOpenProfile={() => router.push('/(tabs)/profile')}
         onOpenUpdates={() => router.push('/(tabs)/updates')}
         onSearch={() => openSearch()}
+        onListProperty={openListing}
       />
 
       <CityPickerSheet

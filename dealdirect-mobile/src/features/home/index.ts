@@ -39,9 +39,10 @@ export { CityGrid, type CityGridProps } from './components/CityGrid';
 export { HomeGreeting, type HomeGreetingProps } from './components/HomeGreeting';
 export { HomeHero, type HomeHeroProps } from './components/HomeHero';
 export {
-  HomeStickyHeader,
-  type HomeStickyHeaderProps,
-} from './components/HomeStickyHeader';
+  HomeHeader,
+  HOME_HEADER_ROW,
+  type HomeHeaderProps,
+} from './components/HomeHeader';
 export { CityPickerSheet, type CityPickerSheetProps } from './components/CityPickerSheet';
 export { setSelectedCity, useSelectedCity } from './city';
 export {
