@@ -142,16 +142,23 @@ export function HomeHero({
         // memory-only avoids a disk round trip on every Home mount.
         cachePolicy="memory"
       />
-      {/* The scrim: stronger at the top behind the white headline, near-clear
-          through the middle so the building reads, lightly grounded at the
-          bottom under the search field. */}
+      {/* The scrim, and the seam.
+
+          The top stop is FULLY OPAQUE brand — the same fill the pinned header
+          carries — so the strip of hero directly under the header reads as one
+          continuous red surface with it rather than a flat bar butting against
+          a textured photo. From there it clears so the building shows through
+          the middle, then grounds again under the search field. This is why
+          the two "colours" match: they are the same token, and the scrim makes
+          the hero present it as solidly as the header does at the line where
+          they meet. */}
       <Gradient
         colors={[
-          withAlpha(theme.colors.brand, 0.55),
-          withAlpha(theme.colors.brand, 0.08),
-          withAlpha(theme.colors.brand, 0.32),
+          withAlpha(theme.colors.brand, 1),
+          withAlpha(theme.colors.brand, 0.12),
+          withAlpha(theme.colors.brand, 0.34),
         ]}
-        locations={[0, 0.5, 1]}
+        locations={[0, 0.55, 1]}
         style={StyleSheet.absoluteFillObject}
       />
 
