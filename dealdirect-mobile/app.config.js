@@ -33,6 +33,36 @@ const config = {
   userInterfaceStyle: 'automatic',
   newArchEnabled: true,
 
+  /*
+    THE APP MARK.
+
+    There was no icon and no splash configured at all until 2026-08-24, so every
+    build shipped with Expo's default artwork. Both stores reject that, and an
+    internal tester cannot tell two dev builds apart on a home screen.
+
+    Three renderings of one mark, because the platforms mask it differently:
+
+      icon.png           1024², flattened onto opaque white and saved with NO
+                         alpha channel. Apple rejects an icon that carries one.
+                         The mark sits at 76% width; iOS only rounds the corners.
+
+      adaptive-icon.png  1024², TRANSPARENT, mark at 62% width. Android hands
+                         the launcher the foreground and lets it apply whatever
+                         mask it likes — circle, squircle, teardrop — so
+                         anything outside the central 66% can be cut off. The
+                         mark is landscape at 1.55:1, which makes width the
+                         binding constraint; 62% clears a circular mask with
+                         margin. `backgroundColor` below is what shows around it.
+
+      splash-icon.png    1024², transparent, mark at 46% — a splash mark sits
+                         smaller than an icon because nothing crops it.
+
+    White background rather than brand red: the mark is a red 'd' and a blue 'd'
+    drawn with a white keyline, and that keyline needs white behind it to read
+    as a keyline rather than as a gap.
+  */
+  icon: './assets/icon.png',
+
   ios: {
     bundleIdentifier: 'in.dealdirect.mobile',
     supportsTablet: true,
@@ -43,6 +73,14 @@ const config = {
   android: {
     package: 'in.dealdirect.mobile',
     edgeToEdgeEnabled: true,
+    adaptiveIcon: {
+      foregroundImage: './assets/adaptive-icon.png',
+      backgroundColor: '#FFFFFF',
+    },
+  },
+
+  web: {
+    favicon: './assets/favicon.png',
   },
 
   // EAS Update. Set by hand for the same reason the EAS project id below is:
@@ -66,6 +104,25 @@ const config = {
     'expo-router',
     'expo-secure-store',
     'expo-font',
+    [
+      /*
+        The splash screen, which the root layout holds open until the fonts
+        resolve or its own deadline passes — see `app/_layout.tsx`.
+
+        `resizeMode: 'contain'` rather than 'cover': the mark has fixed
+        proportions and cropping it on a narrow device would cut a letter in
+        half. The background matches the icon's, so the splash and the launcher
+        icon are the same white plate.
+      */
+      'expo-splash-screen',
+      {
+        image: './assets/splash-icon.png',
+        imageWidth: 200,
+        resizeMode: 'contain',
+        backgroundColor: '#FFFFFF',
+        dark: { backgroundColor: '#FFFFFF' },
+      },
+    ],
     [
       'expo-image-picker',
       {
