@@ -71,8 +71,20 @@ export default function RewardsScreen() {
           <Text variant="footnote" tone="secondary">
             Your balance
           </Text>
+          {/*
+            A FAILED FETCH MUST NOT RENDER AS A BALANCE OF ZERO.
+
+            `balance` defaults to 0 when the wallet is null, and the null case
+            includes every error, so a dropped request told a user with points
+            that they had none — in the largest type on the screen, about their
+            money. An em dash and a retry say the true thing: we do not know.
+          */}
           {wallet.isLoading ? (
             <Skeleton width={120} height={36} className="mt-sm" />
+          ) : wallet.error ? (
+            <Text variant="display" className="mt-xs">
+              —
+            </Text>
           ) : (
             <Text variant="display" className="mt-xs">
               {wallet.balance.toLocaleString('en-IN')}
@@ -81,6 +93,24 @@ export default function RewardsScreen() {
           <Text variant="caption" tone="muted">
             points
           </Text>
+
+          {wallet.error && !wallet.isLoading ? (
+            <View className="mt-sm items-center">
+              <Text variant="footnote" tone="danger">
+                We could not load your balance.
+              </Text>
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading your balance"
+                onPress={wallet.refresh}
+                className="mt-xs"
+              >
+                <Text variant="footnote" tone="accent">
+                  Try again
+                </Text>
+              </PressableScale>
+            </View>
+          ) : null}
 
           {wallet.tier ? (
             <View className="mt-base items-center">
@@ -112,6 +142,8 @@ export default function RewardsScreen() {
         <TransactionsSection
           transactions={transactions.transactions}
           isLoading={transactions.isLoading}
+          error={transactions.error}
+          onRetry={transactions.refresh}
           total={transactions.totalTransactions}
         />
       </Refreshable>
@@ -300,10 +332,14 @@ function ReferralStat({ label, value }: { label: string; value: number }) {
 function TransactionsSection({
   transactions,
   isLoading,
+  error,
+  onRetry,
   total,
 }: {
   transactions: RewardTransaction[];
   isLoading: boolean;
+  error: unknown;
+  onRetry: () => void;
   total: number;
 }) {
   // One page of 50 is fetched. Saying so beats silently truncating.
@@ -316,6 +352,24 @@ function TransactionsSection({
       </Text>
       {isLoading ? (
         <Skeleton height={56} radius={12} />
+      ) : error ? (
+        /* "No activity yet" is a statement about the user's history. It must
+           not be produced by our own failed request. */
+        <View>
+          <Text variant="callout" tone="danger">
+            We could not load your activity.
+          </Text>
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading your activity"
+            onPress={onRetry}
+            className="mt-xs"
+          >
+            <Text variant="footnote" tone="accent">
+              Try again
+            </Text>
+          </PressableScale>
+        </View>
       ) : transactions.length === 0 ? (
         <Text variant="callout" tone="secondary">
           No activity yet.

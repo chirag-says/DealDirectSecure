@@ -27,6 +27,9 @@ export interface RecentProjectsResult {
   isLoading: boolean;
   /** Total live projects, which may exceed what the rail shows. */
   total: number;
+  /** Exposed so Home can tell "no projects" from "we could not ask". */
+  error: unknown;
+  retry: () => void;
 }
 
 export function useRecentProjects(limit = 10): RecentProjectsResult {
@@ -43,6 +46,8 @@ export function useRecentProjects(limit = 10): RecentProjectsResult {
     items: query.data?.items ?? [],
     isLoading: query.isPending,
     total: query.data?.total ?? 0,
+    error: query.error,
+    retry: () => void query.refetch(),
   };
 }
 

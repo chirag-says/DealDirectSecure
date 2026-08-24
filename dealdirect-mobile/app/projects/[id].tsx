@@ -41,7 +41,12 @@ export default function ProjectDetailScreen() {
   const { width } = useWindowDimensions();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { project, isLoading, error, refresh } = useProjectDetail(id);
-  const { unitTypes, isLoading: unitTypesLoading } = useUnitTypesForProject(id);
+  const {
+    unitTypes,
+    isLoading: unitTypesLoading,
+    error: unitTypesError,
+    retry: retryUnitTypes,
+  } = useUnitTypesForProject(id);
 
   /**
    * Pull-to-refresh used to pass `refreshing={false}` unconditionally, so the
@@ -222,8 +227,31 @@ export default function ProjectDetailScreen() {
             <Text variant="title3" className="mb-sm">
               Unit types
             </Text>
+            {/*
+              "No unit types published yet" is a statement about the BUILDER's
+              inventory, on the screen where a buyer decides whether to proceed.
+              It was rendered for a failed request too, because `unitTypes` falls
+              back to `[]` on error — so our network fault read as the developer
+              having listed nothing.
+            */}
             {unitTypesLoading ? (
               <Skeleton height={80} radius={12} />
+            ) : unitTypesError ? (
+              <View>
+                <Text variant="callout" tone="danger">
+                  We could not load the unit types.
+                </Text>
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading unit types"
+                  onPress={retryUnitTypes}
+                  className="mt-xs"
+                >
+                  <Text variant="footnote" tone="accent">
+                    Try again
+                  </Text>
+                </PressableScale>
+              </View>
             ) : unitTypes.length === 0 ? (
               <Text variant="callout" tone="secondary">
                 No unit types published yet.

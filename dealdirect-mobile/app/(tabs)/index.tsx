@@ -39,7 +39,7 @@ import { Reveal, ScrollRevealProvider, useScrollRevealHost } from '@/lib';
 import { screenPadding, spacing, tabBarClearance, useTheme } from '@/theme';
 import type { AppNotification } from '@/types/backend/notification';
 import type { PropertySearchParams } from '@/types/backend/property';
-import { Screen } from '@/ui';
+import { PressableScale, Screen, Text } from '@/ui';
 
 /**
  * Home — where a session starts.
@@ -444,7 +444,25 @@ function PopularListings({
   onViewAll: (params: PropertySearchParams & { browse?: string }) => void;
   onSelectProperty: (id: string) => void;
 }) {
-  const { items, isLoading, isComplete } = usePopularListings();
+  const { items, isLoading, isComplete, error, retry } = usePopularListings();
+
+  /*
+    A failed fetch used to be indistinguishable from an empty corpus, because
+    both arrive here as `items.length === 0` and the rail returned null. With
+    every rail on the screen doing that, a total outage rendered Home as the
+    hero above a blank page: no message, nothing to retry, nothing to suggest
+    the app was not simply empty.
+
+    Silence is still right when there is genuinely nothing to show. It is not
+    right when we failed to ask.
+  */
+  if (error && !isLoading) {
+    return (
+      <Section title="Popular right now">
+        <RailError onRetry={retry} />
+      </Section>
+    );
+  }
 
   if (!isLoading && items.length === 0) return null;
 
@@ -482,7 +500,16 @@ function BuilderProjects({
   onSelectProject: (id: string) => void;
   onViewAll: () => void;
 }) {
-  const { items, isLoading, total } = useRecentProjects();
+  const { items, isLoading, total, error, retry } = useRecentProjects();
+
+  // Same rule as the popular rail above: absent is silent, failed is not.
+  if (error && !isLoading) {
+    return (
+      <Section title="New projects">
+        <RailError onRetry={retry} />
+      </Section>
+    );
+  }
 
   if (!isLoading && items.length === 0) return null;
 
@@ -503,6 +530,34 @@ function BuilderProjects({
         accessibilityLabel="Builder projects"
       />
     </Section>
+  );
+}
+
+/**
+ * A rail that could not load, stated in the rail's own space.
+ *
+ * Deliberately small. This is one row of a scrolling page, not the screen's
+ * subject, and a full `ErrorState` in a rail slot would make a failed
+ * inventory strip look like the app had broken. It says what happened and
+ * offers the one useful action.
+ */
+function RailError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <View style={{ paddingHorizontal: screenPadding, gap: spacing.xs }}>
+      <Text variant="callout" tone="secondary">
+        We could not load these right now.
+      </Text>
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel="Try loading again"
+        onPress={onRetry}
+        style={{ alignSelf: 'flex-start' }}
+      >
+        <Text variant="footnote" tone="accent">
+          Try again
+        </Text>
+      </PressableScale>
+    </View>
   );
 }
 

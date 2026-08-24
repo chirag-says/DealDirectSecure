@@ -47,7 +47,30 @@ export default function PropertyMapScreen() {
     );
   }
 
-  if (isMissing || !property) {
+  /*
+    ERROR IS TESTED BEFORE ABSENCE, AND THE ORDER IS THE WHOLE POINT.
+
+    These two branches were the other way round. `property` is undefined on ANY
+    failure, not just a 404, so a dropped connection or a 500 fell into the
+    branch below and told the user the listing "may have been sold, rented, or
+    taken down by its owner" — a definite statement about a listing's existence,
+    made from a transient network fault. The retry that would have fixed it was
+    unreachable underneath.
+
+    Only `isMissing` — the adapter's real 404 — may claim a listing is gone.
+    `app/property/[id]/index.tsx` already orders these correctly; this file had
+    inverted it.
+  */
+  if (error && !isMissing) {
+    return (
+      <Screen edges={['top']}>
+        <ScreenHeader title="Location" backTo={`/property/${id}`} />
+        <ErrorState title="Could not load the location" onRetry={refresh} />
+      </Screen>
+    );
+  }
+
+  if (isMissing) {
     return (
       <Screen edges={['top']}>
         <ScreenHeader title="Location" backTo={`/property/${id}`} />
@@ -59,7 +82,10 @@ export default function PropertyMapScreen() {
     );
   }
 
-  if (error) {
+  // Loaded, no error, no 404, and still nothing — a contract violation rather
+  // than a user-facing state. Offered as retryable because that is the only
+  // honest thing left to say about it.
+  if (!property) {
     return (
       <Screen edges={['top']}>
         <ScreenHeader title="Location" backTo={`/property/${id}`} />

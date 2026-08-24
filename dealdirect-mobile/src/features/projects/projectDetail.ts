@@ -21,7 +21,15 @@ export function useProjectDetail(id: ObjectId) {
     project: query.data ?? null,
     isLoading: query.isPending,
     error: query.error,
-    refresh: () => void query.refetch(),
+    /*
+      Returns the PROMISE rather than swallowing it with `void`.
+
+      The screen does `await refresh()` around its pull-to-refresh spinner. With
+      a void return that awaited nothing, resolved on the same tick, and the
+      spinner vanished instantly while the request was still in flight — the one
+      thing a refresh control exists to communicate.
+    */
+    refresh: () => query.refetch(),
   };
 }
 
@@ -40,6 +48,7 @@ export function useUnitTypesForProject(projectId: ObjectId) {
     unitTypes: query.data ?? [],
     isLoading: query.isPending,
     error: query.error,
+    retry: () => void query.refetch(),
   };
 }
 

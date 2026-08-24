@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { usePropertyDetail, ZoomableImage } from '@/features/properties';
 import { spacing, touchTarget } from '@/theme';
-import { EmptyState, Image, PressableScale, Screen, Text } from '@/ui';
+import { EmptyState, ErrorState, Image, PressableScale, Screen, Text } from '@/ui';
 
 /**
  * Full-screen photo viewer.
@@ -71,7 +71,7 @@ export default function PropertyGalleryScreen() {
 
   const { id, index: indexParam } = useLocalSearchParams<{ id: string; index?: string }>();
 
-  const { property, isLoading } = usePropertyDetail(id);
+  const { property, isLoading, isMissing, error, refresh } = usePropertyDetail(id);
   const images = property?.gallery ?? [];
 
   // Parsed once, on mount. A NaN from a malformed deep link would make the
@@ -138,6 +138,37 @@ export default function PropertyGalleryScreen() {
     );
   }
 
+  /*
+    A FAILED FETCH IS NOT A LISTING WITHOUT PHOTOS.
+
+    There was no error branch here at all: `images` falls back to `[]` whenever
+    `property` is undefined, so any network fault or 5xx rendered "This listing
+    was posted without any images" — a claim about what the owner uploaded,
+    made from our own failure to load it, with no retry. Deep-linked into the
+    gallery while offline, that is simply a lie about someone's listing.
+  */
+  if (error && !isMissing) {
+    return (
+      <Screen>
+        <ErrorState title="Could not load the photos" onRetry={refresh} />
+      </Screen>
+    );
+  }
+
+  if (isMissing) {
+    return (
+      <Screen>
+        <EmptyState
+          title="Listing no longer available"
+          description="It may have been sold, rented, or taken down by its owner."
+          actionLabel="Go back"
+          onAction={handleClose}
+        />
+      </Screen>
+    );
+  }
+
+  // Genuinely loaded, and genuinely has no photos.
   if (count === 0) {
     return (
       <Screen>

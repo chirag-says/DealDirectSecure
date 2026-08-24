@@ -51,6 +51,16 @@ export interface PopularListingsResult {
    * is genuinely "most viewed" rather than "most viewed among the newest N".
    */
   isComplete: boolean;
+  /**
+   * Exposed so Home can tell "nothing to show" from "we could not ask".
+   *
+   * It was swallowed, and `items` falls back to `[]`, so the rail unmounted
+   * itself on failure exactly as it does when the corpus is genuinely empty —
+   * which meant a total outage rendered Home as a hero above a blank page with
+   * no message and nothing to retry.
+   */
+  error: unknown;
+  retry: () => void;
 }
 
 export function usePopularListings(limit = 10): PopularListingsResult {
@@ -84,5 +94,7 @@ export function usePopularListings(limit = 10): PopularListingsResult {
     items,
     isLoading: query.isPending,
     isComplete: (query.data?.total ?? 0) <= (query.data?.items.length ?? 0),
+    error: query.error,
+    retry: () => void query.refetch(),
   };
 }

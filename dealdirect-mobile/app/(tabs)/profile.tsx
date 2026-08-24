@@ -326,7 +326,7 @@ function ThemeSegments() {
 function RewardsSummaryCard() {
   const router = useRouter();
   const theme = useTheme();
-  const { balance, tier, isLoading } = useWallet();
+  const { balance, tier, isLoading, error } = useWallet();
 
   return (
     <Card onPress={() => router.push('/rewards')} className="flex-row items-center justify-between">
@@ -334,8 +334,16 @@ function RewardsSummaryCard() {
         <Text variant="footnote" tone="secondary">
           Reward points
         </Text>
+        {/* `balance` is 0 whenever the wallet is null, and null covers every
+            error — so an unguarded read told a user with points that they had
+            none. Tapping through still reaches the Rewards screen, which now
+            offers a real retry. */}
         {isLoading ? (
           <Skeleton width={80} height={26} className="mt-xs" />
+        ) : error ? (
+          <Text variant="title2" tone="muted" className="mt-xs">
+            —
+          </Text>
         ) : (
           <Text variant="title2" className="mt-xs">
             {balance.toLocaleString('en-IN')}
