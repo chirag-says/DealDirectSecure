@@ -213,27 +213,16 @@ export function ListingForm({
               </Text>
 
               {/*
-                No built-in fallback list. The server refuses any name it does
-                not know, with no near-match of any kind, so offering guesses
-                would cost the owner the whole wizard rather than one retry.
+                The vocabulary is the server's, with a canonical mirror behind
+                it for the window in which production has the taxonomy code but
+                not the seeded data. Either way the owner always has options —
+                blocking here would turn a wizard that failed at the last step
+                into one that could not be started. See `taxonomy.ts`.
               */}
               {taxonomy.isLoading ? (
                 <View className="mb-base gap-sm">
                   <Skeleton height={36} />
                   <Skeleton height={48} />
-                </View>
-              ) : taxonomy.categories.length === 0 ? (
-                <View className="mb-base gap-sm">
-                  <Text variant="callout" tone="danger">
-                    {taxonomy.error
-                      ? 'We could not load the property types.'
-                      : 'No property types are available right now.'}
-                  </Text>
-                  <Text variant="footnote" tone="muted">
-                    You need these to publish, so the form cannot continue without
-                    them.
-                  </Text>
-                  <Button label="Try again" variant="secondary" onPress={taxonomy.retry} />
                 </View>
               ) : (
                 <>
