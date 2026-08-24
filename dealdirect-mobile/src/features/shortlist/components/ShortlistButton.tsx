@@ -3,6 +3,7 @@ import { View } from 'react-native';
 
 import type { RailProperty } from '@/features/properties';
 import { radius, touchTarget, useTheme } from '@/theme';
+import { selection } from '@/native';
 import { PressableScale, Text, useToast } from '@/ui';
 import { toggleShortlist, useIsShortlisted } from '../store';
 
@@ -45,6 +46,8 @@ export function ShortlistButton({ property }: ShortlistButtonProps) {
 
   const handlePress = () => {
     const added = toggleShortlist(property);
+    // A light tick either way — the state changed under the thumb.
+    selection();
     if (added) {
       toast.show('Shortlisted. Kept on this device, and the owner is not told.', 'success');
     }

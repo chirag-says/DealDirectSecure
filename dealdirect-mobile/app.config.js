@@ -82,6 +82,33 @@ const config = {
     // schemes and the Android 11+ <queries> block — without them the OS hides
     // other apps from this one and a payment silently fails to open anything.
     './plugins/withUpiQueries',
+    // FOREGROUND location only. Used for "search near me" and to preselect the
+    // user's city, both at the moment the user asks — never in the background,
+    // which is why no background permission is declared and the copy names the
+    // benefit rather than asking for a blanket grant.
+    [
+      'expo-location',
+      {
+        locationWhenInUsePermission:
+          'DealDirect uses your location to show properties near you and preselect your city.',
+        isAndroidBackgroundLocationEnabled: false,
+        isIosBackgroundLocationEnabled: false,
+      },
+    ],
+    // Optional biometric app-lock, and a biometric confirm before the two
+    // irreversible actions (delete account, revoke a session). The Android
+    // USE_BIOMETRIC permission is added by the plugin; this only sets the iOS
+    // Face ID string.
+    [
+      'expo-local-authentication',
+      {
+        faceIDPermission: 'DealDirect uses Face ID to unlock the app and confirm sensitive actions.',
+      },
+    ],
+    // Native date picker, for the listing form's availability date and the
+    // profile date of birth — both of which were free-text fields validated by
+    // a regex because no picker was installed.
+    '@react-native-community/datetimepicker',
   ],
 
   experiments: {

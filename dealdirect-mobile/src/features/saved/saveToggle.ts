@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 
 import { ApiError, call, propertiesEndpoints, qk } from '@/api';
+import { success } from '@/native';
 import { useAuth } from '@/auth';
 import type { PropertySummary } from '@/features/properties';
 import type { ObjectId } from '@/types/backend/common';
@@ -153,6 +154,7 @@ export function useSaveToggle(): SaveToggle {
     onSuccess: (_data, { add }) => {
       // An acknowledgement, not a disclosure: the enquiry's consequences were
       // stated before it was sent, so this only has to confirm it landed.
+      if (add) success();
       toast.show(
         add ? 'Enquiry sent. The owner has your contact details.' : 'Enquiry withdrawn.',
         add ? 'success' : 'neutral'

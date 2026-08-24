@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { Share, View } from 'react-native';
 
 import { useAuth, SignInPrompt } from '@/auth';
+import { copyToClipboard, selection } from '@/native';
 import { useReferral, useTransactions, useWallet } from '@/features/rewards';
 import type { NextTierProgress, RewardTier, RewardTransaction } from '@/types/backend/rewards';
 import { screenPadding, scrollBottomPadding, spacing, touchTarget, useTheme } from '@/theme';
@@ -17,6 +18,7 @@ import {
   ScreenHeader,
   Skeleton,
   Text,
+  useToast,
 } from '@/ui';
 
 /**
@@ -205,6 +207,23 @@ function ReferralCard({
   dealClosures: number;
 }) {
   const theme = useTheme();
+  const toast = useToast();
+
+  /**
+   * Tap the code to COPY it; the button below still shares.
+   *
+   * Tapping a code to copy it is the universal pattern, and it is what a user
+   * reaching for their referral code to paste into a chat they are already
+   * writing actually wants. Sharing is the separate, deliberate button.
+   */
+  const handleCopy = async () => {
+    if (!code) return;
+    const copied = await copyToClipboard(code);
+    if (copied) {
+      selection();
+      toast.show('Referral code copied.', 'success');
+    }
+  };
 
   const handleShare = () => {
     if (!link && !code) return;
@@ -237,8 +256,8 @@ function ReferralCard({
       {code ? (
         <PressableScale
           accessibilityRole="button"
-          accessibilityLabel={`Share your referral code ${code}`}
-          onPress={handleShare}
+          accessibilityLabel={`Copy your referral code ${code}`}
+          onPress={() => void handleCopy()}
           activeScale={0.98}
           style={{ marginBottom: spacing.base }}
         >
@@ -249,7 +268,7 @@ function ReferralCard({
             <Text variant="bodyEmphasis" className="tracking-wide">
               {code}
             </Text>
-            <Ionicons name="share-outline" size={18} color={theme.colors.textMuted} />
+            <Ionicons name="copy-outline" size={18} color={theme.colors.textMuted} />
           </View>
         </PressableScale>
       ) : null}
