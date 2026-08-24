@@ -1,10 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { ScrollView, View } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ListingIntent } from '@/features/properties';
 import { radius, screenPadding, spacing, touchTarget, useTheme, withAlpha } from '@/theme';
-import { PressableScale, Text } from '@/ui';
+import { Gradient, PressableScale, Text } from '@/ui';
 import type { City } from '../cities';
 import { HOME_HEADER_ROW } from './HomeHeader';
 
@@ -40,10 +41,20 @@ import { HOME_HEADER_ROW } from './HomeHeader';
  * block, the three-benefit strip and the closing "Ready to find your home?"
  * slab. One line, then the tools.
  *
+ * ---------------------------------------------------------------------------
+ * THE BACKGROUND IS A PHOTOGRAPH, NOT A FLAT FILL
+ *
+ * A brand-red image of a modern building against a city skyline sits behind
+ * the content — already in the brand colour, so it reads as the hero's own
+ * surface rather than a picture pasted onto it. A vertical brand scrim over it
+ * keeps the white headline legible at the top and grounds the search field at
+ * the bottom, while letting the building show through the middle. The base fill
+ * stays `brand` underneath, so a slow image load or a decode failure degrades
+ * to exactly the flat panel this replaced rather than to a blank gap.
  */
 
 export interface HomeHeroProps {
-  /** Signed-in user's name, for the avatar. Absent for a guest. */
+  /** The city the session is scoped to, or null for everywhere. */
   city: City | null;
   onOpenCityPicker: () => void;
   onSearch: () => void;
@@ -84,6 +95,7 @@ export function HomeHero({
     <View
       style={{
         backgroundColor: theme.colors.brand,
+        overflow: 'hidden',
         paddingHorizontal: screenPadding,
         /*
           Padded clear of the pinned header, which sits above this block and
@@ -107,6 +119,31 @@ export function HomeHero({
         borderBottomRightRadius: radius.xl,
       }}
     >
+      {/* Behind the content, respecting the rounded corners via the container's
+          `overflow: hidden`. `top right` features the building the image places
+          there; the plain sky falls to the left, under the headline. */}
+      <ExpoImage
+        source={require('../../../../assets/home/brand/hero-city.png')}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        contentPosition="top right"
+        // The image is baked into the bundle, so caching it is pointless work;
+        // memory-only avoids a disk round trip on every Home mount.
+        cachePolicy="memory"
+      />
+      {/* The scrim: stronger at the top behind the white headline, near-clear
+          through the middle so the building reads, lightly grounded at the
+          bottom under the search field. */}
+      <Gradient
+        colors={[
+          withAlpha(theme.colors.brand, 0.55),
+          withAlpha(theme.colors.brand, 0.08),
+          withAlpha(theme.colors.brand, 0.32),
+        ]}
+        locations={[0, 0.5, 1]}
+        style={StyleSheet.absoluteFillObject}
+      />
+
       <Text variant="title2" style={{ color: onBrand }}>
         Property, direct from owners
       </Text>
