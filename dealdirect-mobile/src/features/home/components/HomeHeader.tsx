@@ -232,11 +232,12 @@ const styles = StyleSheet.create({
     right: 0,
     // Above the scroll content, below any sheet or modal.
     zIndex: 10,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
+    // No shadow. The header and the hero beneath it are the same brand red, so
+    // a drop shadow here casts a dark band onto an identical-coloured surface
+    // and reads as a seam — the exact mismatch it looks like it should prevent.
+    // Once scrolled, the header floats over the near-black page where a black
+    // shadow is invisible regardless, so it was never buying separation. The
+    // colour boundary against the content carries the header on its own.
   },
   row: {
     flexDirection: 'row',
