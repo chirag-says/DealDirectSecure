@@ -17,12 +17,19 @@ import {
   useToast,
 } from '@/ui';
 import { captureListingImage, canCapture, canPickImages, pickListingImages } from '../imagePicker';
-import { COMMERCIAL_CONFIGS } from '../catalog';
+import {
+  BHK_OPTIONS,
+  COMMERCIAL_CONFIGS,
+  COMMERCIAL_SUBTYPES,
+  FURNISHING_OPTIONS,
+  PROPERTY_AGE_OPTIONS,
+  TENANT_OPTIONS,
+  amenitiesFor,
+  photoCategoriesForType,
+} from '../catalog';
 import { LocationPicker } from './LocationPicker';
 import { useListingTaxonomy } from '../taxonomy';
 import {
-  AMENITIES,
-  photoCategoriesFor,
   photoCategoryLabel,
   type CategorizedPhoto,
   type ListingFormValues,
@@ -76,6 +83,9 @@ export function ListingForm({
   const set = <K extends keyof ListingFormValues>(key: K, value: ListingFormValues[K]) =>
     onChange({ ...values, [key]: value });
 
+  /** Several fields in one write — see the note on `ResidentialDetails`. */
+  const patch = (next: Partial<ListingFormValues>) => onChange({ ...values, ...next });
+
   /*
     The vocabulary comes from the server. See `taxonomy.ts` for why a constant
     here was failing half of all submissions at the final step.
@@ -126,7 +136,16 @@ export function ListingForm({
 
   const totalPhotos = existingPhotos.length + newPhotos.length;
   const canAddMorePhotos = totalPhotos < MAX_PHOTOS;
-  const categoryOptions = photoCategoriesFor(values.categoryName);
+  /*
+    Per property TYPE, not merely per category. A Studio has no Building
+    Exterior and a Warehouse has no Bedroom; asking for both was how mobile's
+    single pair of lists behaved. `photoCategoriesForType` falls back the way
+    the website does for a type it has no set for, which matters more here
+    because the type list is fetched and can contain a name this table has not
+    seen. Returns `{key,label,max,tip}`; the tiles below want `{label,value}`.
+  */
+  const photoCategories = photoCategoriesForType(values.categoryName, values.propertyTypeName);
+  const categoryOptions = photoCategories.map((c) => ({ label: c.label, value: c.key }));
 
   const stepValid = useMemo(() => {
     switch (step) {
@@ -247,6 +266,32 @@ export function ListingForm({
                     options={propertyTypeOptions}
                     onChange={(v) => set('propertyTypeName', v)}
                   />
+
+                  {/* How finished the space is handed over — the first thing a
+                      commercial tenant asks, and mobile could not state it. */}
+                  {values.categoryName === 'Commercial' ? (
+                    <View className="mt-base">
+                      <Text variant="footnote" tone="secondary" className="mb-xs">
+                        Sub-type
+                      </Text>
+                      <View className="flex-row flex-wrap">
+                        {COMMERCIAL_SUBTYPES.map((sub) => (
+                          <Chip
+                            key={sub}
+                            label={sub}
+                            selected={values.commercialSubType === sub}
+                            onPress={() =>
+                              // Tapping the selected chip clears it: the field
+                              // is optional and there is no other way back to
+                              // "not stated" once a chip has been pressed.
+                              set('commercialSubType', values.commercialSubType === sub ? '' : sub)
+                            }
+                            className="mb-sm mr-sm"
+                          />
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
                 </>
               )}
 
@@ -407,16 +452,76 @@ export function ListingForm({
                 />
               </Pressable>
 
-              <Input
-                label={values.listingType === 'Rent' ? 'Security deposit' : 'Booking amount'}
-                value={values.deposit}
-                onChangeText={(v) => set('deposit', v)}
-                containerClassName="mt-base"
-              />
+              {/*
+                The rent and sale paths ask for genuinely different money, so
+                they are separate fields rather than one relabelled one. A sale
+                has a booking amount and may attract GST; a rental has a deposit
+                and a maintenance figure that is usually quoted as included.
+              */}
+              {values.listingType === 'Rent' ? (
+                <>
+                  <Input
+                    label="Security deposit (₹)"
+                    value={values.deposit}
+                    onChangeText={(v) => set('deposit', v)}
+                    keyboardType="number-pad"
+                    containerClassName="mt-base"
+                  />
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ checked: values.maintenanceIncluded }}
+                    onPress={() =>
+                      // Clearing the amount when it becomes included: leaving a
+                      // figure behind would submit a maintenance charge the
+                      // owner has just said is part of the rent.
+                      patch({
+                        maintenanceIncluded: !values.maintenanceIncluded,
+                        maintenance: !values.maintenanceIncluded ? '' : values.maintenance,
+                      })
+                    }
+                    className="mt-base flex-row items-center justify-between py-sm"
+                  >
+                    <Text variant="body">Maintenance included in rent</Text>
+                    <Ionicons
+                      name={values.maintenanceIncluded ? 'checkbox' : 'square-outline'}
+                      size={22}
+                      color={
+                        values.maintenanceIncluded ? theme.colors.accent : theme.colors.textMuted
+                      }
+                    />
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Input
+                    label="Booking amount (₹)"
+                    value={values.bookingAmount}
+                    onChangeText={(v) => set('bookingAmount', v)}
+                    keyboardType="number-pad"
+                    containerClassName="mt-base"
+                  />
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ checked: values.gstApplicable }}
+                    onPress={() => set('gstApplicable', !values.gstApplicable)}
+                    className="mt-base flex-row items-center justify-between py-sm"
+                  >
+                    <Text variant="body">GST applicable</Text>
+                    <Ionicons
+                      name={values.gstApplicable ? 'checkbox' : 'square-outline'}
+                      size={22}
+                      color={values.gstApplicable ? theme.colors.accent : theme.colors.textMuted}
+                    />
+                  </Pressable>
+                </>
+              )}
+
               <Input
                 label="Maintenance (per month)"
                 value={values.maintenance}
                 onChangeText={(v) => set('maintenance', v)}
+                keyboardType="number-pad"
+                editable={!(values.listingType === 'Rent' && values.maintenanceIncluded)}
                 containerClassName="mt-base"
               />
 
@@ -481,7 +586,7 @@ export function ListingForm({
             <>
               <Card>
                 {values.categoryName === 'Residential' ? (
-                  <ResidentialDetails values={values} set={set} theme={theme} />
+                  <ResidentialDetails values={values} set={set} patch={patch} theme={theme} />
                 ) : (
                   <CommercialDetails values={values} set={set} />
                 )}
@@ -537,7 +642,7 @@ export function ListingForm({
                   Amenities
                 </Text>
                 <View className="flex-row flex-wrap">
-                  {AMENITIES.map((amenity) => (
+                  {amenitiesFor(values.categoryName).map((amenity) => (
                     <Chip
                       key={amenity}
                       label={amenity}
@@ -698,14 +803,34 @@ export function ListingForm({
 function ResidentialDetails({
   values,
   set,
+  patch,
   theme,
 }: {
   values: ListingFormValues;
   set: <K extends keyof ListingFormValues>(key: K, value: ListingFormValues[K]) => void;
+  /**
+   * Several fields at once.
+   *
+   * `set` rebuilds from the `values` it closed over, so two calls in a row both
+   * start from the same snapshot and the second silently discards the first.
+   * Anything writing more than one field has to go through here.
+   */
+  patch: (next: Partial<ListingFormValues>) => void;
   theme: Theme;
 }) {
-  const bhkOptions = ['1', '2', '3', '4', '5+'].map((v) => ({ label: `${v} BHK`, value: v }));
-  const furnishingOptions = ['Unfurnished', 'Semi-furnished', 'Fully furnished'].map((v) => ({
+  /*
+    The website's seven options, not five.
+
+    Mobile offered 1-5+ BHK only, so a studio or a 1 RK — two of the commonest
+    rental configurations in an Indian city — could not be described at all.
+    The value IS the label here: it is submitted verbatim as `features.bhk`,
+    which is what the search parser reads back.
+  */
+  const bhkOptions = BHK_OPTIONS.map((v) => ({ label: v, value: v }));
+  // From the catalog: the local copy read "Semi-furnished" where the website
+  // and the corpus both say "Semi-Furnished", so the two clients disagreed on
+  // the value stored for the same choice.
+  const furnishingOptions = FURNISHING_OPTIONS.map((v) => ({
     label: v,
     value: v,
   }));
@@ -715,9 +840,18 @@ function ResidentialDetails({
       <Select
         label="BHK"
         placeholder="Choose"
-        value={values.bhk || undefined}
+        value={values.bhkType || undefined}
         options={bhkOptions}
-        onChange={(v) => set('bhk', v)}
+        onChange={(v) => {
+          /*
+            Picking a BHK also fills the bedroom count, exactly as the website
+            does: "3 BHK" means three bedrooms, and asking again on the next
+            step is asking the same question twice. "Studio" has no bedroom
+            count, and "1 RK" is one room, which the split below yields as "1".
+          */
+          const bedrooms = v === 'Studio' ? '0' : v.split(' ')[0];
+          patch({ bhkType: v, bhk: v, bedrooms });
+        }}
       />
       <View className="mt-base flex-row flex-wrap">
         <Input
@@ -742,6 +876,43 @@ function ResidentialDetails({
           containerClassName="mb-base w-[30%]"
         />
       </View>
+
+      <Select
+        label="Property age"
+        placeholder="Choose"
+        value={values.propertyAge || undefined}
+        options={PROPERTY_AGE_OPTIONS.map((v) => ({ label: v, value: v }))}
+        onChange={(v) => set('propertyAge', v)}
+      />
+
+      {/*
+        Rent only, and the two questions every Indian rental listing is asked
+        before a viewing is agreed. Mobile collected neither, so an owner could
+        not state them and a tenant had to message to find out.
+      */}
+      {values.listingType === 'Rent' ? (
+        <View className="mt-base">
+          <Select
+            label="Preferred tenants"
+            placeholder="Choose"
+            value={values.allowedFor || undefined}
+            options={TENANT_OPTIONS.map((v) => ({ label: v, value: v }))}
+            onChange={(v) => set('allowedFor', v)}
+          />
+          <View className="mt-base">
+            <Select
+              label="Pet friendly"
+              placeholder="Choose"
+              value={values.petFriendly || undefined}
+              options={[
+                { label: 'No', value: 'No' },
+                { label: 'Yes', value: 'Yes' },
+              ]}
+              onChange={(v) => set('petFriendly', v)}
+            />
+          </View>
+        </View>
+      ) : null}
 
       <Select
         label="Furnishing"
