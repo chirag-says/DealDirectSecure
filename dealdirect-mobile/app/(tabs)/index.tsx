@@ -293,6 +293,7 @@ export default function HomeScreen() {
               // The hero field runs the search itself now; an empty term means
               // "browse everything", which `openSearch` already encodes.
               onSubmitSearch={(term) => openSearch(term ? { search: term } : undefined)}
+              onOpenProperty={openProperty}
               onIntent={(intent) =>
                 intent === 'projects'
                   ? router.push('/projects')

@@ -12,11 +12,13 @@ import {
 import { useDebouncedValue } from '@/lib';
 import type { PropertySuggestion } from '@/types/backend/property';
 import {
+  DEFAULT_FILTERS,
   hasClientOnlyFilters,
   matchesClientFilters,
   toSearchParams,
   type SearchFilters,
 } from './filters';
+import { applyUnderstanding, buildParseContext } from './queryUnderstanding';
 import {
   addRecentSearch,
   clearRecentSearches,
@@ -72,6 +74,64 @@ export function useSuggestions(input: string): Suggestions {
     items: enabled ? (query.data ?? []) : [],
     // Only "loading" while there is nothing cached to show; a refetch behind an
     // existing list must not flip the panel back to a spinner.
+    isLoading: enabled && query.isPending,
+    term: debounced,
+  };
+}
+
+/** How many result rows the Home hero previews before offering "See all". */
+const PREVIEW_SIZE = 6;
+
+export interface SearchPreview {
+  items: PropertySummary[];
+  /** Total matches, so "See all N" can be honest before the full page loads. */
+  total: number;
+  isLoading: boolean;
+  /** The term the results correspond to, which lags the field while debouncing. */
+  term: string;
+}
+
+/**
+ * A live preview of ACTUAL results, for the Home hero's search field.
+ *
+ * `useSuggestions` autocompletes place and project NAMES; this runs the real
+ * search. It applies the SAME parse the Search tab does, so "1 bhk in mumbai"
+ * resolves to a 1 BHK + Mumbai filter set and returns the listing that matches
+ * rather than the empty name-match a natural-language query gets from the
+ * suggestions endpoint. Bounded to a handful of rows — the hero's "See all"
+ * hands the whole query to the Search tab, which owns pagination and filters.
+ *
+ * The parse context is empty here on purpose: city, BHK, price and type do not
+ * need the corpus to resolve, and a locality NAME the context cannot place
+ * degrades to a raw text match rather than to nothing — the same fallback the
+ * Search tab runs before it has accumulated any localities of its own.
+ *
+ * Same rate discipline as `useSuggestions`, because it shares the same
+ * 20-per-minute limiter: fed the query only while the field is focused,
+ * debounced at 450ms behind a two-character floor, and cached by parsed params.
+ */
+export function useSearchPreview(input: string): SearchPreview {
+  const debounced = useDebouncedValue(input.trim(), SUGGESTION_DEBOUNCE_MS);
+  const enabled = debounced.length >= MIN_SUGGESTION_LENGTH;
+
+  const params = useMemo(() => {
+    if (!enabled) return null;
+    const { filters } = applyUnderstanding(debounced, DEFAULT_FILTERS, buildParseContext([]));
+    return { ...toSearchParams(filters), limit: PREVIEW_SIZE, page: 1 };
+  }, [debounced, enabled]);
+
+  const query = useQuery({
+    queryKey: qk.collection('search-preview', params ?? {}),
+    queryFn: ({ signal }) => fetchPropertyPage(params!, signal),
+    enabled: enabled && params !== null,
+    staleTime: 60_000,
+  });
+
+  return {
+    items: enabled ? (query.data?.items ?? []) : [],
+    total: query.data?.total ?? 0,
+    // Loading only while there is nothing cached to show, so a refetch behind an
+    // existing preview does not flip it back to skeletons.
     isLoading: enabled && query.isPending,
     term: debounced,
   };

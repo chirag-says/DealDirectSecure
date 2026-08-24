@@ -1,15 +1,15 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
-import { RecentSearches, useRecentSearches, useSuggestions } from '@/features/search';
+import { PropertyListItem } from '@/features/properties';
+import { RecentSearches, useRecentSearches, useSearchPreview } from '@/features/search';
 import { gesture, radius, spacing, useTheme } from '@/theme';
-import type { PropertySuggestion } from '@/types/backend/property';
 import { PressableScale, Skeleton, Text, useTextInputStyle } from '@/ui';
 import type { City } from '../cities';
 
 /**
- * The hero's search field — a real input that answers in place.
+ * The hero's search field — a real input that answers with real listings.
  *
  * ---------------------------------------------------------------------------
  * WHY IT NO LONGER JUST JUMPS TO THE SEARCH TAB
@@ -17,42 +17,37 @@ import type { City } from '../cities';
  * This used to be a button dressed as a search box: tapping it anywhere
  * navigated straight to the Search screen, so the field on Home was a decoy
  * for the real one a tab away. A person who taps a search box expects to type
- * into it, and the first thing they got instead was a screen change.
+ * into it, not to change screens.
  *
- * Now they type here. Autocomplete shows under the field as they go — the SAME
- * suggestions the Search tab uses, so there is one source and one rate budget,
- * not a second implementation. The screen only CHANGES on a deliberate search:
- * the submit button, the keyboard's search key, or picking a suggestion.
- * Focusing the field, and typing into it, keep the user on Home.
+ * Now they type here and see MATCHES as they go, and the screen only CHANGES
+ * on a deliberate search: the search button, the keyboard's search key, or a
+ * result tap. Focusing the field and typing keep the user on Home.
+ *
+ * ---------------------------------------------------------------------------
+ * THE DROPDOWN SHOWS RESULTS, NOT NAME-AUTOCOMPLETE — fixed 2026-08-24
+ *
+ * The first version fed the dropdown from `useSuggestions`, which autocompletes
+ * place and project NAMES. A natural-language query — "1 bhk in mumbai" — has
+ * no name to match, so the panel said "no matches" while the Search tab, which
+ * PARSES the query into a 1 BHK + Mumbai filter, found the listing. Two answers
+ * to the same question, and the wrong one was on the screen the user starts on.
+ *
+ * `useSearchPreview` runs the real, parsed search and this panel shows the top
+ * few as the same cards the results list uses. "See all" hands the whole query
+ * to the Search tab for pagination, filters and sort.
  *
  * ---------------------------------------------------------------------------
  * THE PANEL IS RENDERED INLINE, NOT AS A FLOATING DROPDOWN
  *
  * It sits in the hero's own column and grows the block downward while focused,
- * rather than floating over the content below on an absolute layer. A floating
- * panel inside a scroll view has to fight the scroll for its anchor; an inline
- * one cannot drift, and the keyboard covers the pushed-down content anyway.
- * Capped at a handful of rows so it never needs a scroll view of its own nested
- * inside Home's — the one gesture conflict worth designing out entirely.
- *
- * ---------------------------------------------------------------------------
- * THE SAME RATE DISCIPLINE AS THE SEARCH TAB
- *
- * `useSuggestions` is fed the query only while the field is focused, and it
- * debounces at 450ms with a two-character floor before it will touch the
- * shared 20-per-minute search limiter. Recent searches are a synchronous MMKV
- * read, so the focused-but-empty state costs nothing.
+ * rather than floating over the content below on an absolute layer that would
+ * fight the scroll for its anchor. Capped at a handful of rows so it never
+ * needs a scroll view of its own nested inside Home's.
  */
 
-const ICON_FOR_TYPE = {
-  project: 'business-outline',
-  locality: 'navigate-outline',
-  city: 'location-outline',
-} as const;
-
-/** How many suggestion rows the inline panel shows before it would need to
- *  scroll. Kept low deliberately: see the panel note in the module doc. */
-const MAX_INLINE_SUGGESTIONS = 6;
+/** How many preview rows show before the panel would need to scroll. Matches
+ *  `useSearchPreview`'s own ceiling. */
+const MAX_PREVIEW_ROWS = 6;
 
 export interface HomeSearchFieldProps {
   /** The scoped city, for the placeholder. The redirect adds the filter. */
@@ -63,9 +58,11 @@ export interface HomeSearchFieldProps {
    * WHEN a search is deliberate enough to leave Home for.
    */
   onSubmit: (term: string) => void;
+  /** Open a previewed listing directly, without going through the results list. */
+  onOpenProperty: (id: string) => void;
 }
 
-export function HomeSearchField({ city, onSubmit }: HomeSearchFieldProps) {
+export function HomeSearchField({ city, onSubmit, onOpenProperty }: HomeSearchFieldProps) {
   const theme = useTheme();
   const inputStyle = useTextInputStyle();
   const inputRef = useRef<TextInput>(null);
@@ -76,7 +73,7 @@ export function HomeSearchField({ city, onSubmit }: HomeSearchFieldProps) {
   const recent = useRecentSearches();
   // Only queried while focused, so a blurred field with stale text fires
   // nothing. The hook's own debounce and two-char floor guard the limiter.
-  const suggestions = useSuggestions(focused ? query : '');
+  const preview = useSearchPreview(focused ? query : '');
 
   const trimmed = query.trim();
   const typing = trimmed.length >= 2;
@@ -90,13 +87,22 @@ export function HomeSearchField({ city, onSubmit }: HomeSearchFieldProps) {
     onSubmit(value);
   };
 
+  const openProperty = (id: string) => {
+    inputRef.current?.blur();
+    setFocused(false);
+    onOpenProperty(id);
+  };
+
   const placeholder = city ? `Search in ${city.label}` : 'Search locality, project or city';
+  const previewItems = preview.items.slice(0, MAX_PREVIEW_ROWS);
+  const more = Math.max(preview.total - previewItems.length, 0);
 
   return (
     <View style={{ marginTop: spacing.base }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
         {/* The field. A real input now, styled as the pill the trigger used to
-            imitate, so nothing about the hero's shape changed. */}
+            imitate. The search glyph moved to the button on the right, where it
+            is the thing you press rather than a decoration on the left. */}
         <View
           style={{
             flex: 1,
@@ -109,7 +115,6 @@ export function HomeSearchField({ city, onSubmit }: HomeSearchFieldProps) {
             backgroundColor: theme.colors.surface,
           }}
         >
-          <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
           <TextInput
             ref={inputRef}
             value={query}
@@ -141,8 +146,9 @@ export function HomeSearchField({ city, onSubmit }: HomeSearchFieldProps) {
           ) : null}
         </View>
 
-        {/* The search button — the ONE control that leaves Home. Surface fill,
-            not brand: a brand-red button on the brand-red hero would vanish. */}
+        {/* The search button — the search glyph, and the ONE control that runs
+            the full search. Surface fill, not brand: a brand-red button on the
+            brand-red hero would vanish. */}
         <PressableScale
           accessibilityRole="button"
           accessibilityLabel="Search"
@@ -157,85 +163,89 @@ export function HomeSearchField({ city, onSubmit }: HomeSearchFieldProps) {
             backgroundColor: theme.colors.surface,
           }}
         >
-          <Ionicons name="arrow-forward" size={20} color={theme.colors.brand} />
+          <Ionicons name="search" size={20} color={theme.colors.brand} />
         </PressableScale>
       </View>
 
       {showPanel ? (
-        <View
-          style={{
-            marginTop: spacing.sm,
-            borderRadius: radius.lg,
-            backgroundColor: theme.colors.surface,
-            overflow: 'hidden',
-          }}
-        >
-          {typing ? (
-            suggestions.isLoading ? (
-              <View style={{ padding: spacing.base, gap: spacing.md }}>
-                {[0, 1, 2].map((index) => (
-                  <Skeleton key={index} height={18} />
-                ))}
-              </View>
-            ) : suggestions.items.length === 0 ? (
+        typing ? (
+          preview.isLoading ? (
+            <View style={{ marginTop: spacing.sm, gap: spacing.sm }}>
+              {[0, 1].map((index) => (
+                <Skeleton key={index} height={96} radius={radius.lg} />
+              ))}
+            </View>
+          ) : previewItems.length === 0 ? (
+            <Panel>
               <View style={{ paddingHorizontal: spacing.base, paddingVertical: spacing.lg }}>
                 <Text variant="callout" tone="muted">
-                  No matches for “{suggestions.term || trimmed}”. Press search to look
-                  through titles and descriptions too.
+                  No properties match “{preview.term || trimmed}” yet. Try a city or
+                  locality, or fewer words.
                 </Text>
               </View>
-            ) : (
-              suggestions.items
-                .slice(0, MAX_INLINE_SUGGESTIONS)
-                .map((suggestion) => (
-                  <SuggestionRow
-                    key={`${suggestion.type}:${suggestion.value}`}
-                    suggestion={suggestion}
-                    onPress={() => submit(suggestion.value)}
-                  />
-                ))
-            )
+            </Panel>
           ) : (
+            <View style={{ marginTop: spacing.sm, gap: spacing.sm }}>
+              {previewItems.map((property) => (
+                <PropertyListItem key={property.id} property={property} onPress={openProperty} />
+              ))}
+
+              {/* Hands the whole query to the Search tab, which owns pagination,
+                  filters and sort — the results here are only the first few. */}
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel={
+                  more > 0 ? `See all ${preview.total} results` : 'Open in full search'
+                }
+                onPress={() => submit(query)}
+                activeScale={0.98}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: spacing.xs,
+                  height: 44,
+                  borderRadius: radius.lg,
+                  backgroundColor: theme.colors.surface,
+                }}
+              >
+                <Text variant="callout" tone="accent" style={{ fontWeight: '600' }}>
+                  {more > 0 ? `See all ${preview.total} results` : 'Open in full search'}
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={theme.colors.accent} />
+              </PressableScale>
+            </View>
+          )
+        ) : (
+          <Panel>
             <RecentSearches
               items={recent.items}
               onSelect={submit}
               onRemove={recent.remove}
               onClear={recent.clear}
             />
-          )}
-        </View>
+          </Panel>
+        )
       ) : null}
     </View>
   );
 }
 
-function SuggestionRow({
-  suggestion,
-  onPress,
-}: {
-  suggestion: PropertySuggestion;
-  onPress: () => void;
-}) {
+/** A surface card for the non-result panel states (recent, empty). Results use
+ *  their own cards, so they are not wrapped in this. */
+function Panel({ children }: { children: ReactNode }) {
   const theme = useTheme();
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${suggestion.value}${suggestion.subtitle ? `, ${suggestion.subtitle}` : ''}`}
-      onPress={onPress}
-      className="flex-row items-center border-b border-border px-base py-md active:opacity-70"
+    <View
+      style={{
+        marginTop: spacing.sm,
+        borderRadius: radius.lg,
+        backgroundColor: theme.colors.surface,
+        overflow: 'hidden',
+      }}
     >
-      <Ionicons name={ICON_FOR_TYPE[suggestion.type]} size={18} color={theme.colors.textMuted} />
-      <View className="ml-md flex-1">
-        <Text variant="body" numberOfLines={1}>
-          {suggestion.value}
-        </Text>
-        {suggestion.subtitle ? (
-          <Text variant="caption" tone="muted" numberOfLines={1}>
-            {suggestion.subtitle}
-          </Text>
-        ) : null}
-      </View>
-    </Pressable>
+      {children}
+    </View>
   );
 }

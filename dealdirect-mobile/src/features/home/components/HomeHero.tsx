@@ -60,6 +60,8 @@ export interface HomeHeroProps {
   onOpenCityPicker: () => void;
   /** Run a search from the hero field. Empty term means browse everything. */
   onSubmitSearch: (term: string) => void;
+  /** Open a previewed listing straight from the hero's search dropdown. */
+  onOpenProperty: (id: string) => void;
   onIntent: (intent: ListingIntent | 'projects') => void;
 }
 
@@ -77,6 +79,7 @@ export function HomeHero({
   city,
   onOpenCityPicker,
   onSubmitSearch,
+  onOpenProperty,
   onIntent,
 }: HomeHeroProps) {
   const theme = useTheme();
@@ -242,7 +245,11 @@ export function HomeHero({
       {/* How. A real field now: it answers with autocomplete in place and only
           leaves Home on a deliberate search — the submit button, the keyboard's
           search key, or a suggestion tap. See `HomeSearchField`. */}
-      <HomeSearchField city={city} onSubmit={onSubmitSearch} />
+      <HomeSearchField
+        city={city}
+        onSubmit={onSubmitSearch}
+        onOpenProperty={onOpenProperty}
+      />
     </View>
   );
 }

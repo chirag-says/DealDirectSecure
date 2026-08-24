@@ -32,10 +32,12 @@ export {
   useRecentSearches,
   usePropertySearchFeed,
   useRelatedProperties,
+  useSearchPreview,
   useSimilarProperties,
   useSuggestions,
   type CompareSelection,
   type RelatedPropertiesResult,
+  type SearchPreview,
   type Suggestions,
 } from './hooks';
 export {
