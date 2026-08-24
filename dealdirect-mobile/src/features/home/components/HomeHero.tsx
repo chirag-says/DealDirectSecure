@@ -59,6 +59,13 @@ import { HomeSearchField } from './HomeSearchField';
  * the bottom, while letting the building show through the middle. The base fill
  * stays `brand` underneath, so a slow image load or a decode failure degrades
  * to exactly the flat panel this replaced rather than to a blank gap.
+ *
+ * The asset is WebP, not PNG and not AVIF. PNG is a lossless container for a
+ * photograph and cost 1508 KB for what WebP carries in 74 KB at 39.5 dB PSNR —
+ * a 95% saving no user could see, especially under the scrim above. AVIF would
+ * save perhaps another 30 KB and was rejected: `expo-image` decodes it only on
+ * Android 12+ and iOS 16+, and this app's market runs a lot of older Android.
+ * Trading the hero on those devices for 30 KB is the wrong side of that deal.
  */
 
 export interface HomeHeroProps {
@@ -199,7 +206,7 @@ export function HomeHero({
           `overflow: hidden`. `top right` features the building the image places
           there; the plain sky falls to the left, under the headline. */}
       <ExpoImage
-        source={require('../../../../assets/home/brand/hero-city.png')}
+        source={require('../../../../assets/home/brand/hero-city.webp')}
         /*
           Nudged up and to the left. The portrait image fills the hero by
           WIDTH under `cover`, so there is no horizontal crop room to shift
