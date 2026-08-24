@@ -17,12 +17,17 @@ export { selection, press, success, warning, hapticsAvailable } from './haptics'
 export { copyToClipboard, clipboardAvailable } from './clipboard';
 export {
   getCoordinates,
+  describeCoordinates,
+  geocodeAddress,
   getCurrentCity,
   hasLocationPermission,
   locationAvailable,
   type Coordinates,
   type CityResult,
+  type GeocodeResult,
   type LocationResult,
+  type PlaceResult,
+  type ResolvedPlace,
 } from './location';
 export {
   confirmWithBiometrics,

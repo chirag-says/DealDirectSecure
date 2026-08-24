@@ -1,5 +1,5 @@
 import type * as WebViewModule from 'react-native-webview';
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { View } from 'react-native';
 
 import { optionalNativeModule } from '@/config/optionalNative';
@@ -47,6 +47,10 @@ export interface LeafletMapProps {
   onMarkerPress?: (id: string) => void;
   onViewDetails?: (id: string) => void;
   onMapPress?: (lat: number, lng: number) => void;
+  /** Turn taps into a dropped pin. The listing form's location step uses this. */
+  pinDrop?: boolean;
+  /** Place the pin without a tap — from the device's location, or a geocode. */
+  pin?: { lat: number; lng: number } | null;
   onReady?: () => void;
   /** Rendered when the WebView module is absent. */
   fallback?: React.ReactNode;
@@ -59,6 +63,8 @@ export function LeafletMap({
   center,
   selectedId,
   fitOnReady,
+  pinDrop,
+  pin,
   onMarkerPress,
   onViewDetails,
   onMapPress,
@@ -88,6 +94,32 @@ export function LeafletMap({
     ref.current?.postMessage(JSON.stringify(message));
   }, []);
 
+  /**
+   * Whether the document has booted.
+   *
+   * A message posted before `ready` is dropped on the floor — the handler
+   * inside the page does not exist yet — so anything sent from an effect has to
+   * check. The `ready` case below pushes the initial state for exactly this
+   * reason; this ref is what lets LATER changes take the same path without
+   * racing the boot.
+   */
+  const readyRef = useRef(false);
+
+  /*
+    A pin the host learned about after boot: the device's own position, or a
+    geocoded address. Without this the prop would only ever apply on the first
+    render, which is the one moment the listing form does not have a coordinate.
+  */
+  useEffect(() => {
+    if (!readyRef.current || !pin) return;
+    send({ type: 'setPin', lat: pin.lat, lng: pin.lng });
+  }, [pin, send]);
+
+  useEffect(() => {
+    if (!readyRef.current) return;
+    send({ type: 'setPinDrop', enabled: Boolean(pinDrop) });
+  }, [pinDrop, send]);
+
   const onMessage = useCallback(
     (event: WebViewModule.WebViewMessageEvent) => {
       let msg: BridgeMessage;
@@ -99,12 +131,15 @@ export function LeafletMap({
 
       switch (msg.type) {
         case 'ready':
+          readyRef.current = true;
           // Push the initial data now that the map exists. Doing it here rather
           // than on an interval is why there is no race and no flash of an
           // empty map with a late marker pop-in.
           send({ type: 'setMarkers', markers });
           if (selectedId) send({ type: 'setSelected', id: selectedId });
           if (fitOnReady) send({ type: 'fitBounds' });
+          if (pinDrop) send({ type: 'setPinDrop', enabled: true });
+          if (pin) send({ type: 'setPin', lat: pin.lat, lng: pin.lng });
           onReady?.();
           break;
         case 'markerPress':

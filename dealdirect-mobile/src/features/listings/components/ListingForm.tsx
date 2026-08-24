@@ -17,6 +17,8 @@ import {
   useToast,
 } from '@/ui';
 import { captureListingImage, canCapture, canPickImages, pickListingImages } from '../imagePicker';
+import { COMMERCIAL_CONFIGS } from '../catalog';
+import { LocationPicker } from './LocationPicker';
 import { useListingTaxonomy } from '../taxonomy';
 import {
   AMENITIES,
@@ -311,6 +313,74 @@ export function ListingForm({
                 label="Landmark (optional)"
                 value={values.landmark}
                 onChangeText={(v) => set('landmark', v)}
+                containerClassName="mt-base"
+              />
+
+              <Input
+                label="Nearby (comma separated)"
+                placeholder="Metro, School, Hospital"
+                value={values.nearby.join(', ')}
+                onChangeText={(v) =>
+                  set(
+                    'nearby',
+                    v
+                      .split(',')
+                      .map((item) => item.trim())
+                      .filter(Boolean)
+                  )
+                }
+                containerClassName="mt-base"
+              />
+
+              {/*
+                The map. A listing created on mobile carried NO coordinate
+                before this, which is why so much of the corpus cannot be
+                mapped or distance-sorted. See `LocationPicker`.
+              */}
+              <View className="mt-lg">
+                <LocationPicker
+                  latitude={values.latitude}
+                  longitude={values.longitude}
+                  onChange={(next) =>
+                    onChange({ ...values, latitude: next.latitude, longitude: next.longitude })
+                  }
+                  onResolvePlace={(place) =>
+                    /*
+                      Fills only what is still EMPTY. The owner may have typed a
+                      locality the geocoder words differently, and overwriting
+                      what they wrote with the OS's phrasing is the kind of
+                      helpful that loses data.
+                    */
+                    onChange({
+                      ...values,
+                      city: values.city || place.city,
+                      locality: values.locality || place.locality,
+                      addressLine: values.addressLine || place.addressLine,
+                      state: values.state || place.state,
+                      pincode: values.pincode || place.pincode,
+                      landmark: values.landmark || place.landmark,
+                    })
+                  }
+                  addressQuery={[values.addressLine, values.locality, values.city]
+                    .filter(Boolean)
+                    .join(', ')}
+                />
+              </View>
+
+              <Input
+                label="Latitude"
+                placeholder="e.g. 19.076000"
+                value={values.latitude}
+                onChangeText={(v) => set('latitude', v)}
+                keyboardType="numbers-and-punctuation"
+                containerClassName="mt-lg"
+              />
+              <Input
+                label="Longitude"
+                placeholder="e.g. 72.877700"
+                value={values.longitude}
+                onChangeText={(v) => set('longitude', v)}
+                keyboardType="numbers-and-punctuation"
                 containerClassName="mt-base"
               />
             </Card>
@@ -731,29 +801,65 @@ function CommercialDetails({
   values: ListingFormValues;
   set: <K extends keyof ListingFormValues>(key: K, value: ListingFormValues[K]) => void;
 }) {
+  /*
+    The configuration that belongs to THIS property type.
+
+    Two fixed fields — meeting rooms and pantry — stood here for every
+    commercial listing, so a warehouse was asked about its pantry and never
+    about its loading docks. `COMMERCIAL_CONFIGS` is the website's per-type
+    table; a type with no entry (which the fetched taxonomy can produce) simply
+    renders the shared fields and nothing else, rather than an empty card.
+  */
+  const config = COMMERCIAL_CONFIGS[values.propertyTypeName];
+
+  const setConfig = (key: string, value: string) =>
+    set('commercialConfig', { ...values.commercialConfig, [key]: value });
+
   return (
-    <View className="flex-row flex-wrap">
-      <Input
-        label="Washrooms"
-        value={values.washrooms}
-        onChangeText={(v) => set('washrooms', v)}
-        keyboardType="number-pad"
-        containerClassName="mr-base mb-base w-[30%]"
-      />
-      <Input
-        label="Meeting rooms"
-        value={values.meetingRooms}
-        onChangeText={(v) => set('meetingRooms', v)}
-        keyboardType="number-pad"
-        containerClassName="mr-base mb-base w-[30%]"
-      />
-      <Input
-        label="Pantry"
-        placeholder="Yes / No"
-        value={values.pantry}
-        onChangeText={(v) => set('pantry', v)}
-        containerClassName="mb-base w-[30%]"
-      />
+    <View>
+      <View className="flex-row flex-wrap">
+        <Input
+          label="Washrooms"
+          value={values.washrooms}
+          onChangeText={(v) => set('washrooms', v)}
+          keyboardType="number-pad"
+          containerClassName="mr-base mb-base w-[30%]"
+        />
+        <Input
+          label="Floor height (ft)"
+          value={values.floorHeight}
+          onChangeText={(v) => set('floorHeight', v)}
+          keyboardType="number-pad"
+          containerClassName="mr-base mb-base w-[30%]"
+        />
+        <Input
+          label="Power load (kW)"
+          value={values.powerLoad}
+          onChangeText={(v) => set('powerLoad', v)}
+          keyboardType="number-pad"
+          containerClassName="mb-base w-[30%]"
+        />
+      </View>
+
+      {config ? (
+        <>
+          <Text variant="bodyEmphasis" className="mb-base mt-sm">
+            {config.label}
+          </Text>
+          <View className="flex-row flex-wrap">
+            {config.fields.map((field) => (
+              <Input
+                key={field.key}
+                label={field.label}
+                value={values.commercialConfig[field.key] ?? ''}
+                onChangeText={(v) => setConfig(field.key, v)}
+                keyboardType="number-pad"
+                containerClassName="mr-base mb-base w-[45%]"
+              />
+            ))}
+          </View>
+        </>
+      ) : null}
     </View>
   );
 }

@@ -55,8 +55,13 @@ export function propertyToFormValues(property: Property): ListingFormValues {
     storeRoom: property.extras?.storeRoom ?? false,
 
     washrooms: asString(property.washrooms),
-    pantry: property.pantry ?? '',
-    meetingRooms: property.meetingRooms ?? '',
+    /*
+      Rebuilt from whatever the stored listing happens to carry rather than from
+      a fixed field list, because the set of commercial config keys depends on
+      the property type. Unknown keys are simply not shown by the form; they are
+      also not destroyed, since the form only submits what it holds.
+    */
+    commercialConfig: {},
 
     parkingCovered: asString(property.parking?.covered),
     parkingOpen: asString(property.parking?.open),

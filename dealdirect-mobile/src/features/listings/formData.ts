@@ -198,9 +198,38 @@ function commonFields(form: FormData, values: ListingFormValues) {
   } else {
     const washrooms = num(values.washrooms);
     if (washrooms !== undefined) form.append('washrooms', String(washrooms));
-    appendIfPresent(form, 'pantry', values.pantry);
-    appendIfPresent(form, 'meetingRooms', values.meetingRooms);
+    appendIfPresent(form, 'commercialSubType', values.commercialSubType);
+    appendIfPresent(form, 'floorHeight', values.floorHeight);
+    appendIfPresent(form, 'powerLoad', values.powerLoad);
+
+    /*
+      The per-type configuration, flattened.
+
+      The website spreads `COMMERCIAL_CONFIGS[type].fields` flat into `features`
+      and sends only the truthy ones, so an Office Space listing carries
+      `workstations` and a Warehouse carries `loadingDocks` without either
+      needing a column of its own. Empty values are omitted rather than sent as
+      0, because "not stated" and "zero loading docks" are different claims.
+    */
+    for (const [key, raw] of Object.entries(values.commercialConfig)) {
+      const value = num(raw);
+      if (value !== undefined) form.append(key, String(value));
+    }
   }
+}
+
+/**
+ * A coordinate field as a number, or undefined.
+ *
+ * `undefined` for anything unparseable AND for exactly 0: a 0/0 coordinate is
+ * off the west coast of Africa, and the property adapter already treats it as
+ * "no location", so sending it would create the very row the read path has to
+ * defend against.
+ */
+function coord(value: string): number | undefined {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed === 0) return undefined;
+  return parsed;
 }
 
 /** `POST /properties/add`. New photos only — there is nothing to preserve yet. */
@@ -223,6 +252,17 @@ export function buildAddFormData(
       // `address.nearby: [String]`. Add-path only: `updateMyProperty` rebuilds
       // `data.address` from flat top-level fields and would discard this.
       nearby: values.nearby.length > 0 ? values.nearby : undefined,
+      /*
+        The pinned coordinate, inside `address` where the schema keeps it.
+
+        Mobile sent none at all before the location step existed, which is a
+        large part of why so much of the corpus cannot be placed on the search
+        map or distance-sorted. `coord()` drops anything unparseable rather than
+        sending NaN, so a half-typed figure in the manual field is omitted
+        instead of poisoning the record.
+      */
+      latitude: coord(values.latitude),
+      longitude: coord(values.longitude),
     })
   );
   form.append('city', values.city.trim());

@@ -126,3 +126,105 @@ export async function hasLocationPermission(): Promise<boolean> {
     return false;
   }
 }
+
+/** Address components resolved from a coordinate, all possibly empty. */
+export interface ResolvedPlace {
+  city: string;
+  locality: string;
+  addressLine: string;
+  state: string;
+  pincode: string;
+  landmark: string;
+}
+
+export type PlaceResult =
+  | { status: 'ok'; place: ResolvedPlace }
+  | { status: 'denied' }
+  | { status: 'unavailable' }
+  | { status: 'error' };
+
+/**
+ * Reverse-geocode a coordinate into address parts, for the listing form.
+ *
+ * `getCurrentCity` above answers "which of our cities am I in", which is a
+ * different question with a different consumer — it matches against the app's
+ * own city table and discards everything else. This one keeps the parts,
+ * because the listing form has a field for each of them.
+ *
+ * The website does this with a direct Nominatim call carrying no API key, no
+ * User-Agent and no rate-limit handling, which violates Nominatim's usage
+ * policy and would be the first thing to break under real traffic. expo-
+ * location's geocoder is the OS's, so this costs no quota, needs no key, works
+ * offline on Android where the OS has cached it, and cannot be rate-limited out
+ * from under the form.
+ */
+export async function describeCoordinates(
+  latitude: number,
+  longitude: number
+): Promise<PlaceResult> {
+  if (!Location) return { status: 'unavailable' };
+
+  try {
+    const [place] = await Location.reverseGeocodeAsync({ latitude, longitude });
+    if (!place) return { status: 'error' };
+
+    /*
+      Each field falls through several of the geocoder's names, because which
+      one is populated varies by country, by platform and by how dense the area
+      is. `district` is the locality in most Indian results; `subregion` is the
+      district in the administrative sense and is the better city fallback than
+      `region`, which is the state.
+    */
+    return {
+      status: 'ok',
+      place: {
+        city: place.city ?? place.subregion ?? '',
+        locality: place.district ?? place.subregion ?? '',
+        addressLine: [place.streetNumber, place.street ?? place.name]
+          .filter(Boolean)
+          .join(' ')
+          .trim(),
+        state: place.region ?? '',
+        pincode: place.postalCode ?? '',
+        // Only useful when it is NOT just a repeat of the street already in
+        // `addressLine` — a landmark that duplicates the address is noise.
+        landmark: place.name && place.name !== place.street ? place.name : '',
+      },
+    };
+  } catch {
+    return { status: 'error' };
+  }
+}
+
+export type GeocodeResult =
+  | { status: 'ok'; coordinates: Coordinates }
+  | { status: 'unavailable' }
+  | { status: 'notFound' }
+  | { status: 'error' };
+
+/**
+ * Forward-geocode a written address into a coordinate.
+ *
+ * Lets the map follow what the owner typed, so the pin is roughly right before
+ * they touch it. Same reasoning as `describeCoordinates` for using the OS
+ * geocoder rather than the website's un-keyed Nominatim call.
+ *
+ * `notFound` is distinct from `error`: an address the geocoder cannot place is
+ * a normal outcome for a half-typed locality, and must not be reported to the
+ * owner as a failure.
+ */
+export async function geocodeAddress(query: string): Promise<GeocodeResult> {
+  if (!Location) return { status: 'unavailable' };
+  if (query.trim().length < 3) return { status: 'notFound' };
+
+  try {
+    const [match] = await Location.geocodeAsync(query.trim());
+    if (!match) return { status: 'notFound' };
+    return {
+      status: 'ok',
+      coordinates: { latitude: match.latitude, longitude: match.longitude },
+    };
+  } catch {
+    return { status: 'error' };
+  }
+}

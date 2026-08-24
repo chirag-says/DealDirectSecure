@@ -34,6 +34,7 @@
  *   { type: 'setSelected', id }
  *   { type: 'fitBounds' }
  *   { type: 'setPinDrop', enabled }
+ *   { type: 'setPin', lat, lng }        place/move the pin without a tap
  *   { type: 'setRadius', km }        // draws a circle at the dropped pin
  *
  * WebView → RN, as `window.ReactNativeWebView.postMessage(JSON)`:
@@ -204,11 +205,19 @@ export function buildMapHtml(options: LeafletHtmlOptions): string {
         if (pts.length > 1) { map.fitBounds(pts, { padding: [50, 50], maxZoom: 14 }); }
       }
 
+      // One place that draws the pin, used by the tap handler and by the
+      // setPin message, so a pin placed by the map and a pin placed by the
+      // host cannot end up looking like two different things.
+      function placePin(latlng) {
+        if (pinMarker) map.removeLayer(pinMarker);
+        pinMarker = L.circleMarker(latlng, {
+          radius: 8, weight: 3, color: '#ffffff',
+          fillColor: BOOT.brand, fillOpacity: 1
+        }).addTo(map);
+      }
+
       map.on('click', function (e) {
-        if (pinDrop) {
-          if (pinMarker) map.removeLayer(pinMarker);
-          pinMarker = L.circleMarker(e.latlng, { radius: 7, color: '#22c55e', fillColor: '#22c55e', fillOpacity: 1 }).addTo(map);
-        }
+        if (pinDrop) placePin(e.latlng);
         post({ type: 'mapPress', lat: e.latlng.lat, lng: e.latlng.lng });
       });
 
@@ -223,6 +232,13 @@ export function buildMapHtml(options: LeafletHtmlOptions): string {
             if (e) { map.setView([e.data.lat, e.data.lng], Math.max(map.getZoom(), 14)); e.marker.bindPopup(popupHtml(e.data)).openPopup(); }
             break;
           case 'fitBounds': fitBounds(); break;
+          case 'setPin':
+            // Centres as well as marks: the host sets a pin when it has learned
+            // a coordinate from somewhere else (the device, a geocode), and a
+            // pin outside the viewport communicates nothing.
+            placePin(L.latLng(msg.lat, msg.lng));
+            map.setView([msg.lat, msg.lng], Math.max(map.getZoom(), 15));
+            break;
           case 'setPinDrop': pinDrop = !!msg.enabled; if (!pinDrop && pinMarker) { map.removeLayer(pinMarker); pinMarker = null; if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; } } break;
           case 'setRadius':
             if (pinMarker) {
