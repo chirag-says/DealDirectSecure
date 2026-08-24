@@ -2,6 +2,12 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    // The query-understanding module is plain TypeScript with no React Native
+    // dependency, so its unit tests run under `node --test` directly. Node
+    // resolves ES modules by exact specifier, which means those files import
+    // each other with an explicit `.ts`. Safe here because `noEmit` is set by
+    // expo's base config: tsc never writes output, Metro does the bundling.
+    "allowImportingTsExtensions": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,

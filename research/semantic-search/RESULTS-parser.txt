@@ -1,0 +1,47 @@
+DealDirect query-understanding benchmark
+corpus 31 live listings · 59 queries · top-5
+parse cost: 2.240 ms per query (mean)
+
+metric                                A: current    B: understood
+------------------------------------------------------------------
+queries returning nothing             42/59         4/59
+results shown (total)                 48            215
+HARD CONSTRAINT VIOLATIONS            2             0
+violation rate of shown results       4%            0%
+mean recall@5                         30%           98%
+answerable queries missed             39/56         1/56
+
+BY QUERY TYPE
+type              n   A empty   B empty   A recall  B recall
+exact             10  0/10      0/10      100%      100%
+synonym           8   3/8       0/8       57%       100%
+shorthand         10  10/10     1/10      0%        100%
+intent            10  10/10     0/10      0%        96%
+natural           10  10/10     0/10      0%        100%
+mixed             9   7/9       1/9       25%       100%
+empty-expected    2   2/2       2/2       0%        0%
+
+Queries the current search answers with NOTHING, now answered: 38
+  "home" → 5 result(s)
+  "flats" → 5 result(s)
+  "bungalow" → 5 result(s)
+  "2bhk" → 5 result(s)
+  "3bhk" → 5 result(s)
+  "1 cr" → 5 result(s)
+  "1.2 crore" → 5 result(s)
+  "under 80 lakhs" → 5 result(s)
+  "under 50L" → 5 result(s)
+  "above 1 crore" → 4 result(s)
+  "ready possession" → 5 result(s)
+  "ready to move" → 5 result(s)
+  … and 26 more
+
+Still empty under understanding: 4
+  "1 rk" — 0 eligible (correctly empty)
+  "4 bhk for sale above 1 crore" — 0 eligible (correctly empty)
+  "3 bhk in Whitefield under 50 lakhs" — 0 eligible (correctly empty)
+  "farmhouse in Goa" — 1 eligible (MISSED)
+
+Queries where understanding shows a result violating the hand label: 0
+
+Regressions (current answered, understanding does not, inventory exists): 0

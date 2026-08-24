@@ -151,6 +151,20 @@ export interface SearchFilters {
   listingType?: ListingIntent;
   /** `PriceBand.id`, or undefined for any price. */
   priceBand?: string;
+  /**
+   * Exact rupee bounds, from a typed query rather than a tapped band.
+   *
+   * The five bands exist because a slider cannot span ₹8,000 rentals and ₹5
+   * crore sales on one axis. They are the right control for a SHEET and the
+   * wrong answer for "under 1.2 crore", which falls between `25l-1cr` and
+   * `1cr-5cr` — snapping it to either misstates what the user said.
+   *
+   * The server accepts arbitrary `priceFrom`/`priceTo` (probed 2026-08-03), so
+   * these are sent directly and take precedence over `priceBand` when both are
+   * set. Set only by `queryUnderstanding.ts`; no control writes them.
+   */
+  priceMin?: number;
+  priceMax?: number;
   sort: PropertySortOrder;
 
   /**
@@ -170,6 +184,25 @@ export interface SearchFilters {
   constructionStatus?: string;
   /** `BhkOption.value` — `'0'` for 1 RK, `'1'`…`'3'` exact, `'4'` for 4 and up. */
   bhk?: string;
+  /**
+   * Canonical property type, matched against the denormalised
+   * `propertyTypeName` string.
+   *
+   * Client-only for the same reason `categoryName` is: the server's
+   * `propertyType` param is an ObjectId match against refs that are null on 15
+   * of 36 live listings and wrong on the rest. The string is correct on every
+   * row. Set only by `queryUnderstanding.ts`; the filter sheet has no control
+   * for it.
+   */
+  propertyType?: string;
+  /**
+   * Exact locality, lower-cased, resolved against localities known to exist.
+   *
+   * Never set from raw user text — see `understanding/location.ts` for why an
+   * unresolvable place name must stay unstructured rather than become a filter
+   * that empties the screen.
+   */
+  locality?: string;
 }
 
 export const DEFAULT_FILTERS: SearchFilters = {
@@ -222,9 +255,22 @@ export function toSearchParams(filters: SearchFilters): PropertySearchParams {
   if (query) params.search = query;
   if (filters.listingType) params.listingType = filters.listingType;
 
-  const band = findPriceBand(filters.priceBand);
-  if (band?.from !== undefined) params.priceFrom = band.from;
-  if (band?.to !== undefined) params.priceTo = band.to;
+  /*
+    Exact bounds beat the band.
+
+    Both can be set — a user types "under 1.2 crore" and then taps a band — and
+    the typed figure is the more specific statement of intent, so it wins. They
+    are never merged: intersecting a band with a typed bound produces a range
+    the user never asked for and cannot see.
+  */
+  if (filters.priceMin !== undefined || filters.priceMax !== undefined) {
+    if (filters.priceMin !== undefined) params.priceFrom = filters.priceMin;
+    if (filters.priceMax !== undefined) params.priceTo = filters.priceMax;
+  } else {
+    const band = findPriceBand(filters.priceBand);
+    if (band?.from !== undefined) params.priceFrom = band.from;
+    if (band?.to !== undefined) params.priceTo = band.to;
+  }
 
   return params;
 }
@@ -237,8 +283,10 @@ export function toSearchParams(filters: SearchFilters): PropertySearchParams {
  * filters at all. Sort is excluded because it always has a value.
  */
 export function countActiveFilters(filters: SearchFilters): number {
-  let count = filters.priceBand ? 1 : 0;
+  let count = filters.priceBand || filters.priceMin !== undefined || filters.priceMax !== undefined ? 1 : 0;
   if (filters.city) count += 1;
+  if (filters.propertyType) count += 1;
+  if (filters.locality) count += 1;
   if (filters.categoryName) count += 1;
   if (filters.furnishing) count += 1;
   if (filters.constructionStatus) count += 1;
@@ -387,7 +435,56 @@ export function matchesClientFilters(item: PropertySummary, filters: SearchFilte
     return false;
   }
   if (filters.bhk && !matchesBhk(item, filters.bhk)) return false;
+  if (filters.propertyType && !matchesPropertyType(item, filters.propertyType)) return false;
+  if (filters.locality && !matchesLocality(item, filters.locality)) return false;
   return true;
+}
+
+/**
+ * Canonical type against the denormalised name.
+ *
+ * Word-boundary matching, and the caller passes a CANONICAL value rather than
+ * raw user text. Both matter: `propertyTypeName` holds "Warehouse / Godown" and
+ * "Independent House", and a naive `includes('house')` classifies the first as
+ * the second. See `understanding/propertyType.ts`, where the same trap is
+ * documented and tested.
+ */
+function matchesPropertyType(item: PropertySummary, canonical: string): boolean {
+  const name = (item.propertyTypeName ?? item.subcategoryName ?? '').toLowerCase();
+  if (!name) return false;
+
+  const aliases = PROPERTY_TYPE_MATCHERS[canonical];
+  if (!aliases) return false;
+
+  return aliases.some((alias) =>
+    new RegExp(`(?<![\p{L}\p{N}])${alias}(?![\p{L}\p{N}])`, 'u').test(name)
+  );
+}
+
+/**
+ * The live `propertyTypeName` values each canonical type must match.
+ *
+ * Read from production on 2026-08-24: Showroom, Apartment / Flat, Warehouse /
+ * Godown, Villa, Office Space, Independent House, Penthouse, Restaurant / Cafe,
+ * Shop / Retail.
+ */
+const PROPERTY_TYPE_MATCHERS: Record<string, readonly string[]> = {
+  apartment: ['apartment', 'flat'],
+  house: ['house'],
+  villa: ['villa'],
+  penthouse: ['penthouse'],
+  plot: ['plot', 'land'],
+  office: ['office'],
+  shop: ['shop', 'retail'],
+  showroom: ['showroom'],
+  warehouse: ['warehouse', 'godown'],
+  restaurant: ['restaurant', 'cafe'],
+};
+
+/** Exact locality, case-insensitive. Both sides are already normalised. */
+function matchesLocality(item: PropertySummary, locality: string): boolean {
+  const value = (item.locality ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return value === locality;
 }
 
 export function hasAnyCriteria(filters: SearchFilters): boolean {

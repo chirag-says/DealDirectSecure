@@ -23,6 +23,7 @@ import {
   useRelatedProperties,
   useSuggestions,
 } from '../hooks';
+import { applyUnderstanding, buildParseContext } from '../queryUnderstanding';
 import { readResumableSearch, recordResumableSearch } from '../resume';
 import { CompareBar } from './CompareBar';
 import { CompareSheet } from './CompareSheet';
@@ -227,6 +228,7 @@ export function SearchScreen() {
   const recent = useRecentSearches();
   const suggestions = useSuggestions(editing ? input : '');
 
+
   /**
    * Editing only covers the screen when the panel underneath has content —
    * suggestions for what is typed, or a search history to offer. Otherwise the
@@ -244,6 +246,45 @@ export function SearchScreen() {
     showResults && !feed.isInitialLoading && feed.items.length < RELATED_THRESHOLD;
   const relatedIds = useMemo(() => feed.items.map((item) => item.id), [feed.items]);
   const related = useRelatedProperties(filters, relatedIds, relatedEnabled);
+
+  /**
+   * The vocabulary the parser resolves place names against.
+   *
+   * Built from listings already in hand, never hard-coded: a locality absent
+   * from the data must NOT become a filter, because that filter empties the
+   * screen for inventory the user cannot tell is missing. With no corpus yet,
+   * no locality is ever structured, which degrades to the old behaviour rather
+   * than to a wrong one.
+   *
+   * ACCUMULATED rather than derived from the current page, and that is the
+   * point: `feed.items` narrows as the user filters, so a context rebuilt from
+   * it would forget "bandra" the moment a search excluded Bandra — and the next
+   * query naming it would stop resolving. The set only ever grows within a
+   * session.
+   */
+  const [knownLocalities, setKnownLocalities] = useState<string[]>([]);
+
+  useEffect(() => {
+    setKnownLocalities((current) => {
+      const known = new Set(current);
+      const before = known.size;
+
+      for (const item of [...feed.items, ...related.items]) {
+        const value = (item.locality ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+        if (value.length >= 3) known.add(value);
+      }
+
+      // Same array identity when nothing is new, so a page of results the
+      // parser already knew about does not re-render the screen or rebuild the
+      // context below.
+      return known.size === before ? current : [...known];
+    });
+  }, [feed.items, related.items]);
+
+  const parseContext = useMemo(
+    () => buildParseContext(knownLocalities.map((locality) => ({ locality }))),
+    [knownLocalities]
+  );
 
   /**
    * True when nothing has been asked for — the tab as it opens, browsing the
@@ -271,13 +312,30 @@ export function SearchScreen() {
     (term: string) => {
       const trimmed = term.trim();
       setInput(trimmed);
-      setFilters((current) => ({ ...current, query: trimmed }));
+
       if (trimmed.length >= 2) recent.add(trimmed);
-      // Committing an empty field is "show me everything", not "show me
-      // nothing".
+
+      setFilters((current) => {
+        // Empty means "show me everything", which is a real answer and needs no
+        // parsing.
+        if (!trimmed) return { ...current, query: '' };
+
+        /*
+          Parsed against the CLEARED filter set, not the live one.
+
+          A typed query is a complete statement of what the user wants now. If
+          it were layered on the previous search, yesterday's price band would
+          silently survive into today's query and there would be no visible
+          control explaining why the results look wrong. The sort is kept
+          because it is a display preference rather than a criterion.
+        */
+        const base: SearchFilters = { ...DEFAULT_FILTERS, sort: current.sort };
+        return applyUnderstanding(trimmed, base, parseContext).filters;
+      });
+
       setEditing(false);
     },
-    [recent]
+    [recent, parseContext]
   );
 
   /**

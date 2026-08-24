@@ -12,7 +12,9 @@
     "relock": "node scripts/relock.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
-    "contract:check": "tsc --noEmit -p tsconfig.json"
+    "contract:check": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test \"src/features/search/understanding/*.test.ts\"",
+    "test:parser": "node --test \"src/features/search/understanding/*.test.ts\""
   },
   "dependencies": {
     "@expo-google-fonts/dm-sans": "^0.4.2",
