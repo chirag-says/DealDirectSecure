@@ -54,6 +54,9 @@ export interface ResultsToolbarProps {
   /** Hidden while comparing: the selection lives on the card, so switching to
    *  the compact row would strand it on a view that cannot show it. */
   showDensity?: boolean;
+  /** Enters the map view. Absent where the WebView is unavailable or the user
+   *  is mid-compare (a card-only interaction). */
+  onToggleMap?: () => void;
 }
 
 export function ResultsToolbar({
@@ -65,6 +68,7 @@ export function ResultsToolbar({
   onToggleCompare,
   onSaveSearch,
   showDensity = true,
+  onToggleMap,
 }: ResultsToolbarProps) {
   return (
     <View
@@ -86,6 +90,12 @@ export function ResultsToolbar({
           label="Save this search"
           onPress={onSaveSearch}
         />
+
+        {/* List and map are peers; the map is a considered view, offered
+            beside save rather than buried in a menu. */}
+        {onToggleMap ? (
+          <ToolbarButton icon="map-outline" label="View results on a map" onPress={onToggleMap} />
+        ) : null}
 
         <ToolbarButton
           icon="git-compare-outline"

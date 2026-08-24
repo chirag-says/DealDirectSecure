@@ -1,11 +1,19 @@
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 
-import { PropertyList, type ListingIntent, type PropertySummary } from '@/features/properties';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import {
+  LeafletMap,
+  PropertyList,
+  mapAvailable,
+  type ListingIntent,
+  type MapMarker,
+  type PropertySummary,
+} from '@/features/properties';
 import { EnquirySheet, useSaveToggle } from '@/features/saved';
 import { SaveSearchSheet } from '@/features/savedSearches';
-import { gesture } from '@/theme';
+import { gesture, radius, spacing, tabBarClearance, useTheme } from '@/theme';
 import type { PropertySuggestion } from '@/types/backend/property';
 import { PressableScale, Screen, Text } from '@/ui';
 import {
@@ -133,6 +141,15 @@ export function SearchScreen() {
    * a single saved listing.
    */
   const [density, setDensity] = useState<'card' | 'row'>('card');
+  /**
+   * List or map. A property search is two views of one result set, and which
+   * one you want depends on whether you are scanning specs or judging where
+   * things are. The toggle is a peer control, not a mode buried in a menu.
+   *
+   * Compare is a card-only interaction, so entering map mode leaves it; the
+   * two cannot both own the screen.
+   */
+  const [mapMode, setMapMode] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [saveSheetOpen, setSaveSheetOpen] = useState(false);
   const [compareSheetOpen, setCompareSheetOpen] = useState(false);
@@ -246,6 +263,32 @@ export function SearchScreen() {
     showResults && !feed.isInitialLoading && feed.items.length < RELATED_THRESHOLD;
   const relatedIds = useMemo(() => feed.items.map((item) => item.id), [feed.items]);
   const related = useRelatedProperties(filters, relatedIds, relatedEnabled);
+
+  /**
+   * The current results as map markers, dropping any without a real
+   * coordinate — the adapter already nulls a (0,0) pin, so a filtered item is
+   * genuinely unmappable rather than merely at the origin.
+   */
+  const mapMarkers = useMemo<MapMarker[]>(
+    () =>
+      feed.items
+        .filter((item): item is PropertySummary & { coordinates: NonNullable<PropertySummary['coordinates']> } =>
+          item.coordinates != null
+        )
+        .map((item) => ({
+          id: item.id,
+          lat: item.coordinates.lat,
+          lng: item.coordinates.lng,
+          price: item.priceRupees,
+          intent: item.intent,
+          title: item.headline ?? item.title,
+          locationLabel: item.locationLabel,
+        })),
+    [feed.items]
+  );
+
+  const router = useRouter();
+  const openProperty = useCallback((id: string) => router.push(`/property/${id}`), [router]);
 
   /**
    * The vocabulary the parser resolves place names against.
@@ -495,6 +538,14 @@ export function SearchScreen() {
             />
           )}
         </View>
+      ) : mapMode && mapAvailable ? (
+        <SearchMapView
+          markers={mapMarkers}
+          total={feed.total}
+          loading={feed.isInitialLoading}
+          onOpen={openProperty}
+          onExit={() => setMapMode(false)}
+        />
       ) : (
         <PropertyList
           feed={feed}
@@ -514,6 +565,9 @@ export function SearchScreen() {
                 // on a view that cannot show it, so the control leaves with the
                 // mode rather than being disabled inside it.
                 showDensity={!comparing}
+                // The map toggle only appears where the WebView exists and the
+                // user is not mid-compare, which is a card-only interaction.
+                onToggleMap={mapAvailable && !comparing ? () => setMapMode(true) : undefined}
               />
             ) : undefined
           }
@@ -578,3 +632,99 @@ export function SearchScreen() {
 
 /** Accepted `sort` route params. Anything else is ignored rather than trusted. */
 const SORT_VALUES = ['newest', 'priceAsc', 'priceDesc'] as const;
+
+/**
+ * The results, as a map.
+ *
+ * Full-bleed under the search row, with a floating "List" pill to return. It
+ * plots the markers it is given and says so honestly when a search has results
+ * the map cannot place: a large share of the corpus carries no coordinate, so
+ * "12 results, 3 on the map" is a real state the user must not mistake for the
+ * map being broken.
+ */
+function SearchMapView({
+  markers,
+  total,
+  loading,
+  onOpen,
+  onExit,
+}: {
+  markers: MapMarker[];
+  total: number;
+  loading: boolean;
+  onOpen: (id: string) => void;
+  onExit: () => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <View style={{ flex: 1 }}>
+      {markers.length === 0 ? (
+        <View className="flex-1 items-center justify-center px-xl" style={{ gap: spacing.base }}>
+          <Ionicons name="map-outline" size={40} color={theme.colors.textMuted} />
+          <Text variant="body" tone="secondary" className="text-center">
+            {loading
+              ? 'Loading the map…'
+              : total > 0
+                ? 'None of these listings have a pinned location yet.'
+                : 'No results to map.'}
+          </Text>
+        </View>
+      ) : (
+        <LeafletMap markers={markers} mode="search" fitOnReady onViewDetails={onOpen} />
+      )}
+
+      {/* The count the map can actually show, stated plainly when it differs
+          from the result total. */}
+      {markers.length > 0 && markers.length < total ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: spacing.md,
+            alignSelf: 'center',
+            paddingHorizontal: spacing.base,
+            paddingVertical: spacing.xs,
+            borderRadius: radius.full,
+            backgroundColor: theme.colors.surface,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+          }}
+        >
+          <Text variant="caption" tone="secondary">
+            {markers.length} of {total} on the map
+          </Text>
+        </View>
+      ) : null}
+
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel="Back to list"
+        onPress={onExit}
+        activeScale={0.96}
+        style={{
+          position: 'absolute',
+          bottom: tabBarClearance + spacing.base,
+          alignSelf: 'center',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.sm,
+          paddingHorizontal: spacing.lg,
+          height: 44,
+          borderRadius: radius.full,
+          backgroundColor: theme.colors.brand,
+          shadowColor: '#000',
+          shadowOpacity: 0.2,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 8,
+        }}
+      >
+        <Ionicons name="list" size={18} color={theme.colors.textOnAccent} />
+        <Text variant="callout" style={{ color: theme.colors.textOnAccent, fontWeight: '700' }}>
+          List
+        </Text>
+      </PressableScale>
+    </View>
+  );
+}
