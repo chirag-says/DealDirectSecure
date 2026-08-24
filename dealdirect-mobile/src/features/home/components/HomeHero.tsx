@@ -124,9 +124,20 @@ export function HomeHero({
           there; the plain sky falls to the left, under the headline. */}
       <ExpoImage
         source={require('../../../../assets/home/brand/hero-city.png')}
-        style={StyleSheet.absoluteFill}
+        /*
+          Nudged up and to the left. The portrait image fills the hero by
+          WIDTH under `cover`, so there is no horizontal crop room to shift
+          into — the small `scale` creates it (and a little top overflow the
+          upward translate needs), then the translate does the move. The two
+          numbers to retune the framing are here: more-negative translateX
+          moves it further left, more-negative translateY further up.
+        */
+        style={[
+          StyleSheet.absoluteFill,
+          { transform: [{ scale: 1.15 }, { translateX: -20 }, { translateY: -22 }] },
+        ]}
         contentFit="cover"
-        contentPosition="top right"
+        contentPosition="top"
         // The image is baked into the bundle, so caching it is pointless work;
         // memory-only avoids a disk round trip on every Home mount.
         cachePolicy="memory"
