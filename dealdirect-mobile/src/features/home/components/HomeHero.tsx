@@ -144,21 +144,23 @@ export function HomeHero({
       />
       {/* The scrim, and the seam.
 
-          The top stop is FULLY OPAQUE brand — the same fill the pinned header
-          carries — so the strip of hero directly under the header reads as one
-          continuous red surface with it rather than a flat bar butting against
-          a textured photo. From there it clears so the building shows through
-          the middle, then grounds again under the search field. This is why
-          the two "colours" match: they are the same token, and the scrim makes
-          the hero present it as solidly as the header does at the line where
-          they meet. */}
+          The whole top-and-text zone is HELD fully opaque brand — the same
+          fill the pinned header carries — not just the very top edge. The
+          header covers roughly the first third of this block, the headline,
+          subtitle and city chip the next; a scrim that started fading inside
+          that zone let the dark photo tint the hero a shade below the flat
+          header and reopened the seam the user saw. So the first two stops are
+          both solid brand: the header, the headline and everything down to the
+          intent chips sit on one identical red. Only past the halfway line does
+          it clear, so the building emerges under the chips and search field —
+          which reads as a photograph, not as a second background colour. */}
       <Gradient
         colors={[
           withAlpha(theme.colors.brand, 1),
-          withAlpha(theme.colors.brand, 0.12),
-          withAlpha(theme.colors.brand, 0.34),
+          withAlpha(theme.colors.brand, 1),
+          withAlpha(theme.colors.brand, 0.18),
         ]}
-        locations={[0, 0.55, 1]}
+        locations={[0, 0.5, 1]}
         style={StyleSheet.absoluteFillObject}
       />
 
