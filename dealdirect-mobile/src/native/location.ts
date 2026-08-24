@@ -76,6 +76,41 @@ export async function getCoordinates(): Promise<LocationResult> {
   }
 }
 
+export type CityResult =
+  | { status: 'ok'; city: string; region?: string }
+  | { status: 'denied' }
+  | { status: 'unavailable' }
+  | { status: 'error' };
+
+/**
+ * The user's city name, from the device.
+ *
+ * Uses expo-location's own reverse geocoder — the OS's, on Android — rather
+ * than a network call to Nominatim. That keeps the "detect my city" path
+ * off the network entirely, and off any third-party geocoding quota. The
+ * caller matches the returned name against the app's own city table, so a
+ * result the app does not stock ("Coimbatore") simply resolves to nothing and
+ * the picker stays where it was.
+ */
+export async function getCurrentCity(): Promise<CityResult> {
+  if (!Location) return { status: 'unavailable' };
+
+  const located = await getCoordinates();
+  if (located.status !== 'ok') {
+    return located.status === 'denied' ? { status: 'denied' } : { status: 'error' };
+  }
+
+  try {
+    const places = await Location.reverseGeocodeAsync(located.coordinates);
+    const first = places[0];
+    const city = first?.city ?? first?.subregion ?? first?.district;
+    if (!city) return { status: 'error' };
+    return { status: 'ok', city, region: first?.region ?? undefined };
+  } catch {
+    return { status: 'error' };
+  }
+}
+
 /**
  * Whether permission is already granted, without prompting.
  *

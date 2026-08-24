@@ -6,7 +6,7 @@ export {
   useCloseDeal,
   type CloseDealValues,
 } from './hooks';
-export { pickListingImages } from './imagePicker';
+export { pickListingImages, captureListingImage, canCapture, imagePart } from './imagePicker';
 export { loadListingDraft, saveListingDraft, clearListingDraft, hasListingDraft } from './draft';
 export {
   EMPTY_LISTING_FORM,

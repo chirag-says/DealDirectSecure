@@ -81,6 +81,43 @@ export async function pickListingImages(options: {
   return { uris: compressed, deniedPermission: false };
 }
 
+/**
+ * Photographs one image with the camera, and compresses it.
+ *
+ * The phone is a camera, and a property app that can only pick from the gallery
+ * makes an owner photograph the room in a separate app, switch back, and find
+ * the shot — friction on the exact task the supply side of the marketplace
+ * exists to do. This closes that: one tap, shoot, done.
+ *
+ * Camera permission is declared through the expo-image-picker plugin
+ * (app.config.js), the same one that covers the library. One photo per call,
+ * because framing a room is deliberate in a way that multi-select is not.
+ */
+export async function captureListingImage(): Promise<{
+  uri: string | null;
+  deniedPermission: boolean;
+}> {
+  if (!ImagePicker) throw new Error(UNAVAILABLE);
+
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+  if (!permission.granted) return { uri: null, deniedPermission: true };
+
+  const result = await ImagePicker.launchCameraAsync({
+    mediaTypes: ['images'],
+    quality: 1,
+  });
+
+  if (result.canceled || !result.assets[0]) return { uri: null, deniedPermission: false };
+
+  const uri = await compress(result.assets[0].uri);
+  return { uri, deniedPermission: false };
+}
+
+/** Whether the camera can be offered. Separate from `canPickImages` because a
+ *  host can have the picker module yet no camera hardware; the runtime permission
+ *  request is the real gate, this only decides whether to show the button. */
+export const canCapture = ImagePicker !== null;
+
 /** Builds the `{uri,name,type}` shape React Native's FormData accepts as a file part. */
 export function imagePart(uri: string, index: number): Blob {
   const name = `photo-${Date.now()}-${index}.jpg`;

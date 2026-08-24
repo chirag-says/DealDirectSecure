@@ -17,9 +17,11 @@ export { selection, press, success, warning, hapticsAvailable } from './haptics'
 export { copyToClipboard, clipboardAvailable } from './clipboard';
 export {
   getCoordinates,
+  getCurrentCity,
   hasLocationPermission,
   locationAvailable,
   type Coordinates,
+  type CityResult,
   type LocationResult,
 } from './location';
 export {

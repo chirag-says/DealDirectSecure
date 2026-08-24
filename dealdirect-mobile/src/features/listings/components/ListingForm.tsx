@@ -4,7 +4,7 @@ import { Image as RNImage, Pressable, ScrollView, View } from 'react-native';
 
 import { useTheme, type Theme } from '@/theme';
 import { Button, Card, Chip, Input, KeyboardAvoider, Select, Sheet, Text } from '@/ui';
-import { pickListingImages } from '../imagePicker';
+import { captureListingImage, canCapture, pickListingImages } from '../imagePicker';
 import {
   AMENITIES,
   COMMERCIAL_TYPES,
@@ -106,6 +106,19 @@ export function ListingForm({
     });
     if (deniedPermission || uris.length === 0) return;
     onChangeNewPhotos([...newPhotos, ...uris.map((uri) => ({ uri, category: 'other' }))]);
+  };
+
+  /**
+   * Shoot a photo now.
+   *
+   * The phone is a camera; an owner standing in the room should be able to
+   * photograph it without leaving the app for the gallery and back. One shot
+   * per tap, appended like a picked one.
+   */
+  const handleCapturePhoto = async () => {
+    const { uri, deniedPermission } = await captureListingImage();
+    if (deniedPermission || !uri) return;
+    onChangeNewPhotos([...newPhotos, { uri, category: 'other' }]);
   };
 
   const applyCategory = (category: string) => {
@@ -428,14 +441,32 @@ export function ListingForm({
                   />
                 ))}
                 {canAddMorePhotos ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Add photos"
-                    onPress={() => void handlePickPhotos()}
-                    className="mb-base mr-base h-24 w-24 items-center justify-center rounded-lg border border-dashed border-border"
-                  >
-                    <Ionicons name="add" size={28} color={theme.colors.textMuted} />
-                  </Pressable>
+                  <>
+                    {canCapture ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Take a photo"
+                        onPress={() => void handleCapturePhoto()}
+                        className="mb-base mr-base h-24 w-24 items-center justify-center rounded-lg border border-dashed border-border"
+                      >
+                        <Ionicons name="camera-outline" size={26} color={theme.colors.textMuted} />
+                        <Text variant="caption" tone="muted" className="mt-xs">
+                          Camera
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Add photos from gallery"
+                      onPress={() => void handlePickPhotos()}
+                      className="mb-base mr-base h-24 w-24 items-center justify-center rounded-lg border border-dashed border-border"
+                    >
+                      <Ionicons name="images-outline" size={26} color={theme.colors.textMuted} />
+                      <Text variant="caption" tone="muted" className="mt-xs">
+                        Gallery
+                      </Text>
+                    </Pressable>
+                  </>
                 ) : null}
               </View>
               {totalPhotos === 0 ? (
