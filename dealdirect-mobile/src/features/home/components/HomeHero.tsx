@@ -8,6 +8,7 @@ import { radius, screenPadding, spacing, touchTarget, useTheme, withAlpha } from
 import { Gradient, PressableScale, Text } from '@/ui';
 import type { City } from '../cities';
 import { HOME_HEADER_ROW } from './HomeHeader';
+import { HomeSearchField } from './HomeSearchField';
 
 /**
  * The hero: a brand-coloured block carrying everything a session starts with.
@@ -57,7 +58,8 @@ export interface HomeHeroProps {
   /** The city the session is scoped to, or null for everywhere. */
   city: City | null;
   onOpenCityPicker: () => void;
-  onSearch: () => void;
+  /** Run a search from the hero field. Empty term means browse everything. */
+  onSubmitSearch: (term: string) => void;
   onIntent: (intent: ListingIntent | 'projects') => void;
 }
 
@@ -74,7 +76,7 @@ const INTENTS: readonly {
 export function HomeHero({
   city,
   onOpenCityPicker,
-  onSearch,
+  onSubmitSearch,
   onIntent,
 }: HomeHeroProps) {
   const theme = useTheme();
@@ -237,30 +239,10 @@ export function HomeHero({
         ))}
       </ScrollView>
 
-      {/* How. A trigger, not a field: typing belongs on Search, which owns the
-          suggestion panel and the history. Two editable search inputs would be
-          two places for the query to live. */}
-      <PressableScale
-        accessibilityRole="search"
-        accessibilityLabel="Search properties, localities or projects"
-        onPress={onSearch}
-        activeScale={0.99}
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: spacing.md,
-          marginTop: spacing.base,
-          height: 52,
-          paddingHorizontal: spacing.base,
-          borderRadius: radius.full,
-          backgroundColor: theme.colors.surface,
-        }}
-      >
-        <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
-        <Text variant="body" tone="secondary" numberOfLines={1} className="flex-1">
-          {city ? `Search in ${city.label}` : 'Search locality, project or city'}
-        </Text>
-      </PressableScale>
+      {/* How. A real field now: it answers with autocomplete in place and only
+          leaves Home on a deliberate search — the submit button, the keyboard's
+          search key, or a suggestion tap. See `HomeSearchField`. */}
+      <HomeSearchField city={city} onSubmit={onSubmitSearch} />
     </View>
   );
 }

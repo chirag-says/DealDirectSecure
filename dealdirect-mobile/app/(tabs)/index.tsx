@@ -267,6 +267,10 @@ export default function HomeScreen() {
           onLayout={onLayout}
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
+          // The hero's autocomplete rows live inside this scroll view; without
+          // this, the first tap on a suggestion only dismisses the keyboard and
+          // the selection is lost. "handled" lets the row's own press through.
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
             paddingBottom: tabBarClearance,
             backgroundColor: theme.colors.background,
@@ -286,7 +290,9 @@ export default function HomeScreen() {
             <HomeHero
               city={city}
               onOpenCityPicker={() => setCityPickerOpen(true)}
-              onSearch={() => openSearch()}
+              // The hero field runs the search itself now; an empty term means
+              // "browse everything", which `openSearch` already encodes.
+              onSubmitSearch={(term) => openSearch(term ? { search: term } : undefined)}
               onIntent={(intent) =>
                 intent === 'projects'
                   ? router.push('/projects')
