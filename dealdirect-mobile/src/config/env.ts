@@ -53,16 +53,33 @@ export const SOCKET_URL = readRequired(
  * ignores.
  */
 /**
- * Public website origin, e.g. `https://dealdirect.in`. OPTIONAL.
+ * Public website origin. Overridable, but no longer optional.
  *
- * Used only to build shareable links (`/properties/:id` on the website). It is
- * optional and has NO fallback on purpose: a guessed domain produces a link
- * that looks right and 404s, which is worse than sharing the listing's details
- * with no link at all. Every caller must handle `undefined`.
+ * Used for shareable listing links and for the Privacy policy and Terms links
+ * on the Support screen.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS NOW HAS A DEFAULT — fixed 2026-08-24
+ *
+ * It was `undefined` unless `EXPO_PUBLIC_WEB_URL` was set, on the reasoning
+ * that a guessed domain yields a link that looks right and 404s. Sound, except
+ * that the variable is set in NO environment — not in `.env`, and not in any
+ * of the three `eas.json` profiles — so the consequence was that `LEGAL_LINKS`
+ * returned `[]` and the Support screen silently dropped the section containing
+ * the Privacy policy and Terms. Every build shipped with no legal links at all,
+ * which both app stores reject.
+ *
+ * The domain was never actually a guess: the backend's own config uses
+ * `CLIENT_URL=https://dealdirect.in`, and it issues the session cookie scoped
+ * to `.dealdirect.in`, so the apex is already load-bearing in this app. Naming
+ * it here is recording a fact the system depends on, not inventing one. The env
+ * override survives for staging.
  */
-export const WEB_URL: string | undefined = process.env.EXPO_PUBLIC_WEB_URL?.trim()
+const DEFAULT_WEB_URL = 'https://dealdirect.in';
+
+export const WEB_URL: string = process.env.EXPO_PUBLIC_WEB_URL?.trim()
   ? process.env.EXPO_PUBLIC_WEB_URL.trim().replace(/\/+$/, '')
-  : undefined;
+  : DEFAULT_WEB_URL;
 
 export const APP_VERSION = Constants.expoConfig?.version ?? '0.0.0';
 

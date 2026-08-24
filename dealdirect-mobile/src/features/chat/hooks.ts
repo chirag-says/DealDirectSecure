@@ -139,7 +139,9 @@ export function useDeleteConversation() {
   });
 
   return {
-    remove: useCallback((id: ObjectId) => mutation.mutate(id), [mutation]),
+    // `mutateAsync` so an awaiting caller can tell success from failure — see
+    // the note on `useRevokeSession`.
+    remove: useCallback((id: ObjectId) => mutation.mutateAsync(id), [mutation]),
     isPending: mutation.isPending,
   };
 }

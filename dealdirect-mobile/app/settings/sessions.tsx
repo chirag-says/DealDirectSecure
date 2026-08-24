@@ -38,9 +38,22 @@ function SessionsScreen() {
         {
           text: 'Sign out',
           style: 'destructive',
+          /*
+            The toast reports the OUTCOME, not the attempt.
+
+            It used to fire unconditionally after an `await` on a fire-and-
+            forget `mutate`, so a failed revoke told the user a device had been
+            signed out while the session stayed live and the row stayed in the
+            list. On the screen whose entire purpose is "someone else is signed
+            into my account", that is the one thing it must never say wrongly.
+          */
           onPress: async () => {
-            await revoke(session.id);
-            toast.show('That device has been signed out.');
+            try {
+              await revoke(session.id);
+              toast.show('That device has been signed out.');
+            } catch {
+              toast.show('Could not sign out that device. Please try again.', 'danger');
+            }
           },
         },
       ]

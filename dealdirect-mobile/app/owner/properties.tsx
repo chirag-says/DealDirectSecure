@@ -52,9 +52,17 @@ function MyPropertiesScreenContent() {
       {
         text: 'Delete',
         style: 'destructive',
+        // `remove` is `mutateAsync` and rejects on failure. Unguarded, that was
+        // an unhandled rejection with no message at all: the card stayed, the
+        // confirmation toast still fired, and the owner was told their listing
+        // was deleted when it was not.
         onPress: async () => {
-          await remove(id);
-          toast.show('Listing deleted.');
+          try {
+            await remove(id);
+            toast.show('Listing deleted.');
+          } catch {
+            toast.show('Could not delete that listing. Please try again.', 'danger');
+          }
         },
       },
     ]);

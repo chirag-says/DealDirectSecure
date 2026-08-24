@@ -178,7 +178,11 @@ export function useDeleteSavedSearch() {
   });
 
   return {
-    remove: useCallback((id: ObjectId) => mutation.mutate(id), [mutation]),
+    // `mutateAsync` so an awaiting caller can tell success from failure. With
+    // `mutate` the optimistic removal above rolls back on error while the
+    // screen has already said "deleted", and the row reappears underneath the
+    // confirmation. See the same note on `useRevokeSession`.
+    remove: useCallback((id: ObjectId) => mutation.mutateAsync(id), [mutation]),
     isPending: mutation.isPending,
   };
 }

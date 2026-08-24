@@ -583,9 +583,16 @@ function SearchesList() {
         {
           text: 'Delete',
           style: 'destructive',
+          // Reports the outcome. The optimistic removal rolls back on failure,
+          // so an unconditional toast would confirm a deletion and then let the
+          // row reappear underneath it. Same fix as `settings/sessions.tsx`.
           onPress: async () => {
-            await remove(search.id);
-            toast.show('Saved search deleted.');
+            try {
+              await remove(search.id);
+              toast.show('Saved search deleted.');
+            } catch {
+              toast.show('Could not delete that search. Please try again.', 'danger');
+            }
           },
         },
       ]);

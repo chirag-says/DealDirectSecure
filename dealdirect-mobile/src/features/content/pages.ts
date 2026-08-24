@@ -8,11 +8,12 @@ import { WEB_URL } from '@/config/env';
  * stale copy baked into a shipped binary cannot be corrected until the next
  * release is adopted.
  *
- * `WEB_URL` is optional in this app's config, and every consumer must handle
- * its absence: a link built against a guessed origin produces a dead page,
- * which is worse than not offering the link. `legalLinks()` returns an empty
- * list rather than fabricating one, and the Support screen simply omits the
- * section.
+ * `WEB_URL` now always resolves — see the note on its default in `config/env.ts`.
+ * It used to be optional, and because nothing set it, this function returned an
+ * empty list in every build and the Support screen silently omitted the section
+ * carrying the Privacy policy and Terms. An app store will not accept that. The
+ * guard below is kept as a belt-and-braces against a future empty override
+ * rather than as a state the shipped app is expected to reach.
  */
 
 export interface ExternalPage {

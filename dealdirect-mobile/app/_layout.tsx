@@ -10,10 +10,11 @@ import {
 import { ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { Pressable, Text as RNText, ScrollView, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -49,21 +50,64 @@ void SplashScreen.preventAutoHideAsync();
  * paint, so a cold start with no connectivity still shows the last-known
  * properties/projects/leads/etc. rather than a blank loading screen. Chat is
  * excluded — see `shouldPersistQuery`'s doc comment for why.
+ *
+ * ---------------------------------------------------------------------------
+ * THE FONT GATE CANNOT BE ALLOWED TO BE PERMANENT — fixed 2026-08-24
+ *
+ * This held the splash open and rendered `null` until `useFonts` reported
+ * success, and it discarded the hook's error. Any font failure — a corrupt
+ * download, an OOM decode on a low-end device — therefore left the splash up
+ * over an empty tree with no timeout and no way out. The app simply never
+ * opened, and it reported nothing.
+ *
+ * Waiting for a webfont is a nicety; the app opening is not. So the gate now
+ * releases on ANY of three conditions: fonts loaded, the loader reported an
+ * error, or `FONT_GATE_MS` elapsed. Missing DM Sans costs the system face for
+ * the session, which is a cosmetic regression rather than a dead app.
  */
+
+/**
+ * How long the splash may wait on fonts before the app opens without them.
+ *
+ * Chosen against the failure it guards, not against a typical load: a bundled
+ * font resolves in tens of milliseconds, so anything still outstanding at three
+ * seconds is not slow, it is broken.
+ */
+const FONT_GATE_MS = 3000;
+
 export default function RootLayout() {
   const [queryClient] = useState(createQueryClient);
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     DMSans_400Regular,
     DMSans_500Medium,
     DMSans_600SemiBold,
     DMSans_700Bold,
   });
 
-  const onLayout = useCallback(() => {
-    if (fontsLoaded) void SplashScreen.hideAsync();
-  }, [fontsLoaded]);
+  /** The deadline half of the gate. See the note above. */
+  const [gateExpired, setGateExpired] = useState(false);
 
-  if (!fontsLoaded) return null;
+  useEffect(() => {
+    const timer = setTimeout(() => setGateExpired(true), FONT_GATE_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const ready = fontsLoaded || fontError !== null || gateExpired;
+
+  const onLayout = useCallback(() => {
+    if (ready) void SplashScreen.hideAsync();
+  }, [ready]);
+
+  /*
+    Belt and braces: `onLayout` fires on the tree below, so it cannot run while
+    that tree is `null`. Hiding here too means the splash comes down even if
+    the first layout pass is delayed for a reason we have not thought of.
+  */
+  useEffect(() => {
+    if (ready) void SplashScreen.hideAsync();
+  }, [ready]);
+
+  if (!ready) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }} onLayout={onLayout}>
@@ -141,5 +185,81 @@ function Navigation() {
         <Stack.Screen name="(tabs)" />
       </Stack>
     </NavigationThemeProvider>
+  );
+}
+
+/**
+ * The app's last line of defence, picked up by expo-router.
+ *
+ * There was none. A render throw anywhere below this layout was a red box in
+ * development and a hard crash to the home screen in release — no message, no
+ * retry, and nothing the user could report beyond "it closed".
+ *
+ * Deliberately built from plain `react-native` primitives with literal colours
+ * rather than from `@/ui` and the theme. This renders precisely when something
+ * below has already failed, and the provider stack it would otherwise depend on
+ * is a plausible thing to have failed: a boundary that can itself throw for
+ * want of a context is not a boundary.
+ *
+ * `retry` re-mounts the subtree, which recovers the whole class of transient
+ * faults — a bad cache entry, a null from a request that has since succeeded —
+ * without the user force-quitting. A fault that reproduces just lands here
+ * again, which is honest.
+ *
+ * The message is shown rather than hidden. This is a marketplace handling other
+ * people's money and property; "something went wrong" with no detail is what
+ * makes a bug report useless, and the string is already on the user's device.
+ */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  return (
+    <View style={{ flex: 1, backgroundColor: '#0A0A0A' }}>
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: 'center',
+          padding: 24,
+          gap: 12,
+        }}
+      >
+        <RNText style={{ color: '#FFFFFF', fontSize: 22, fontWeight: '700' }}>
+          Something went wrong
+        </RNText>
+        <RNText style={{ color: '#A3A3A3', fontSize: 15, lineHeight: 21 }}>
+          This screen could not be displayed. You can try again, and if it keeps
+          happening please send us the message below.
+        </RNText>
+
+        <View
+          style={{
+            marginTop: 4,
+            padding: 12,
+            borderRadius: 12,
+            backgroundColor: '#1C1C1C',
+          }}
+        >
+          <RNText style={{ color: '#D4D4D4', fontSize: 13 }}>
+            {error?.message ?? 'No further detail is available.'}
+          </RNText>
+        </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Try again"
+          onPress={retry}
+          style={{
+            marginTop: 8,
+            height: 48,
+            borderRadius: 999,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#F33F40',
+          }}
+        >
+          <RNText style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '700' }}>
+            Try again
+          </RNText>
+        </Pressable>
+      </ScrollView>
+    </View>
   );
 }

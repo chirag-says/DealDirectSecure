@@ -131,7 +131,17 @@ export function useRevokeSession() {
   });
 
   return {
-    revoke: useCallback((sessionId: string) => mutation.mutate(sessionId), [mutation]),
+    /*
+      `mutateAsync`, NOT `mutate`.
+
+      `mutate` returns void and never rejects, so the screen's
+      `await revoke(id)` resolved on the same tick whatever happened and its
+      success toast fired unconditionally — telling the user a device had been
+      signed out when the request had failed and the session was still live.
+      On a security screen that is the worst possible lie. Awaiting a real
+      promise is what lets the caller tell the two outcomes apart.
+    */
+    revoke: useCallback((sessionId: string) => mutation.mutateAsync(sessionId), [mutation]),
     pendingId: mutation.isPending ? (mutation.variables ?? null) : null,
     error: mutation.error,
   };
