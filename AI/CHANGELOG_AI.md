@@ -53,6 +53,47 @@ did NOT update the docs, say so explicitly — that is a debt marker.
 
 ---
 
+## 2026-08-24 — Mobile Phase 3: native capability layer (mobile only, REBUILD REQUIRED)
+
+**Files changed**
+- NEW `dealdirect-mobile/src/native/{haptics,location,biometrics,clipboard,index}.ts` — capability wrappers, each behind `optionalNativeModule`.
+- NEW `src/features/properties/components/map/{leafletHtml.ts, LeafletMap.tsx}` — Leaflet-in-WebView, typed bridge.
+- `app/property/[id]/map.tsx` — was the last `Placeholder`; now a real map, degrades to locality text.
+- `src/features/search/components/{SearchScreen,ResultsToolbar}.tsx` — list ↔ map toggle over results.
+- `src/features/listings/imagePicker.ts` + `ListingForm.tsx` — `captureListingImage` (camera).
+- `src/features/home/components/CityPickerSheet.tsx` — "Use my location" (OS reverse-geocode + `matchCity`).
+- NEW `src/ui/DateField.tsx` — native date picker, degrades to text; wired into Settings DOB and listing `availableFrom`.
+- `app/settings/index.tsx` — RN `Switch` replaces checkbox glyphs.
+- `app/settings/delete-account.tsx` — biometric confirm before deletion.
+- `app.config.js` — expo-location (foreground), expo-local-authentication, datetimepicker plugins.
+- Deleted `src/dev/Placeholder.tsx`.
+- Installed: expo-haptics, expo-location, expo-local-authentication, expo-clipboard, @react-native-community/datetimepicker.
+
+**Reason**
+Group C/F of `DEALDIRECT-APP-FUNCTIONAL-REVIEW.md`: the definitional mobile capabilities the app lacked (map, camera, location) and the native texture (haptics, real controls, biometric confirm).
+
+**Architectural impact**
+- **The WebView map is a session-security invariant, not a style choice.** It receives markers over `postMessage` and emits only taps; it must NEVER originate an API request, because the cookie session is bound to a constant User-Agent and the absence of an Origin header, and a WebView request would carry an Origin and 403 on the 16 CSRF-guarded routes. See `leafletHtml.ts`.
+- Every native module loads through `optionalNativeModule`; absence degrades, never crashes.
+- Biometrics are CONFIRMATION, never authentication: server still mints/revokes the session and still requires the password to delete.
+- Location is foreground + on-demand only; no watcher, no background permission.
+
+**Migration notes**
+- **REQUIRES `expo prebuild` + a fresh dev-client / production build.** Five new native modules change the fingerprint (`runtimeVersion.policy: 'fingerprint'`), so the current debug APK cannot load this JS. This is the point at which the deferred device build becomes mandatory.
+- No backend change, no schema change. Leaflet loads from unpkg (pilot); vendoring is a flagged follow-up.
+
+**Not done (deferred, stated so it is not assumed complete)**
+- Sentry crash reporting (W9/F10): needs a mobile Sentry DSN + project decision — not installed.
+- Full biometric app-lock: only the sensitive-action confirm is wired.
+- Swipe row actions, pull-to-refresh gaps (W17), transactions pagination (W20): pure-JS, not in this native batch.
+- Server push (Phase 4): needs a device-token pipeline the backend does not have.
+
+**Docs updated**
+None. `AI/FILE_MAP.md` and `AI/COMPONENT_INDEX.md` do not yet list `src/native/` or the map components — debt marker.
+
+**Verification**
+`tsc --noEmit` clean, `expo lint` 0 errors / 12 baseline warnings, `expo export` (Android) bundles. **Nothing run on a device — DEVICE VERIFICATION PENDING, and this batch cannot even load without a rebuild.**
+
 ## 2026-08-24 — Mobile Phase 1: the app stops being shaped like the website (mobile only)
 
 **Files changed**
