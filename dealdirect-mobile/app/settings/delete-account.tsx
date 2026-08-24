@@ -4,6 +4,7 @@ import { ScrollView, View } from 'react-native';
 
 import { ApiError } from '@/api';
 import { RequireAuth } from '@/auth';
+import { confirmWithBiometrics } from '@/native';
 import { useDeleteAccount } from '@/features/profile';
 import { Button, Input, Screen, ScreenHeader, Text, useToast } from '@/ui';
 
@@ -46,6 +47,20 @@ function DeleteAccountScreen() {
 
   const handleDelete = async () => {
     if (!canDelete) return;
+
+    /*
+      A physical confirm before the point of no return.
+
+      The typed phrase guards a mis-tap and the password is the real
+      authorisation — the server still requires it and re-checks it. This adds
+      a fingerprint on top: proof the phone is in its owner's hands before it
+      deletes their account. On a device with no biometric this returns true
+      and the flow proceeds on the password alone, because a confirmation the
+      device cannot perform must not become a wall. See `native/biometrics`.
+    */
+    const confirmed = await confirmWithBiometrics('Confirm you want to delete your account');
+    if (!confirmed) return;
+
     try {
       const response = await deleteAccount(password);
 

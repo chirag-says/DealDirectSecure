@@ -39,6 +39,7 @@ export {
 } from './Text';
 export { useTextInputStyle, type TextInputStyleOptions } from './textInputStyle';
 export { Button, type ButtonProps, type ButtonVariant, type ButtonSize } from './Button';
+export { DateField, type DateFieldProps } from './DateField';
 export { Input, type InputProps } from './Input';
 export { Select, type SelectProps, type SelectOption } from './Select';
 export { Sheet, type SheetProps } from './Sheet';

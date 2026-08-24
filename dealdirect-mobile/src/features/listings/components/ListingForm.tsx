@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image as RNImage, Pressable, ScrollView, View } from 'react-native';
 
 import { useTheme, type Theme } from '@/theme';
-import { Button, Card, Chip, Input, KeyboardAvoider, Select, Sheet, Text } from '@/ui';
+import { Button, Card, Chip, DateField, Input, KeyboardAvoider, Select, Sheet, Text } from '@/ui';
 import { captureListingImage, canCapture, pickListingImages } from '../imagePicker';
 import {
   AMENITIES,
@@ -319,12 +319,17 @@ export function ListingForm({
               {/* No ₹/sqft field: it is derived from price and area in
                   `formData.ts`, the way the website derives it. */}
 
-              <Input
+              {/* Native date picker; degrades to typed entry where the module
+                  is absent. Availability is in the FUTURE, so the picker opens
+                  at today and allows dates ahead — the mirror of the birth-date
+                  field, which only allows the past. */}
+              <DateField
                 label="Available from (optional)"
-                placeholder="YYYY-MM-DD"
                 value={values.availableFrom}
-                onChangeText={(v) => set('availableFrom', v)}
-                hint="Leave blank if the property is available now"
+                onChange={(v) => set('availableFrom', v)}
+                placeholder="Available now"
+                minimumDate={new Date()}
+                maximumDate={new Date(new Date().getFullYear() + 3, 11, 31)}
                 containerClassName="mt-lg"
               />
             </Card>

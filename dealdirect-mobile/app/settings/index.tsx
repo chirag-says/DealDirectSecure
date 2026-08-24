@@ -1,14 +1,13 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import type * as ImagePickerModule from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, Switch } from 'react-native';
 
 import { ApiError } from '@/api';
 import { useAuth } from '@/auth';
 import { optionalNativeModule } from '@/config/optionalNative';
 import { useUpdateProfile } from '@/features/profile';
-import { screenPadding, scrollBottomPadding } from '@/theme';
+import { screenPadding, scrollBottomPadding, useTheme } from '@/theme';
 import {
   Avatar,
   Button,
@@ -23,6 +22,7 @@ import {
   ScreenHeader,
   Select,
   Text,
+  DateField,
 } from '@/ui';
 
 /**
@@ -125,6 +125,7 @@ export default function SettingsScreen() {
 }
 
 function EditProfileCard() {
+  const theme = useTheme();
   const { user, refreshUser } = useAuth();
   const { update, isPending, error } = useUpdateProfile();
 
@@ -136,9 +137,9 @@ function EditProfileCard() {
   const [addressCity, setAddressCity] = useState(user?.address?.city ?? '');
   const [addressState, setAddressState] = useState(user?.address?.state ?? '');
   const [addressPincode, setAddressPincode] = useState(user?.address?.pincode ?? '');
-  // YYYY-MM-DD text entry rather than a native date picker — no date-picker
-  // module is installed, and adding one is a native-module decision on its
-  // own (docs/HANDOFF.md §5.1), not something this form should force.
+  // A `YYYY-MM-DD` string. Driven by the native `DateField`, which falls back
+  // to typed entry where the picker module is absent — the string contract is
+  // the same either way, so the backend and this state are unchanged.
   const [dateOfBirth, setDateOfBirth] = useState(
     user?.dateOfBirth ? user.dateOfBirth.slice(0, 10) : ''
   );
@@ -233,12 +234,11 @@ function EditProfileCard() {
         keyboardType="phone-pad"
         containerClassName="mt-base"
       />
-      <Input
+      <DateField
         label="Date of birth"
-        placeholder="YYYY-MM-DD"
         value={dateOfBirth}
-        onChangeText={setDateOfBirth}
-        keyboardType="numbers-and-punctuation"
+        onChange={setDateOfBirth}
+        placeholder="Select your date of birth"
         error={!dobValid ? 'Use the format YYYY-MM-DD' : undefined}
         containerClassName="mt-base"
       />
@@ -291,30 +291,35 @@ function EditProfileCard() {
         containerClassName="mt-sm"
       />
 
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => setEmailNotifications((v) => !v)}
-        className="mt-lg flex-row items-center justify-between py-sm"
-      >
+      {/*
+        Real Switches, not checkbox glyphs.
+
+        These were `Ionicons name={x ? 'checkbox' : 'square-outline'}` with
+        hardcoded hex colours — a control that looked like a form checkbox on a
+        screen with no other checkboxes, and did not read as toggleable. The
+        native Switch is the platform's own on/off control, reads correctly to
+        a screen reader, and takes theme colours.
+      */}
+      <View className="mt-lg flex-row items-center justify-between py-sm">
         <Text variant="body">Email notifications</Text>
-        <Ionicons
-          name={emailNotifications ? 'checkbox' : 'square-outline'}
-          size={22}
-          color={emailNotifications ? '#2563EB' : '#9CA3AF'}
+        <Switch
+          accessibilityLabel="Email notifications"
+          value={emailNotifications}
+          onValueChange={setEmailNotifications}
+          trackColor={{ true: theme.colors.accent, false: theme.colors.surfaceMuted }}
+          thumbColor={theme.colors.surface}
         />
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => setSmsNotifications((v) => !v)}
-        className="flex-row items-center justify-between py-sm"
-      >
+      </View>
+      <View className="flex-row items-center justify-between py-sm">
         <Text variant="body">SMS notifications</Text>
-        <Ionicons
-          name={smsNotifications ? 'checkbox' : 'square-outline'}
-          size={22}
-          color={smsNotifications ? '#2563EB' : '#9CA3AF'}
+        <Switch
+          accessibilityLabel="SMS notifications"
+          value={smsNotifications}
+          onValueChange={setSmsNotifications}
+          trackColor={{ true: theme.colors.accent, false: theme.colors.surfaceMuted }}
+          thumbColor={theme.colors.surface}
         />
-      </Pressable>
+      </View>
 
       {error instanceof ApiError ? (
         <Text variant="footnote" tone="danger" className="mt-sm">
