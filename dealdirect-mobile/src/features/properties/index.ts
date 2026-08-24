@@ -92,3 +92,5 @@ export type {
   PropertyOwnerContact,
   PropertySummary,
 } from './types';
+
+export { LeafletMap, mapAvailable, type LeafletMapProps, type MapMarker } from './components/map/LeafletMap';

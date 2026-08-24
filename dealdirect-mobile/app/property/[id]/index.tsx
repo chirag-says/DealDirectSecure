@@ -97,11 +97,9 @@ import {
  * hero's parallax; routing it through React would re-render this screen — with
  * its eighty-field attribute table — sixty times a second.
  *
- * ---------------------------------------------------------------------------
- * STILL TO COME IN M4: the Leaflet locator map, held with the rest of the map
- * phase pending a dev-client rebuild for its native dependencies. Everything
- * else in the plan — gallery, attribute table, interest, contact, message,
- * share, report — is built.
+ * The locator map lives at `property/[id]/map` and is reached from the Location
+ * section below; see that screen for the WebView/Leaflet approach and the
+ * degrade-to-locality-text fallback.
  */
 /**
  * Below this the view count is suppressed. Same threshold and same reasoning as
@@ -555,7 +553,41 @@ export default function PropertyDetailScreen() {
             </Section>
           ) : null}
 
-          {/* M4, remaining phase: the locator map. */}
+          {/*
+            The locator map, reached rather than embedded.
+
+            An inline map would mount a second WebView on a screen that is
+            already long and image-heavy; a tappable row is lighter and is the
+            pattern the portals use. Shown only when the listing has a real
+            coordinate — with none, the locality text above is all there is to
+            say, and a row leading to a "no exact location" screen would be a
+            dead end wearing a chevron.
+          */}
+          {property.coordinates ? (
+            <Section title="Location" navLabel="Location">
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="See location on map"
+                onPress={() => router.push(`/property/${id}/map`)}
+                className="flex-row items-center rounded-xl border border-border bg-surface active:opacity-80"
+                style={{ padding: spacing.base, gap: spacing.md }}
+              >
+                <View
+                  className="items-center justify-center rounded-lg"
+                  style={{ width: 44, height: 44, backgroundColor: theme.colors.brandMuted }}
+                >
+                  <Ionicons name="map-outline" size={22} color={theme.colors.brand} />
+                </View>
+                <View className="flex-1">
+                  <Text variant="bodyEmphasis">See location on map</Text>
+                  <Text variant="footnote" tone="secondary" numberOfLines={1}>
+                    {property.locationLabel || property.addressLine || 'Open the map'}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+              </Pressable>
+            </Section>
+          ) : null}
 
           {owner ? (
             <Section title="Owner" navLabel="Owner">
