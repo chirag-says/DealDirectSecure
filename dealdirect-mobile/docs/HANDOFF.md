@@ -2708,3 +2708,30 @@ second statement of a fact the chips already carry.
   selected chip is 1pt taller. `alignItems: stretch` in the rail equalises them
   so nothing jumps, but the rail's own height shifts by a point. Left alone —
   changing `Chip` is a global change and this pass was scoped to composition.
+
+## 14. 2026-09-04 — Upgrade plan Phases 0, 2 and 3 (read this before §2.14 and §5.1)
+
+Plan of record: `../DEALDIRECT-UPGRADE-MASTER-PLAN.md`. Record of what shipped: the three
+entries dated 2026-09-04 at the top of `../AI/CHANGELOG_AI.md` (backend, mobile Phase 0,
+mobile Phases 2 and 3). Where this file disagrees with them, they win.
+
+What changed that earlier sections describe as absent:
+
+- Server push exists. `POST /users/push-token` + `src/notifications/pushToken.ts`;
+  `PushRouter` routes taps on `data.kind`. Section 2.14's "blocked" claim is stale.
+  Android still registers nothing until `google-services.json` and FCM V1 credentials
+  are in place (EAS); the failure is logged as `[push]`.
+- Chat and agreements are mounted again, but only INSIDE the deal page
+  (`app/deal/[leadId].tsx`) and only when the server says `chatEnabled` /
+  `agreementsEnabled`. `SocketProvider` is mounted by the deal page, not the root.
+  Section 9.1's D1/D2 record the decision that was re-opened; the flags are the
+  reversible part.
+- New native module: `@sentry/react-native` (no-op without `EXPO_PUBLIC_SENTRY_DSN`).
+  With the Phase 3 native layer this makes the rebuild mandatory: `expo prebuild`
+  ran clean on 2026-09-04, the EAS dev build has not.
+- Usage events (`src/analytics`) flush to `POST /events`; the name list is closed.
+
+The gate above every other line is unchanged: nothing since Phase 1 has run on a
+device. `DEALDIRECT-MOBILE-PHASE2-QA-SCRIPT.md` plus the deal-room flows (propose,
+confirm, done by both, feedback, message with a lure, report, attest, review) are the
+pass to run first.

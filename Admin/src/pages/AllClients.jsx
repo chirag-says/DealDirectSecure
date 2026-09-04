@@ -37,6 +37,25 @@ export default function AllClients() {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const [blockModalOpen, setBlockModalOpen] = useState(false);
+  const [verifyLoading, setVerifyLoading] = useState(false);
+
+  // Phase 3 (F17): the verification badge. Set by an admin who checked the
+  // person; public on listings and in the deal room.
+  const setVerification = async (userId, patch) => {
+    try {
+      setVerifyLoading(true);
+      const { data } = await adminApi.put(`/api/admin/users/${userId}/verification`, patch);
+      const verification = data?.data?.verification || {};
+      const next = { identity: !!verification.identity, documents: !!verification.documents };
+      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, verification: next } : u)));
+      setSelectedUser((prev) => (prev && prev.id === userId ? { ...prev, verification: next } : prev));
+      toast.success("Verification updated");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to update verification");
+    } finally {
+      setVerifyLoading(false);
+    }
+  };
   const [blockReason, setBlockReason] = useState("");
   const [userToBlock, setUserToBlock] = useState(null);
   const [blockLoading, setBlockLoading] = useState(false);
@@ -56,6 +75,7 @@ export default function AllClients() {
                 phone: u.phone,
                 status: u.isBlocked ? "Blocked" : "Active",
                 blockReason: u.blockReason,
+                verification: u.verification || { identity: false, documents: false },
                 joinedAt: formatDate(u.createdAt),
 
                 profile: {
@@ -466,6 +486,28 @@ export default function AllClients() {
                             <p className="text-xs text-rose-800 font-medium"><span className="font-bold">Reason:</span> {selectedUser.blockReason}</p>
                         </div>
                     )}
+
+                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider pt-2">Verification badge</h3>
+                    <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-3 text-sm">
+                        <p className="text-xs text-gray-500">
+                            Shown publicly on this person's listings and in their deals. Tick only what you have actually checked.
+                        </p>
+                        {[
+                            ["identity", "Identity checked"],
+                            ["documents", "Property papers checked"],
+                        ].map(([key, label]) => (
+                            <label key={key} className="flex items-center justify-between gap-3 cursor-pointer">
+                                <span className="text-gray-700">{label}</span>
+                                <input
+                                    type="checkbox"
+                                    className="h-4 w-4 accent-emerald-600"
+                                    disabled={verifyLoading}
+                                    checked={!!selectedUser.verification?.[key]}
+                                    onChange={(e) => setVerification(selectedUser.id, { [key]: e.target.checked })}
+                                />
+                            </label>
+                        ))}
+                    </div>
                 </div>
 
                 {/* Contact Details */}

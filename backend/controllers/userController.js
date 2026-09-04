@@ -140,6 +140,10 @@ const sanitizeUserResponse = (user) => {
     blockReason: safeUser.blockReason,
     preferences: safeUser.preferences,
     referralCode: safeUser.referralCode,
+    // Phase 3 (F17): the verification badge, for the Admin client list.
+    verification: safeUser.verification
+      ? { identity: !!safeUser.verification.identity, documents: !!safeUser.verification.documents }
+      : { identity: false, documents: false },
     createdAt: safeUser.createdAt,
     updatedAt: safeUser.updatedAt,
   };

@@ -241,9 +241,27 @@ export default function DealVerifications() {
                       </span>
                     </td>
 
-                    {/* Status */}
+                    {/* Status, plus the Phase 3 linkage flags and the payout hold */}
                     <td className="px-4 py-3">
                       <StatusBadge status={v.status} />
+                      {Array.isArray(v.fraudFlagDetails) && v.fraudFlagDetails.length > 0 && (
+                        <ul className="mt-2 space-y-1" aria-label="Linkage flags">
+                          {v.fraudFlagDetails.map((f) => (
+                            <li
+                              key={f.flag}
+                              className="text-[11px] leading-tight text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5"
+                              title={f.flag}
+                            >
+                              {f.description}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {v.payoutHoldUntil && (
+                        <p className="mt-1 text-[11px] text-gray-500">
+                          Payout on hold until {new Date(v.payoutHoldUntil).toLocaleDateString("en-IN")}
+                        </p>
+                      )}
                     </td>
 
                     {/* Documents */}
