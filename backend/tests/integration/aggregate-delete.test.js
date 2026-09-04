@@ -360,7 +360,13 @@ test('account deletion keeps its documented collection split', async (t) => {
   await t.test('the deleted and retained lists are what the code claims', () => {
     // Pins the parked decision. When the policy lands, this test is what makes
     // the change deliberate rather than silent.
-    assert.equal(USER_CASCADE.deleted.length, 12);
+    // 12 originally; LoginTracker left with the streak mechanic (Phase 0, F1)
+    // and PushToken, OutboundLog and Event arrived with push and usage events.
+    assert.equal(USER_CASCADE.deleted.length, 14);
+    for (const name of ['PushToken', 'OutboundLog', 'Event']) {
+      assert.ok(USER_CASCADE.deleted.includes(name), `${name} must be deleted with the account`);
+    }
+    assert.ok(!USER_CASCADE.deleted.includes('LoginTracker'), 'LoginTracker no longer exists');
     assert.equal(USER_CASCADE.retained.length, 5);
     assert.ok(USER_CASCADE.retained.includes('Lead'));
     assert.ok(USER_CASCADE.retained.includes('Agreement'));

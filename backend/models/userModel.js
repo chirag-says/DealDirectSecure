@@ -147,6 +147,25 @@ const userSchema = new mongoose.Schema(
       ref: 'User',
       default: null,
     },
+
+    // ------------------------------------------------------------------
+    // Phase 3 (F17): the verification badge, set by an admin who checked
+    // identity and, for owners, the property papers. Public on listings.
+    // ------------------------------------------------------------------
+    verification: {
+      identity: { type: Boolean, default: false },
+      documents: { type: Boolean, default: false },
+      verifiedAt: { type: Date, default: null },
+      verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin", default: null },
+    },
+
+    // ------------------------------------------------------------------
+    // Phase 3 (F15): linkage inputs for the verified-close check. Device
+    // hashes are opaque installation ids the clients register; never a
+    // fingerprint of the person. Both are hidden from every default read.
+    // ------------------------------------------------------------------
+    deviceHashes: { type: [String], default: [], select: false },
+    payoutVpa: { type: String, default: null, select: false },
     referralCode: {
       type: String,
       unique: true,

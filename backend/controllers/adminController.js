@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import speakeasy from "speakeasy";
 import qrcode from "qrcode";
@@ -9,6 +10,9 @@ import User from "../models/userModel.js";
 import Property from "../models/Property.js";
 import Lead from "../models/Lead.js";
 import { notifyUser } from "../services/notificationService.js";
+import { closeLeadForVerification } from "./dealController.js";
+import { linkageFlags, FLAG_DESCRIPTIONS } from "../utils/fraudLinkage.js";
+import { getRewardPolicy } from "../config/rewardPolicy.js";
 import { assertLeadTransition, LeadTransitionError } from "../utils/leadState.js";
 import Report from "../models/Report.js";
 import {
@@ -1578,7 +1582,12 @@ export const getDealVerifications = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      verifications,
+      // Phase 3 (F15): every flag rendered with its plain-language meaning,
+      // so the admin screen never shows a bare code.
+      verifications: verifications.map((v) => ({
+        ...v,
+        fraudFlagDetails: (v.fraudFlags || []).map((f) => ({ flag: f, description: FLAG_DESCRIPTIONS[f] || f })),
+      })),
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -1625,6 +1634,22 @@ export const approveDealVerification = async (req, res) => {
     verification.adminNotes = adminNotes || "";
     verification.reviewedBy = req.admin._id;
     verification.reviewedAt = new Date();
+
+    // Phase 3 (F15): the linkage check and the payout hold. Flags never
+    // block approval (the admin just approved with the evidence in front of
+    // them); they lengthen the hold and stay on the record.
+    let holdDays = 0;
+    try {
+      const flags = await linkageFlags({ verification, now: verification.reviewedAt });
+      const policy = getRewardPolicy();
+      verification.fraudFlags = flags;
+      holdDays = flags.length ? policy.payoutHoldDaysFlagged : policy.payoutHoldDays;
+      verification.payoutHoldUntil = holdDays > 0
+        ? new Date(verification.reviewedAt.getTime() + holdDays * 86400 * 1000)
+        : null;
+    } catch (linkErr) {
+      console.error("[Verification] linkage check failed:", linkErr.message);
+    }
     await verification.save();
 
     // 2b. Convert the buyer's lead.
@@ -1642,19 +1667,43 @@ export const approveDealVerification = async (req, res) => {
     // Non-fatal: the deal is already approved and must not be reported as
     // failed because a derived status could not be written.
     try {
-      await Lead.updateOne(
-        { property: verification.property._id, user: verification.buyer._id },
-        { $set: { status: "converted" } }
-      );
+      // Closes the lead (status converted, stage closed, verification linked)
+      // through the deal spine. Falls back to the plain status write if the
+      // lead cannot be found, which preserves the pre-Phase-2 behaviour.
+      const closed = await closeLeadForVerification({
+        _id: verification._id,
+        property: verification.property._id,
+        buyer: verification.buyer._id,
+      });
+      if (!closed) {
+        await Lead.updateOne(
+          { property: verification.property._id, user: verification.buyer._id },
+          { $set: { status: "converted" } }
+        );
+      }
     } catch (err) {
       console.error("[Verification] Lead conversion failed:", err.message);
     }
 
     // 3. Send "Claim Your Reward" notification to OWNER
+    const holdCopy = holdDays > 0
+      ? ` Your reward unlocks on ${verification.payoutHoldUntil.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}, once the registry confirmation window has passed.`
+      : "";
+
+    // Phase 3 (F16): reviews open the moment the deal is verified.
+    for (const party of [verification.owner._id, verification.buyer._id]) {
+      notifyUser(party, {
+        title: "Review your verified deal",
+        message: "Only the two of you can review this deal. Both reviews publish together, or after 14 days.",
+        type: "review_request",
+        data: { verificationId, propertyId: verification.property._id, actionUrl: `/reviews/${verificationId}`, actionText: "Write a review" },
+      }).catch((err) => console.error("[Verification] review request failed:", err.message));
+    }
+
     await notifyUser(verification.owner._id, {
 
       title: "Deal Verified — Claim Your Reward!",
-      message: `Your property deal for "${verification.property.title}" has been verified! Click below to claim your reward.`,
+      message: `Your property deal for "${verification.property.title}" has been verified! Click below to claim your reward.${holdCopy}`,
       type: "deal_reward",
       data: {
         verificationId,
@@ -1667,7 +1716,7 @@ export const approveDealVerification = async (req, res) => {
     await notifyUser(verification.buyer._id, {
 
       title: "Congratulations — Claim Your Reward!",
-      message: `The deal for "${verification.property.title}" is verified! Click below to claim your congratulations gift.`,
+      message: `The deal for "${verification.property.title}" is verified! Click below to claim your congratulations gift.${holdCopy}`,
       type: "deal_reward",
       data: {
         verificationId,
@@ -1777,5 +1826,40 @@ export const rejectDealVerification = async (req, res) => {
   } catch (error) {
     console.error("[Admin] rejectDealVerification error:", error);
     res.status(500).json({ success: false, message: "Failed to reject verification" });
+  }
+};
+
+
+/**
+ * PUT /api/admin/users/:id/verification   { identity?: boolean, documents?: boolean }
+ *
+ * Phase 3 (F17): the verification badge. Set by an admin who checked the
+ * person's identity and, for owners, the property papers. The badge is
+ * public on listings and in the deal room; the evidence stays with the admin.
+ */
+export const setUserVerification = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid user id" });
+    }
+    const { identity, documents } = req.body || {};
+    const set = {};
+    if (typeof identity === "boolean") set["verification.identity"] = identity;
+    if (typeof documents === "boolean") set["verification.documents"] = documents;
+    if (!Object.keys(set).length) {
+      return res.status(400).json({ success: false, message: "identity and/or documents (boolean) required" });
+    }
+    set["verification.verifiedAt"] = new Date();
+    set["verification.verifiedBy"] = req.admin._id;
+
+    const user = await User.findByIdAndUpdate(id, { $set: set }, { new: true }).select("name email verification").lean();
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    console.log(`[Admin] verification for ${user.email} set by ${req.admin.email}:`, JSON.stringify(set));
+    res.status(200).json({ success: true, data: { id: user._id, verification: user.verification } });
+  } catch (error) {
+    console.error("[Admin] setUserVerification error:", error);
+    res.status(500).json({ success: false, message: "Failed to update verification" });
   }
 };

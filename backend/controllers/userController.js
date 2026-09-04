@@ -14,7 +14,6 @@ import Message from "../models/Message.js";
 import Reward from "../models/Reward.js";
 import Referral from "../models/Referral.js";
 import Report from "../models/Report.js";
-import LoginTracker from "../models/LoginTracker.js";
 import Notification from "../models/Notification.js";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
@@ -23,8 +22,9 @@ import { setSessionCookie, clearSessionCookie } from "../middleware/authUser.js"
 import { Parser } from "@json2csv/plainjs";
 import PDFDocument from "pdfkit";
 import { sendOtpSms, sendPasswordResetSms, isSmsConfigured } from "../services/smsService.js";
-import { getOrCreateWallet, createReferralFromCode, trackDailyLogin } from "../services/rewardService.js";
+import { getOrCreateWallet, createReferralFromCode } from "../services/rewardService.js";
 import { deleteUserAggregate } from "../utils/aggregateDelete.js";
+import PushToken from "../models/PushToken.js";
 import { sendNewUserWhatsApp } from "../services/whatsappService.js";
 import { sendWelcomeEmail } from "../utils/emailService.js";
 
@@ -601,13 +601,6 @@ export const loginUser = async (req, res) => {
     const { session, sessionToken } = await UserSession.createSession(user, req);
     setSessionCookie(res, sessionToken);
 
-    // --- DealDirect Rewards: track daily login ---
-    try {
-      await trackDailyLogin(user._id);
-    } catch (rewardErr) {
-      console.error("[Rewards] Login tracking error (non-blocking):", rewardErr.message);
-    }
-
     res.status(200).json({
       success: true,
       message: "Login successful",
@@ -627,6 +620,12 @@ export const logoutUser = async (req, res) => {
     // Revoke current session if exists
     if (req.userSession) {
       await UserSession.revokeSession(req.userSession._id, "user_logout");
+    }
+
+    // A device that signs out must stop receiving this account's pushes.
+    // The client passes its own token; a token it does not hold is ignored.
+    if (PushToken.isValidToken(req.body?.pushToken)) {
+      await PushToken.deleteOne({ token: req.body.pushToken, user: req.user._id }).catch(() => {});
     }
 
     clearSessionCookie(res);
@@ -652,6 +651,7 @@ export const logoutUser = async (req, res) => {
 export const logoutAllDevices = async (req, res) => {
   try {
     await UserSession.revokeAllUserSessions(req.user._id, "logout_all_devices");
+    await PushToken.deleteMany({ user: req.user._id }).catch(() => {});
     clearSessionCookie(res);
 
     res.status(200).json({
@@ -1303,7 +1303,6 @@ export const deleteAccount = async (req, res) => {
     // do not exist on the target schema, so they matched nothing and silently
     // deleted nothing while still reporting success —
     //   UserSession.deleteMany({ userId }) → the field is `user`
-    //   LoginTracker.deleteMany({ user })  → the field is `userId`
     //   Report.deleteMany({ reporter })    → the field is `reportedBy`
     //   Referral.deleteMany({ referredUser }) → the field is `referred`
     // Sessions surviving account deletion was the worst of them.
@@ -1313,7 +1312,7 @@ export const deleteAccount = async (req, res) => {
     // of silently destroyed. Those are reported back rather than failing the
     // request halfway with other collections already gone.
     const { deletedUser, skippedProperties } = await deleteUserAggregate(userId, {
-      Property, UserSession, PasswordResetToken, LoginTracker, ContactInquiry,
+      Property, UserSession, PasswordResetToken, ContactInquiry,
       SavedSearch, Report, Notification, Message, Conversation, Reward, Referral, User,
     });
 
@@ -1497,5 +1496,30 @@ export const exportOwnersPDF = async (req, res) => {
   } catch (error) {
     console.error("Export Owners PDF Error:", error);
     res.status(500).json({ message: "Failed to export PDF" });
+  }
+};
+
+/**
+ * POST /api/users/device   { deviceHash }
+ *
+ * Phase 3 (F15): records an opaque installation id against the account so
+ * the verified-close linkage check can see two accounts on one phone. Never
+ * a fingerprint of the person; the client generates a random id once per
+ * install. Capped at ten per account, oldest dropped.
+ */
+export const registerDevice = async (req, res) => {
+  try {
+    const { deviceHash } = req.body || {};
+    if (typeof deviceHash !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(deviceHash)) {
+      return res.status(400).json({ success: false, code: "INVALID_DEVICE", message: "deviceHash must be 16-128 url-safe characters" });
+    }
+    await User.updateOne(
+      { _id: req.user._id },
+      { $push: { deviceHashes: { $each: [deviceHash], $slice: -10 } } }
+    );
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("[Users] registerDevice error:", error);
+    res.status(500).json({ success: false, message: "Could not register this device" });
   }
 };

@@ -53,6 +53,114 @@ did NOT update the docs, say so explicitly — that is a debt marker.
 
 ---
 
+## 2026-09-04 — Mobile Phase 0: push tokens, tap routing, usage events, Sentry (mobile only)
+
+**Files changed** — `dealdirect-mobile/` only. **No backend file was touched.** The backend side of this (push-token routes, `/events`, `data.kind` on notifications) was already deployed by the backend lane and is consumed here as-is.
+- NEW `src/notifications/pushToken.ts` — token lifecycle: `registerPushTokenIfPermitted`, `unregisterPushToken`, `setPushTokenUser`, `peekCachedPushToken`, `clearPushTokenCache`. Never prompts.
+- NEW `src/notifications/PushRouter.tsx` — push tap → route, warm and cold start, one-shot per response id. Mounted in `app/_layout.tsx` inside `AuthProvider`.
+- NEW `src/analytics/{events,queue,track,installationId,index}.ts` — usage-event vocabulary (typed map), pure persisted queue, RN glue (AppState, timer, `POST /events`), per-install `anon` id.
+- NEW `src/observability/{sentry,index}.ts` — `initSentry`, `setSentryUser`, `wrapRoot`; `@sentry/react-native` loaded through `optionalNativeModule`.
+- NEW `app/deal/[leadId].tsx`, `app/review/[verificationId].tsx` — PLACEHOLDERS ("Coming soon") so typed routes accept `/deal/:id` and `/review/:id`. The deal and review lanes replace these files wholesale.
+- NEW tests `src/features/notifications/targets.test.ts`, `src/analytics/track.test.ts`; `package.json` `test` glob is now `src/**/*.test.ts`.
+- `src/features/notifications/targets.ts` — `NOTIFICATION_KINDS`, `readNotificationKind`, `resolveTargetFromData` (kind-first), `hrefForTarget` (the ONE target→route function); new target kinds `deal`, `message`, `review`, `digest`. `resolveNotificationTarget` tries `data.kind` before its older `type`/`propertyId`/`actionUrl` heuristics.
+- `src/api/endpoints/users.ts` — `registerPushToken`, `removePushToken` (DELETE with body), `logout` now typed `LogoutRequest` (`{ pushToken? }`). `src/api/endpoints/misc.ts` — `eventsEndpoints.ingest`. `_contract.ts` — `'events'` rate tier. `src/types/backend/{user,misc}.ts` — the request/response types.
+- `src/auth/AuthProvider.tsx` — on any user change: `setSentryUser({ id, role } | null)`, `setPushTokenUser`, and (when authenticated) fire-and-forget `registerPushTokenIfPermitted`; `logout` sends `{ pushToken }` when cached; `endSession` clears the token cache.
+- `src/storage/mmkv.ts` — three `PREF_KEYS`: `pushToken`, `installationId`, `analyticsQueue`.
+- `app/_layout.tsx` — `initSentry()` at module scope, `useEffect(startAnalytics, [])`, `<PushRouter />`, default export is now `wrapRoot(RootLayout)`.
+- `app/(tabs)/updates.tsx` — row tap goes through `hrefForTarget`, emits `notification_opened { kind }`.
+- `app/(tabs)/index.tsx` (Home, FROZEN) — ONE callback changed, `openNotification`, 3 lines: `router.push(target ? hrefForTarget(target) : '/(tabs)/updates')`. Unavoidable: the old `else` branch sent every unrecognised kind (now `deal`, `message`, `review`, `digest`) to the saved-searches segment. Nothing else in the file or under `src/features/home/` was touched.
+- Call sites, one or two lines each: `ShortlistButton.tsx` (`shortlist_add` + permission prompt + token registration on ADD), `SaveSearchSheet.tsx` (`saved_search_create` + the same prompt/registration on success), `saved/saveToggle.ts` (`contact_owner` on interest success), `properties/hooks.ts` `useRecordPropertyView` (`property_view`, already deduped per id, called by the detail screen), `search/components/SearchScreen.tsx` (`search { city, listingType, results }` once per distinct filter set after results settle).
+- `app.config.js` — `@sentry/react-native/expo` plugin (org/project from `SENTRY_ORG`/`SENTRY_PROJECT`, defaults `dealdirect`/`dealdirect-mobile`). `.env.example` — `EXPO_PUBLIC_SENTRY_DSN` (optional). `src/notifications/handler.ts` — doc comment only: the "no backend push" note is now history.
+- Installed: `@sentry/react-native@~7.2.0` via `npx expo install`; `package-lock.json` regenerated with `node scripts/relock.mjs` (npm 10.9.3, EAS-compatible).
+
+**Reason**
+Master plan Phase 0, mobile lane: the app must be able to receive a push and open the right screen, report crashes, and say what users do. Until now `resolveNotificationTarget` guessed from `type` and `propertyId`; every push and in-app notification now carries `data.kind`, and the client reads that first.
+
+**Architectural impact**
+- **The OS notification prompt is asked at exactly two moments and never at launch:** the first shortlist add and the first saved-search create. `requestNotificationPermissionOnce` still asks once ever. `registerPushTokenIfPermitted` NEVER prompts; it only posts a token the OS has already allowed. Do not add a launch-time prompt.
+- **`hrefForTarget` is the only place a `NotificationTarget` becomes a route.** Home, Updates and PushRouter all call it. A new kind is added in `targets.ts` (vocabulary + resolver + href) and nowhere else. `data.actionUrl` is still consulted for one shape only (`/propert(y|ies)/<24-hex>`), and never by the kind-first resolver.
+- **`data.kind` is closed and ids are validated as ObjectIds.** `visit` resolves to the deal (`/deal/:leadId`). `message` opens `/deal/:leadId` when a leadId is present, else `/chat/:conversationId`. **`review` requires `verificationId`; a payload carrying only `reviewId` resolves to nothing** (the review route is keyed by verification, and routing a review id into it would 404). If the review lane keys its screen differently, change `targets.ts`, not the callers.
+- **Push token cache is keyed on (token, userId) with a 24h re-post window,** cleared on every session end. Re-posting re-points the token at the current account; the logout body carries it so the server drops it.
+- **Usage events are whitelisted at the type level** (`UsageEvents` map): an unknown name or prop is a compile error. Queue: MMKV-mirrored, cap 200 (oldest dropped), batches of 50, flush at 20 / every 30s while foregrounded / on background. A 4xx drops the batch; network, 5xx **and 429** keep it (429 deviates from "drop on 4xx" deliberately: it is "not now", not "not ever"). The 30s timer is a no-op on an empty queue, so the Search tab's idle state still issues no request.
+- **Sentry sends `{ id, role }` only.** `sendDefaultPii: false`; `beforeSend`/`beforeSendTransaction` delete `request.cookies`, `request.headers` and any breadcrumb data key named `cookie`/`authorization`/`set-cookie`. Without `EXPO_PUBLIC_SENTRY_DSN` the SDK never initialises and `wrapRoot` is the identity.
+- The `features/shortlist` store still imports no API client. `ShortlistButton` (the component) now imports `@/analytics` and `@/notifications`; the only requests it can cause are the usage event and the token registration, never a property endpoint. Its doc comment says so.
+- `AuthProvider` imports `@/notifications/pushToken` by file, not the barrel, because the barrel exports `PushBridge` which imports `@/auth`.
+- Two native additions since the last rebuild: `@sentry/react-native` (new) and the push half of `expo-notifications` (module already present, now actually used for tokens). **REQUIRES `expo prebuild` and a fresh dev-client / production build** (`runtimeVersion.policy: 'fingerprint'`).
+
+**Migration notes**
+- Env: `EXPO_PUBLIC_SENTRY_DSN` (runtime, optional), `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` (build time, for source-map upload; skipped without). None are set anywhere yet. A mobile Sentry project and DSN are still needed.
+- **Android push needs FCM credentials that do not exist in this repo:** `getExpoPushTokenAsync` on Android requires a `google-services.json` referenced from `app.config.js` (`android.googleServicesFile`) and FCM V1 credentials uploaded to EAS. Without them the call throws, `registerPushTokenIfPermitted` swallows it with a `[push]` warning, and no token is ever registered. iOS needs an APNs key in EAS. Neither is a code change here.
+- No schema change, no backend change, no data migration.
+
+**Docs updated**
+None. Debt markers: `dealdirect-mobile/docs/HANDOFF.md` §2.14 and §5.1 still say server push is blocked and list four native modules; both are now stale. `AI/FILE_MAP.md` does not list `src/analytics/`, `src/observability/`, `src/notifications/{pushToken,PushRouter}`.
+
+**Verification**
+`npm test` 223/223 (two new suites), `npx tsc --noEmit` clean, `npx expo lint` 0 errors / 12 pre-existing warnings, `npx expo export --platform android` bundles (8.04 MB hbc). Typed routes for `/deal` and `/review` were regenerated by calling `expo-router`'s `regenerateDeclarations` directly, since `expo export` does not touch `.expo/types/router.d.ts` (only `expo start` does); that file is git-ignored. **Nothing was run on a device or emulator. The permission prompt, token registration, cold-start push routing, event flushing and Sentry initialisation are all unverified on hardware, and the current dev client cannot load this JS without a rebuild.**
+
+## 2026-09-04 — Backend Phases 0, 2 and 3 of the upgrade master plan (additive)
+
+Plan of record: `DEALDIRECT-UPGRADE-MASTER-PLAN.md` (repo root). Everything below is additive: no existing route changed its contract, no existing field changed meaning, and every new behaviour that costs money or changes what users receive is behind configuration whose default reproduces the pre-change behaviour.
+
+**Files changed**
+
+Phase 0 (engines E1, E2; F1–F6)
+- NEW `models/PushToken.js`, `models/OutboundLog.js`, `models/JobRun.js`, `models/Event.js` (Event + EventRollup).
+- NEW `services/pushService.js` — Expo Push Service sender, batches of 100, `DeviceNotRegistered` disables the token, receipts polled by a job. `EXPO_PUSH_URL` is overridable (the test harness points it at a loopback fake).
+- `services/notificationService.js` — `NOTIFICATION_POLICY` (per-type channels: push / email always|capped|never / whatsapp / critical), `WEEKLY_CAP=3` on email+WhatsApp for non-critical types via `OutboundLog`, `data.kind` stamped on every notification, `pushOnly()` for chat. Every pre-existing type keeps `email: "always"`.
+- `services/whatsappService.js` — Meta Cloud API provider behind `WHATSAPP_PROVIDER` / `META_WA_*`; same exported functions. WAHA remains the fallback.
+- NEW `jobs/runner.js` (node-cron, `JobRun` rows, overlap + stale protection, cursor idempotency), `jobs/registry.js` (the job table), `jobs/pushTokenPrune.js`, `jobs/eventsRollup.js`, and later `jobs/visitReminders.js`, `jobs/ownerWeeklyDigest.js`, `jobs/reviewPublish.js`. Started from `server.js` only outside `NODE_ENV=test`; `JOBS_ENABLED=false` disables.
+- NEW `controllers/pushTokenController.js` + `routes/userRoutes.js`: `POST/DELETE /users/push-token`. `POST /users/logout` accepts `{pushToken}`; logout-all deletes all tokens.
+- NEW `controllers/eventController.js` + `routes/eventRoutes.js`: `POST /events` (closed name whitelist, per-name prop whitelist, 50/batch, 30 batches/min/IP, optionalAuth), `GET /admin/metrics` (admin).
+- `models/Notification.js` — partial TTL index `ttl_read_notifications` (read rows expire 90 days after last update; unread never).
+- `services/rewardService.js` — B5 `upload_5_photos` mapped (50 pts, once per property); B11 `referral_first_action` (50) and `referral_deal_closure` (500) mapped and wired from `markInterested`, `addProperty`, `claimDealReward`; B12 `trackDailyLogin` and `LoginTracker` DELETED, `Reward.monthlyLoginDays/lastLoginDate` removed from the schema (research reversed the streak mechanic).
+- `controllers/chatController.js` — B3 fixed: `conversation.lastMessage.text` now stores the escaped text.
+- `utils/aggregateDelete.js` — cascade now deletes `PushToken`, `OutboundLog`, `Event` (14 collections, was 12).
+- `.env.example` — new keys documented.
+
+Phase 2 (engine E3; F10–F14)
+- `models/Lead.js` — the deal spine: `stage` (derived, cached), `visits[]` (proposed/confirmed/done/no_show/cancelled, `doneConfirmedBy[]`, `remindersSent[]`, feedback), `conversation`, `agreement`/`agreementAt`, `verification`, `closedAt`, `firstOwnerResponseAt`. Three new indexes.
+- NEW `utils/dealStage.js` (`deriveStage`, `progressFor`), `utils/scamHeuristics.js` (`detectLure`, warning copy).
+- NEW `controllers/dealController.js` + `routes/dealRoutes.js` at `/api/deals`: `GET /deals`, `GET /deals/:leadId`, `POST /deals/:leadId/visits`, `PUT /deals/:leadId/visits/:visitId` (confirm|cancel|done|no_show), `POST .../feedback`, `POST /deals/:leadId/conversation` (503 `CHAT_DISABLED` unless `CHAT_ENABLED=true`), `POST /deals/:leadId/attest`.
+- `controllers/chatController.js` — lure detection on send (message flagged + a `system` warning message), `owner_replied` notification on the owner's first message per lead, push-only nudges otherwise (throttled per conversation), NEW `POST /chat/message/report` (Report with `contextType: message`).
+- `controllers/leadController.js` — owner status updates and contact logs set `firstOwnerResponseAt`; `GET /leads` rows gain `buyerContext`.
+- `controllers/propertyController.js` — public `GET /properties/:id` gains `ownerStats { responseHours, answered, verified, documentsVerified, reviews }` (response time null under 3 answered leads); `closeDeal` links the verification to the lead; claim refuses `PAYOUT_ON_HOLD`.
+- `controllers/adminController.js` — approval closes the lead through the spine, runs the linkage check, sets the hold, sends `review_request`; NEW `PUT /admin/users/:id/verification`; verification list rows gain `fraudFlagDetails`.
+- `controllers/agreementController.js` — generation attaches the agreement to the lead and notifies both; full signature awards the agreement milestone. `server.js` mounts `/api/agreements` only when `AGREEMENTS_ENABLED=true` (D1 re-opened, off by default).
+- `models/Property.js` — `digestBaseline {views, at}` for the weekly digest delta.
+
+Phase 3 (F15–F17)
+- NEW `config/rewardPolicy.js` — env-driven: `MILESTONE_REWARDS_ENABLED`, `MILESTONE_VISIT_POINTS`, `MILESTONE_AGREEMENT_POINTS`, `CLOSE_PAYOUT_FIXED_POINTS`, `PAYOUT_HOLD_DAYS`, `PAYOUT_HOLD_DAYS_FLAGGED`. Defaults = pre-Phase-3 behaviour. `GET /rewards/policy` is the public explainer.
+- `models/Reward.js` — `lockedPoints`; `addTransaction` routes `metadata.cashable === false` earns into it (tier progress, never redeemable). `services/rewardService.js` — `awardMilestone()`, fixed close base on top of the draw when configured.
+- `models/TransactionVerification.js` — `payoutHoldUntil`, `fraudFlags[]`, `attestations.{owner,buyer}`. NEW `utils/fraudLinkage.js` (same_device, same_phone, same_ip, young_account, first_action_close, owner_velocity, attestation_missing/dispute/mismatch).
+- `models/userModel.js` — `verification {identity, documents, verifiedAt, verifiedBy}`, `deviceHashes[]` (select false), `payoutVpa` (select false). NEW `POST /users/device`.
+- NEW `models/Review.js`, `controllers/reviewController.js`, `routes/reviewRoutes.js` at `/api/reviews`: `POST /reviews`, `GET /reviews/user/:userId` (public, published only), `GET /reviews/mine`, `GET /reviews/eligibility/:verificationId`. Simultaneous reveal: publishes when both sides are in or 14 days after the first (`jobs/reviewPublish.js`).
+- NEW `utils/buyerContext.js` — `{activeWeeks, enquiries, visitsDone, budgetFit}` per buyer, aggregate only.
+
+**Reason**
+The client proposal (`dealdirectupgradeplan.docx`) and the growth research behind it: return triggers, the deal as the system of record, trust content only verified parties can write, and rewards that cannot be farmed before a verified close.
+
+**Architectural impact**
+- The backend now has a scheduler. Handlers are pure functions of `({ now, cursor })` and are tested by direct call; only `jobs/runner.js` touches the clock. Add a job = one row in `jobs/registry.js`.
+- Every notification carries `data.kind` from a closed vocabulary (`property, leads, dealReward, savedSearches, deal, visit, message, review, digest`). Clients route on it; `actionUrl` remains informational.
+- `Lead.stage` is derived. No client may set it; `syncStage` refreshes it whenever a fact changes.
+- The buyer sees the owner's phone in the deal room only after `firstOwnerResponseAt` is set. The owner sees buyer contact at once (unchanged).
+- Milestone points are non-cashable by construction (`lockedPoints`), not by policy text.
+- Chat messages never write Notification rows; they push only. The Updates tab is unaffected by chat volume.
+- `CHAT_ENABLED` and `AGREEMENTS_ENABLED` are the two product switches; both default off.
+
+**Migration notes**
+- New env keys (see `.env.example`): `EXPO_ACCESS_TOKEN` (optional), `WHATSAPP_PROVIDER`, `META_WA_*`, `JOBS_ENABLED`, `AGREEMENTS_ENABLED`, the six reward-policy keys. Email: switch SMTP to Brevo when the account exists (config only).
+- Indexes build lazily on first boot (Notification TTL, Lead deal indexes, Review unique). No backfill: every new field is optional with a default.
+- `npm install` on the server (`node-cron` added).
+- Deploy order unchanged: backend first, then the mobile build that advertises these features.
+
+**Verification**
+`npm test` (unit) and `npm run test:integration` both green after the change, including new suites: `tests/{deal-stage,scam-heuristics,notification-policy,jobs-pure,reward-policy}.test.js` and `tests/integration/{push-and-policy,events,deal-room,deal-room-chat-off,trust}.test.js`. Nothing was run against production.
+
+**Docs updated**
+None of `AI/API_REFERENCE.md`, `AI/DATABASE.md`, `AI/FILE_MAP.md`, `AI/KNOWN_BUGS.md` were updated in this change — debt marker. KNOWN_BUGS B3, B5, B11, B12 are fixed by this entry; DATABASE.md still lists `logintrackers`.
+
 ## 2026-08-24 — Mobile Phase 3: native capability layer (mobile only, REBUILD REQUIRED)
 
 **Files changed**

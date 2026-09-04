@@ -1,7 +1,11 @@
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 import Property from "../models/Property.js";
+import Report from "../models/Report.js";
 import User from "../models/userModel.js";
+import { notifyUser, pushOnly } from "../services/notificationService.js";
+import { leadForConversation, markOwnerResponded } from "./dealController.js";
+import { detectLure, LURE_WARNING } from "../utils/scamHeuristics.js";
 
 // H4 FIX: Basic HTML entity escaping to prevent stored XSS
 const escapeHtml = (str) => {
@@ -212,20 +216,46 @@ export const sendMessage = async (req, res) => {
     }
 
     // Create message
+    // Only a text message can be sent through this route. The other types
+    // are written by the server (system warnings) or reserved.
+    const type = messageType === "text" ? "text" : "text";
+
+    // Payment-lure detection (Phase 2, F13). The message still goes through;
+    // it is flagged, and a system warning follows it in the thread so BOTH
+    // parties see it. The honest owner asking for a token after a visit is
+    // not blocked, and the buyer is told what DealDirect never asks for.
+    const lure = detectLure(text || "");
+
     const message = new Message({
       conversation: conversationId,
       sender: senderId,
       text: sanitizedText,
-      messageType,
+      messageType: type,
       readBy: [{ user: senderId, readAt: new Date() }],
+      flags: lure ? [lure.flag] : [],
     });
 
     await message.save();
     await message.populate("sender", "name email profileImage");
 
+    let warning = null;
+    if (lure) {
+      warning = await Message.create({
+        conversation: conversationId,
+        sender: senderId,
+        text: LURE_WARNING,
+        messageType: "system",
+        readBy: [{ user: senderId, readAt: new Date() }],
+        flags: ["lure_warning"],
+      });
+    }
+
     // Update conversation
+    // B3: the preview used to store the RAW text while the message itself
+    // stored the escaped one, so a payload that was harmless in the thread was
+    // live HTML in the conversation list. Same string, both places.
     conversation.lastMessage = {
-      text,
+      text: sanitizedText,
       sender: senderId,
       createdAt: new Date(),
     };
@@ -240,7 +270,37 @@ export const sendMessage = async (req, res) => {
 
     await conversation.save();
 
-    res.status(201).json({ success: true, message });
+    // Deal-room hooks (Phase 2). The first owner message on a lead is the
+    // owner's response for the response-time figure and earns the buyer an
+    // "owner replied" notification; every other message is a push-only nudge
+    // to the recipient, throttled per conversation.
+    try {
+      const recipientId = conversation.participants.map((p) => p.toString()).find((p) => p !== senderId);
+      const lead = await leadForConversation(conversation._id);
+      const senderIsOwner = lead ? String(lead.propertyOwner) === senderId : false;
+      const senderName = message.sender?.name || "Someone";
+
+      if (lead && senderIsOwner && !lead.firstOwnerResponseAt) {
+        await markOwnerResponded(lead);
+        await notifyUser(lead.user, {
+          title: "The owner replied",
+          message: `${senderName} replied about ${lead.propertySnapshot?.title || "the property"}.`,
+          type: "owner_replied",
+          data: { leadId: lead._id, conversationId: conversation._id, propertyId: lead.property, actionUrl: `/deals/${lead._id}`, actionText: "Open deal" },
+        });
+      } else if (recipientId) {
+        await pushOnly(recipientId, {
+          title: senderName,
+          body: text.length > 120 ? `${text.slice(0, 117)}...` : text,
+          data: { kind: "message", conversationId: String(conversation._id), leadId: lead ? String(lead._id) : undefined },
+          throttleKey: `conv:${conversation._id}`,
+        });
+      }
+    } catch (hookErr) {
+      console.error("[chat] deal hook failed:", hookErr.message);
+    }
+
+    res.status(201).json({ success: true, message, warning, flagged: !!lure });
   } catch (error) {
     console.error("Send message error:", error);
     res.status(500).json({ success: false, message: "Failed to send message" });
@@ -292,5 +352,56 @@ export const deleteConversation = async (req, res) => {
   } catch (error) {
     console.error("Delete conversation error:", error);
     res.status(500).json({ success: false, message: "Failed to delete conversation" });
+  }
+};
+
+
+// ============================================
+// POST /chat/message/report   { messageId, reason }
+//
+// Reporting is the other half of the lure detector: heuristics catch the
+// obvious shapes, people catch the rest. A participant of the conversation
+// may report any message in it that they did not send. One report per
+// (reporter, message).
+// ============================================
+export const reportMessage = async (req, res) => {
+  try {
+    const reporterId = (req.user._id || req.user.id).toString();
+    const { messageId, reason } = req.body || {};
+
+    if (!messageId || typeof messageId !== "string" || messageId.length !== 24) {
+      return res.status(400).json({ success: false, code: "INVALID_MESSAGE", message: "messageId is required" });
+    }
+    const text = typeof reason === "string" ? reason.trim().slice(0, 500) : "";
+    if (text.length < 3) {
+      return res.status(400).json({ success: false, code: "REASON_REQUIRED", message: "Tell us what is wrong (a few words)" });
+    }
+
+    const message = await Message.findById(messageId).select("conversation sender").lean();
+    if (!message) return res.status(404).json({ success: false, code: "NOT_FOUND", message: "Message not found" });
+
+    const conversation = await Conversation.findById(message.conversation).select("participants").lean();
+    if (!conversation || !conversation.participants.map((p) => p.toString()).includes(reporterId)) {
+      return res.status(403).json({ success: false, code: "NOT_A_PARTICIPANT", message: "Not authorized" });
+    }
+    if (String(message.sender) === reporterId) {
+      return res.status(400).json({ success: false, code: "OWN_MESSAGE", message: "You cannot report your own message" });
+    }
+
+    const existing = await Report.findOne({ reportedBy: reporterId, message: message._id }).select("_id").lean();
+    if (existing) return res.status(200).json({ success: true, data: { reportId: existing._id }, duplicate: true });
+
+    const report = await Report.create({
+      reportedBy: reporterId,
+      contextType: "message",
+      message: message._id,
+      conversation: message.conversation,
+      reason: text,
+    });
+
+    res.status(201).json({ success: true, data: { reportId: report._id } });
+  } catch (error) {
+    console.error("[chat] report failed:", error);
+    res.status(500).json({ success: false, message: "Could not submit the report" });
   }
 };

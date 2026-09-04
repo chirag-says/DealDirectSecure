@@ -72,6 +72,16 @@ const rewardSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    /**
+     * Milestone points (Phase 3, F15). Counted in `totalPoints` for tier
+     * progress, shown in the wallet, never in `availablePoints`, so they can
+     * never be redeemed. Cash-equivalence exists only at a verified close.
+     */
+    lockedPoints: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     tier: {
       type: String,
       enum: ["bronze", "silver", "gold", "diamond"],
@@ -86,15 +96,9 @@ const rewardSchema = new mongoose.Schema(
     },
 
     // Monthly login tracking for the "15+ days login" bonus
-    monthlyLoginDays: {
-      type: Map,
-      of: Number, // key: "YYYY-MM", value: count of unique login days
-      default: {},
-    },
-    lastLoginDate: {
-      type: String, // "YYYY-MM-DD" to deduplicate same-day logins
-      default: null,
-    },
+    // `monthlyLoginDays` and `lastLoginDate` were removed in Phase 0 (F1) with
+    // the login-streak mechanic. Existing documents keep the fields on disk;
+    // strict mode simply stops reading or writing them.
   },
   {
     timestamps: true,
@@ -177,7 +181,10 @@ rewardSchema.methods.getNextTierProgress = function () {
 rewardSchema.methods.addTransaction = function (txn) {
   this.transactions.push(txn);
 
-  if (txn.type === "earn") {
+  if (txn.type === "earn" && txn.metadata?.cashable === false) {
+    this.totalPoints += txn.points;
+    this.lockedPoints += txn.points;
+  } else if (txn.type === "earn") {
     this.totalPoints += txn.points;
     this.availablePoints += txn.points;
   } else if (txn.type === "redeem" || txn.type === "forfeit") {

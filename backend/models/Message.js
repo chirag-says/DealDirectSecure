@@ -52,6 +52,8 @@ const messageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    /** Lure-detector flags (utils/scamHeuristics.js). Empty for clean messages. */
+    flags: { type: [String], default: [] },
   },
   { timestamps: true }
 );

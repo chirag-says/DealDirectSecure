@@ -8,10 +8,12 @@ import Report from "../models/Report.js";
 import Notification from "../models/Notification.js";
 import SavedSearch from "../models/SavedSearch.js";
 import TransactionVerification from "../models/TransactionVerification.js";
-import { awardPoints } from "../services/rewardService.js";
+import { awardPoints, handleReferralMilestone } from "../services/rewardService.js";
 import { applyTaxonomy, TaxonomyError } from "../utils/taxonomyResolver.js";
 import { deletePropertyAggregate, DeleteBlockedError } from "../utils/aggregateDelete.js";
 import { notifyUser, notifySavedSearchMatches } from "../services/notificationService.js";
+import { ownerResponseStats, attachVerificationToLead } from "./dealController.js";
+import { reviewSummaryFor } from "./reviewController.js";
 import { sendNewLeadWhatsApp, sendNewPropertyWhatsApp } from "../services/whatsappService.js";
 import { escapeRegExp } from "../utils/escapeRegExp.js";
 
@@ -500,6 +502,8 @@ export const addProperty = async (req, res) => {
         if (totalImages >= 5) {
           await awardPoints(req.user._id, "upload_5_photos", { propertyId: prop._id });
         }
+        // B11: listing is a first action for a referred user. No-op without a referral.
+        await handleReferralMilestone(req.user._id, "first_action");
       }
     } catch (rewardErr) {
       console.error("[Rewards] Property listing reward error (non-blocking):", rewardErr.message);
@@ -860,7 +864,37 @@ export const getPropertyById = async (req, res) => {
     // Increment view count only for valid public views
     await Property.findByIdAndUpdate(req.params.id, { $inc: { views: 1 } });
 
-    res.json(withPublicImages(req, prop));
+    // Owner trust signals (Phase 2, F14). Response time is arithmetic the
+    // owner can recompute; it is null until three enquiries were answered.
+    // Nothing here adds contact detail to the public payload.
+    let ownerStats = null;
+    if (prop.owner?._id) {
+      try {
+        const [stats, ownerDoc, reviews] = await Promise.all([
+          ownerResponseStats(prop.owner._id),
+          User.findById(prop.owner._id).select("verification").lean(),
+          reviewSummaryFor(prop.owner._id),
+        ]);
+        ownerStats = {
+          responseHours: stats.responseHours,
+          answered: stats.answered,
+          verified: !!ownerDoc?.verification?.identity,
+          documentsVerified: !!ownerDoc?.verification?.documents,
+          // Phase 3 (F16): published verified-deal reviews about this owner.
+          reviews,
+        };
+      } catch (statsErr) {
+        console.error("[Property] owner stats failed:", statsErr.message);
+      }
+    }
+
+    const payload = withPublicImages(req, prop);
+    if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+      const body = payload.toObject ? payload.toObject() : payload;
+      res.json({ ...body, ownerStats });
+      return;
+    }
+    res.json(payload);
   } catch (err) {
     // A malformed id is a client mistake, not a server fault. errorHandler.js
     // already maps CastError to 400 CAST_ERROR — but this catch runs first and
@@ -1806,6 +1840,8 @@ export const markInterested = async (req, res) => {
       if (rewardResult?.success && rewardResult?.pointsAwarded > 0) {
         reward = rewardResult;
       }
+      // B11: an enquiry is a first action for a referred user. No-op without a referral.
+      await handleReferralMilestone(userId, "first_action");
       console.log(`[Rewards] Enquiry reward: ${rewardResult?.pointsAwarded} pts to ${userId}`);
     } catch (rewardErr) {
       console.error("[Rewards] Enquiry reward error:", rewardErr.message);
@@ -2531,6 +2567,11 @@ export const closeDeal = async (req, res) => {
     // Update property status to pending_verification
     await Property.findByIdAndUpdate(propertyId, { status: "pending_verification" });
 
+    // The deal room shows the pending close (Phase 2). Never blocks the submit.
+    attachVerificationToLead(verification).catch((err) =>
+      console.error("[CloseDeal] lead link failed:", err.message)
+    );
+
     // Notify the owner that submission is received
     await notifyUser(userId, {
 
@@ -2641,6 +2682,17 @@ export const claimDealReward = async (req, res) => {
     // Now the flag is taken with a single conditional update. Exactly one
     // caller can flip false → true, so exactly one caller proceeds to award.
     // ============================================
+    // Phase 3 (F15): the hold. Framed as the registry confirmation window;
+    // the flags behind a longer hold are the admin's to see, not the user's.
+    if (verification.payoutHoldUntil && new Date(verification.payoutHoldUntil) > new Date()) {
+      return res.status(409).json({
+        success: false,
+        code: "PAYOUT_ON_HOLD",
+        message: "Your reward is reserved and unlocks once the registry confirmation window has passed.",
+        holdUntil: verification.payoutHoldUntil,
+      });
+    }
+
     const claimField = isOwner ? "ownerClaimed" : "buyerClaimed";
     const rewardField = isOwner ? "ownerReward" : "buyerReward";
 
@@ -2713,6 +2765,12 @@ export const claimDealReward = async (req, res) => {
           },
         },
       }
+    );
+
+    // B11: a verified close is the third referral milestone for whoever
+    // referred this claimant. No-op without a referral; never blocks the claim.
+    handleReferralMilestone(userId, "deal_closure").catch((err) =>
+      console.error("[ClaimReward] referral milestone failed:", err.message)
     );
 
     // Mark the notification as claimed in the DB

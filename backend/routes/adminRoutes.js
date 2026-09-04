@@ -26,6 +26,8 @@ import {
   authRateLimit,
 } from "../middleware/authAdmin.js";
 import { getAllLeads } from "../controllers/leadController.js";
+import { getMetrics } from "../controllers/eventController.js";
+import { setUserVerification } from "../controllers/adminController.js";
 
 const router = express.Router();
 
@@ -60,6 +62,10 @@ router.post("/mfa/disable", protectAdmin, disableMfa);
 
 // Dashboard & Analytics
 router.get("/dashboard/stats", protectAdmin, getDashboardStats);
+// Funnel metrics from usage events (Phase 0, F3).
+router.get("/metrics", protectAdmin, getMetrics);
+// Verification badge (Phase 3, F17).
+router.put("/users/:id/verification", protectAdmin, setUserVerification);
 
 // Leads Management
 router.get("/leads", protectAdmin, getAllLeads);

@@ -156,6 +156,11 @@ import contactRoutes from './routes/contactRoutes.js';
 import agreementRoutes from './routes/agreementRoutes.js';
 import savedSearchRoutes from './routes/savedSearchRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+import eventRoutes from './routes/eventRoutes.js';
+import dealRoutes from './routes/dealRoutes.js';
+import reviewRoutes from './routes/reviewRoutes.js';
+import { startJobs } from './jobs/runner.js';
+import { JOBS } from './jobs/registry.js';
 import rewardsRoutes from './routes/rewardsRoutes.js';
 import hubbleRoutes from './routes/hubbleRoutes.js';
 import blogRoutes from './routes/blogRoutes.js';
@@ -955,9 +960,15 @@ app.use("/api/contact", contactRoutes);
 // earlier in this file are left in place. They are inert with no route mounted
 // and will be correct again on restore.
 // ============================================
-// app.use("/api/agreements", agreementRoutes);
+// Agreements (D1 re-opened in Phase 2, F14): mounted only when the flag says
+// so. Off by default so nothing changes until the product decision is final.
+const AGREEMENTS_ENABLED = process.env.AGREEMENTS_ENABLED === 'true';
+if (AGREEMENTS_ENABLED) app.use("/api/agreements", agreementRoutes);
 app.use("/api/saved-searches", savedSearchRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/events", eventRoutes);
+app.use("/api/deals", dealRoutes);
+app.use("/api/reviews", reviewRoutes);
 app.use("/api/rewards", rewardsRoutes);
 app.use("/api/rewards/hubble", hubbleRoutes);
 app.use("/api/blogs", blogRoutes);
@@ -1037,6 +1048,11 @@ const PORT = process.env.PORT || 9000;
 // the port. Socket.IO stays attached to httpServer either way; it simply never
 // accepts a connection because nothing is listening.
 if (process.env.NODE_ENV !== "test") {
+  // Scheduled jobs (Phase 0, engine E2). Never under test: the integration
+  // harness calls handlers directly with a fixed clock. JOBS_ENABLED=false
+  // keeps a second process (a migration shell, a debug boot) from sending.
+  if (process.env.JOBS_ENABLED !== "false") startJobs(JOBS);
+
   httpServer.listen(PORT, () => {
     console.log('═'.repeat(60));
     console.log(`🚀 DealDirect Server v1.0.0`);

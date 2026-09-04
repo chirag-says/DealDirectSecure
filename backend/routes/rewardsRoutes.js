@@ -3,6 +3,7 @@
  * API routes for the rewards/points system.
  */
 import express from "express";
+import { describeRewardPolicy } from "../config/rewardPolicy.js";
 import {
   getUserWallet,
   getUserTransactions,
@@ -40,6 +41,9 @@ router.post("/catalogue/products/details", getCatalogueProductDetails);
 // ============================================
 // PROTECTED USER ROUTES
 // ============================================
+
+// Phase 3 (F15): what the platform pays and when. Public, numbers only.
+router.get("/policy", (req, res) => res.status(200).json({ success: true, data: describeRewardPolicy() }));
 
 router.get("/wallet", authMiddleware, getUserWallet);
 router.get("/transactions", authMiddleware, getUserTransactions);

@@ -213,7 +213,8 @@ Created automatically when a buyer marks interest. Carries `userSnapshot` and `p
 - `status` enum: `new` → `contacted` → `interested` → `negotiating` → `converted` | `lost`.
 - `contactHistory[{action,note,date}]`, `isViewed`/`viewedAt`, `source` enum website|mobile_app|direct.
 - **Unique compound index `{user, property}`** — hard-prevents duplicate leads at the DB level.
-- Other indexes: `{propertyOwner, createdAt:-1}`, `property`, `status`.
+- Other indexes: `{propertyOwner, createdAt:-1}`, `property`, `status`, and since 2026-09-04 `{user, createdAt:-1}`, `{visits.status, visits.scheduledAt}`, `{propertyOwner, firstOwnerResponseAt}`.
+- **The deal spine (2026-09-04, Phase 2/3):** `stage` (derived by `utils/dealStage.js`, cached), `stageUpdatedAt`, `visits[{scheduledAt, status proposed|confirmed|done|no_show|cancelled, proposedBy, confirmedBy, completedBy, cancelledBy, doneConfirmedBy[], milestoneAwardedAt, note, feedback, feedbackAt, remindersSent[]}]`, `conversation`, `agreement`/`agreementAt`, `verification`, `closedAt`, `firstOwnerResponseAt`. All optional, all defaulted; no backfill.
 
 ### `conversations` / `messages`
 - `Conversation.participants[]` (refs User), `property` (**required** — every thread is property-scoped), `lastMessage{text,sender,createdAt}` denormalized for the inbox list, `unreadCount` as a **`Map<userId, Number>`**, `isActive`.
@@ -222,6 +223,8 @@ Created automatically when a buyer marks interest. Carries `userSnapshot` and `p
 - `readBy[{user, readAt}]`, `isDeleted` soft flag.
 
 ### `notifications`
+Since 2026-09-04: partial TTL index `ttl_read_notifications` on `updatedAt` (`isRead: true` rows expire after 90 days; unread never), `{user, createdAt:-1}`, and `data.kind` stamped by `services/notificationService.js` from a closed vocabulary. Delivery lives in the service (channel policy, push, WhatsApp, weekly cap via `outboundlogs`), not in model hooks. The paragraph below describes the pre-Phase-3E hook and is historical.
+
 Small schema, big side effect: **`post('save')` and `post('insertMany')` hooks send an email** via `utils/emailService.js#sendGeneralNotification` when `user.preferences.emailNotifications !== false`. The hook appends `?intendedFor=<email>` to `data.actionUrl`.
 ⚠️ Creating notifications in a loop therefore triggers one User lookup + one SMTP send **per document**. Bulk-inserting saved-search matches fans out real email.
 
@@ -285,9 +288,19 @@ Two unique indexes: `{referrer, referred}` and **`{referred}` alone** — a user
 ### `transactionverifications`
 Deal-closure proof. `documentUrls[]` with a validator requiring ≥1 entry. `status` pending|approved|rejected. Separate `ownerReward`/`buyerReward` `{points, cashValue}` and `ownerClaimed`/`buyerClaimed` booleans — the reward is rolled **at claim time**, not at approval time, so the "door game" reveal is genuinely random per claimer.
 
-### `logintrackers`
-`{userId, month:"YYYY-MM", loginDays:[Number], rewardAwarded}` with unique `{userId, month}`.
-⚠️ Dead in practice: `rewardService.trackDailyLogin` writes to `Reward.monthlyLoginDays` instead and never touches this collection.
+### `logintrackers` — DELETED 2026-09-04
+The login-streak mechanic was reversed by the growth research. The model, `trackDailyLogin` and `Reward.monthlyLoginDays`/`lastLoginDate` were removed (Phase 0, F1). Existing wallet documents keep the two fields on disk; strict mode ignores them.
+
+### `reviews` (2026-09-04)
+`{verification, property, author, subject, authorRole, ratings{accuracy,responsiveness,seriousness}, text ≤600, status pending|published|hidden, submittedAt, publishedAt, windowEndsAt}`. Unique `{verification, author}`. Only parties of an approved verification can write.
+
+### `pushtokens`, `outboundlogs`, `jobruns`, `events` / `eventrollups` (2026-09-04)
+- `pushtokens {user, token (unique), platform, installationId, appVersion, lastSeenAt, disabledAt}`.
+- `outboundlogs {user, channel whatsapp|email, type, at}` TTL 8 days; the weekly-cap counter.
+- `jobruns {name, startedAt, finishedAt, ok, error, cursor, stats}` TTL 60 days; scheduler bookkeeping.
+- `events {user|anon, name, props, platform, at}` TTL 90 days; `eventrollups {day, name, count, users}` unique `{day, name}`.
+
+`transactionverifications` gained `payoutHoldUntil`, `fraudFlags[]`, `attestations.{owner,buyer}{statement, note, at}`. `rewards` gained `lockedPoints`. `users` gained `verification{identity, documents, verifiedAt, verifiedBy}`, `deviceHashes[]` (select false), `payoutVpa` (select false). `properties` gained `digestBaseline{views, at}`.
 
 ---
 

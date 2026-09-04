@@ -6,6 +6,9 @@ import UnitType from "../models/UnitType.js";
 import Builder from "../models/Builder.js";
 import TransactionVerification from "../models/TransactionVerification.js";
 import Agreement from "../models/Agreement.js";
+import PushToken from "../models/PushToken.js";
+import OutboundLog from "../models/OutboundLog.js";
+import { Event } from "../models/Event.js";
 
 import { deletePropertyAssets } from "./propertyAssets.js";
 import {
@@ -247,9 +250,12 @@ export async function deleteBuilderAggregate(builderId) {
  */
 export const USER_CASCADE = Object.freeze({
   deleted: Object.freeze([
-    "Property", "UserSession", "PasswordResetToken", "LoginTracker",
+    "Property", "UserSession", "PasswordResetToken",
     "ContactInquiry", "SavedSearch", "Report", "Notification",
     "Message", "Conversation", "Reward", "Referral",
+    // Phase 0 additions. A deleted account must stop receiving pushes at
+    // once, and its usage rows and outbound log are personal data.
+    "PushToken", "OutboundLog", "Event",
   ]),
   retained: Object.freeze([
     "Lead", "Agreement", "TransactionVerification", "CampaignMember", "ProjectBooking",
@@ -274,7 +280,7 @@ export const USER_CASCADE = Object.freeze({
  */
 export async function deleteUserAggregate(userId, models) {
   const {
-    Property: P, UserSession, PasswordResetToken, LoginTracker, ContactInquiry,
+    Property: P, UserSession, PasswordResetToken, ContactInquiry,
     SavedSearch, Report, Notification, Message, Conversation, Reward, Referral, User,
   } = models;
 
@@ -297,7 +303,9 @@ export async function deleteUserAggregate(userId, models) {
   // 2. Sessions and tokens
   await UserSession.deleteMany({ user: userId });
   await PasswordResetToken.deleteMany({ user: userId });
-  await LoginTracker.deleteMany({ userId });
+  await PushToken.deleteMany({ user: userId });
+  await OutboundLog.deleteMany({ user: userId });
+  await Event.deleteMany({ user: userId });
 
   // 3. Communications and history
   await ContactInquiry.deleteMany({ user: userId });

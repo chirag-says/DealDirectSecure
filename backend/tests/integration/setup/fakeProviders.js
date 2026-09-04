@@ -23,6 +23,7 @@ import http from 'node:http';
 
 let server = null;
 const messages = [];
+const pushBatches = [];
 
 /** Provider-shaped success reply, matching what smsService.js:167 accepts. */
 function equenceSuccess(to) {
@@ -44,6 +45,30 @@ export async function startFakeProviders() {
     req.on('end', () => {
       let parsed = {};
       try { parsed = JSON.parse(body); } catch { parsed = { raw: body }; }
+
+      // Expo push: one ticket per message, in order. A token containing the
+      // word "dead" is reported as DeviceNotRegistered so the disable path
+      // can be exercised without a real device.
+      if (req.url.startsWith('/push/send')) {
+        const batch = Array.isArray(parsed) ? parsed : [];
+        pushBatches.push(batch);
+        const data = batch.map((m, i) =>
+          String(m.to).includes('dead')
+            ? { status: 'error', message: 'not registered', details: { error: 'DeviceNotRegistered' } }
+            : { status: 'ok', id: `ticket-${pushBatches.length}-${i}` }
+        );
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ data }));
+        return;
+      }
+      if (req.url.startsWith('/push/getReceipts')) {
+        const ids = Array.isArray(parsed.ids) ? parsed.ids : [];
+        const data = {};
+        for (const id of ids) data[id] = { status: 'ok' };
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ data }));
+        return;
+      }
 
       messages.push({
         path: req.url,
@@ -68,6 +93,11 @@ export async function startFakeProviders() {
   // Synthetic credentials. These are not secrets and authenticate nothing.
   // The only thing that reads them is the server above.
   process.env.EQUENCE_BASE_URL = `http://127.0.0.1:${port}/pushsms`;
+
+  // Expo push, same loopback server. The application never learns the real
+  // endpoint under test; the egress blocker would refuse it anyway.
+  process.env.EXPO_PUSH_URL = `http://127.0.0.1:${port}/push/send`;
+  process.env.EXPO_PUSH_RECEIPTS_URL = `http://127.0.0.1:${port}/push/getReceipts`;
   process.env.EQUENCE_USERNAME = 'integration-test-sms-user';
   process.env.EQUENCE_PASSWORD = 'integration-test-sms-pass';
   process.env.EQUENCE_SENDER_ID = 'DDTEST';
@@ -99,6 +129,15 @@ export async function startFakeProviders() {
   if (process.env.HARNESS_DISABLE_CLOUDINARY !== '1') {
     process.env.CLOUDINARY_URL = 'cloudinary://123456789012345:integration-test-secret@integration-test-cloud';
   }
+}
+
+/** Every push batch the application posted, in order. */
+export function pushBatchesSent() {
+  return pushBatches.slice();
+}
+
+export function clearPushBatches() {
+  pushBatches.length = 0;
 }
 
 /** Every message the application tried to send, most recent last. */

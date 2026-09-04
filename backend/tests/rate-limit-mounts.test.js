@@ -181,14 +181,13 @@ describe('limits themselves are unchanged', () => {
 });
 
 describe('agreement limiters remain declared for re-enablement', () => {
-  test('they are still mounted even though the router is commented out', () => {
-    // Deliberate: they become live again the moment the agreements mount is
-    // restored. Documented in server.js.
+  test('they are still mounted even though the router is flag-gated', () => {
+    // Deliberate: they are live the moment AGREEMENTS_ENABLED=true mounts the
+    // router (Phase 2, 2026-09-04). Documented in server.js.
     assert.notEqual(mountedAt('/api/agreements/generate', 'transactionalLimiter'), -1);
     assert.notEqual(mountedAt('/api/agreements/webhook', 'webhookLimiter'), -1);
-    // Raw source: the mount is itself a comment, so the stripped copy cannot see it.
     const serverRaw = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
-    assert.match(serverRaw, /\/\/ app\.use\("\/api\/agreements", agreementRoutes\);/);
+    assert.match(serverRaw, /if \(AGREEMENTS_ENABLED\) app\.use\("\/api\/agreements", agreementRoutes\);/);
   });
 });
 

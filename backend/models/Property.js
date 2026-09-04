@@ -118,6 +118,15 @@ const propertySchema = new mongoose.Schema(
     // Listing Details
     listingType: { type: String, enum: ["Rent", "Sell", "Sale", "rent", "sell", "sale"], default: "Rent" },
     availableFrom: Date,
+
+    /**
+     * Where the view counter stood when the last owner digest went out, so a
+     * digest can report the week's views from a monotonic counter (Phase 2, F10).
+     */
+    digestBaseline: {
+      views: { type: Number, default: 0 },
+      at: { type: Date, default: null },
+    },
     deposit: mongoose.Schema.Types.Mixed, // Security deposit / booking amount
 
     // Residential Fields

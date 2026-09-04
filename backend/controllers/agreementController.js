@@ -729,6 +729,27 @@ ${userDataSection}`
       });
     }
 
+    // Deal room (Phase 2, F14): the agreement belongs to the lead for this
+    // (property, buyer). Both parties are told; the failure of either step
+    // never fails the generation that already succeeded.
+    try {
+      const { attachAgreementToLead } = await import("./dealController.js");
+      const { notifyUser: notify } = await import("../services/notificationService.js");
+      const lead = await attachAgreementToLead({ propertyId, buyerId: agreement.buyer, agreementId: agreement._id });
+      if (lead) {
+        const payload = (who) => ({
+          title: "Agreement ready to review",
+          message: `A rental agreement for ${property.title || "the property"} has been generated. Review and sign it in your deal.`,
+          type: "agreement",
+          data: { leadId: lead._id, propertyId, agreementId: agreement._id, actionUrl: `/deals/${lead._id}`, actionText: "Review agreement", who },
+        });
+        await notify(lead.user, payload("buyer"));
+        await notify(lead.propertyOwner, payload("owner"));
+      }
+    } catch (linkErr) {
+      console.error("[Agreement] deal link failed:", linkErr.message);
+    }
+
     console.log("✅ Secure agreement created:", {
       id: agreement._id,
       idempotencyKey: agreement.idempotencyKey,
@@ -997,6 +1018,20 @@ export const signAgreement = async (req, res) => {
     );
 
     await agreement.save();
+
+    // Phase 3 (F15): a fully signed agreement is the second milestone. Policy
+    // gated inside awardMilestone; never blocks the signature response.
+    if (agreement.status === 'signed') {
+      Promise.all([
+        import('../services/rewardService.js'),
+        import('./dealController.js'),
+      ]).then(async ([{ awardMilestone }, { leadForAgreement }]) => {
+        const lead = await leadForAgreement(agreement._id);
+        if (!lead) return;
+        await awardMilestone(agreement.owner, 'agreement_completed', { leadId: lead._id, agreementId: agreement._id });
+        await awardMilestone(agreement.buyer, 'agreement_completed', { leadId: lead._id, agreementId: agreement._id });
+      }).catch((err) => console.error('[Agreement] milestone failed:', err.message));
+    }
 
     res.json({
       success: true,

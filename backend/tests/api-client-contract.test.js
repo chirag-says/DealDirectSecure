@@ -178,7 +178,9 @@ describe('helpers for held features are kept, not deleted', () => {
     // rather than dropped. server.js keeps the mount commented for the same
     // reason.
     assert.match(webClient, /export const agreementApi/);
-    assert.match(read('backend/server.js'), /\/\/ app\.use\("\/api\/agreements"/);
+    // Since 2026-09-04 (Phase 2, D1 re-opened) the mount is behind the
+    // AGREEMENTS_ENABLED flag rather than a comment. Off by default.
+    assert.match(read('backend/server.js'), /if \(AGREEMENTS_ENABLED\) app\.use\("\/api\/agreements", agreementRoutes\);/);
   });
 
   test('web campaignApi survives while group buy is undecided', () => {

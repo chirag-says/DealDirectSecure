@@ -62,8 +62,10 @@ describe('no live link points at the hidden /agreements page', () => {
     assert.match(raw, /AGREEMENTS — HIDDEN/);
   });
 
-  test('the backend mount is still commented out', () => {
-    assert.match(readBackend('../server.js'), /\/\/ app\.use\("\/api\/agreements", agreementRoutes\);/);
+  test('the backend mount is flag-gated and off by default', () => {
+    const src = readBackend('../server.js');
+    assert.match(src, /if \(AGREEMENTS_ENABLED\) app\.use\("\/api\/agreements", agreementRoutes\);/);
+    assert.match(src, /const AGREEMENTS_ENABLED = process\.env\.AGREEMENTS_ENABLED === 'true'/);
   });
 });
 

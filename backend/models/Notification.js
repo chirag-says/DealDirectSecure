@@ -32,5 +32,19 @@ const notificationSchema = new mongoose.Schema(
 // again on every one, so opening the notification centre re-mailed each item.
 // ============================================
 
+// ============================================
+// SELF-CLEANING (Phase 0, F2).
+//
+// A read notification is kept for 90 days after its last update and then
+// dropped by MongoDB's TTL monitor. Unread rows never expire: a person who has
+// not looked yet has not been told yet. The partial filter is what makes that
+// distinction; a plain TTL on `createdAt` would delete the unread too.
+// ============================================
+notificationSchema.index({ user: 1, createdAt: -1 });
+notificationSchema.index(
+  { updatedAt: 1 },
+  { expireAfterSeconds: 90 * 24 * 3600, partialFilterExpression: { isRead: true }, name: "ttl_read_notifications" }
+);
+
 const Notification = mongoose.model("Notification", notificationSchema);
 export default Notification;

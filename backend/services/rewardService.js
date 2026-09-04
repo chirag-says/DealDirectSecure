@@ -13,6 +13,7 @@
  */
 import Reward from "../models/Reward.js";
 import Referral from "../models/Referral.js";
+import { getRewardPolicy } from "../config/rewardPolicy.js";
 import User from "../models/userModel.js";
 
 // ============================================
@@ -103,6 +104,14 @@ export const REWARD_TIERS = {
 export const FIXED_POINTS = {
   referral_signup: 100,
   report_property: 100,
+  // B5: awarded by addProperty since the rewards launch, never mapped, so it
+  // logged "Unknown action" on every five-photo listing. Once per property.
+  upload_5_photos: 50,
+  // B11: the two referral milestones handleReferralMilestone always supported
+  // and nothing could ever pay. Wired from markInterested / addProperty
+  // (first_action) and claimDealReward (deal_closure).
+  referral_first_action: 50,
+  referral_deal_closure: 500,
 };
 
 // Maps action keys → which random category to use (or null for fixed)
@@ -113,6 +122,12 @@ const ACTION_CATEGORY_MAP = {
   send_enquiry: "property_enquiry",
   referral_signup: null, // fixed
   report_property: null, // fixed
+  upload_5_photos: null, // fixed
+  referral_first_action: null, // fixed
+  referral_deal_closure: null, // fixed
+  // Phase 3 milestones: fixed, non-cashable, policy-gated (awardMilestone).
+  visit_completed: null,
+  agreement_completed: null,
 };
 
 // Human-readable descriptions
@@ -123,7 +138,15 @@ const ACTION_DESCRIPTIONS = {
   send_enquiry: "Property Enquiry Reward",
   referral_signup: "Referral — friend signed up",
   report_property: "Reported a misleading property",
+  upload_5_photos: "Listing photo bonus (5+ photos)",
+  referral_first_action: "Referral: friend made their first move",
+  referral_deal_closure: "Referral: friend closed a verified deal",
+  visit_completed: "Visit completed (both confirmed)",
+  agreement_completed: "Agreement signed by both",
 };
+
+/** The two actions that pay the verified close. */
+const CLOSE_ACTIONS = new Set(["mark_sold_rented", "complete_deal"]);
 
 // Keep POINT_VALUES export for backward compatibility (used in referral stats calculation)
 export const POINT_VALUES = {
@@ -318,6 +341,16 @@ export const awardPoints = async (userId, action, metadata = {}, _retryCount = 0
     }
 
     // DAILY LIMIT CHECK FOR ENQUIRIES
+    if (action === "upload_5_photos") {
+      const propertyKey = metadata?.propertyId ? String(metadata.propertyId) : null;
+      const already = wallet.transactions.some(
+        (t) => t.action === "upload_5_photos" && propertyKey && String(t.metadata?.propertyId) === propertyKey
+      );
+      if (already) {
+        return { success: true, pointsAwarded: 0, message: "Photo bonus already awarded for this listing" };
+      }
+    }
+
     if (action === "send_enquiry") {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -341,11 +374,18 @@ export const awardPoints = async (userId, action, metadata = {}, _retryCount = 0
     let tierName = 'common';
 
     if (category) {
-      // Randomized reward from weighted tiers
       const reward = getRandomReward(category);
       basePoints = reward.points;
       cashValue = reward.cashValue;
       tierName = reward.tier;
+      // Phase 3 (F15): a fixed, predictable close payout with the shagun
+      // draw on top. Zero (the default) keeps the draw-only payout.
+      const policy = getRewardPolicy();
+      if (CLOSE_ACTIONS.has(action) && policy.closePayoutFixedPoints > 0) {
+        basePoints += policy.closePayoutFixedPoints;
+        cashValue = +(basePoints * POINTS_TO_RUPEES).toFixed(2);
+        metadata = { ...metadata, guaranteedPoints: policy.closePayoutFixedPoints, drawPoints: reward.points };
+      }
     } else {
       // Fixed-point action (referral, report)
       basePoints = FIXED_POINTS[action] || 100;
@@ -408,6 +448,7 @@ export const getWallet = async (userId) => {
   return {
     totalPoints: wallet.totalPoints,
     availablePoints: wallet.availablePoints,
+    lockedPoints: wallet.lockedPoints || 0,
     tier: wallet.tier,
     tierMultiplier: wallet.getTierMultiplier(),
     nextTierProgress: progress,
@@ -562,6 +603,8 @@ export const getReferralStats = async (userId) => {
       referrals.reduce((sum, r) => {
         let pts = 0;
         if (r.signupPointsAwarded) pts += FIXED_POINTS.referral_signup;
+        if (r.firstActionPointsAwarded) pts += FIXED_POINTS.referral_first_action;
+        if (r.dealClosurePointsAwarded) pts += FIXED_POINTS.referral_deal_closure;
         return sum + pts;
       }, 0),
     referrals: referrals.map((r) => ({
@@ -581,27 +624,62 @@ export const getReferralStats = async (userId) => {
   return stats;
 };
 
-/**
- * Track daily login (does not award points in current model)
- */
-export const trackDailyLogin = async (userId) => {
-  try {
-    // Runs on EVERY login and touches only lastLoginDate and monthlyLoginDays,
-    // so there is no reason to pull the transaction array across for it.
-    const wallet = await getOrCreateWallet(userId, { withTransactions: false });
-    const today = new Date().toISOString().split("T")[0];
-    
-    if (wallet.lastLoginDate === today) return { success: true, message: "Already tracked today" };
+// trackDailyLogin (login streaks) was removed in Phase 0 (F1). The research
+// reversed the streak mechanic: property search is bursty and finite, and a
+// daily-login reward rewards nothing the product wants. Both half-built
+// pieces (this counter and the LoginTracker model) are gone rather than
+// completed.
 
-    const currentMonth = today.substring(0, 7);
-    wallet.lastLoginDate = today;
-    const currentCount = wallet.monthlyLoginDays.get(currentMonth) || 0;
-    wallet.monthlyLoginDays.set(currentMonth, currentCount + 1);
-    
+/**
+ * Award a mid-journey milestone (Phase 3, F15): non-cashable, once per
+ * (action, lead), policy-gated. Returns { success: false } silently when the
+ * policy is off, which is the default, so callers never branch on it.
+ *
+ * @param {string} userId
+ * @param {'visit_completed'|'agreement_completed'} action
+ * @param {{ leadId: string, [k: string]: any }} metadata
+ */
+export const awardMilestone = async (userId, action, metadata = {}, _retryCount = 0) => {
+  try {
+    const policy = getRewardPolicy();
+    if (!policy.milestonesEnabled) return { success: false, reason: "milestones_disabled" };
+    const points = action === "visit_completed" ? policy.milestoneVisitPoints
+      : action === "agreement_completed" ? policy.milestoneAgreementPoints : 0;
+    if (!points || !ACTION_DESCRIPTIONS[action]) return { success: false, reason: "unknown_milestone" };
+    if (!metadata.leadId) return { success: false, reason: "lead_required" };
+
+    const wallet = await getOrCreateWallet(userId);
+    const leadKey = String(metadata.leadId);
+    const already = wallet.transactions.some(
+      (t) => t.action === action && String(t.metadata?.leadId) === leadKey
+    );
+    if (already) return { success: true, pointsAwarded: 0, message: "Milestone already awarded" };
+
+    wallet.addTransaction({
+      type: "earn",
+      action,
+      points,
+      basePoints: points,
+      multiplier: 1,
+      description: ACTION_DESCRIPTIONS[action],
+      metadata: { ...metadata, cashable: false, rewardCategory: "milestone" },
+    });
     await wallet.save();
-    return { success: true, message: "Login tracked" };
+
+    return {
+      success: true,
+      pointsAwarded: points,
+      cashable: false,
+      lockedPoints: wallet.lockedPoints,
+      totalPoints: wallet.totalPoints,
+      tier: wallet.tier,
+      description: ACTION_DESCRIPTIONS[action],
+    };
   } catch (error) {
-    console.error("[RewardService] trackDailyLogin error:", error.message);
+    if (error.name === "VersionError" && _retryCount < 1) {
+      return awardMilestone(userId, action, metadata, _retryCount + 1);
+    }
+    console.error(`[RewardService] awardMilestone error for ${userId}/${action}:`, error.message);
     return { success: false, error: error.message };
   }
 };
@@ -674,6 +752,6 @@ export default {
   handleReferralMilestone,
   createReferralFromCode,
   getReferralStats,
-  trackDailyLogin,
+  awardMilestone,
   adminAdjustPoints,
 };

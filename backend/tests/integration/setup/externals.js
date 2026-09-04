@@ -106,6 +106,11 @@ const NEUTRALISED = [
   'SENTRY_DSN',
   // Misc outbound
   'REDIS_URL', 'DEALDIRECT_PAYMENT_QR_URL',
+  // Push and official WhatsApp (Phase 0). The push URL is re-pointed at the
+  // loopback fake by fakeProviders.js after this runs.
+  'EXPO_PUSH_URL', 'EXPO_PUSH_RECEIPTS_URL', 'EXPO_ACCESS_TOKEN',
+  'WHATSAPP_PROVIDER', 'META_WA_PHONE_NUMBER_ID', 'META_WA_ACCESS_TOKEN', 'META_WA_BASE_URL',
+  'JOBS_ENABLED',
 ];
 
 /**
@@ -160,6 +165,9 @@ export function residualConfiguredKeys() {
     // Also synthetic, see the note in fakeProviders.js. The isolation suite
     // asserts it is the fake value, not a real cloud.
     'CLOUDINARY_URL',
+    // Re-pointed at the loopback fake by fakeProviders.js (Phase 0). The
+    // isolation suite asserts they resolve to 127.0.0.1.
+    'EXPO_PUSH_URL', 'EXPO_PUSH_RECEIPTS_URL',
   ]);
   const suspect = [...dotenvKeyNames(), ...NEUTRALISED];
   return suspect.filter(

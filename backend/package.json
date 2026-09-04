@@ -38,6 +38,7 @@
     "mongoose": "^8.19.2",
     "multer": "^2.0.2",
     "multer-storage-cloudinary": "^2.2.1",
+    "node-cron": "^3.0.3",
     "nodemailer": "^7.0.10",
     "pdfkit": "^0.17.2",
     "qrcode": "^1.5.4",

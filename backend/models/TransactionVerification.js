@@ -66,6 +66,30 @@ const transactionVerificationSchema = new mongoose.Schema(
     },
     ownerClaimed: { type: Boolean, default: false },
     buyerClaimed: { type: Boolean, default: false },
+
+    // ------------------------------------------------------------------
+    // Phase 3 (F15): the payout hold and what raised it.
+    //
+    // `payoutHoldUntil` is set at approval from config/rewardPolicy.js: the
+    // clean-close hold or the flagged hold. Claims before it are refused
+    // with PAYOUT_ON_HOLD. `fraudFlags` is what the linkage check found
+    // (utils/fraudLinkage.js); admins see it, users see only the hold.
+    // Attestations are each side's independent statement about the close.
+    // ------------------------------------------------------------------
+    payoutHoldUntil: { type: Date, default: null },
+    fraudFlags: { type: [String], default: [] },
+    attestations: {
+      owner: {
+        statement: { type: String, enum: ["confirm", "dispute", null], default: null },
+        note: { type: String, maxlength: 300, default: "" },
+        at: { type: Date, default: null },
+      },
+      buyer: {
+        statement: { type: String, enum: ["confirm", "dispute", null], default: null },
+        note: { type: String, maxlength: 300, default: "" },
+        at: { type: Date, default: null },
+      },
+    },
   },
   { timestamps: true }
 );

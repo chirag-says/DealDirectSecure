@@ -59,6 +59,9 @@ Messages are aggressively genericised in **all** environments. `requestId` match
 ---
 
 ## Users — `/api/users`
+
+Since 2026-09-04: `POST /push-token {token, platform, installationId?, appVersion?}`, `DELETE /push-token {token}`, `POST /device {deviceHash}`; `POST /logout` accepts `{pushToken}`; `logout-all` removes every push token.
+
 Controller `userController.js` · Routes `userRoutes.js`
 
 ### Public (all rate-limited: `authRateLimit` 10/15min + `authLimiter` 5/15min)
@@ -163,6 +166,44 @@ All routes 🔒. Owner-scoped; every mutation re-checks `lead.propertyOwner` aga
 
 Admin equivalents live at `GET /api/admin/leads` and `PUT /api/admin/leads/:id`.
 
+Since 2026-09-04 (Phase 2/3): owner status updates and contact logs set `lead.firstOwnerResponseAt` (once); `GET /` rows carry `buyerContext {activeWeeks, enquiries, visitsDone, budgetFit}`.
+
+---
+
+## Deals — `/api/deals` (Phase 2, 2026-09-04)
+All routes 🔒. The deal room, built on `Lead`. Every handler resolves the caller to `buyer` (`lead.user`) or `owner` (`lead.propertyOwner`) from the database and answers 403 `NOT_A_PARTY` otherwise. `stage` is derived (`utils/dealStage.js`), never accepted from the client.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/` | `role=buyer\|owner`, `stage`, `page`, `limit`. Both sides of the caller by default. Rows: `{id, role, stage, status, property, counterpartName (owner side), nextVisit, unread, awaitingOwner}` + `pagination` |
+| GET | `/:leadId` | The shared view: `progress[]` (pre-stamped first row), `visits[]`, `counterpart` (buyer sees the owner's phone only after `firstOwnerResponseAt`), `conversation` (when `CHAT_ENABLED`), `agreement`, `verification {status, claimed, payoutHoldUntil, attestation, review}`, `buyerContext` (owner side), `chatEnabled`, `agreementsEnabled` |
+| POST | `/:leadId/visits` | `{scheduledAt, note?}`. 400 `INVALID_TIME` / `TIME_IN_PAST` / `TOO_FAR_AHEAD` (60 d), 409 `VISIT_ALREADY_OPEN` (one open visit per deal), 409 `DEAL_CLOSED`. Notifies the counterpart (`visit_proposed`) |
+| PUT | `/:leadId/visits/:visitId` | `{action: confirm\|cancel\|done\|no_show}`. Confirm: counterpart only (409 `OWN_PROPOSAL`), 409 `NOT_PROPOSED`, `TIME_PASSED`. Done/no-show: 409 `TOO_EARLY` before `scheduledAt - 30 min`. A second `done` by the other party records `doneConfirmedBy` (409 `ALREADY_CONFIRMED` for the same party) and, when both are in, awards the visit milestone (policy-gated). Response carries `stage` and `milestone` |
+| POST | `/:leadId/visits/:visitId/feedback` | Buyer only. `{feedback: interested\|thinking\|not_interested}` once per done visit. Moves `lead.status` only forward or to `lost`; never out of `converted` |
+| POST | `/:leadId/conversation` | Get-or-create the property conversation and bind it to the lead. 503 `CHAT_DISABLED` unless `CHAT_ENABLED=true` |
+| POST | `/:leadId/attest` | `{statement: confirm\|dispute, note?}` once per party. 409 `NO_VERIFICATION` before the owner submits the close. A dispute or a mismatch becomes a `fraudFlags` entry on the verification |
+
+---
+
+## Reviews — `/api/reviews` (Phase 3, 2026-09-04)
+Verified-deal reviews. Only the two parties of an **approved** `TransactionVerification` may write, once each, about each other. Simultaneous reveal: a review stays `pending` until the counterpart submits or 14 days pass (`jobs/reviewPublish.js`).
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/user/:userId` | public | Published reviews about a user + `summary {count, accuracy, responsiveness, seriousness, overall}`, paginated |
+| GET | `/mine` | 🔒 | `{written[], received[]}` |
+| GET | `/eligibility/:verificationId` | 🔒 | `{eligible, role, submitted, mine, counterpartSubmitted, counterpartPublished}` |
+| POST | `/` | 🔒 | `{verificationId, ratings{accuracy,responsiveness,seriousness} (integers 1–5), text? ≤600}`. 409 `NOT_VERIFIED`, `ALREADY_REVIEWED`; 400 `INVALID_RATING` |
+
+---
+
+## Events — `/api/events` (Phase 0, 2026-09-04)
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/` | optional | `{events: [{name, props?, at?}], platform, anon?}`. Closed name whitelist (`controllers/eventController.js#EVENT_NAMES`), per-name prop whitelist, max 50 per batch, 30 batches/min/IP. Always 202 with `accepted` |
+
+`GET /api/admin/metrics?days=` (admin) returns the funnel from `EventRollup` + today's raw rows.
+
 ---
 
 ## Chat — `/api/chat`
@@ -221,6 +262,9 @@ Server behaviour:
 ---
 
 ## Rewards — `/api/rewards`
+
+Since 2026-09-04: `GET /policy` (public) returns the reward policy explainer (`config/rewardPolicy.js`); the wallet carries `lockedPoints` (non-cashable milestone points). `POST /properties/claim-deal-reward/:id` answers 409 `PAYOUT_ON_HOLD` with `holdUntil` while `payoutHoldUntil` is in the future.
+
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|

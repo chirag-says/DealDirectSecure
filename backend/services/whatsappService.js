@@ -16,6 +16,81 @@
 // CONFIGURATION
 // ============================================
 
+// ============================================
+// PROVIDER SELECTION (Phase 0, F5)
+//
+// WHATSAPP_PROVIDER=meta routes every user-facing send through Meta's Cloud
+// API (the official Business Platform). WAHA stays available for the admin
+// alerts (sendAdminWhatsAppNotification) and as the default where Meta is not
+// configured, so nothing changes until the env says so. The exported
+// functions keep their signatures; callers cannot tell which provider ran.
+// ============================================
+
+const getMetaConfig = () => ({
+    phoneNumberId: process.env.META_WA_PHONE_NUMBER_ID || '',
+    accessToken: process.env.META_WA_ACCESS_TOKEN || '',
+    apiVersion: process.env.META_WA_API_VERSION || 'v20.0',
+    baseUrl: process.env.META_WA_BASE_URL || 'https://graph.facebook.com',
+});
+
+export const isMetaConfigured = () => {
+    const c = getMetaConfig();
+    return !!(c.phoneNumberId && c.accessToken);
+};
+
+export const activeProvider = () => {
+    const wanted = (process.env.WHATSAPP_PROVIDER || '').toLowerCase();
+    if (wanted === 'meta') return isMetaConfigured() ? 'meta' : 'none';
+    if (wanted === 'waha') return isWhatsAppConfigured() ? 'waha' : 'none';
+    if (isMetaConfigured()) return 'meta';
+    return isWhatsAppConfigured() ? 'waha' : 'none';
+};
+
+/**
+ * Send through Meta's Cloud API. Free-form text is only delivered inside the
+ * 24-hour customer-service window; outside it Meta requires an approved
+ * template, which is what `template` is for. Callers that do not pass one get
+ * the text send, which is correct for replies and best-effort for alerts
+ * until the templates are approved.
+ */
+const sendViaMeta = async (phone, text, template) => {
+    const config = getMetaConfig();
+    const chatId = formatChatId(phone);
+    if (!chatId) return { success: false, error: 'Invalid phone number' };
+    const to = chatId.replace('@c.us', '');
+
+    const body = template
+        ? {
+            messaging_product: 'whatsapp',
+            to,
+            type: 'template',
+            template: {
+                name: template.name,
+                language: { code: template.language || 'en' },
+                components: template.params?.length
+                    ? [{ type: 'body', parameters: template.params.map((p) => ({ type: 'text', text: String(p) })) }]
+                    : [],
+            },
+        }
+        : { messaging_product: 'whatsapp', to, type: 'text', text: { body: text, preview_url: true } };
+
+    const url = `${config.baseUrl.replace(/\/+$/, '')}/${config.apiVersion}/${config.phoneNumberId}/messages`;
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.accessToken}` },
+            body: JSON.stringify(body),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.ok) return { success: true, data, provider: 'meta' };
+        console.error('[WhatsApp][meta] send failed:', response.status, data?.error?.message || data);
+        return { success: false, error: data?.error?.message || `API returned HTTP ${response.status}`, data };
+    } catch (error) {
+        console.error('[WhatsApp][meta] error:', error.message);
+        return { success: false, error: error.message };
+    }
+};
+
 const getWahaConfig = () => ({
     apiUrl: process.env.WAHA_API_URL || '',
     apiKey: process.env.WAHA_API_KEY || '',
@@ -83,8 +158,14 @@ const formatChatId = (phone) => {
  * @param {string} text  - Message text to send
  * @returns {Promise<{success: boolean, data?: any, error?: string}>}
  */
-export const sendWhatsAppMessage = async (phone, text) => {
+export const sendWhatsAppMessage = async (phone, text, { template } = {}) => {
     try {
+        const provider = activeProvider();
+        if (provider === 'meta') return sendViaMeta(phone, text, template);
+        if (provider === 'none') {
+            console.warn('[WhatsApp] No provider configured (WAHA_* or META_WA_*)');
+            return { success: false, error: 'WhatsApp service not configured' };
+        }
         // Validate configuration
         if (!isWhatsAppConfigured()) {
             console.warn('[WhatsApp] WAHA is not configured. Set WAHA_API_URL and WAHA_API_KEY in .env');

@@ -12,6 +12,10 @@ Related: [SECURITY.md](SECURITY.md) · [DATABASE.md](DATABASE.md) · [CHANGELOG_
 
 | ID | Resolution | Date |
 |---|---|---|
+| **B3** | **FIXED** — `conversation.lastMessage.text` now stores the escaped message text (`chatController.sendMessage`). Pinned by `tests/integration/deal-room.test.js` | 2026-09-04 |
+| **B5** | **FIXED** — `upload_5_photos` mapped in `rewardService` (50 pts, once per property) | 2026-09-04 |
+| **B11** | **FIXED** — `referral_first_action` (50) and `referral_deal_closure` (500) mapped and wired from `markInterested` / `addProperty` / `claimDealReward` | 2026-09-04 |
+| **B12** | **RESOLVED BY DELETION** — the login-streak mechanic was reversed by the growth research; `LoginTracker`, `trackDailyLogin` and `Reward.monthlyLoginDays` are gone | 2026-09-04 |
 | **B2** | **FIXED** — `requirePermission` removed from the 3 verification routes, reverting regression `79ae3ab`. Confirmed working in production by the owner | 2026-08-01 |
 | **B17** | **NOT A BUG** — chat is hidden by explicit client decision. Backend, context, and components are intact for later re-enablement. See "Reclassified" below | 2026-08-01 |
 | **B21** | **FIXED** — broken email action links (`http:///notifications`) | 2026-08-01 |

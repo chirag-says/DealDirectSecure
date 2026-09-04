@@ -5,6 +5,8 @@ import User from "../models/userModel.js";
 import mongoose from "mongoose";
 import { sendNewLeadNotification } from "../utils/emailService.js";
 import { awardPoints } from "../services/rewardService.js";
+import { markOwnerResponded } from "./dealController.js";
+import { buyerContextsFor } from "../utils/buyerContext.js";
 
 // ============================================
 // SECURITY: Allowed status values for leads
@@ -252,6 +254,9 @@ export const updateLeadStatus = async (req, res) => {
       { new: true }
     ).populate('user', 'name email phone profileImage');
 
+    // An owner touching the status has engaged with the enquiry (Phase 2).
+    await markOwnerResponded(leadId);
+
     // NOTE: Auto-reward on "converted" has been moved to the document verification flow.
     // The owner must now use "Mark as Sold/Rented" to upload deal proof and receive the reward.
     res.status(200).json({ success: true, data: updatedLead });
@@ -349,6 +354,9 @@ export const addContactHistory = async (req, res) => {
       },
       { new: true }
     ).populate('user', 'name email phone profileImage');
+
+    // Logging a call or a meeting is the clearest owner response there is.
+    await markOwnerResponded(leadId);
 
     res.status(200).json({ success: true, data: updatedLead });
   } catch (error) {
@@ -522,9 +530,27 @@ export const getOwnerLeads = async (req, res) => {
       Lead.countDocuments(query)
     ]);
 
+    // Phase 3 (F17): the buyer seriousness card, one aggregate for the page.
+    let data = leads;
+    try {
+      const priceByBuyer = new Map();
+      for (const l of leads) {
+        const buyerId = String(l.user?._id || l.user);
+        const price = l.property?.price ?? l.propertySnapshot?.price;
+        if (!priceByBuyer.has(buyerId) && typeof price === "number") priceByBuyer.set(buyerId, price);
+      }
+      const contexts = await buyerContextsFor(leads.map((l) => l.user?._id || l.user), priceByBuyer);
+      data = leads.map((l) => {
+        const plain = l.toObject ? l.toObject() : l;
+        return { ...plain, buyerContext: contexts.get(String(l.user?._id || l.user)) || null };
+      });
+    } catch (ctxErr) {
+      console.error("[Leads] buyer context failed:", ctxErr.message);
+    }
+
     res.status(200).json({
       success: true,
-      data: leads,
+      data,
       stats: statusStats,
       pagination: {
         page: parseInt(page),

@@ -41,6 +41,8 @@ import {
 import { memoryUpload, validateAndUploadToCloudinary, uploadConcurrencyGuard } from "../middleware/upload.js";
 import { protectAdmin } from "../middleware/authAdmin.js";
 import { validateProfileUpdate } from "../middleware/validators/index.js";
+import { registerPushToken, removePushToken } from "../controllers/pushTokenController.js";
+import { registerDevice } from "../controllers/userController.js";
 
 const router = express.Router();
 
@@ -87,6 +89,12 @@ router.get("/me", authMiddleware, getProfile); // Alias for /profile - standard 
 router.put("/profile", authMiddleware, validateProfileUpdate, uploadConcurrencyGuard, memoryUpload.single("profileImage"), validateAndUploadToCloudinary, updateProfile);
 router.put("/change-password", authMiddleware, changePassword);
 router.delete("/me", authMiddleware, deleteAccount);
+
+// Push devices (Phase 0, F6). See controllers/pushTokenController.js.
+router.post("/push-token", authMiddleware, registerPushToken);
+router.delete("/push-token", authMiddleware, removePushToken);
+// Device linkage input for the verified-close check (Phase 3, F15).
+router.post("/device", authMiddleware, registerDevice);
 
 // ============================================
 // UPGRADE ROUTES (Buyer to Owner)

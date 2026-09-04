@@ -170,8 +170,12 @@ describe('approval notifications are untouched', () => {
     assert.ok(to.includes('verification.buyer._id'), 'the buyer approval notification changed');
   });
 
-  test('approve still creates exactly two notifications', () => {
-    assert.equal(recipients(approve).length, 2);
+  test('approve still creates exactly two reward notifications, plus the review request', () => {
+    // Phase 3 (2026-09-04) added one review_request per party, sent in a
+    // loop; the two deal_reward calls are unchanged.
+    assert.equal((approve.match(/type: "deal_reward"/g) || []).length, 2);
+    assert.equal((approve.match(/type: "review_request"/g) || []).length, 1);
+    assert.equal(recipients(approve).length, 3);
   });
 
   test('the reward-claim wording is unchanged', () => {

@@ -162,11 +162,15 @@ test('the agreements retirement stays intact on all three sides', async (t) => {
     assert.doesNotMatch(src, /href="\/agreements"/, 'a live agreements link is back');
   });
 
-  await t.test('the backend mount is off', () => {
+  await t.test('the backend mount is off by default', () => {
+    // Phase 2 (2026-09-04) re-opened D1 behind AGREEMENTS_ENABLED. The mount
+    // exists in source but only runs when the flag is the literal "true".
     const src = readRepo('backend/server.js')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\r\n]*/g, '');
-    assert.doesNotMatch(src, /app\.use\("\/api\/agreements",\s*agreementRoutes\)/,
-      'the agreements API is mounted again — check PAYMENT_WEBHOOK_SECRET first');
+    assert.match(src, /if \(AGREEMENTS_ENABLED\) app\.use\("\/api\/agreements", agreementRoutes\);/);
+    assert.match(src, /const AGREEMENTS_ENABLED = process\.env\.AGREEMENTS_ENABLED === 'true'/);
+    assert.doesNotMatch(src, /^\s*app\.use\("\/api\/agreements",\s*agreementRoutes\)/m,
+      'the agreements API is mounted unconditionally — check PAYMENT_WEBHOOK_SECRET first');
   });
 
   await t.test('and all three would have to move together', () => {
@@ -179,7 +183,8 @@ test('the agreements retirement stays intact on all three sides', async (t) => {
 
     const pageLive = !/notFound\(\)/.test(page);
     const navLive = /href="\/agreements"/.test(nav);
-    const apiLive = /app\.use\("\/api\/agreements",\s*agreementRoutes\)/.test(server);
+    // An unconditional mount is "live"; the flag-gated mount is not.
+    const apiLive = /^\s*app\.use\("\/api\/agreements",\s*agreementRoutes\)/m.test(server);
 
     assert.equal(
       new Set([pageLive, navLive, apiLive]).size, 1,

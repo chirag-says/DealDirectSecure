@@ -147,6 +147,12 @@ test('external service isolation', async (t) => {
     assert.equal(res.skipped, true, 'sendEmail must skip when SMTP is unconfigured');
   });
 
+  await t.test('the push endpoints resolve to the loopback fake, not Expo', () => {
+    for (const key of ['EXPO_PUSH_URL', 'EXPO_PUSH_RECEIPTS_URL']) {
+      assert.match(process.env[key] || '', /^http:\/\/127\.0\.0\.1:\d+\//, `${key} must point at the fake`);
+    }
+  });
+
   await t.test('the Cloudinary credentials are the synthetic ones, not a real cloud', () => {
     // upload.js:379 refuses every request on an upload-guarded route when
     // Cloudinary looks unconfigured, so it has to look configured. What matters

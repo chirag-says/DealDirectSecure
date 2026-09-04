@@ -7,6 +7,7 @@ import {
   sendMessage,
   getUnreadCount,
   deleteConversation,
+  reportMessage,
 } from "../controllers/chatController.js";
 import { authMiddleware } from "../middleware/authUser.js";
 
@@ -60,6 +61,9 @@ router.post("/message/send", sendMessage);
 
 // Get unread message count
 router.get("/unread-count", getUnreadCount);
+
+// Report a message (Phase 2, F13). Participants only, never your own.
+router.post("/message/report", reportMessage);
 
 // Delete/Archive a conversation
 router.delete("/conversation/:conversationId", deleteConversation);
