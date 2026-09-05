@@ -7,7 +7,7 @@ import { RecentSearches, useRecentSearches, useSearchPreview } from '@/features/
 import { gesture, radius, spacing, useTheme } from '@/theme';
 import { PressableScale, Skeleton, Text, useTextInputStyle } from '@/ui';
 import type { City } from '../cities';
-import { HERO_SEARCH_BLUE } from '../heroTheme';
+import { HERO_SEARCH_BLUE, HERO_SEARCH_INK, HERO_SEARCH_PLACEHOLDER, useMockScale } from '../heroTheme';
 
 /**
  * The hero's search field — a real input that answers with real listings.
@@ -126,36 +126,35 @@ export function HomeSearchField({
     onOpenProperty(id);
   };
 
+  const mockPx = useMockScale();
   const placeholder = city ? `Search in ${city.label}` : 'Search locality, project or city';
   const previewItems = preview.items.slice(0, MAX_PREVIEW_ROWS);
   const more = Math.max(preview.total - previewItems.length, 0);
 
   return (
-    <View style={{ marginTop: flush ? 0 : spacing.xl }}>
-      {/* One white pill (2026-09-05 redesign): a search glyph on the left, the
-          input, and the blue submit button set INSIDE the pill's right end.
-          Same input, same handlers, same submit — only the dress changed. */}
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: spacing.sm,
-          height: 60,
-          paddingLeft: spacing.lg,
-          paddingRight: 6,
-          borderRadius: radius.full,
-          backgroundColor: '#FFFFFF',
-        }}
-      >
-        <Ionicons name="search-outline" size={22} color="#111827" />
+    <View style={{ marginTop: flush ? 0 : mockPx(31) }}>
+      {/* The search pill, to the reference (measured pass): a white pill 86
+          tall with the glyph 30 from its left edge, and the blue submit — an
+          84 circle — set over the pill's right end so it protrudes 28 beyond
+          it. Same input, same handlers, same submit; only the dress changed. */}
+      <View style={{ height: mockPx(86), justifyContent: 'center' }}>
         <View
           style={{
-            flex: 1,
+            position: 'absolute',
+            left: 0,
+            right: mockPx(28),
+            top: 0,
+            bottom: 0,
             flexDirection: 'row',
             alignItems: 'center',
-            gap: spacing.sm,
+            gap: mockPx(24),
+            paddingLeft: mockPx(30),
+            paddingRight: mockPx(70),
+            borderRadius: mockPx(43),
+            backgroundColor: '#FFFFFF',
           }}
         >
+          <Ionicons name="search-outline" size={mockPx(30)} color={HERO_SEARCH_INK} />
           <TextInput
             ref={inputRef}
             value={query}
@@ -164,13 +163,22 @@ export function HomeSearchField({
             onBlur={() => setFocused(false)}
             onSubmitEditing={() => submit(query)}
             placeholder={placeholder}
-            placeholderTextColor="#6B7280"
+            placeholderTextColor={HERO_SEARCH_PLACEHOLDER}
             selectionColor={theme.colors.accent}
             returnKeyType="search"
             autoCapitalize="none"
             autoCorrect={false}
             accessibilityLabel="Search properties, localities or projects"
-            style={[inputStyle, { flex: 1, paddingVertical: spacing.md, color: '#111827' }]}
+            style={[
+              inputStyle,
+              {
+                flex: 1,
+                paddingVertical: 0,
+                fontSize: mockPx(26),
+                lineHeight: mockPx(32),
+                color: HERO_SEARCH_INK,
+              },
+            ]}
           />
           {query.length > 0 ? (
             <Pressable
@@ -182,7 +190,7 @@ export function HomeSearchField({
                 inputRef.current?.focus();
               }}
             >
-              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+              <Ionicons name="close-circle" size={mockPx(32)} color="#9CA3AF" />
             </Pressable>
           ) : null}
         </View>
@@ -194,15 +202,18 @@ export function HomeSearchField({
           onPress={() => submit(query)}
           activeScale={0.94}
           style={{
-            width: 48,
-            height: 48,
+            position: 'absolute',
+            right: 0,
+            top: mockPx(1),
+            width: mockPx(84),
+            height: mockPx(84),
             alignItems: 'center',
             justifyContent: 'center',
-            borderRadius: radius.full,
+            borderRadius: mockPx(42),
             backgroundColor: HERO_SEARCH_BLUE,
           }}
         >
-          <Ionicons name="search" size={22} color="#FFFFFF" />
+          <Ionicons name="search" size={mockPx(40)} color="#FFFFFF" />
         </PressableScale>
       </View>
 

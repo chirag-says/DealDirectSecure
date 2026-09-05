@@ -53,6 +53,24 @@ did NOT update the docs, say so explicitly — that is a debt marker.
 
 ---
 
+## 2026-09-05 — Mobile: the hero redrawn to measurements of the reference (mobile only)
+
+**Files changed**
+- `src/features/home/heroTheme.ts` — `useMockScale()` (device points per reference pixel, reference width 738), the header geometry constants, colours sampled from the mockup.
+- `src/features/home/components/{HomeHeader,HomeHero,HomeSearchField}.tsx` — every dimension is now a reference pixel through `mockPx`; the header controls are pale glass with dark ink; the search pill is 86 tall with the 84 submit circle overlapping its right end. `HOME_HEADER_ROW` is gone; the hero pads by `HEADER_TOP_PX + HEADER_ROW_PX` and the headline top by `HERO_HEADLINE_TOP_PX`.
+
+**Reason**
+Chirag: the first pass was not an accurate replica. The mockup was measured element by element (bounding boxes by colour mask, colours by pixel sample) and the layout rebuilt as a proportional replica rather than in theme tokens.
+
+**Architectural impact**
+The top of Home is the one place in the app that does not use the spacing tokens, by design: the reference is the spec. The search field's behaviour and the pin handover are unchanged. The logo is the website's `dealdirect_logo.png`, byte-identical to `assets/home/brand/logo.png`.
+
+**Verification**
+tsc clean, lint 0 errors, 350 tests. No web renderer in the project, so not compared visually here; verified by measurement only. Not run on a device.
+
+**Docs updated**
+None.
+
 ## 2026-09-05 — Mobile: launch motion, first-launch welcome, the hero rebuilt to the reference (mobile only)
 
 **Files changed**

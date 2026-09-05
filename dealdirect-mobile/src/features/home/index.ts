@@ -40,7 +40,7 @@ export { HomeGreeting, type HomeGreetingProps } from './components/HomeGreeting'
 export { HomeHero, type HomeHeroProps } from './components/HomeHero';
 export {
   HomeHeader,
-  HOME_HEADER_ROW,
+  SEARCH_PIN_WINDOW,
   type HomeHeaderProps,
 } from './components/HomeHeader';
 export { CityPickerSheet, type CityPickerSheetProps } from './components/CityPickerSheet';
