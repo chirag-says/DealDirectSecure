@@ -37,10 +37,22 @@ const PRIVATE_ROUTES = [
   ['/rewards/dashboard', 'app/rewards/dashboard/RewardsDashboardContent.jsx'],
 ];
 
-/** Reproduces the middleware's own prefix rule. */
+/**
+ * Reproduces the middleware's own prefix rule.
+ *
+ * Comments are stripped before the route strings are read. Without that, any
+ * quoted text inside the array's comments counts as a protected route: the
+ * note explaining why `/shortlist` is deliberately absent quotes the matching
+ * rule itself, `pathname.startsWith(route + '/')`, and that lone `'/'` made
+ * the helper report that the home page redirects guests. The middleware was
+ * correct; the helper was reading prose.
+ */
 const middlewareProtects = (pathname) => {
+  const start = middleware.indexOf('const PROTECTED_ROUTES');
   const list = middleware
-    .slice(middleware.indexOf('const PROTECTED_ROUTES'), middleware.indexOf('];', middleware.indexOf('const PROTECTED_ROUTES')))
+    .slice(start, middleware.indexOf('];', start))
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\r\n]*/g, '')
     .match(/'([^']+)'/g)
     .map((s) => s.replace(/'/g, ''));
   return list.some((route) => pathname === route || pathname.startsWith(route + '/'));
