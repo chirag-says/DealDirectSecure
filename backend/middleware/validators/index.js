@@ -207,7 +207,7 @@ export const validateContactHistory = [
 // SAVED SEARCH VALIDATORS
 // ============================================
 
-const SAVED_SEARCH_FIELDS = ['name', 'filters', 'notifyEmail', 'notifyInApp'];
+const SAVED_SEARCH_FIELDS = ['name', 'filters', 'notifyEmail', 'notifyInApp', 'notifyPush'];
 
 export const validateSavedSearchCreate = [
     whitelistFields(SAVED_SEARCH_FIELDS),
@@ -258,6 +258,14 @@ export const validateSavedSearchCreate = [
         .toBoolean(),
 
     body('notifyInApp')
+        .optional()
+        .isBoolean()
+        .toBoolean(),
+
+    // Push (Phase 1, F8). Whitelisted above too: a field missing from
+    // SAVED_SEARCH_FIELDS is stripped before it reaches the controller, which
+    // is exactly how a flag ends up silently ignored.
+    body('notifyPush')
         .optional()
         .isBoolean()
         .toBoolean(),

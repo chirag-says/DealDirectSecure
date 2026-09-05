@@ -5,7 +5,7 @@ import mongoose from "mongoose";
 // ============================================
 // SECURITY: Allowed fields for saved searches
 // ============================================
-const ALLOWED_SAVED_SEARCH_FIELDS = ['name', 'filters', 'notifyEmail', 'notifyInApp'];
+const ALLOWED_SAVED_SEARCH_FIELDS = ['name', 'filters', 'notifyEmail', 'notifyInApp', 'notifyPush'];
 
 /**
  * Sanitize saved search data - only allow whitelisted fields
@@ -30,7 +30,7 @@ export const createSavedSearch = async (req, res) => {
 
     // Sanitize input - only allow whitelisted fields
     const sanitizedData = sanitizeSavedSearchData(req.body);
-    const { name, filters, notifyEmail = true, notifyInApp = true } = sanitizedData;
+    const { name, filters, notifyEmail = true, notifyInApp = true, notifyPush = true } = sanitizedData;
 
     if (!name || !filters) {
       return res.status(400).json({ success: false, message: "Name and filters are required" });
@@ -62,6 +62,7 @@ export const createSavedSearch = async (req, res) => {
       },
       notifyEmail: Boolean(notifyEmail),
       notifyInApp: Boolean(notifyInApp),
+      notifyPush: Boolean(notifyPush),
     });
 
     // Create a simple notification for the user

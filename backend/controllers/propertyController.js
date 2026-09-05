@@ -14,6 +14,9 @@ import { deletePropertyAggregate, DeleteBlockedError } from "../utils/aggregateD
 import { notifyUser, notifySavedSearchMatches } from "../services/notificationService.js";
 import { ownerResponseStats, attachVerificationToLead } from "./dealController.js";
 import { reviewSummaryFor } from "./reviewController.js";
+import { recordPriceChange, priceHistoryFor } from "../services/priceLogService.js";
+import { generateReferralCode } from "../utils/referralCode.js";
+import { localityMedianFor, priceGuidanceFor } from "../services/localityService.js";
 import { sendNewLeadWhatsApp, sendNewPropertyWhatsApp } from "../services/whatsappService.js";
 import { escapeRegExp } from "../utils/escapeRegExp.js";
 
@@ -487,6 +490,13 @@ export const addProperty = async (req, res) => {
     // on city alone), and the per-recipient User.findById behind them was the
     // N+1 that made a wide match expensive.
     try {
+      // The first row of the price log (Phase 1/4, E4). "days listed" and
+      // "no change since listing" both read it, so it is written even though
+      // nothing has changed yet.
+      recordPriceChange({ property: prop, from: null, to: prop.price, source: "listed" }).catch(() => {});
+
+      recordPriceChange({ property: prop, from: null, to: prop.price, source: "listed" }).catch(() => {});
+
       await notifySavedSearchMatches(prop);
     } catch (notifyErr) {
       console.error("Error generating notifications for saved searches:", notifyErr);
@@ -888,10 +898,26 @@ export const getPropertyById = async (req, res) => {
       }
     }
 
+    // Price intelligence (Phase 4, F19). Three facts, each from our own
+    // data: what this listing has asked over time, how long it has been up,
+    // and how its price sits against comparable listings nearby. Every one
+    // is null when we cannot stand behind it, and the client renders nothing
+    // rather than a zero.
+    let priceIntelligence = null;
+    try {
+      const [history, market] = await Promise.all([
+        priceHistoryFor(prop._id),
+        localityMedianFor(prop),
+      ]);
+      priceIntelligence = { ...history, market };
+    } catch (priceErr) {
+      console.error("[Property] price intelligence failed:", priceErr.message);
+    }
+
     const payload = withPublicImages(req, prop);
     if (payload && typeof payload === "object" && !Array.isArray(payload)) {
       const body = payload.toObject ? payload.toObject() : payload;
-      res.json({ ...body, ownerStats });
+      res.json({ ...body, ownerStats, priceIntelligence });
       return;
     }
     res.json(payload);
@@ -1097,11 +1123,19 @@ export const updateProperty = async (req, res) => {
     // Re-sanitize after all modifications
     data = sanitizePropertyData(data);
 
+    // The price before the edit, for the log (Phase 1, F9). One indexed
+    // point read on an admin path; the alternative is losing the "from" side
+    // of every admin price correction.
+    const before = await Property.findById(req.params.id).select("price").lean();
+
     const updated = await Property.findByIdAndUpdate(req.params.id, data, { new: true });
 
     if (!updated) {
       return res.status(404).json({ success: false, message: 'Property not found' });
     }
+
+    recordPriceChange({ property: updated, from: before?.price ?? null, to: updated.price, source: "admin" })
+      .catch(() => {});
 
     res.json(withPublicImages(req, updated));
   } catch (err) {
@@ -1655,6 +1689,16 @@ export const updateMyProperty = async (req, res) => {
     const updated = await Property.findByIdAndUpdate(propertyId, data, { new: true, runValidators: true })
       .populate("category", "name")
       .populate("propertyType", "name");
+
+    // The price log (Phase 1, F9). `existingProperty` was read at the top of
+    // this handler for the ownership check, so the previous price is already
+    // in hand. A no-op edit records nothing — see recordPriceChange.
+    recordPriceChange({
+      property: updated,
+      from: existingProperty?.price ?? null,
+      to: updated?.price,
+      source: "edit",
+    }).catch(() => {});
 
     // --- DealDirect Rewards: property sale/rental rewards ---
     // NOTE: Sale rewards are now granted via the Close Deal flow
@@ -2781,6 +2825,31 @@ export const claimDealReward = async (req, res) => {
 
     console.log(`[ClaimReward] ${isOwner ? "Owner" : "Buyer"} ${userId} claimed ${rewardResult.pointsAwarded} pts for verification ${verificationId}`);
 
+    // The referral offer, at the one moment it is welcome (Phase 5, F21).
+    //
+    // The research is specific about the placement: the invitation lands at
+    // the emotional high point of the journey, immediately after a reward is
+    // revealed, not in a settings page nobody opens. The code is generated
+    // on demand for people who never had one, and the response carries it so
+    // the client can put a share sheet under the reward without a second
+    // round trip. A failure here never fails the claim.
+    let referral = null;
+    try {
+      const claimant = await User.findById(userId).select("referralCode name");
+      if (claimant && !claimant.referralCode) {
+        claimant.referralCode = await generateReferralCode();
+        await claimant.save();
+      }
+      if (claimant?.referralCode) {
+        referral = {
+          code: claimant.referralCode,
+          message: "Know someone buying or renting? They start with a head start, and you earn when they close.",
+        };
+      }
+    } catch (referralErr) {
+      console.error("[ClaimReward] referral offer failed:", referralErr.message);
+    }
+
     res.status(200).json({
       success: true,
       alreadyClaimed: false,
@@ -2790,6 +2859,7 @@ export const claimDealReward = async (req, res) => {
         rewardTier: rewardResult.rewardTier || "common",
         description: `Deal reward for "${verification.property.title}"`,
       },
+      referral,
     });
   } catch (error) {
     console.error("[ClaimReward] Error:", error);

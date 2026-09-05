@@ -77,6 +77,11 @@ const transactionVerificationSchema = new mongoose.Schema(
     // Attestations are each side's independent statement about the close.
     // ------------------------------------------------------------------
     payoutHoldUntil: { type: Date, default: null },
+    /**
+     * When the month-ten renewal nudge went out (Phase 5, F21). Set before
+     * sending, so a crash costs one nudge rather than duplicating it.
+     */
+    renewalNudgedAt: { type: Date, default: null },
     fraudFlags: { type: [String], default: [] },
     attestations: {
       owner: {

@@ -119,7 +119,7 @@ Controller `propertyController.js` (2 396 lines) · Routes `propertyRoutes.js`
 | GET | `/search` | `search, category, subcategory, propertyType, buildingType, size, city, priceFrom, priceTo, page=1, limit=12, sort=newest\|priceAsc\|priceDesc` | `{data, total, page, pages}`. Rate limited 20/min. Regex is escaped against ReDoS |
 | GET | `/suggestions` | `q` (min 2 chars) | `{suggestions[≤8]}` — `$facet` over titles / localities / cities. Rate limited 20/min |
 | GET | `/filter` | `search, sort` | `{success, data}`. **No pagination — loads the full result set, then filters populated fields in JS** |
-| GET | `/:id` | — | Single property. 404 (not 403) if unapproved/banned/inactive — existence is not revealed. **Increments `views` on every call** |
+| GET | `/:id` | — | Single property. 404 (not 403) if unapproved/banned/inactive — existence is not revealed. **Increments `views` on every call** . Since 2026-09-05 also returns `ownerStats` and `priceIntelligence {listedAt, daysListed, changes[], lastDrop, market}`, where `market` is the delta against the locality median for the same configuration, null when unpublishable |
 
 ### Authenticated
 
@@ -167,6 +167,36 @@ All routes 🔒. Owner-scoped; every mutation re-checks `lead.propertyOwner` aga
 Admin equivalents live at `GET /api/admin/leads` and `PUT /api/admin/leads/:id`.
 
 Since 2026-09-04 (Phase 2/3): owner status updates and contact logs set `lead.firstOwnerResponseAt` (once); `GET /` rows carry `buyerContext {activeWeeks, enquiries, visitsDone, budgetFit}`.
+
+---
+
+## Shortlist — `/api/shortlist` (Phase 1, 2026-09-05)
+A private, uncapped list of saved homes. **It notifies nobody and creates no Lead** — that is what separates it from `POST /properties/interested/:id`, which is capped at five and emails the owner. The controller imports neither `Lead` nor the notification service, and a test asserts it.
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/shared/:token` | public | Someone else's shared list, read-only, no notes, no owner identity. 404 `LINK_NOT_FOUND` covers missing, revoked and expired alike |
+| GET | `/` | 🔒 | `page`, `limit`. Rows carry `available` and `unavailableReason` (`sold` / `rented` / `unavailable`); a deleted property is dropped and its row swept |
+| GET | `/ids` | 🔒 | Just the property ids, for a cheap client sync |
+| POST | `/` | 🔒 | `{propertyId, note?}`. Idempotent; a re-save never reorders the list. 400 `INVALID_ID`, 404 `NOT_FOUND` |
+| POST | `/merge` | 🔒 | `{propertyIds: []}` up to 200. For handing a device-local list to the server; unknown ids are skipped, not fatal |
+| PATCH | `/:propertyId` | 🔒 | `{note}` <=300. 404 `NOT_SHORTLISTED` |
+| DELETE | `/:propertyId` | 🔒 | Removing what is already gone is still a success |
+| POST | `/share` | 🔒 | Rotates: creating a link revokes the previous one. 30-day expiry. 409 `EMPTY_SHORTLIST` |
+| DELETE | `/share` | 🔒 | Revokes every live link |
+
+---
+
+## Localities — `/api/localities` (Phase 4, 2026-09-05)
+Asking-price statistics from DealDirect's own live owner listings, recomputed nightly. **Entirely public.** Nothing is published below the sample floor (5 listings in a bucket), and a locality below it answers 404 exactly like one that does not exist. These are asking prices, never valuations: India has no public sold-price registry.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/` | `city`, `listingType` (`sale`/`rent`), `limit`. One row per locality, newest published quarter |
+| GET | `/guidance` | `city`, `locality`, `listingType`, `bhk` -> the interquartile range of comparable asking prices. **200 with `data: null`** when there is nothing to compare against; 400 `LOCATION_REQUIRED` without city and locality |
+| GET | `/:slug` | The page: `headline`, `byConfiguration`, `trend`, `period`, `sampleFloor`. 404 `LOCALITY_NOT_FOUND` below the floor |
+
+`/guidance` is declared before `/:slug`; without that ordering every guidance request reads as a locality named "guidance".
 
 ---
 
@@ -262,6 +292,8 @@ Server behaviour:
 ---
 
 ## Rewards — `/api/rewards`
+
+Since 2026-09-05: `POST /properties/claim-deal-reward/:id` also returns `referral: {code, message} | null` -- the invitation lands at the reward moment, and the code is minted on demand for accounts that never had one.
 
 Since 2026-09-04: `GET /policy` (public) returns the reward policy explainer (`config/rewardPolicy.js`); the wallet carries `lockedPoints` (non-cashable milestone points). `POST /properties/claim-deal-reward/:id` answers 409 `PAYOUT_ON_HOLD` with `holdUntil` while `payoutHoldUntil` is in the future.
 

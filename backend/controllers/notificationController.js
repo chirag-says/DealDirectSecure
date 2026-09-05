@@ -8,7 +8,9 @@ export const getMyNotifications = async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const notifications = await Notification.find({ user: userId })
+    // `hidden` rows exist so email and push can ride them; they are not part
+    // of the notification centre. See models/Notification.js (Phase 1, F8).
+    const notifications = await Notification.find({ user: userId, hidden: { $ne: true } })
       .sort({ createdAt: -1 })
       .limit(100)
       .lean();
@@ -53,7 +55,7 @@ export const markAllNotificationsRead = async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    await Notification.updateMany({ user: userId, isRead: false }, { $set: { isRead: true } });
+    await Notification.updateMany({ user: userId, isRead: false, hidden: { $ne: true } }, { $set: { isRead: true } });
 
     return res.json({ success: true });
   } catch (err) {

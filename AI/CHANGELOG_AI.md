@@ -53,6 +53,55 @@ did NOT update the docs, say so explicitly — that is a debt marker.
 
 ---
 
+## 2026-09-05 — Backend Phases 1, 4 and 5 of the upgrade master plan (additive)
+
+Plan of record: `DEALDIRECT-UPGRADE-MASTER-PLAN.md`. Additive as before: no existing route changed its contract, and every behaviour that costs money or sends a message is either off by default or narrower than what it replaces.
+
+**Files changed**
+
+Phase 1 — the return spine (F7, F8, F9)
+- NEW `models/Shortlist.js` (plus `ShortlistShare`), `controllers/shortlistController.js`, `routes/shortlistRoutes.js` at `/api/shortlist`: uncapped private saves, notes, bulk merge for the mobile local→server migration, `GET /shortlist/ids`, and a rotating read-only share link with a public `GET /shortlist/shared/:token`.
+- NEW `models/PriceChange.js`, `services/priceLogService.js`. Every price write path now logs: owner create, builder create, owner edit, admin edit. A no-op edit records nothing.
+- NEW `utils/savedSearchMatch.js` — the matching rules extracted from two drifted copies inside `propertyController` into one module used by both the create-time fan-out and the price-drop scan. Semantics preserved exactly, including the deliberately un-trimmed city comparison.
+- NEW `jobs/priceDropScan.js` (every 15 min): drops of 2% or more reach everyone who shortlisted the listing plus everyone whose saved-search budget the listing has just fallen into. Never the owner, never for a hidden/sold listing, never at a price that has since moved, and never twice.
+- `models/SavedSearch.js` — `notifyPush` (default true), `lastMatchAt`, `matchCount`, two indexes. `services/notificationService.js` — `narrow()` applies a per-recipient channel override that can only take channels away; `notifySavedSearchMatches` now honours all three flags, which were stored, editable in two clients and read by nothing.
+- `models/Notification.js` — `hidden`, so `notifyInApp: false` with `notifyEmail: true` is honest: the row carries the email and stays out of the notification centre. `notificationController` filters on it.
+- `middleware/validators/index.js` — `notifyPush` whitelisted and validated. A field missing from the whitelist is stripped before the controller sees it, which is exactly how a flag ends up silently ignored.
+
+Phase 4 — data products (E4, F18, F19)
+- NEW `models/LocalityStat.js` with `SAMPLE_FLOOR = 5`, `utils/locality.js` (slug, bhk bucket, listing-type normalisation, IST quarters, median, percentile, percent change), `services/localityService.js`, `jobs/localityAggregate.js` (nightly, full recompute of the current quarter only), `controllers/localityController.js`, `routes/localityRoutes.js` at `/api/localities`.
+- The sample floor is the honesty control: every bucket is stored, only buckets at or above five listings are `published`, and only published rows leave the building. A locality below the floor 404s exactly like one that does not exist.
+- `GET /properties/:id` gains `priceIntelligence` — price history, days listed, last drop, and the delta against the locality median for the same configuration.
+- `GET /localities/guidance` gives an owner mid-listing the interquartile range of comparable asking prices. A range, never a recommendation.
+
+Phase 5 — LTV (F21)
+- NEW `jobs/rentalClock.js`: at month ten of a verified rental, both sides hear, each told what to do next. Marked before sending, so a crash costs a nudge rather than duplicating one on a billed channel.
+- NEW `jobs/pointsExpiry.js`: activity-based lapse with a warning fourteen days ahead and a `forfeit` transaction that explains itself. `POINTS_INACTIVITY_DAYS` defaults to 0, which disables the whole job.
+- NEW `utils/referralCode.js` — generation extracted from `rewardsController` now that the reward-claim path mints codes too. `claim-deal-reward` returns a `referral` block so the invitation lands at the reward moment.
+- `TransactionVerification.renewalNudgedAt`, `Reward.expiryNudgedAt`.
+- `utils/aggregateDelete.js` — the cascade now covers `Shortlist` and `ShortlistShare` (16 collections).
+
+**Reason**
+The three phases the plan calls the return spine, the data products and the lifetime-value loop: a reason to come back tomorrow, a research surface that earns search traffic, and the only recurring loop the product has.
+
+**Architectural impact**
+- Saved-search flags now do what they say. A per-entry `channels` override narrows the type's policy and can never widen it; `notifyUsers` lifts it off the entry before insert, because Mongoose would drop it silently.
+- `Shortlist` and the enquiry (`interestedUsers` + `Lead`) are different concepts and must stay so. The shortlist controller imports neither `Lead` nor the notification service, and a test asserts that.
+- Locality statistics are asking prices from our own listings, never a valuation. There is no public sold-price registry in India to build one from, and every label says "asking".
+- Nine scheduled jobs now. All handlers remain pure functions of `({ now, cursor })`.
+
+**Migration notes**
+- New env key: `POINTS_INACTIVITY_DAYS` (0 = off). No other configuration changes.
+- Indexes build lazily: `Shortlist` unique `{user, property}`, `ShortlistShare` TTL, `PriceChange`, `LocalityStat` unique bucket, two on `SavedSearch`.
+- No backfill. The price log starts empty, so "days listed" is null for every existing listing until its next edit; the locality pages publish after the first nightly run.
+- `npm install` not required (no new dependency).
+
+**Verification**
+752 unit and 1044 integration tests pass. New suites: `tests/{locality-math,saved-search-match}.test.js` and `tests/integration/{shortlist,alerts,locality,ltv}.test.js`. Nothing was run against production.
+
+**Docs updated**
+`AI/API_REFERENCE.md` and `AI/DATABASE.md` gain the new collections and routes. `AI/KNOWN_BUGS.md` unchanged. `AI/FILE_MAP.md` still does not list `jobs/`, `services/priceLogService.js` or `services/localityService.js` — debt marker.
+
 ## 2026-09-05 — Mobile Phases 2 and 3: the deal room, reviews, trust surfaces (mobile only)
 
 Plan of record: `DEALDIRECT-UPGRADE-MASTER-PLAN.md`. Consumes the backend entry below dated 2026-09-04 as-is. **No backend file was touched.** `app/(tabs)/index.tsx` and `src/features/home/**` were not touched (Home is frozen). Built across two sessions; the second finished D, E, F, H, I and K below after the first was cut off.

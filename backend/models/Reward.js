@@ -95,6 +95,16 @@ const rewardSchema = new mongoose.Schema(
       default: null,
     },
 
+    /**
+     * When the points-expiry warning last went out (Phase 5, F21). Expiry
+     * itself is derived from the wallet's own `updatedAt`, so there is no
+     * date to store: any activity moves it, which is the whole mechanic.
+     */
+    expiryNudgedAt: {
+      type: Date,
+      default: null,
+    },
+
     // Monthly login tracking for the "15+ days login" bonus
     // `monthlyLoginDays` and `lastLoginDate` were removed in Phase 0 (F1) with
     // the login-streak mechanic. Existing documents keep the fields on disk;

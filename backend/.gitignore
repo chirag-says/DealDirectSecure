@@ -1,49 +1,78 @@
-# ==============================================================
-# DealDirect — Backend (Express 5 + Mongoose)
+# DealDirect API — Express 5 on Node, deployed from this folder's own repo.
 #
-# This repo is standalone: nothing above this folder is ignored on
-# its behalf, so everything needed must be listed here.
-# ==============================================================
+# Two rules worth stating, because the previous version of this file broke
+# both and the failure is silent:
+#
+#   1. No word-prefix globs against .js. `test*.js`, `check*.js`, `verify*.js`
+#      and `debug*.js` were all here. They read as "ignore my scratch files"
+#      and they also match `testimonialController.js`, `checkoutController.js`
+#      and `verifyOtp.js` — plausible names in this codebase. A file caught
+#      that way is invisible to `git status` and absent from the next clone,
+#      with no warning. Scratch work carries an explicit marker instead.
+#
+#   2. To keep a file inside an otherwise-ignored directory, exclude the
+#      CONTENTS, not the directory. `uploads/` then `!uploads/.gitkeep` does
+#      not work; `uploads/*` then `!uploads/.gitkeep` does.
 
-# ---------- Dependencies ----------
+# ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
 node_modules/
 .npm/
 .pnpm-store/
 jspm_packages/
 
-# ---------- Secrets ----------
-# .env holds MONGO_URI, JWT_SECRET, CLOUDINARY_URL, SMTP_PASS,
-# GEMINI_API_KEY, EQUENCE_*, WAHA_*, HUBBLE_*, SENTRY_DSN.
-# Never commit any variant. .env.example is the documented template.
+# ---------------------------------------------------------------------------
+# Secrets
+#
+# The API holds the real ones: MONGO_URI, JWT_SECRET, CLOUDINARY_URL,
+# SMTP_PASS, GEMINI_API_KEY. .env.example is the template and is committed.
+# ---------------------------------------------------------------------------
 .env
 .env.*
 !.env.example
 
-# Keys and certificates
 *.pem
 *.key
 *.crt
 *.cer
 *.p12
 *.pfx
-private_key*
-public_key*
 *.gpg
 *.asc
+private_key*
+public_key*
+credentials.json
+service-account*.json
 
-# ---------- Seed / one-off scripts holding credentials ----------
-seed.js
-seedAdmin.js
-seedRbac.js
-scripts/seedRbac.js
-scripts/seedBlogs.js
-scripts/fixAdminRole.js
-scripts/debugRbac.js
-scripts/testAdminLogin.js
+# ---------------------------------------------------------------------------
+# Database dumps and backups
+#
+# mongodump writes .bson holding every document in plain form — user emails,
+# phone numbers, agreement contents. It must never reach a remote, private or
+# otherwise.
+# ---------------------------------------------------------------------------
+dump/
+dumps/
+backup/
+backups/
+*.bson
+*.archive
+*.dump
+*.bak
+*.backup
+*.sql
+*.sqlite
+*.sqlite3
+mongodump-*/
 
-# ---------- Runtime output ----------
-# Legacy local upload path. Cloudinary is the real store; anything
-# landing here is transient. .gitkeep preserves the directory.
+# ---------------------------------------------------------------------------
+# Runtime data
+#
+# Uploads go to Cloudinary; this directory is the transient local staging area
+# multer writes to. The contents are ignored, the directory itself is kept, so
+# a fresh deploy has somewhere to write.
+# ---------------------------------------------------------------------------
 uploads/*
 !uploads/.gitkeep
 
@@ -54,59 +83,65 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# ---------- Generated reports / exports ----------
-# Lead and user exports (PDF/CSV/XLSX) contain personal data.
-*.xlsx
-*.csv
-*.pdf
-generate_report.js
-
-# ---------- Ad-hoc diagnostics ----------
-# Throwaway verification scripts (SMTP checks, Sentry smoke tests,
-# DB probes). Useful locally, not application code.
+# ---------------------------------------------------------------------------
+# Generated exports
 #
-# Patterns are deliberately broad: an earlier version only had
-# "test-*.js", which missed "testdb.js" and let it reach the remote.
-# Anything starting with "test" or "check", and anything ending in
-# "-test"/"-check", is treated as scratch work.
-test*.js
-check*.js
-verify*.js
-debug*.js
-*-test.js
-*-check.js
-*.test.js
-*.spec.js
-__*.js
+# The lead and user export endpoints write XLSX, CSV and PDF. Scoped to the
+# folders they are written into rather than ignoring the extensions globally,
+# so a committed fixture or template is still possible.
+# ---------------------------------------------------------------------------
+exports/
+reports/
+/*.xlsx
+/*.csv
+/*.pdf
+
+# ---------------------------------------------------------------------------
+# SCRATCH
+#
+# Explicit markers, so no controller or model can ever collide with them.
+# ---------------------------------------------------------------------------
+scratch/
+*.scratch.js
+*.scratch.mjs
 *.local.js
-scratch*.js
-
-# ...except the committed regression suite. The patterns above keep throwaway
-# diagnostic scripts out of the repo; tests/ is the real suite and is tracked
-# (see the matching rule in the root .gitignore). Non-test files inside it stay
-# ignored by the root rule.
-!tests/*.test.js
-
-# The integration harness. `*.test.js` above would otherwise catch the suites,
-# and `test*.js` would catch nothing here but is why setup/ is named explicitly
-# rather than left to a broad negation.
-!tests/integration/*.test.js
-!tests/integration/setup/*.js
-!tests/integration/test.env
-
-
+*.local.mjs
 tmp/
 temp/
 *.tmp
 *.temp
 .debug/
 
-# ---------- Testing / coverage ----------
+# One-off operational scripts, listed by exact path. Adding a new script under
+# scripts/ should be a decision, not something a wildcard here makes silently.
+seed.js
+seedAdmin.js
+scripts/seedBlogs.js
+scripts/fixAdminRole.js
+scripts/debugRbac.js
+scripts/testAdminLogin.js
+generate_report.js
+
+# NOTE: scripts/seedRbac.js was also ignored here and has been left ignored.
+# It is worth revisiting — it is the only definition of the 45 permissions and
+# four roles that production actually runs, it was deleted from the working
+# tree, and it now survives only as a dangling object in git history.
+
+# ---------------------------------------------------------------------------
+# Tests
+#
+# The suites under tests/ ARE the deliverable and are committed in full. No
+# rule here should exclude them; this section exists to say so, because an
+# earlier `*.test.js` rule with re-including negations came close to losing
+# them whenever a suite moved into a new subdirectory.
+# ---------------------------------------------------------------------------
 coverage/
 .nyc_output/
 
-# ---------- Editors & tooling ----------
-.vscode/
+# ---------------------------------------------------------------------------
+# Editors and OS
+# ---------------------------------------------------------------------------
+.vscode/*
 !.vscode/extensions.json
 .idea/
 *.swp
@@ -115,30 +150,14 @@ coverage/
 *~
 .gemini/
 .claude/
-
-# ---------- OS ----------
 .DS_Store
-.DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
-ehthumbs.db
 Thumbs.db
+ehthumbs.db
 desktop.ini
 
-# ---------- Internal docs, not for a shared repo ----------
+# Working documents
 HOSTINGER_SETUP.md
 SECURITY_REFACTOR.md
-
-# ==============================================================
-# DELIBERATELY NOT IGNORED
-#
-#   package-lock.json — was previously ignored; that has been
-#   reversed. A backend deployed to a server needs reproducible
-#   installs, and without the lockfile a deploy can silently pull a
-#   different transitive dependency than the one that was tested.
-#   Run `git add -f package-lock.json` once to start tracking it.
-#
-#   instrument.js — required. Loads env and initialises Sentry, and
-#   must remain the first import in server.js.
-# ==============================================================

@@ -77,7 +77,14 @@ describe('only the service dispatches, and only on create', () => {
     // returns in a new place.
     assert.match(notificationService, /Notification\.create/);
     assert.match(notificationService, /Notification\.insertMany/);
-    assert.doesNotMatch(notificationService, /findByIdAndUpdate|updateMany|\.save\(\)/);
+    // Scoped to Notification specifically. The service legitimately updates
+    // OTHER collections — since Phase 1 it stamps `lastMatchAt` on the saved
+    // searches a listing matched, and writes an OutboundLog row per capped
+    // send. Neither touches a notification, and neither can dispatch. A
+    // blanket ban on the word `updateMany` was really a ban on Notification
+    // updates wearing a wider costume.
+    assert.doesNotMatch(notificationService, /Notification\.(findByIdAndUpdate|updateMany|updateOne)/);
+    assert.doesNotMatch(notificationService, /\.save\(\)/);
   });
 
   test('bulk delivery goes through the batched path', () => {

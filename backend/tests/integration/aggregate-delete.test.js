@@ -362,8 +362,8 @@ test('account deletion keeps its documented collection split', async (t) => {
     // the change deliberate rather than silent.
     // 12 originally; LoginTracker left with the streak mechanic (Phase 0, F1)
     // and PushToken, OutboundLog and Event arrived with push and usage events.
-    assert.equal(USER_CASCADE.deleted.length, 14);
-    for (const name of ['PushToken', 'OutboundLog', 'Event']) {
+    assert.equal(USER_CASCADE.deleted.length, 16);
+    for (const name of ['PushToken', 'OutboundLog', 'Event', 'Shortlist', 'ShortlistShare']) {
       assert.ok(USER_CASCADE.deleted.includes(name), `${name} must be deleted with the account`);
     }
     assert.ok(!USER_CASCADE.deleted.includes('LoginTracker'), 'LoginTracker no longer exists');

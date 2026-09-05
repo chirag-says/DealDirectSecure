@@ -8,6 +8,15 @@ const notificationSchema = new mongoose.Schema(
     type: { type: String, default: "general" }, // e.g., saved-search, lead, agreement
     data: { type: Object, default: {} },
     isRead: { type: Boolean, default: false },
+    /**
+     * Written but not listed (Phase 1, F8).
+     *
+     * A saved search with `notifyInApp: false` and `notifyEmail: true` wants
+     * the email and not the clutter. Email and push both ride the row, so the
+     * row has to exist; this flag is what keeps it out of the notification
+     * centre. `getMyNotifications` filters on it. Nothing else sets it.
+     */
+    hidden: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

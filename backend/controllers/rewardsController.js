@@ -21,6 +21,7 @@ import {
   isRewardPortConfigured,
 } from "../services/rewardPortService.js";
 import User from "../models/userModel.js";
+import { generateReferralCode } from "../utils/referralCode.js";
 import Reward from "../models/Reward.js";
 import { escapeRegExp } from "../utils/escapeRegExp.js";
 
@@ -66,25 +67,12 @@ export const getUserReferralCode = async (req, res) => {
   try {
     let user = await User.findById(req.user._id).select("referralCode name").lean();
 
-    // If user exists but has no referral code (pre-existing user), generate one now
+    // Pre-existing accounts have no code until something asks for one. The
+    // generator moved to utils/referralCode.js when the reward-claim screen
+    // became a second place that mints them (Phase 5, F21).
     if (user && !user.referralCode) {
-      const crypto = await import("crypto");
-      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-      let code;
-      let isUnique = false;
-      let attempts = 0;
-
-      while (!isUnique && attempts < 10) {
-        code = "DD";
-        for (let i = 0; i < 4; i++) {
-          code += chars.charAt(crypto.default.randomInt(0, chars.length));
-        }
-        const existing = await User.findOne({ referralCode: code }).lean();
-        if (!existing) isUnique = true;
-        attempts++;
-      }
-
-      if (isUnique) {
+      const code = await generateReferralCode();
+      if (code) {
         await User.findByIdAndUpdate(req.user._id, { referralCode: code });
         user = { ...user, referralCode: code };
       }

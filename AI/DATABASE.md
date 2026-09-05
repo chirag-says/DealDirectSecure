@@ -229,7 +229,8 @@ Small schema, big side effect: **`post('save')` and `post('insertMany')` hooks s
 ⚠️ Creating notifications in a loop therefore triggers one User lookup + one SMTP send **per document**. Bulk-inserting saved-search matches fans out real email.
 
 ### `savedsearches`
-`filters{search,city,propertyType,priceRange,availableFor}`, `notifyEmail`, `notifyInApp`, `isActive`. Matched on every property creation (`addProperty` loads **all** active saved searches into memory — O(n) per listing).
+`filters{search,city,propertyType,priceRange,availableFor}`, `notifyEmail`, `notifyInApp`, `isActive`.
+Since 2026-09-05: `notifyPush` (default true), and read-only `lastMatchAt` / `matchCount`. **All three flags are now honoured** (`services/notificationService.js#narrow`); before that they were stored, editable in two clients and read by nothing. Every channel off means no notification row at all, and the match is still counted. Matched on every property creation (`addProperty` loads **all** active saved searches into memory — O(n) per listing).
 Price bands are hardcoded in the matcher: `low` < ₹50L, `mid` ₹50L–₹1.5Cr, `high` > ₹1.5Cr.
 
 ---
@@ -290,6 +291,17 @@ Deal-closure proof. `documentUrls[]` with a validator requiring ≥1 entry. `sta
 
 ### `logintrackers` — DELETED 2026-09-04
 The login-streak mechanic was reversed by the growth research. The model, `trackDailyLogin` and `Reward.monthlyLoginDays`/`lastLoginDate` were removed (Phase 0, F1). Existing wallet documents keep the two fields on disk; strict mode ignores them.
+
+### `shortlists` / `shortlistshares` (2026-09-05)
+- `shortlists {user, property, note, addedAt}`, unique `{user, property}`, plus `{user, addedAt:-1}` and `{property}` (the price-drop scan reads the second direction).
+- **The defining invariant: a shortlist entry notifies nobody and creates no Lead.** It is not the capped `interestedUsers` enquiry.
+- `shortlistshares {user, token (unique), label, expiresAt, revokedAt, views, lastViewedAt}`, TTL seven days past expiry.
+
+### `pricechanges` (2026-09-05)
+`{property, owner, from, to, deltaPct, at, source: listed|edit|admin, listingType, city, locality, bhk, propertyTypeName}`. `from` is null on the listing row, which is what makes "days listed" answerable. Written from every price write path; a no-op edit writes nothing. Read by the price-drop scan, the listing history, the market comparison and the nightly aggregation.
+
+### `localitystats` (2026-09-05)
+`{city, locality, slug, listingType: rent|sale, bhk ("all" or "1".."4+"), period "YYYY-Qn", count, medianAsking, p25, p75, medianPerSqft, qoqPct, published, computedAt}`, unique on the bucket. **`published` is false below five listings and only published rows leave the building.** Past quarters are never recomputed.
 
 ### `reviews` (2026-09-04)
 `{verification, property, author, subject, authorRole, ratings{accuracy,responsiveness,seriousness}, text ≤600, status pending|published|hidden, submittedAt, publishedAt, windowEndsAt}`. Unique `{verification, author}`. Only parties of an approved verification can write.

@@ -3,7 +3,7 @@ import OutboundLog from "../models/OutboundLog.js";
 import SavedSearch from "../models/SavedSearch.js";
 import User from "../models/userModel.js";
 import { sendGeneralNotification } from "../utils/emailService.js";
-import { escapeRegExp } from "../utils/escapeRegExp.js";
+import { candidateSearchFilter, searchMatchesProperty } from "../utils/savedSearchMatch.js";
 import { sendPush } from "./pushService.js";
 import { sendWhatsAppMessage } from "./whatsappService.js";
 
@@ -68,6 +68,9 @@ export const NOTIFICATION_POLICY = Object.freeze({
   general: P(null),
   interest: P("leads", { critical: true }), // WhatsApp is sent by markInterested itself
   "saved-search-match": P("property"),
+  // A price cut on a home someone saved is the return trigger the research
+  // rates highest, and the one event a buyer forgives a WhatsApp for.
+  price_drop: P("property", { whatsapp: true, critical: true }),
   deal_verification: P("property", { critical: true }),
   deal_reward: P("dealReward", { whatsapp: true, critical: true }),
 
@@ -83,6 +86,11 @@ export const NOTIFICATION_POLICY = Object.freeze({
   agreement: P("deal", { whatsapp: true, critical: true }),
   owner_digest: P("digest"),
 
+  // LTV (Phase 5).
+  rental_renewal: P("property", { whatsapp: true, critical: true }),
+  points_expiring: P("dealReward", { email: "capped" }),
+  referral_invite: P("dealReward", { email: "never" }),
+
   // Trust (Phase 3).
   review_request: P("review", { email: "capped" }),
   review_published: P("review", { email: "capped" }),
@@ -93,6 +101,26 @@ export const NOTIFICATION_POLICY = Object.freeze({
 const DEFAULT_POLICY = P(null);
 
 export const policyFor = (type) => NOTIFICATION_POLICY[type] || DEFAULT_POLICY;
+
+/**
+ * Apply a per-recipient channel override to a policy row (Phase 1, F8).
+ *
+ * The override can only take channels AWAY. A saved search with
+ * `notifyEmail: false` must not receive email even though the type's policy
+ * says "always"; a saved search with `notifyEmail: true` must not thereby
+ * gain WhatsApp, which its type never granted. Narrowing only is what makes
+ * this safe to hand to any caller: the worst a wrong override can do is send
+ * less.
+ */
+export function narrow(policy, override) {
+  if (!override) return policy;
+  return Object.freeze({
+    ...policy,
+    push: policy.push && override.push !== false,
+    email: override.email === false ? "never" : policy.email,
+    whatsapp: policy.whatsapp && override.whatsapp !== false,
+  });
+}
 
 /** Ids the clients may route on. Everything else in `data` stays server-side. */
 const ROUTABLE_KEYS = [
@@ -169,9 +197,9 @@ function logOutbound(userId, channel, type) {
 function dispatch(pairs) {
   const pushes = [];
 
-  for (const [doc, user] of pairs) {
+  for (const [doc, user, override] of pairs) {
     if (!user) continue;
-    const policy = policyFor(doc.type);
+    const policy = narrow(policyFor(doc.type), override);
 
     // Email, exactly as before for "always"; capped types check the budget first.
     if (policy.email !== "never" && wantsEmail(user)) {
@@ -262,11 +290,12 @@ function withKind(payload) {
  * @returns {Promise<object>} the persisted notification
  */
 export async function notifyUser(userId, payload) {
-  const doc = await Notification.create({ user: userId, ...withKind(payload) });
+  const { channels, ...rest } = payload;
+  const doc = await Notification.create({ user: userId, ...withKind(rest) });
 
   try {
     const user = await User.findById(userId).select(RECIPIENT_FIELDS).lean();
-    if (user) dispatch([[doc, user]]);
+    if (user) dispatch([[doc, user, channels || null]]);
   } catch (err) {
     console.error("[notify] recipient lookup failed:", err.message);
   }
@@ -287,14 +316,25 @@ export async function notifyUser(userId, payload) {
 export async function notifyUsers(entries) {
   if (!entries?.length) return [];
 
-  const docs = await Notification.insertMany(entries.map(withKind));
+  // `channels` is a dispatch instruction, not part of the document. It is
+  // lifted off here and paired back up by index after the insert, because
+  // Mongoose would silently drop it and the override would vanish without a
+  // word — the exact failure mode the saved-search flags had for a year.
+  const overrides = entries.map((e) => e.channels || null);
+  const docs = await Notification.insertMany(
+    entries.map(({ channels, ...entry }) => withKind(entry))
+  );
 
   try {
     const ids = [...new Set(docs.map((d) => String(d.user)))];
     const users = await User.find({ _id: { $in: ids } }).select(RECIPIENT_FIELDS).lean();
     const byId = new Map(users.map((u) => [String(u._id), u]));
 
-    dispatch(docs.map((doc) => [doc, byId.get(String(doc.user))]).filter(([, user]) => !!user));
+    dispatch(
+      docs
+        .map((doc, i) => [doc, byId.get(String(doc.user)), overrides[i]])
+        .filter(([, user]) => !!user)
+    );
   } catch (err) {
     console.error("[notify] batch recipient lookup failed:", err.message);
   }
@@ -311,54 +351,30 @@ export async function notifyUsers(entries) {
  * price simply skips the price test, which is what the second copy did.
  */
 export async function notifySavedSearchMatches(property) {
-  const city = property.address?.city || "";
 
-  // The city test runs in MongoDB (Phase 4.2). It used to be a JavaScript
-  // comparison over every active saved search, so a property in one city pulled
-  // every watcher of every other city across the wire before discarding them.
-  //
-  // CASE SEMANTICS ARE PRESERVED EXACTLY, including one that looks like a bug.
-  // The old comparison was `lower(propertyCity) === lower(savedCity)`:
-  // case-insensitive, anchored, and NOT trimmed — so " Pune" did not match
-  // "Pune". The anchored `^...$` regex with `i` reproduces all three. Making it
-  // trim would silently widen who gets notified, which is a product change
-  // rather than a performance one.
-  //
-  // The city is escaped because it reaches a regex. Without that, a saved
-  // search for "P.ne" would match "Pune".
-  //
-  // A search with no city — "" is the schema default — still matches every
-  // city, as it always did. `$exists: false` and `null` cover documents written
-  // before the default existed or inserted straight through the driver.
-  const searches = await SavedSearch.find({
-    isActive: true,
-    $or: [
-      { "filters.city": { $in: ["", null] } },
-      { "filters.city": { $exists: false } },
-      { "filters.city": { $regex: `^${escapeRegExp(city)}$`, $options: "i" } },
-    ],
-  }).lean();
+  // The matching rules live in utils/savedSearchMatch.js so the price-drop
+  // scan asks the same question the same way. See that file for why the city
+  // comparison is anchored, case-insensitive and deliberately not trimmed.
+  const searches = await SavedSearch.find(candidateSearchFilter(property)).lean();
 
   if (!searches.length) return [];
 
-  const price = property.price;
   const entries = [];
+  const matchedIds = [];
 
   for (const search of searches) {
-    const f = search.filters || {};
+    if (!searchMatchesProperty(search, property)) continue;
 
-    // The price bucket stays in JavaScript, deliberately. It compares against
-    // three hard-coded thresholds rather than a stored bound, so there is no
-    // indexable predicate to push down — expressing it as $lt/$gte clauses
-    // would be more code saying the same thing, further from the buckets it
-    // encodes, for no measured gain.
-    if (f.priceRange && typeof price === "number") {
-      const matchPrice =
-        f.priceRange === "low" ? price < 5000000
-          : f.priceRange === "mid" ? price >= 5000000 && price <= 15000000
-            : f.priceRange === "high" ? price > 15000000
-              : false;
-      if (!matchPrice) continue;
+    // The three flags NARROW delivery (Phase 1, F8). Before this they were
+    // stored, shown in two clients, and read by nothing: a person who turned
+    // email off kept receiving email. A search with every channel off is a
+    // search that has been muted, and produces no row at all.
+    const wantsInApp = search.notifyInApp !== false;
+    const wantsEmail = search.notifyEmail !== false;
+    const wantsPush = search.notifyPush !== false;
+    if (!wantsInApp && !wantsEmail && !wantsPush) {
+      matchedIds.push(search._id);
+      continue;
     }
 
     entries.push({
@@ -366,8 +382,20 @@ export async function notifySavedSearchMatches(property) {
       title: "New property matches your saved search",
       message: `${property.title || "A new property"} in ${property.address?.city || "your area"} matches "${search.name}"`,
       type: "saved-search-match",
+      hidden: !wantsInApp,
+      channels: { email: wantsEmail, push: wantsPush },
       data: { savedSearchId: search._id, propertyId: property._id },
     });
+    matchedIds.push(search._id);
+  }
+
+  // Bookkeeping for the Searches list, including for muted searches: a person
+  // who muted a search still wants to see that it is finding things.
+  if (matchedIds.length) {
+    SavedSearch.updateMany(
+      { _id: { $in: matchedIds } },
+      { $set: { lastMatchAt: new Date() }, $inc: { matchCount: 1 } }
+    ).catch((err) => console.error("[notify] saved-search bookkeeping failed:", err.message));
   }
 
   return notifyUsers(entries);
