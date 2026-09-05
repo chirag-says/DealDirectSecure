@@ -45,10 +45,12 @@ Legend — **Severity**: 🔴 blocker (cannot ship without) · 🟡 important (s
 | | Sev | Owner | Item |
 |---|---|---|---|
 | ◻️ | 🔴 | mobile | **Device pass** (see §0). Cold start, search, detail, enquiry, map, camera, the dock, offline start, both themes, on a real mid-range Android and — for the App Store — a real iPhone. |
-| ◻️ | 🔴 | mobile/you | **Crash reporting.** No Sentry yet. Shipping to real users with zero telemetry repeats the mistake that let a broken flow sit unnoticed. Needs a **mobile Sentry DSN** from you, then `@sentry/react-native` (PII-scrubbed, `id`+`role` only, mirroring the web posture). Not strictly a store *requirement*, but shipping blind is a Sakha-level "do not". |
+| ⚠️ | 🔴 | you | **Crash reporting — code done 2026-09-04, needs a DSN.** `@sentry/react-native` is installed and wired (`src/observability/sentry.ts`): `sendDefaultPii: false`, `{id, role}` only, cookies and auth headers scrubbed from every event and breadcrumb. Without `EXPO_PUBLIC_SENTRY_DSN` it is a no-op, so **the app currently ships blind**. Create the project, set the DSN, and set `SENTRY_ORG`/`SENTRY_PROJECT`/`SENTRY_AUTH_TOKEN` for source maps. |
 | ◻️ | 🟡 | mobile | **Strip the dev gallery route** (`app/(dev)/gallery.tsx`) from production, or guard the whole `(dev)` group behind `__DEV__`. It is deep-linkable by filesystem today. |
 | ✅ | — | mobile | No stray `console.log` in `src`/`app` (0 found). |
-| ✅ | — | mobile | Typecheck clean, lint 0 errors, Android bundle builds, 185 parser unit tests pass. |
+| ✅ | — | mobile | Typecheck clean, lint 0 errors, Android bundle builds, mobile unit tests pass (285 as of 2026-09-04, and growing with each phase). |
+| ⚠️ | 🔴 | mobile | **A rebuild is mandatory before any device test.** `@sentry/react-native` joined the five native modules from Phase 3, so the existing debug APK cannot load the current JS. `expo prebuild --platform android` ran clean on 2026-09-04; the EAS build has not been produced. |
+| ◻️ | 🔴 | you | **FCM credentials.** Android push registers nothing without `google-services.json` and FCM V1 credentials in EAS; iOS needs an APNs key. The failure is silent by design (logged as `[push]`), so this is easy to miss until nobody receives a notification. |
 | ◻️ | 🟡 | mobile | **Performance on a low-end device.** The app is FlashList + Reanimated + MMKV (good), but the two WebViews (map, Hubble rewards) are memory-heavy — verify on a 3–4 GB device that opening the map and returning does not get the app killed. |
 | ◻️ | 🟢 | mobile | Accessibility pass: the app already sets `accessibilityLabel`/`accessibilityRole` widely; spot-check with TalkBack/VoiceOver that the dock, sheets, and the map fallback announce correctly. |
 
@@ -59,8 +61,8 @@ Legend — **Severity**: 🔴 blocker (cannot ship without) · 🟡 important (s
 | | Sev | Owner | Item |
 |---|---|---|---|
 | ✅ | — | mobile | **In-app account deletion.** Both stores now require it; `settings/delete-account` exists and works (password + typed phrase + biometric confirm). Apple requires it be reachable in-app; Google requires an in-app path AND a web path — confirm the website also offers deletion, or provide a deletion-request URL. |
-| ◻️ | 🔴 | you | **Privacy policy URL**, publicly reachable, linked in both store listings AND in-app. The website has `/privacy`; confirm it is current and covers the mobile app's data (location, camera, contact details). |
-| ◻️ | 🔴 | you | **Google Play Data Safety form** — declare every data type collected (name, phone, email, location, photos) and how it is used/shared. Must match the app's actual behaviour and the privacy policy. |
+| ◻️ | 🔴 | you | **Privacy policy URL**, publicly reachable, linked in both store listings AND in-app. The website has `/privacy`, and **it now predates four data flows** (push token, installation id, device hash, usage events) plus the retention split at deletion. It must be rewritten before submission — see [`DEALDIRECT-STORE-DATA-DISCLOSURE.md`](DEALDIRECT-STORE-DATA-DISCLOSURE.md) §1, §2 and §3. |
+| ◻️ | 🔴 | you | **Google Play Data Safety form.** Fill it from [`DEALDIRECT-STORE-DATA-DISCLOSURE.md`](DEALDIRECT-STORE-DATA-DISCLOSURE.md) §1 and §2, which were derived by reading the code on 2026-09-05. **Four data flows are newer than this checklist**: the push token, the installation id, the device hash used by the fraud check, and usage events. Declaring the old list would now be inaccurate. |
 | ◻️ | 🔴 | you | **Apple App Privacy "nutrition label"** — the same disclosure in Apple's format, set in App Store Connect. |
 | ◻️ | 🔴 | you | **Content / age rating** questionnaires (Google IARC + Apple age rating). A property marketplace is low-risk; answer honestly (user-generated content = listings + any chat). |
 | ⚠️ | 🟡 | mobile/you | **Location permission justification.** Foreground-only, on-demand (good — background location is a heavy review item and the app declares none). Google requires a **prominent in-app disclosure** before the first location prompt and a Permissions Declaration in the console; the soft-ask copy is in `CityPickerSheet`. Verify the disclosure wording satisfies Google's form. |
