@@ -53,6 +53,35 @@ did NOT update the docs, say so explicitly — that is a debt marker.
 
 ---
 
+## 2026-09-05 — Mobile: launch motion, first-launch welcome, the hero rebuilt to the reference (mobile only)
+
+**Files changed**
+- NEW `src/features/onboarding/{entryRoute,welcomeState,index}.ts`, `components/AnimatedSplash.tsx`, `welcomeState.test.ts`; NEW `app/welcome.tsx`.
+- `app/index.tsx` — the entry route now comes from `resolveEntryRoute(status, hasSeenWelcome())`.
+- `app/_layout.tsx` — mounts `AnimatedSplash` over everything until its choreography ends; registers `welcome` with a fade.
+- `src/storage/mmkv.ts` — `PREF_KEYS.welcomeSeen`.
+- NEW `assets/home/brand/hero-dusk.webp` (1536×1024, 37 KB, from the supplied artwork); NEW `src/features/home/heroTheme.ts`.
+- `src/features/home/components/HomeHero.tsx`, `HomeHeader.tsx` rewritten to the reference mockup; `HomeSearchField.tsx` restyled (one white pill, blue submit inside it); `app/(tabs)/index.tsx` two prop lines (city picker moved to the header, "List property" pill removed from it).
+
+**Reason**
+Chirag's request of 2026-09-05: an animated launch with the mark, a distinct first-launch welcome with a Skip, and the hero replicated from a supplied mockup and background image, with the search field's behaviour untouched.
+
+**Architectural impact**
+- Cold start: signed in → the app; signed out and never introduced on this install → `/welcome`; signed out and introduced → the app. "Introduced" is a device fact (`welcomeSeen`), set by any of the welcome's three exits and never cleared on logout. `entryRoute.ts` is the only decision point.
+- `AnimatedSplash` continues the native splash: same mark, same size, same white, so the handover is invisible. `MARK_WIDTH` and `SHEET` mirror `app.config.js`; change one, change the other.
+- The hero is photo-led and dark in both colour schemes (`heroTheme.ts`); the header is transparent at rest and fades to the hero's near-black as the page scrolls. The search pin handover arithmetic is unchanged; `HOME_HEADER_ROW` is 80 (was 52) and the hero pads by it.
+- The city chip moved from the hero into the header. The "List property" pill left the header; the listing card further down Home remains the owner's entry point.
+- `PressableScale` takes a single `ViewStyle`; four call sites use object spread, per HANDOFF §10.10.
+
+**Migration notes**
+None. No native module, no env var.
+
+**Verification**
+`tsc --noEmit` clean, `expo lint` 0 errors, 350 tests, `expo export` bundles. **Nothing ran on a device**; the launch motion, the welcome and the hero framing are all unverified on hardware.
+
+**Docs updated**
+None. `HANDOFF.md` §2.8 (Home) is now stale on the header contents — debt marker.
+
 ## 2026-09-05 — Mobile Phases 1, 4 and 5: shortlist on the server, price intelligence, locality pages (mobile only)
 
 Plan of record: `DEALDIRECT-UPGRADE-MASTER-PLAN.md`. Consumes the Phase 1/4/5 backend as-is. **No backend file was touched.** `app/(tabs)/index.tsx` and `src/features/home/**` were not touched (Home is frozen). The web lane (entry below, same date) covers the same three features in `client-next/`; the two were built independently against the same contract.

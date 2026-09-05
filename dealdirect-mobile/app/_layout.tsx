@@ -21,6 +21,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { startAnalytics } from '@/analytics';
 import { createQueryClient, PERSIST_MAX_AGE, queryPersister, shouldPersistQuery } from '@/api';
 import { AuthProvider } from '@/auth';
+import { AnimatedSplash } from '@/features/onboarding';
 import { PushRouter } from '@/notifications';
 import { initSentry, wrapRoot } from '@/observability';
 import { dmSans, navigationThemes, ThemeProvider, useTheme } from '@/theme';
@@ -98,6 +99,13 @@ function RootLayout() {
   /** The deadline half of the gate. See the note above. */
   const [gateExpired, setGateExpired] = useState(false);
 
+  // The launch motion (features/onboarding/AnimatedSplash) takes over from
+  // the native splash the moment the fonts are in, and comes down on its own
+  // once its choreography ends. Until then it covers whatever the bootstrap
+  // route is deciding underneath.
+  const [splashDone, setSplashDone] = useState(false);
+  const onSplashDone = useCallback(() => setSplashDone(true), []);
+
   useEffect(() => {
     const timer = setTimeout(() => setGateExpired(true), FONT_GATE_MS);
     return () => clearTimeout(timer);
@@ -149,6 +157,7 @@ function RootLayout() {
                 <ToastProvider>
                   <Navigation />
                   <OfflineBanner />
+                  {splashDone ? null : <AnimatedSplash onDone={onSplashDone} />}
                 </ToastProvider>
               </FontOverrideProvider>
             </AuthProvider>
@@ -205,6 +214,9 @@ function Navigation() {
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
+        {/* The first-launch welcome. A fade, because it arrives from under
+            the launch motion rather than from a tap. */}
+        <Stack.Screen name="welcome" options={{ animation: 'fade', gestureEnabled: false }} />
       </Stack>
     </NavigationThemeProvider>
   );

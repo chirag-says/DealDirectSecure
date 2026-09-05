@@ -123,6 +123,12 @@ export const PREF_KEYS = {
    * survives logout, because its job is to count a guest across sessions.
    */
   installationId: 'analytics.installationId',
+  /**
+   * The first-launch welcome screen has been dismissed, by Skip or by going
+   * to log in. Device-level, like the notification prompt: it records that
+   * this install has been introduced, not anything about an account.
+   */
+  welcomeSeen: 'onboarding.welcomeSeen',
   /** Usage events not yet delivered to `POST /events`. See `analytics/queue.ts`. */
   analyticsQueue: 'analytics.queue',
   /**

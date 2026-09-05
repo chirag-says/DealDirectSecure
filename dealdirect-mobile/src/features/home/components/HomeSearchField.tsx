@@ -7,6 +7,7 @@ import { RecentSearches, useRecentSearches, useSearchPreview } from '@/features/
 import { gesture, radius, spacing, useTheme } from '@/theme';
 import { PressableScale, Skeleton, Text, useTextInputStyle } from '@/ui';
 import type { City } from '../cities';
+import { HERO_SEARCH_BLUE } from '../heroTheme';
 
 /**
  * The hero's search field — a real input that answers with real listings.
@@ -130,21 +131,29 @@ export function HomeSearchField({
   const more = Math.max(preview.total - previewItems.length, 0);
 
   return (
-    <View style={{ marginTop: flush ? 0 : spacing.base }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-        {/* The field. A real input now, styled as the pill the trigger used to
-            imitate. The search glyph moved to the button on the right, where it
-            is the thing you press rather than a decoration on the left. */}
+    <View style={{ marginTop: flush ? 0 : spacing.xl }}>
+      {/* One white pill (2026-09-05 redesign): a search glyph on the left, the
+          input, and the blue submit button set INSIDE the pill's right end.
+          Same input, same handlers, same submit — only the dress changed. */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.sm,
+          height: 60,
+          paddingLeft: spacing.lg,
+          paddingRight: 6,
+          borderRadius: radius.full,
+          backgroundColor: '#FFFFFF',
+        }}
+      >
+        <Ionicons name="search-outline" size={22} color="#111827" />
         <View
           style={{
             flex: 1,
             flexDirection: 'row',
             alignItems: 'center',
             gap: spacing.sm,
-            height: 52,
-            paddingHorizontal: spacing.base,
-            borderRadius: radius.full,
-            backgroundColor: theme.colors.surface,
           }}
         >
           <TextInput
@@ -155,13 +164,13 @@ export function HomeSearchField({
             onBlur={() => setFocused(false)}
             onSubmitEditing={() => submit(query)}
             placeholder={placeholder}
-            placeholderTextColor={theme.colors.textSecondary}
+            placeholderTextColor="#6B7280"
             selectionColor={theme.colors.accent}
             returnKeyType="search"
             autoCapitalize="none"
             autoCorrect={false}
             accessibilityLabel="Search properties, localities or projects"
-            style={[inputStyle, { flex: 1, paddingVertical: spacing.md }]}
+            style={[inputStyle, { flex: 1, paddingVertical: spacing.md, color: '#111827' }]}
           />
           {query.length > 0 ? (
             <Pressable
@@ -173,29 +182,27 @@ export function HomeSearchField({
                 inputRef.current?.focus();
               }}
             >
-              <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
+              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
             </Pressable>
           ) : null}
         </View>
 
-        {/* The search button — the search glyph, and the ONE control that runs
-            the full search. Surface fill, not brand: a brand-red button on the
-            brand-red hero would vanish. */}
+        {/* The submit button — the ONE control that runs the full search. */}
         <PressableScale
           accessibilityRole="button"
           accessibilityLabel="Search"
           onPress={() => submit(query)}
           activeScale={0.94}
           style={{
-            width: 52,
-            height: 52,
+            width: 48,
+            height: 48,
             alignItems: 'center',
             justifyContent: 'center',
             borderRadius: radius.full,
-            backgroundColor: theme.colors.surface,
+            backgroundColor: HERO_SEARCH_BLUE,
           }}
         >
-          <Ionicons name="search" size={20} color={theme.colors.brand} />
+          <Ionicons name="search" size={22} color="#FFFFFF" />
         </PressableScale>
       </View>
 

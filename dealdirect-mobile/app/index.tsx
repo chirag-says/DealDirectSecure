@@ -2,29 +2,24 @@ import { Redirect } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 
 import { useAuth } from '@/auth';
+import { hasSeenWelcome, resolveEntryRoute } from '@/features/onboarding';
 
 /**
- * Bootstrap gate.
+ * The entry route. Waits for the session probe, then sends the person to
+ * one of two places: the app, or the first-launch welcome. The table that
+ * decides is `features/onboarding/entryRoute.ts`, and it is the only thing
+ * that decides — nothing else in the app redirects to `/welcome`.
  *
- * Holds while the session is restored from the Keychain and probed against
- * `GET /users/me`, then routes once.
- *
- * Both destinations are `Redirect`, not `router.replace`, so this screen never
- * lands in the history stack: a back gesture from Explore must exit the app,
- * not return to a loading spinner.
- *
- * Guests are sent to the tab shell rather than to login. Browsing properties is
- * public on this backend, and gating the whole app behind a login wall would be
- * a product decision the architecture did not make. Individual protected
- * actions prompt for auth when reached.
- *
- * Deep-link resolution joins here in M12: a cold start into a shared property
- * link must land on that property, not on Explore.
+ * While the probe runs, this renders the same white the launch overlay is
+ * painting on top of it, so there is nothing to see even if the overlay's
+ * timing and the probe's disagree by a frame.
  */
 export default function Bootstrap() {
-  const { isReady } = useAuth();
+  const { status } = useAuth();
 
-  if (!isReady) {
+  const route = resolveEntryRoute(status, hasSeenWelcome());
+
+  if (!route) {
     return (
       <View className="flex-1 items-center justify-center bg-background">
         <ActivityIndicator />
@@ -32,7 +27,5 @@ export default function Bootstrap() {
     );
   }
 
-  // Both guests and authenticated users land on the tab shell; the difference
-  // shows up inside individual screens, not in the entry route.
-  return <Redirect href="/(tabs)" />;
+  return <Redirect href={route} />;
 }

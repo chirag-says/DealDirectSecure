@@ -288,7 +288,6 @@ export default function HomeScreen() {
               searchValue={searchText}
               onSearchValueChange={setSearchText}
               onPinOffsetChange={setPinOffset}
-              onOpenCityPicker={() => setCityPickerOpen(true)}
               // The hero field runs the search itself now; an empty term means
               // "browse everything", which `openSearch` already encodes.
               onSubmitSearch={(term) => openSearch(term ? { search: term } : undefined)}
@@ -408,7 +407,7 @@ export default function HomeScreen() {
         onOpenProperty={openProperty}
         onOpenProfile={() => router.push('/(tabs)/profile')}
         onOpenUpdates={() => router.push('/(tabs)/updates')}
-        onListProperty={openListing}
+        onOpenCityPicker={() => setCityPickerOpen(true)}
       />
 
       <CityPickerSheet
