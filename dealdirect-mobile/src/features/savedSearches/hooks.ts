@@ -94,7 +94,16 @@ export function useCreateSavedSearch() {
   };
 }
 
-/** Alert preferences. The reversible half of what `toggle` pretends to be. */
+/**
+ * Alert preferences. The reversible half of what `toggle` pretends to be.
+ *
+ * Three channels since Phase 1 (F8): in-app, email and push. All three are now
+ * actually honoured by the matcher, which is why push is offered at all — a
+ * switch for a channel the server ignores is worse than no switch.
+ *
+ * Turning all three off is MUTED, not broken, and the row says so. It is a
+ * legitimate thing to want: keep the search, stop the noise, run it by hand.
+ */
 export function useUpdateSavedSearchAlerts() {
   const queryClient = useQueryClient();
 
@@ -103,30 +112,38 @@ export function useUpdateSavedSearchAlerts() {
       id,
       notifyEmail,
       notifyInApp,
+      notifyPush,
     }: {
       id: ObjectId;
       notifyEmail?: boolean;
       notifyInApp?: boolean;
+      notifyPush?: boolean;
     }) =>
       call(savedSearchesEndpoints.update, {
         params: { id },
-        data: { notifyEmail, notifyInApp },
+        data: { notifyEmail, notifyInApp, notifyPush },
       }),
 
-    onMutate: async ({ id, notifyEmail, notifyInApp }) => {
+    onMutate: async ({ id, notifyEmail, notifyInApp, notifyPush }) => {
       await queryClient.cancelQueries({ queryKey: qk.savedSearchList() });
       const previous = queryClient.getQueryData<SavedSearchSummary[]>(qk.savedSearchList());
 
       queryClient.setQueryData<SavedSearchSummary[]>(qk.savedSearchList(), (current) =>
-        (current ?? []).map((item) =>
-          item.id === id
-            ? {
-                ...item,
-                notifyEmail: notifyEmail ?? item.notifyEmail,
-                notifyInApp: notifyInApp ?? item.notifyInApp,
-              }
-            : item
-        )
+        (current ?? []).map((item) => {
+          if (item.id !== id) return item;
+
+          const next = {
+            ...item,
+            notifyEmail: notifyEmail ?? item.notifyEmail,
+            notifyInApp: notifyInApp ?? item.notifyInApp,
+            notifyPush: notifyPush ?? item.notifyPush,
+          };
+
+          // Recomputed here as well as in the adapter, because the optimistic
+          // row never passes through the adapter and a stale `isMuted` would
+          // make the muted line lag the switch that caused it.
+          return { ...next, isMuted: !next.notifyEmail && !next.notifyInApp && !next.notifyPush };
+        })
       );
 
       return { previous };
@@ -143,8 +160,10 @@ export function useUpdateSavedSearchAlerts() {
 
   return {
     setAlerts: useCallback(
-      (id: ObjectId, next: { notifyEmail?: boolean; notifyInApp?: boolean }) =>
-        mutation.mutate({ id, ...next }),
+      (
+        id: ObjectId,
+        next: { notifyEmail?: boolean; notifyInApp?: boolean; notifyPush?: boolean }
+      ) => mutation.mutate({ id, ...next }),
       [mutation]
     ),
     isPending: mutation.isPending,

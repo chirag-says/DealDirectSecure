@@ -130,6 +130,14 @@ export const PREF_KEYS = {
    * Survives logout because the link it records does. See `auth/deviceLink.ts`.
    */
   deviceLinkedFor: 'auth.deviceLinkedFor',
+  /**
+   * The accounts this install has already handed its device-local shortlist to
+   * (`POST /shortlist/merge`), as a JSON array of user ids. Survives logout for
+   * the same reason `deviceLinkedFor` does: the handover it records happened.
+   * See `features/shortlist/merge.ts` for why merging twice is the bad
+   * direction to fail in.
+   */
+  shortlistMergedFor: 'property.shortlistMergedFor',
 } as const;
 
 /**

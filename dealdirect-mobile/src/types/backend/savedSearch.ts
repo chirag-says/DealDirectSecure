@@ -56,6 +56,17 @@ export interface SavedSearch extends Timestamps {
   filters: SavedSearchFilters;
   notifyEmail: boolean;
   notifyInApp: boolean;
+  /**
+   * Phase 1 (F8). The third channel, default true. All three are now actually
+   * honoured by the matcher — before Phase 1 the flags were stored and largely
+   * ignored. Absent on a backend older than Phase 1, which is why it is
+   * optional and defaulted on read.
+   */
+  notifyPush?: boolean;
+  /** Read-only. ISO date of the last listing this search matched, null if none. */
+  lastMatchAt?: string | null;
+  /** Read-only. How many listings this search has matched, ever. */
+  matchCount?: number;
   isActive: boolean;
 }
 
@@ -74,6 +85,9 @@ export interface CreateSavedSearchRequest {
   filters: SavedSearchFilters;
   notifyEmail?: boolean;
   notifyInApp?: boolean;
+  /** Phase 1. Accepted by both create and update. `lastMatchAt` and
+   *  `matchCount` are read-only and are never sent. */
+  notifyPush?: boolean;
 }
 
 export interface CreateSavedSearchResponse {

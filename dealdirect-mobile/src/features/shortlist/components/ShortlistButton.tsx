@@ -2,18 +2,19 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { View } from 'react-native';
 
 import { track } from '@/analytics';
+import { useAuth } from '@/auth';
 import type { RailProperty } from '@/features/properties';
 import { registerPushTokenIfPermitted, requestNotificationPermissionOnce } from '@/notifications';
 import { radius, touchTarget, useTheme } from '@/theme';
 import { selection } from '@/native';
 import { PressableScale, Text, useToast } from '@/ui';
-import { toggleShortlist, useIsShortlisted } from '../store';
+import { useIsShortlisted, useShortlistSync, useToggleShortlist } from '../hooks';
 
 /**
  * The shortlist control, beside the enquiry button on the detail screen.
  *
  * ---------------------------------------------------------------------------
- * WHY THERE ARE NOW TWO CONTROLS IN A BAR THAT DELIBERATELY HELD ONE
+ * WHY THERE ARE TWO CONTROLS IN A BAR THAT DELIBERATELY HELD ONE
  *
  * `DetailActions` records that a `tel:` shortcut was removed from this bar on
  * instruction, leaving one action, "which is what a sticky action bar is for".
@@ -26,28 +27,31 @@ import { toggleShortlist, useIsShortlisted } from '../store';
  *
  * A bookmark, not a heart. The heart on a browse card already means "enquire"
  * in this app, with a consequence sheet behind it, and two hearts meaning two
- * different things is worse than either. A bookmark also happens to be the
- * honest glyph: this saves a listing for you, privately.
+ * different things is worse than either.
  *
  * ---------------------------------------------------------------------------
- * IT SAYS WHAT IT IS
+ * WHAT CHANGED IN PHASE 1, AND WHAT DID NOT
  *
- * The toast on the first add names the limitation — the list is on this device
- * — because a user who assumes it syncs will lose work and blame the app.
- * Removal is silent: there is nothing to disclose about forgetting something.
+ * The shortlist has a server now (`/api/shortlist`), so this button issues a
+ * request when there is a session: the list follows the user to a second
+ * phone. What has NOT changed is the invariant the feature exists for — a
+ * shortlist entry still creates no Lead, notifies no owner, awards no points
+ * and counts against no cap. The toast still says the owner is not told,
+ * because that is the fact a user needs before they tap it twenty times.
+ *
+ * A SIGNED-OUT tap still saves locally and says so. Those saves are handed to
+ * the server once, at the first authenticated launch (`useShortlistSync`), so
+ * a guest who browses for a week and then registers keeps everything.
  *
  * ---------------------------------------------------------------------------
- * THE PERMISSION MOMENT (Phase 0)
+ * THE PERMISSION MOMENT (Phase 0, unchanged)
  *
  * An add is one of the two places the OS notification prompt is asked (the
  * other is saving a search), and it is asked here rather than at launch
- * because this is the first moment the user has shown they want to hear
- * about something. `requestNotificationPermissionOnce` asks at most once
- * ever; `registerPushTokenIfPermitted` then posts the device token if the
- * answer was yes and there is a signed-in account to post it for. Neither
- * touches the shortlist itself, and the store still imports no client: the
- * only requests this button can cause are the token registration and the
- * `shortlist_add` usage event, never anything to a property endpoint.
+ * because this is the first moment the user has shown they want to hear about
+ * something. `requestNotificationPermissionOnce` asks at most once ever;
+ * `registerPushTokenIfPermitted` then posts the device token if the answer was
+ * yes and there is a signed-in account to post it for.
  */
 
 export interface ShortlistButtonProps {
@@ -57,14 +61,26 @@ export interface ShortlistButtonProps {
 export function ShortlistButton({ property }: ShortlistButtonProps) {
   const theme = useTheme();
   const toast = useToast();
+  const { status } = useAuth();
   const shortlisted = useIsShortlisted(property.id);
+  const { toggle } = useToggleShortlist();
+
+  // The handover, if this account has not had one. Mounted here because the
+  // detail screen is where a returning guest most often signs in, and because
+  // it costs nothing when there is nothing to hand over.
+  useShortlistSync();
 
   const handlePress = () => {
-    const added = toggleShortlist(property);
+    const added = toggle(property);
     // A light tick either way — the state changed under the thumb.
     selection();
     if (added) {
-      toast.show('Shortlisted. Kept on this device, and the owner is not told.', 'success');
+      toast.show(
+        status === 'authenticated'
+          ? 'Shortlisted. The owner is not told, and there is no limit.'
+          : 'Saved on this device. Sign in and it moves to your account.',
+        'success'
+      );
       track('shortlist_add', { propertyId: property.id });
       void requestNotificationPermissionOnce().then(registerPushTokenIfPermitted);
     }

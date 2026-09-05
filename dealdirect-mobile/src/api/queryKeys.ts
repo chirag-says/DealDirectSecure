@@ -84,6 +84,36 @@ export const qk = {
   savedSearches: ['savedSearches'] as const,
   savedSearchList: () => ['savedSearches', 'mine'] as const,
 
+  /**
+   * The shortlist, now server-backed (Phase 1, F7).
+   *
+   * Two keys rather than one because they answer two different questions at
+   * two different costs. `shortlistIds` is the cheap membership sync every
+   * save button reads; `shortlistList` is the full card projection only the
+   * Activity screen needs. A save invalidates the domain, so both refresh
+   * together, but a screen that only needs membership never pays for the list.
+   *
+   * The device-local MMKV store is still the synchronous read model behind
+   * both (it is the guest list AND the offline cache) — see
+   * `features/shortlist/store.ts`. These keys own the network half.
+   */
+  shortlist: ['shortlist'] as const,
+  shortlistList: () => ['shortlist', 'list'] as const,
+  shortlistIds: () => ['shortlist', 'ids'] as const,
+  /** Public, per token. Somebody else's list; nothing here is per-user. */
+  shortlistShared: (token: string) => ['shortlist', 'shared', token] as const,
+
+  /**
+   * Locality price data (Phase 4, F18). Public and slow-moving — it is a
+   * quarterly aggregate, so it is cached long and refetched rarely.
+   */
+  localities: (params: Record<string, string | number | undefined>) =>
+    ['localities', 'list', params] as const,
+  locality: (slug: string, listingType: string) => ['localities', slug, listingType] as const,
+  /** The listing form's one comparison line. Keyed on every input that changes it. */
+  priceGuidance: (params: Record<string, string | undefined>) =>
+    ['localities', 'guidance', params] as const,
+
   notifications: ['notifications'] as const,
   notificationList: () => ['notifications', 'list'] as const,
 

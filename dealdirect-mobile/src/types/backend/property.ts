@@ -115,11 +115,62 @@ export interface OwnerStats {
   reviews: { count: number; overall: number | null };
 }
 
+/**
+ * What the listing's price has done, and how it sits against its neighbours
+ * (Phase 1/4, F19). Top-level on the PUBLIC `GET /properties/:id` only.
+ *
+ * EVERY FIELD CAN BE NULL, and the client renders nothing rather than a zero.
+ * A listing with no recorded price change has `changes: []` and
+ * `lastDrop: null`; a listing in a locality below the sample floor has
+ * `market: null`. None of those are errors, and none of them should produce a
+ * line that reads "0%" or "listed 0 days ago".
+ */
+export interface PriceChange {
+  from: number;
+  to: number;
+  /** Signed. Negative is a drop. */
+  deltaPct: number;
+  at: IsoDate;
+}
+
+export interface PriceMarketComparison {
+  /** `configuration` compares like-for-like BHK; `locality` is the wider set. */
+  scope: 'configuration' | 'locality';
+  bhk: string | null;
+  city: string;
+  locality: string;
+  slug: string;
+  period: string;
+  count: number;
+  medianAsking: number;
+  p25: number | null;
+  p75: number | null;
+  qoqPct: number | null;
+  /**
+   * THIS LISTING versus the median, as a percentage. Negative means it asks
+   * BELOW the median. Reading the sign backwards inverts the sentence the
+   * detail screen prints, so `features/properties/priceIntelligence.ts` owns
+   * the one place it is interpreted.
+   */
+  deltaPct: number | null;
+}
+
+export interface PriceIntelligence {
+  listedAt: IsoDate | null;
+  daysListed: number | null;
+  changes: PriceChange[];
+  lastDrop: PriceChange | null;
+  market: PriceMarketComparison | null;
+}
+
 export interface Property extends Timestamps {
   _id: ObjectId;
 
   /** Top-level on `GET /properties/:id` only. Absent from every list shape. */
   ownerStats?: OwnerStats | null;
+
+  /** Top-level on `GET /properties/:id` only, like `ownerStats`. */
+  priceIntelligence?: PriceIntelligence | null;
 
   /** Populated with `name email phone profileImage` by `GET /properties/:id`. */
   owner?: ObjectId | Pick<User, '_id' | 'name' | 'email' | 'phone' | 'profileImage'>;
@@ -409,4 +460,11 @@ export interface ClaimDealRewardResponse {
     rewardTier: string;
     description: string;
   };
+  /**
+   * Phase 5 (F21). The user's referral code and a ready-made sentence, offered
+   * AT THE REWARD MOMENT because that is the one second in the product where
+   * someone has just been paid for closing a deal without a broker. Null on a
+   * backend older than Phase 5, and absent is rendered as nothing.
+   */
+  referral?: { code: string; message: string } | null;
 }

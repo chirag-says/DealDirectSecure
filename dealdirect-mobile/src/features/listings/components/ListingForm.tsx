@@ -27,6 +27,7 @@ import {
   amenitiesFor,
   photoCategoriesForType,
 } from '../catalog';
+import { PriceGuidanceLine } from '@/features/locality';
 import { LocationPicker } from './LocationPicker';
 import { useListingTaxonomy } from '../taxonomy';
 import {
@@ -438,6 +439,26 @@ export function ListingForm({
                 value={values.price}
                 onChangeText={(v) => set('price', v)}
                 keyboardType="number-pad"
+              />
+
+              {/*
+                WHAT THE NEIGHBOURS ASK (Phase 1/4, F19)
+
+                One muted line, under the field, and that is the whole feature.
+                It does not prefill, does not suggest, does not warn that the
+                price entered is high or low, and does not block anything. An
+                owner asking above the local median usually has a reason, and a
+                form that argues with them is a form they abandon.
+
+                It renders nothing at all when the locality is below the sample
+                floor, which is most localities today. See
+                `features/locality/components/PriceGuidanceLine.tsx`.
+              */}
+              <PriceGuidanceLine
+                city={values.city}
+                locality={values.locality}
+                listingType={values.listingType === 'Rent' ? 'rent' : 'sale'}
+                bhk={values.bhk || values.bhkType}
               />
               <Pressable
                 accessibilityRole="button"

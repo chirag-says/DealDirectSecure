@@ -17,7 +17,21 @@ import {
 } from '@/features/savedSearches';
 import { PropertyRail, clearRecentlyViewed, useRecentlyViewed } from '@/features/properties';
 import { BookingRow, useMyBookings } from '@/features/projects';
-import { ShortlistRow, removeFromShortlist, useShortlist } from '@/features/shortlist';
+import {
+  MAX_COMPARE,
+  CompareBar,
+  CompareSheet,
+} from '@/features/search';
+import {
+  ShareShortlistSheet,
+  ShortlistNoteSheet,
+  ShortlistRow,
+  shortlistItemToComparable,
+  useShortlistList,
+  useShortlistSync,
+  useToggleShortlist,
+  type ShortlistItem,
+} from '@/features/shortlist';
 import { gesture, radius, screenPadding, spacing, tabBarClearance, useTheme } from '@/theme';
 import type { DealListRow } from '@/types/backend/deal';
 import {
@@ -130,9 +144,73 @@ export default function ActivityScreen() {
 function ShortlistList({ onOpenSearch }: { onOpenSearch: () => void }) {
   const router = useRouter();
   const theme = useTheme();
-  const items = useShortlist();
+  const { items, isLoading, isRefreshing, error, refresh, isOfflineCopy, signedIn } =
+    useShortlistList();
+  const { toggle } = useToggleShortlist();
+
+  // The handover, if this account has not had one. Cheap when there is nothing
+  // to hand over, which is the common case after the first launch.
+  useShortlistSync();
+
+  const [sharing, setSharing] = useState(false);
+  const [noteFor, setNoteFor] = useState<ShortlistItem | null>(null);
+  const [comparing, setComparing] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [showingCompare, setShowingCompare] = useState(false);
 
   const openProperty = useCallback((id: string) => router.push(`/property/${id}`), [router]);
+
+  const remove = useCallback(
+    (id: string) => {
+      const entry = items.find((item) => item.property.id === id);
+      if (entry) toggle(entry.property);
+    },
+    [items, toggle]
+  );
+
+  /**
+   * Selection for compare.
+   *
+   * Capped at `MAX_COMPARE`, the same ceiling the search screen uses, so the
+   * table never has to lay out more columns than a phone can read. The
+   * category gate `canAddToCompare` applies on the search screen lives there:
+   * the shortlist projection carries no `categoryName`, and this list is the
+   * user's own selection, so refusing a pairing they deliberately made would
+   * be the app second-guessing them with less information than they have.
+   */
+  const selectedItems = useMemo(
+    () =>
+      selected
+        .map((id) => items.find((item) => item.property.id === id))
+        .filter((item): item is ShortlistItem => !!item)
+        .map(shortlistItemToComparable),
+    [selected, items]
+  );
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelected((current) => {
+      if (current.includes(id)) return current.filter((value) => value !== id);
+      if (current.length >= MAX_COMPARE) return current;
+      return [...current, id];
+    });
+  }, []);
+
+  const exitCompare = useCallback(() => {
+    setComparing(false);
+    setSelected([]);
+  }, []);
+
+  if (isLoading) {
+    return (
+      <View style={{ paddingHorizontal: screenPadding, gap: spacing.md }}>
+        {[0, 1, 2].map((index) => (
+          <Skeleton key={index} height={94} radius={radius.lg} />
+        ))}
+      </View>
+    );
+  }
+
+  if (error) return <ErrorState title="Could not load your shortlist" onRetry={refresh} />;
 
   if (items.length === 0) {
     return (
@@ -160,23 +238,150 @@ function ShortlistList({ onOpenSearch }: { onOpenSearch: () => void }) {
   }
 
   return (
-    <FlashList
-      data={items}
-      keyExtractor={(item) => item.property.id}
-      contentContainerStyle={{
-        paddingHorizontal: screenPadding,
-        paddingBottom: tabBarClearance,
-      }}
-      ItemSeparatorComponent={RowSeparator}
-      ListFooterComponent={
-        <Text variant="caption" tone="muted" className="mt-lg text-center">
-          Your shortlist is kept on this device. Owners are not notified.
+    <>
+      <FlashList
+        data={items}
+        keyExtractor={(item) => item.property.id}
+        extraData={selected}
+        contentContainerStyle={{
+          paddingHorizontal: screenPadding,
+          paddingBottom: comparing ? tabBarClearance + 96 : tabBarClearance,
+        }}
+        ItemSeparatorComponent={RowSeparator}
+        refreshControl={
+          signedIn ? (
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={refresh}
+              tintColor={theme.colors.textMuted}
+              colors={[theme.colors.accent]}
+              progressBackgroundColor={theme.colors.surface}
+            />
+          ) : undefined
+        }
+        ListHeaderComponentStyle={{ marginBottom: spacing.base }}
+        ListHeaderComponent={
+          <ShortlistToolbar
+            count={items.length}
+            signedIn={signedIn}
+            comparing={comparing}
+            onCompare={() => (comparing ? exitCompare() : setComparing(true))}
+            onShare={() => setSharing(true)}
+          />
+        }
+        ListFooterComponent={
+          <Text variant="caption" tone="muted" className="mt-lg text-center">
+            {signedIn
+              ? isOfflineCopy
+                ? 'Showing the copy saved on this device. Pull down to refresh.'
+                : 'Saved to your account. Owners are not notified, and there is no limit.'
+              : 'Kept on this device. Sign in and your shortlist moves to your account.'}
+          </Text>
+        }
+        renderItem={({ item }) => (
+          <ShortlistRow
+            entry={item}
+            onPress={openProperty}
+            onRemove={comparing ? undefined : remove}
+            onEditNote={comparing || !signedIn ? undefined : setNoteFor}
+            selectable={comparing}
+            selected={selected.includes(item.property.id)}
+            onToggleSelect={toggleSelect}
+          />
+        )}
+      />
+
+      {/*
+        The compare bar is the mode indicator, exactly as on the search screen:
+        a mode with no on-screen statement of itself is the mode error every
+        review of this app is meant to catch. It is `CompareBar` rather than a
+        second implementation, so the two screens cannot drift.
+      */}
+      <CompareBar
+        items={selectedItems}
+        active={comparing}
+        onRemove={toggleSelect}
+        onClear={() => setSelected([])}
+        onCompare={() => setShowingCompare(true)}
+        onExit={exitCompare}
+      />
+
+      <CompareSheet
+        visible={showingCompare}
+        items={selectedItems}
+        onClose={() => setShowingCompare(false)}
+      />
+
+      <ShareShortlistSheet visible={sharing} onClose={() => setSharing(false)} count={items.length} />
+
+      <ShortlistNoteSheet entry={noteFor} onClose={() => setNoteFor(null)} />
+    </>
+  );
+}
+
+/**
+ * The two things you do with a shortlist that are not opening one listing.
+ *
+ * Compare and Share sit above the list rather than in the screen header,
+ * because that header belongs to the whole Activity tab and three of its four
+ * segments have nothing to compare or share. Sharing is offered only to a
+ * signed-in user: the link is issued by the server against their list, and
+ * there is nothing to issue one against for a guest.
+ */
+function ShortlistToolbar({
+  count,
+  signedIn,
+  comparing,
+  onCompare,
+  onShare,
+}: {
+  count: number;
+  signedIn: boolean;
+  comparing: boolean;
+  onCompare: () => void;
+  onShare: () => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <View className="flex-row items-center">
+      <Text variant="footnote" tone="secondary" className="flex-1">
+        {count} {count === 1 ? 'listing' : 'listings'} saved
+      </Text>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={comparing ? 'Leave compare mode' : 'Compare shortlisted listings'}
+        accessibilityState={{ selected: comparing }}
+        hitSlop={gesture.hitSlop}
+        onPress={onCompare}
+        className="flex-row items-center active:opacity-60"
+      >
+        <Ionicons
+          name="git-compare-outline"
+          size={17}
+          color={comparing ? theme.colors.accent : theme.colors.textMuted}
+        />
+        <Text variant="footnote" tone={comparing ? 'accent' : 'secondary'} className="ml-xs">
+          Compare
         </Text>
-      }
-      renderItem={({ item }) => (
-        <ShortlistRow entry={item} onPress={openProperty} onRemove={removeFromShortlist} />
-      )}
-    />
+      </Pressable>
+
+      {signedIn ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Share your shortlist"
+          hitSlop={gesture.hitSlop}
+          onPress={onShare}
+          className="ml-lg flex-row items-center active:opacity-60"
+        >
+          <Ionicons name="share-outline" size={17} color={theme.colors.textMuted} />
+          <Text variant="footnote" tone="secondary" className="ml-xs">
+            Share
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 
@@ -714,7 +919,7 @@ function SearchesList() {
         <SavedSearchRow
           search={item}
           onPress={run}
-          onToggleAlerts={(id, notifyInApp) => setAlerts(id, { notifyInApp })}
+          onToggleAlerts={setAlerts}
           onDelete={confirmDelete}
         />
       )}

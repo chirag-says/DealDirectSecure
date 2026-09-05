@@ -24,7 +24,14 @@ export {
   type SearchFilters,
 } from './filters';
 
-export { COMPARE_ROWS, MAX_COMPARE, MIN_COMPARE, canAddToCompare, type CompareRow } from './compare';
+export {
+  COMPARE_ROWS,
+  MAX_COMPARE,
+  MIN_COMPARE,
+  canAddToCompare,
+  type ComparableProperty,
+  type CompareRow,
+} from './compare';
 
 export {
   RELATED_THRESHOLD,

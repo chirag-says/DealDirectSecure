@@ -345,6 +345,7 @@ export function adaptPropertyDetail(property: Property): PropertyDetail {
 
     owner: resolveOwner(property),
     ownerStats: property.ownerStats ?? null,
+    priceIntelligence: property.priceIntelligence ?? null,
 
     addressLine: property.address?.line,
     state: property.address?.state,

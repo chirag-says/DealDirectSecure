@@ -1,4 +1,4 @@
-import { decodeHtmlEntities } from '@/lib';
+import { decodeHtmlEntities, formatShortDay } from '@/lib';
 import type { SavedSearch } from '@/types/backend/savedSearch';
 import { PRICE_BAND_LABELS, type SavedSearchPriceBand, type SavedSearchSummary } from './types';
 
@@ -59,6 +59,12 @@ function isInert(search: SavedSearch): boolean {
 export function adaptSavedSearch(search: SavedSearch): SavedSearchSummary {
   const filters = search.filters ?? {};
 
+  // Defaulted rather than trusted: all three default true in the schema, and
+  // rows created before a given field existed carry none of them.
+  const notifyEmail = search.notifyEmail ?? true;
+  const notifyInApp = search.notifyInApp ?? true;
+  const notifyPush = search.notifyPush ?? true;
+
   return {
     id: search._id,
     name: decodeSearchName(search.name ?? ''),
@@ -67,10 +73,45 @@ export function adaptSavedSearch(search: SavedSearch): SavedSearchSummary {
     priceBand: isPriceBand(filters.priceRange) ? filters.priceRange : undefined,
     availableFor: filters.availableFor || undefined,
     isInert: isInert(search),
-    // Defaulted rather than trusted: both default true in the schema, and rows
-    // created before those fields existed have neither.
-    notifyEmail: search.notifyEmail ?? true,
-    notifyInApp: search.notifyInApp ?? true,
+    notifyEmail,
+    notifyInApp,
+    notifyPush,
+    matchCount: typeof search.matchCount === 'number' ? search.matchCount : 0,
+    lastMatchAt: search.lastMatchAt ?? null,
+    // Muting every channel is a legitimate thing to want: keep the search,
+    // stop the noise. The row has to read as MUTED rather than as broken, so
+    // the state is named here instead of being re-derived in three places.
+    isMuted: !notifyEmail && !notifyInApp && !notifyPush,
     updatedAt: search.updatedAt,
   };
+}
+
+/**
+ * "3 matches, last on 2 Sep".
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS WORTH A LINE ON THE ROW
+ *
+ * A saved search is a promise about the future, and until Phase 1 there was no
+ * way to tell a search that is quietly working from one that has never matched
+ * anything. Both looked identical, so a user with no alerts could not tell
+ * whether the feature was broken or the market was. The count answers that in
+ * four words.
+ *
+ * Returns null at zero matches rather than "0 matches": a search saved this
+ * morning has not failed, and telling someone their brand-new search has found
+ * nothing is a criticism of the market delivered as a criticism of them.
+ * `isInert` already covers the search that genuinely cannot ever match.
+ */
+export function matchLine(search: SavedSearchSummary, now: Date = new Date()): string | null {
+  if (search.matchCount <= 0) return null;
+
+  const count = `${search.matchCount} ${search.matchCount === 1 ? 'match' : 'matches'}`;
+
+  // Year only when it is not this one: "2 Sep" reads better for something that
+  // happened weeks ago, and a stale search from last year needs the year
+  // precisely because it is surprising.
+  const when = formatShortDay(search.lastMatchAt, now);
+
+  return when ? `${count}, last on ${when}` : count;
 }

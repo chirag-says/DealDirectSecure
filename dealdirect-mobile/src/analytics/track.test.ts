@@ -41,10 +41,17 @@ function scriptedSender(outcomes: SendOutcome[]) {
 const fixedNow = () => new Date('2026-09-04T10:00:00.000Z');
 
 describe('whitelist', () => {
-  it('the runtime set and the type agree on the sixteen names', () => {
-    assert.equal(USAGE_EVENT_NAMES.size, 16);
+  it('the runtime set and the type agree on the nineteen names', () => {
+    // Sixteen through Phase 3; three more in Phase 1/4/5 (shortlist_share,
+    // locality_view, price_guidance_shown). The count is asserted so that a
+    // name added to the type and forgotten in the runtime set fails here
+    // rather than silently going undelivered.
+    assert.equal(USAGE_EVENT_NAMES.size, 19);
     assert.ok(isUsageEventName('session_start'));
     assert.ok(isUsageEventName('review_submitted'));
+    assert.ok(isUsageEventName('shortlist_share'));
+    assert.ok(isUsageEventName('locality_view'));
+    assert.ok(isUsageEventName('price_guidance_shown'));
     assert.ok(!isUsageEventName('page_view'));
     assert.ok(!isUsageEventName('Search'));
   });

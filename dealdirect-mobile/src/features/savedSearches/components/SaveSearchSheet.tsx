@@ -39,6 +39,25 @@ import { PRICE_BAND_LABELS, PRICE_BAND_ORDER, type SavedSearchPriceBand } from '
  * useful and honest.
  */
 
+interface AlertChannels {
+  notifyInApp: boolean;
+  notifyEmail: boolean;
+  notifyPush: boolean;
+}
+
+/** All on, matching the server defaults. */
+const DEFAULT_CHANNELS: AlertChannels = {
+  notifyInApp: true,
+  notifyEmail: true,
+  notifyPush: true,
+};
+
+const ALERT_CHANNELS: readonly { key: keyof AlertChannels; label: string }[] = [
+  { key: 'notifyInApp', label: 'In app' },
+  { key: 'notifyEmail', label: 'Email' },
+  { key: 'notifyPush', label: 'Push' },
+];
+
 export interface SaveSearchSheetProps {
   visible: boolean;
   onClose: () => void;
@@ -60,7 +79,10 @@ export function SaveSearchSheet({ visible, onClose, seedTerm, onSaved }: SaveSea
   const [name, setName] = useState(seedTerm ?? '');
   const [city, setCity] = useState('');
   const [band, setBand] = useState<SavedSearchPriceBand | undefined>(undefined);
+  const [channels, setChannels] = useState<AlertChannels>(DEFAULT_CHANNELS);
   const [error, setError] = useState<string | null>(null);
+
+  const muted = !channels.notifyInApp && !channels.notifyEmail && !channels.notifyPush;
 
   const trimmedName = name.trim();
   const trimmedCity = city.trim();
@@ -74,6 +96,7 @@ export function SaveSearchSheet({ visible, onClose, seedTerm, onSaved }: SaveSea
     setName(seedTerm ?? '');
     setCity('');
     setBand(undefined);
+    setChannels(DEFAULT_CHANNELS);
     setError(null);
     onClose();
   };
@@ -88,13 +111,19 @@ export function SaveSearchSheet({ visible, onClose, seedTerm, onSaved }: SaveSea
           city: trimmedCity,
           priceRange: band ?? '',
         },
+        ...channels,
       });
       reset();
       onSaved?.();
       track('saved_search_create', { city: trimmedCity || undefined });
       // The OS prompt, asked once ever and only now: the alert this sheet
-      // promises is the first thing a notification would carry.
-      void requestNotificationPermissionOnce().then(registerPushTokenIfPermitted);
+      // promises is the first thing a notification would carry. Skipped when
+      // the user has just turned push OFF, because asking for permission to
+      // send something they declined is the kind of prompt people learn to
+      // dismiss on sight.
+      if (channels.notifyPush) {
+        void requestNotificationPermissionOnce().then(registerPushTokenIfPermitted);
+      }
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 400
@@ -115,7 +144,7 @@ export function SaveSearchSheet({ visible, onClose, seedTerm, onSaved }: SaveSea
   }
 
   return (
-    <Sheet visible={visible} onClose={reset} title="Save this search" heightRatio={0.66}>
+    <Sheet visible={visible} onClose={reset} title="Save this search" heightRatio={0.8}>
       <Text variant="footnote" tone="muted">
         We will alert you when a new listing matches. Alerts match on city and price range.
       </Text>
@@ -155,6 +184,41 @@ export function SaveSearchSheet({ visible, onClose, seedTerm, onSaved }: SaveSea
           />
         ))}
       </View>
+
+      {/*
+        WHERE THE ALERT ARRIVES (Phase 1, F8)
+
+        All three channels are on by default, which matches the server and
+        matches what somebody who has just pressed "save this search" wants.
+        They are offered here rather than only on the list row because a user
+        who does not want email is deciding that at the moment they save, not
+        three days later after the first one lands.
+
+        Turning all three off is allowed. It saves a search that alerts
+        nowhere, which is a real thing to want — the list row calls that muted
+        and says the search still runs.
+      */}
+      <Text variant="footnote" tone="secondary" className="mt-lg">
+        Alert me
+      </Text>
+      <View className="mt-sm flex-row flex-wrap gap-sm">
+        {ALERT_CHANNELS.map((channel) => (
+          <Chip
+            key={channel.key}
+            label={channel.label}
+            selected={channels[channel.key]}
+            onPress={() =>
+              setChannels((current) => ({ ...current, [channel.key]: !current[channel.key] }))
+            }
+          />
+        ))}
+      </View>
+      {muted ? (
+        <Text variant="caption" tone="muted" className="mt-sm">
+          Nothing selected, so this search will be saved but will not alert you. You can turn a
+          channel back on any time.
+        </Text>
+      ) : null}
 
       {error ? (
         <Text variant="footnote" tone="danger" className="mt-md">

@@ -2,92 +2,79 @@ import { useSyncExternalStore } from 'react';
 
 import type { RailProperty } from '@/features/properties';
 import { PREF_KEYS, prefsStorage } from '@/storage';
+import type { ShortlistItem, ShortlistUnavailableReason } from './types';
 
 /**
  * The shortlist: listings the user is CONSIDERING.
  *
  * ---------------------------------------------------------------------------
- * THIS IS NOT THE INTERESTED LIST, AND THE DIFFERENCE IS THE POINT
+ * THIS IS NOT THE INTERESTED LIST, AND THE DIFFERENCE IS STILL THE POINT
  *
- * DealDirect has exactly one server-side notion of "saved", and it is not a
- * bookmark. `POST /properties/interested/:id` creates a Lead, emails the
- * owner, sends them a WhatsApp message carrying the user's name, email and
- * phone, awards points, and counts against a hard cap of five. That is an
- * announcement, and the app is right to put a consequence sheet in front of it.
+ * `POST /properties/interested/:id` creates a Lead, emails the owner, sends
+ * them a WhatsApp message carrying the user's name, email and phone, awards
+ * points, and counts against a hard cap of five. That is an announcement, and
+ * the app is right to put a consequence sheet in front of it.
  *
- * What did not exist anywhere in the product is the other thing — the twenty
- * flats you are turning over while you decide which five are worth contacting
- * anyone about. Every portal has it, and users expect it to be free, private,
- * unlimited and instant, because that is what a bookmark means.
- *
- * So this list:
- *
- *   - creates no Lead,
- *   - notifies no owner,
- *   - sends no WhatsApp and no email,
- *   - awards no points,
- *   - never touches `/properties/interested/*` or any other endpoint,
- *   - is capped by nothing.
- *
- * It cannot do any of those things by construction rather than by discipline:
- * this module imports no API client. There is no code path from a shortlist tap
- * to a request.
+ * A shortlist entry does none of that. It notifies nobody, creates no Lead,
+ * awards no points, and is capped by nothing. Phase 1 (F7) gave it a server of
+ * its own, `/api/shortlist`, so it now follows the user to a second phone, but
+ * the separation from the enquiry is unchanged and is enforced on both sides.
  *
  * ---------------------------------------------------------------------------
- * DEVICE-LOCAL, AND SAID OUT LOUD
+ * WHAT THIS FILE IS NOW: THE SYNCHRONOUS READ MODEL
  *
- * There is no shortlist on the server. Adding one is a backend change that has
- * not been approved, so the list lives in MMKV on this device: it does not
- * follow the user to another phone, and reinstalling loses it.
+ * Before Phase 1 this WAS the shortlist. It is now two narrower things:
  *
- * That is a real limitation and the UI states it rather than hiding it — see
- * the footnote on the Activity segment. The alternative was to build the
- * feature on top of the interested endpoint, which would have meant every
- * bookmark emailing an owner. Local and honest beats synced and wrong.
+ *   1. The guest list. A signed-out user still saves, still sees their list,
+ *      and their saves are handed to the server once at sign-in (`merge.ts`).
+ *   2. The offline cache behind the signed-in list. Every successful
+ *      `GET /shortlist` writes its rows here, so a cold start with no
+ *      connectivity draws the real list rather than an empty state.
  *
- * When a server shortlist is approved, this store becomes the offline cache in
- * front of it and the migration is one upload of whatever is here.
+ * It stays synchronous and store-shaped on purpose. Home reads
+ * `useShortlist().length` and must not cause a request to do it (HANDOFF 5.2:
+ * no eager queries on Home), and a save button has to flip under the thumb
+ * with no await. The network half lives in `hooks.ts`; this file still imports
+ * no API client, and that is still checkable by reading its imports.
  *
  * ---------------------------------------------------------------------------
  * WHY IT STORES SNAPSHOTS RATHER THAN IDS
  *
- * Same reason as `properties/recentlyViewed.ts`, and the second half is the
- * one that decides it: `GET /properties/:id` INCREMENTS THE VIEW COUNTER. A
- * shortlist that refetched its rows to draw them would inflate the view count
- * of everything the user is considering, every time they opened the tab —
- * corrupting the one demand signal the backend collects, using the feature that
- * displays it.
+ * `GET /properties/:id` INCREMENTS THE VIEW COUNTER. A cache that refetched
+ * its rows to draw them would inflate the view count of everything the user is
+ * considering, every time they opened the tab, corrupting the one demand
+ * signal the backend collects using the feature that displays it. So the card
+ * fields are captured at save time, or copied from the list response, and
+ * replayed from disk.
  *
- * So the card's fields are captured at shortlist time and replayed from disk.
- * The list costs zero requests. The trade is staleness: a price change or a
- * delisting is not reflected until the listing is opened again, and the detail
- * screen it opens fetches live data anyway, which is where a stale price would
- * actually matter.
- *
- * `RailProperty` is the stored shape rather than the full `PropertySummary`
- * because it is exactly the structural subset a card needs — see its own note.
- * Storing the full summary would persist twenty unused fields per entry and
- * freeze whatever the adapter shape happened to be on the day it was written.
+ * `RailProperty` is the stored shape because it is exactly the structural
+ * subset a card needs. See its own note.
  */
 
-export interface ShortlistedProperty {
+/** The persisted row. Superset of the pre-Phase-1 shape, which still parses. */
+export interface StoredShortlistEntry {
   property: RailProperty;
-  /** Epoch ms. Newest first; there is no other ordering. */
+  /** Epoch ms. */
   shortlistedAt: number;
+  entryId?: string;
+  note?: string;
+  available?: boolean;
+  unavailableReason?: ShortlistUnavailableReason | null;
 }
+
+/** Kept under its old name for the import paths that still say it. */
+export type ShortlistedProperty = StoredShortlistEntry;
 
 /**
  * A ceiling, not a cap the user should ever meet.
  *
- * The shortlist is advertised as unlimited and for every real user it is: two
- * hundred is far past the point where a human is still comparing. It exists so
- * a runaway loop or a stuck finger cannot grow an MMKV value without bound,
- * and it trims the oldest rather than refusing the newest, so the behaviour at
- * the edge is invisible rather than a wall.
+ * The shortlist is advertised as unlimited and for every real user it is. Two
+ * hundred matches the server's merge cap, so the local list can never exceed
+ * what a single handover can carry.
  */
 const MAX_ENTRIES = 200;
 
-function read(): ShortlistedProperty[] {
+function read(): StoredShortlistEntry[] {
   const raw = prefsStorage.getString(PREF_KEYS.shortlist);
   if (!raw) return [];
 
@@ -99,11 +86,11 @@ function read(): ShortlistedProperty[] {
     // versions, and one malformed row must not blank the list for everyone who
     // upgrades.
     return parsed.filter(
-      (item): item is ShortlistedProperty =>
+      (item): item is StoredShortlistEntry =>
         typeof item === 'object' &&
         item !== null &&
-        typeof (item as ShortlistedProperty).shortlistedAt === 'number' &&
-        typeof (item as ShortlistedProperty).property?.id === 'string'
+        typeof (item as StoredShortlistEntry).shortlistedAt === 'number' &&
+        typeof (item as StoredShortlistEntry).property?.id === 'string'
     );
   } catch {
     prefsStorage.remove(PREF_KEYS.shortlist);
@@ -113,14 +100,14 @@ function read(): ShortlistedProperty[] {
 
 /** See the note on this pattern in `properties/recentlyViewed.ts`. */
 const listeners = new Set<() => void>();
-let snapshot: ShortlistedProperty[] | null = null;
+let snapshot: StoredShortlistEntry[] | null = null;
 
-function getSnapshot(): ShortlistedProperty[] {
+function getSnapshot(): StoredShortlistEntry[] {
   if (snapshot === null) snapshot = read();
   return snapshot;
 }
 
-function emit(next: ShortlistedProperty[]): void {
+function emit(next: StoredShortlistEntry[]): void {
   snapshot = next;
   prefsStorage.set(PREF_KEYS.shortlist, JSON.stringify(next));
   listeners.forEach((listener) => listener());
@@ -131,22 +118,27 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-export function isShortlisted(id: string): boolean {
+/** Membership on this device. Synchronous, and correct on its own for a guest. */
+export function isLocallyShortlisted(id: string): boolean {
   return getSnapshot().some((entry) => entry.property.id === id);
 }
 
+export function localShortlistIds(): string[] {
+  return getSnapshot().map((entry) => entry.property.id);
+}
+
 /**
- * Adds or removes, and returns the state it landed in.
+ * Adds or removes locally, and returns the state it landed in.
  *
- * Synchronous, so the caller can paint the result immediately — this is what
- * "optimistic" means for a store with no server behind it: there is no request
- * to be optimistic ABOUT, and no rollback path, because the write cannot fail
- * in a way the user needs to hear about.
+ * Synchronous, so the caller can paint the result immediately. When a session
+ * exists, `useToggleShortlist` calls this FIRST and then reconciles with the
+ * server, restoring the row if the request fails, which is what makes the
+ * optimistic update and the guest path the same code.
  *
  * Re-adding an entry that is already present moves it to the front rather than
  * duplicating it, matching how `recentlyViewed` treats a repeat view.
  */
-export function toggleShortlist(property: RailProperty): boolean {
+export function toggleLocalShortlist(property: RailProperty): boolean {
   const current = getSnapshot();
   const existing = current.some((entry) => entry.property.id === property.id);
 
@@ -155,29 +147,70 @@ export function toggleShortlist(property: RailProperty): boolean {
     return false;
   }
 
-  const entry: ShortlistedProperty = { property, shortlistedAt: Date.now() };
+  const entry: StoredShortlistEntry = { property, shortlistedAt: Date.now() };
   emit([entry, ...current.filter((item) => item.property.id !== property.id)].slice(0, MAX_ENTRIES));
   return true;
 }
 
+/** Puts a row back after a failed server write. Preserves the original time. */
+export function restoreLocalShortlist(entry: StoredShortlistEntry): void {
+  const current = getSnapshot().filter((item) => item.property.id !== entry.property.id);
+  emit([entry, ...current].slice(0, MAX_ENTRIES));
+}
+
+export function findLocalShortlistEntry(id: string): StoredShortlistEntry | undefined {
+  return getSnapshot().find((entry) => entry.property.id === id);
+}
+
 /** Removal from the list itself, where there is no property object to hand. */
-export function removeFromShortlist(id: string): void {
+export function removeLocalShortlist(id: string): void {
   emit(getSnapshot().filter((entry) => entry.property.id !== id));
 }
 
-export function useShortlist(): ShortlistedProperty[] {
+/**
+ * Replaces the cache wholesale with what the server just said.
+ *
+ * Called after a successful `GET /shortlist`. Replace, not merge: the server
+ * is the truth for a signed-in user, and merging would resurrect a row they
+ * deleted on another device, which is the exact bug a sync feature exists to
+ * avoid.
+ */
+export function setLocalShortlist(entries: StoredShortlistEntry[]): void {
+  emit(entries.slice(0, MAX_ENTRIES));
+}
+
+/** After a successful handover to the server. See `merge.ts`. */
+export function clearLocalShortlist(): void {
+  emit([]);
+}
+
+/** Writes one row's note into the cache so the offline copy stays truthful. */
+export function setLocalShortlistNote(id: string, note: string): void {
+  emit(
+    getSnapshot().map((entry) =>
+      entry.property.id === id ? { ...entry, note: note || undefined } : entry
+    )
+  );
+}
+
+export function useLocalShortlist(): StoredShortlistEntry[] {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
 /**
- * Membership for one listing.
+ * The stored row as the UI's row type.
  *
- * Subscribes to the whole store and narrows, rather than keeping a per-id
- * subscription. The list is small and the derived boolean is stable, so a
- * component re-renders only when its own membership actually flips.
+ * A local row is always "available": nothing on this device knows otherwise,
+ * and guessing an unavailability the server has not reported would be worse
+ * than saying nothing.
  */
-export function useIsShortlisted(id: string | undefined): boolean {
-  const items = useShortlist();
-  if (!id) return false;
-  return items.some((entry) => entry.property.id === id);
+export function localEntryToItem(entry: StoredShortlistEntry): ShortlistItem {
+  return {
+    entryId: entry.entryId,
+    property: entry.property,
+    shortlistedAt: entry.shortlistedAt,
+    note: entry.note,
+    available: entry.available ?? true,
+    unavailableReason: entry.unavailableReason ?? null,
+  };
 }

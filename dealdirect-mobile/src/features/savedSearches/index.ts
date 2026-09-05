@@ -2,7 +2,7 @@
  * Saved searches. Cross-feature imports come through this file only.
  */
 
-export { adaptSavedSearch, decodeSearchName } from './adapters';
+export { adaptSavedSearch, decodeSearchName, matchLine } from './adapters';
 export {
   useSavedSearches,
   useCreateSavedSearch,

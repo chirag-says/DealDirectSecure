@@ -28,12 +28,31 @@
 
 import type { PropertySummary } from '@/features/properties';
 
+/**
+ * What a comparison row can read.
+ *
+ * Widened from `PropertySummary` in Phase 1 so the SHORTLIST can open the same
+ * comparison. The shortlist projection is a card shape, not the full summary:
+ * it has no view count, no coordinates, no image count, and it cannot know
+ * whether a price is negotiable. Those are made optional here rather than
+ * faked at the adapter, so a row that has nothing to say prints the em dash
+ * instead of asserting "Negotiable: No" about a listing nobody asked.
+ *
+ * Every `PropertySummary` still satisfies this, so no existing call site
+ * moved.
+ */
+export type ComparableProperty = Omit<
+  PropertySummary,
+  'negotiable' | 'views' | 'imageCount' | 'coordinates'
+> &
+  Partial<Pick<PropertySummary, 'negotiable' | 'views' | 'imageCount' | 'coordinates'>>;
+
 export const MAX_COMPARE = 3;
 export const MIN_COMPARE = 2;
 
 export function canAddToCompare(
-  current: readonly PropertySummary[],
-  candidate: PropertySummary
+  current: readonly ComparableProperty[],
+  candidate: ComparableProperty
 ): boolean {
   if (current.some((item) => item.id === candidate.id)) return true; // already in, toggling off
   if (current.length >= MAX_COMPARE) return false;
@@ -46,7 +65,7 @@ export function canAddToCompare(
 
 export interface CompareRow {
   label: string;
-  value: (property: PropertySummary) => string;
+  value: (property: ComparableProperty) => string;
 }
 
 const EMPTY = '–';
@@ -67,5 +86,11 @@ export const COMPARE_ROWS: readonly CompareRow[] = [
   },
   { label: 'Furnishing', value: (p) => p.furnishing || EMPTY },
   { label: 'Construction status', value: (p) => p.constructionStatus || EMPTY },
-  { label: 'Negotiable', value: (p) => (p.negotiable ? 'Yes' : 'No') },
+  {
+    label: 'Negotiable',
+    // Unknown is not "No". The shortlist projection does not carry this field,
+    // and printing a definite answer from an absent one is how a comparison
+    // table stops being trustworthy.
+    value: (p) => (typeof p.negotiable === 'boolean' ? (p.negotiable ? 'Yes' : 'No') : EMPTY),
+  },
 ];

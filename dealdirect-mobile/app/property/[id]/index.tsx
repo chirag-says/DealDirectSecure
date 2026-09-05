@@ -24,6 +24,7 @@ import {
   ExpandableText,
   heroHeight,
   NearbyPlaces,
+  PriceStory,
   PropertyRail,
   ReportSheet,
   VideoWalkthrough,
@@ -323,6 +324,20 @@ export default function PropertyDetailScreen() {
     property.intent === 'rent' ? null : formatRatePerSqft(property.priceRupees, property.areaSqft);
   const posted = relativeDay(property.createdAt);
 
+  /**
+   * The locality page this listing belongs to.
+   *
+   * It comes from `priceIntelligence.market.slug` and nowhere else: the slug
+   * is the server's, it only exists where there is enough data to publish, and
+   * composing one from the city and locality strings would produce links to
+   * pages that 404 for every locality below the sample floor.
+   */
+  const localitySlug = property.priceIntelligence?.market?.slug;
+  // A plain function, not a `useCallback`: this line is below the screen's
+  // early returns for the loading, missing and error states, so a hook here
+  // would be called conditionally. Nothing downstream is memoised on it.
+  const openLocality = (slug: string) => router.push(`/locality/${slug}`);
+
   return (
     <Screen unsafe>
       <DetailHeader
@@ -417,7 +432,23 @@ export default function PropertyDetailScreen() {
           ) : null}
 
           {property.locationLabel ? (
-            <View className="mt-sm flex-row items-start">
+            /*
+              The locality line becomes a control ONLY when the server gave us
+              a locality slug to open. Without one there is no page behind it,
+              and a chevron leading nowhere is worse than plain text. See
+              `priceIntelligence.market.slug`.
+            */
+            <Pressable
+              accessibilityRole={localitySlug ? 'button' : 'text'}
+              accessibilityLabel={
+                localitySlug
+                  ? `${property.locationLabel}. See prices in this locality.`
+                  : property.locationLabel
+              }
+              disabled={!localitySlug}
+              onPress={() => localitySlug && router.push(`/locality/${localitySlug}`)}
+              className="mt-sm flex-row items-start active:opacity-70"
+            >
               <Ionicons
                 name="location-outline"
                 size={15}
@@ -427,7 +458,15 @@ export default function PropertyDetailScreen() {
               <Text variant="callout" tone="secondary" numberOfLines={2} className="ml-xs flex-1">
                 {property.locationLabel}
               </Text>
-            </View>
+              {localitySlug ? (
+                <Ionicons
+                  name="chevron-forward"
+                  size={15}
+                  color={theme.colors.textMuted}
+                  style={{ marginTop: 2 }}
+                />
+              ) : null}
+            </Pressable>
           ) : null}
 
           {/*
@@ -449,6 +488,26 @@ export default function PropertyDetailScreen() {
           <View className="mt-lg">
             <DetailFacts property={property} />
           </View>
+
+          {/*
+            THE PRICE STORY (Phase 1/4, F19)
+
+            Placed after the facts and before the prose, which is where it
+            answers the question the facts have just raised: this is a 2 BHK of
+            this size at this price — is that a lot? It unmounts entirely when
+            the server has nothing to say, so most listings will not show it,
+            and the ones that do are showing measurements rather than advice.
+
+            `showDaysListed` is off because the provenance line below already
+            says how old the listing is, from a different field.
+          */}
+          <Section title="Price" navLabel="Price">
+            <PriceStory
+              intelligence={property.priceIntelligence}
+              onOpenLocality={openLocality}
+              showDaysListed={false}
+            />
+          </Section>
 
           {/*
             PROVENANCE, and why it sits below the facts rather than above them.
@@ -553,6 +612,38 @@ export default function PropertyDetailScreen() {
           {property.intent !== 'rent' && property.priceRupees > 0 ? (
             <Section title="EMI calculator" navLabel="EMI">
               <EmiCalculator priceRupees={property.priceRupees} />
+
+              {/*
+                The full calculator, carrying this price with it.
+
+                The inline one answers "what would this listing cost a month".
+                The standalone screen answers "what happens if I borrow less,
+                or over fifteen years instead of twenty", and shows the total
+                interest, which is the number that changes minds. Passing the
+                price means the answer starts from this listing rather than
+                from an empty field the user has to retype the price into.
+              */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open the full EMI calculator for this price"
+                onPress={() =>
+                  router.push({
+                    pathname: '/tools/emi',
+                    params: { price: String(property.priceRupees) },
+                  })
+                }
+                className="mt-md flex-row items-center active:opacity-60"
+              >
+                <Text variant="footnote" tone="accent">
+                  Open the full calculator
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={15}
+                  color={theme.colors.accent}
+                  style={{ marginLeft: 2 }}
+                />
+              </Pressable>
             </Section>
           ) : null}
 

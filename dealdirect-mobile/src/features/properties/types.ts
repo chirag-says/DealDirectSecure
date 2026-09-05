@@ -12,7 +12,7 @@
  * different type; this one carries only what a card and a list row need.
  */
 
-import type { OwnerStats, Property } from '@/types/backend/property';
+import type { OwnerStats, PriceIntelligence, Property } from '@/types/backend/property';
 
 export type ListingIntent = 'rent' | 'sale';
 
@@ -166,6 +166,13 @@ export interface PropertyDetail extends PropertySummary {
    * on a backend older than Phase 3 and on every list shape.
    */
   ownerStats: OwnerStats | null;
+  /**
+   * What the price has done and how it sits against the locality (Phase 1/4,
+   * F19). Top-level on `GET /properties/:id` only; null on a backend older
+   * than Phase 1 and on every list shape. `priceIntelligence.ts` is the only
+   * place its fields are interpreted.
+   */
+  priceIntelligence: PriceIntelligence | null;
 
   addressLine?: string;
   state?: string;

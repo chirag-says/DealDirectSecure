@@ -1,8 +1,15 @@
+import { useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, useReducedMotion } from 'react-native-reanimated';
 
-import { RupeeField, DEFAULT_INTEREST_RATE, DEFAULT_TENURE_YEARS, emiForLoan } from '@/features/tools';
+import {
+  RupeeField,
+  DEFAULT_INTEREST_RATE,
+  DEFAULT_LTV,
+  DEFAULT_TENURE_YEARS,
+  emiForLoan,
+} from '@/features/tools';
 import {
   radius,
   reducedMotion,
@@ -45,7 +52,26 @@ export default function EmiScreen() {
   const theme = useTheme();
   const reduceMotion = useReducedMotion();
 
-  const [amount, setAmount] = useState('');
+  /**
+   * The listing this was opened from, when it was opened from one.
+   *
+   * ---------------------------------------------------------------------------
+   * SEEDED, AND THE SEED IS EXPLAINED
+   *
+   * The note above says this screen must not secretly be a property price
+   * multiplied by 0.8, and it still must not. So when a price arrives on the
+   * route, the loan field is seeded at the same 80% the detail-page calculator
+   * uses AND the screen says so in words, right under the field. The user can
+   * see where the number came from, and can change it.
+   *
+   * Arriving with no price is unchanged: the field starts empty, because
+   * without a listing the amount IS the question.
+   */
+  const { price } = useLocalSearchParams<{ price?: string }>();
+  const listingPrice = Number(price) || 0;
+  const seededLoan = listingPrice > 0 ? Math.round(listingPrice * DEFAULT_LTV) : 0;
+
+  const [amount, setAmount] = useState(seededLoan > 0 ? String(seededLoan) : '');
   const [rate, setRate] = useState(String(DEFAULT_INTEREST_RATE));
   const [tenure, setTenure] = useState(String(DEFAULT_TENURE_YEARS));
 
@@ -76,7 +102,15 @@ export default function EmiScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={{ gap: spacing.lg }}>
-            <RupeeField label="Loan amount" value={amount} onChangeText={setAmount} />
+            <View>
+              <RupeeField label="Loan amount" value={amount} onChangeText={setAmount} />
+              {seededLoan > 0 ? (
+                <Text variant="caption" tone="muted" className="mt-xs">
+                  Started at 80% of {formatPrice(listingPrice)}, the price of the listing you came
+                  from. Change it to whatever you plan to borrow.
+                </Text>
+              ) : null}
+            </View>
 
             <View className="flex-row" style={{ gap: spacing.md }}>
               <View className="flex-1">

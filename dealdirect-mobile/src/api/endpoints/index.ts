@@ -20,6 +20,8 @@ export { reviewsEndpoints } from './reviews';
 export { agreementsEndpoints } from './agreements';
 export { notificationsEndpoints } from './notifications';
 export { savedSearchesEndpoints } from './savedSearches';
+export { shortlistEndpoints } from './shortlist';
+export { localitiesEndpoints } from './localities';
 export { rewardsEndpoints } from './rewards';
 export {
   projectsEndpoints,

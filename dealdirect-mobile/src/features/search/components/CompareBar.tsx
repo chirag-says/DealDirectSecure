@@ -2,10 +2,9 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import type { PropertySummary } from '@/features/properties';
 import { useTheme } from '@/theme';
 import { Button, Image, Text } from '@/ui';
-import { MIN_COMPARE } from '../compare';
+import { MIN_COMPARE, type ComparableProperty } from '../compare';
 
 /**
  * Sticky bar for compare mode. Ported from the website's fixed bottom bar
@@ -26,7 +25,7 @@ import { MIN_COMPARE } from '../compare';
  * thing an unmissable mode owes the user.
  */
 export interface CompareBarProps {
-  items: readonly PropertySummary[];
+  items: readonly ComparableProperty[];
   /** Compare mode is on. The bar renders on this, not on the item count. */
   active: boolean;
   onRemove: (id: string) => void;

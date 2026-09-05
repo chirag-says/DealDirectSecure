@@ -1,8 +1,7 @@
 import { ScrollView, View } from 'react-native';
 
-import type { PropertySummary } from '@/features/properties';
 import { Image, PriceLabel, Sheet, Text } from '@/ui';
-import { COMPARE_ROWS } from '../compare';
+import { COMPARE_ROWS, type ComparableProperty } from '../compare';
 
 /**
  * Side-by-side comparison table. Ported from `PropertyListContent.jsx`'s
@@ -17,7 +16,7 @@ import { COMPARE_ROWS } from '../compare';
  */
 export interface CompareSheetProps {
   visible: boolean;
-  items: readonly PropertySummary[];
+  items: readonly ComparableProperty[];
   onClose: () => void;
 }
 

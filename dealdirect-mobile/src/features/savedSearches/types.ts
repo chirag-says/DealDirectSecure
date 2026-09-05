@@ -50,6 +50,18 @@ export interface SavedSearchSummary {
   isInert: boolean;
   notifyEmail: boolean;
   notifyInApp: boolean;
+  /**
+   * Phase 1 (F8). The third channel, and the only one that reaches a user who
+   * is not in the app. Defaulted true on read: rows written before the field
+   * existed carry no value, and the server treats absent as on.
+   */
+  notifyPush: boolean;
+  /** Read-only. How many listings this search has matched, ever. */
+  matchCount: number;
+  /** Read-only. When the last match happened. Null until there is one. */
+  lastMatchAt: string | null;
+  /** All three channels off. Muted, which is a state, not a fault. */
+  isMuted: boolean;
   updatedAt?: string;
 }
 

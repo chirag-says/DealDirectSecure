@@ -29,6 +29,12 @@ export interface UsageEvents {
   push_opened: { kind: string };
   notification_opened: { kind: string };
   review_submitted: { verificationId: string };
+  /** Phase 1 (F7). Fired when a share link is CREATED, not when it is opened. */
+  shortlist_share: { count: number };
+  /** Phase 4 (F18). One per locality screen open, deduped per slug per mount. */
+  locality_view: { slug: string };
+  /** Phase 1/4 (F19). The listing form actually showed a comparison line. */
+  price_guidance_shown: { city: string };
 }
 
 export type UsageEventName = keyof UsageEvents;
@@ -55,6 +61,9 @@ export const USAGE_EVENT_NAMES: ReadonlySet<string> = new Set<UsageEventName>([
   'push_opened',
   'notification_opened',
   'review_submitted',
+  'shortlist_share',
+  'locality_view',
+  'price_guidance_shown',
 ]);
 
 export function isUsageEventName(name: string): name is UsageEventName {

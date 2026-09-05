@@ -53,6 +53,70 @@ did NOT update the docs, say so explicitly — that is a debt marker.
 
 ---
 
+## 2026-09-05 — Mobile Phases 1, 4 and 5: shortlist on the server, price intelligence, locality pages (mobile only)
+
+Plan of record: `DEALDIRECT-UPGRADE-MASTER-PLAN.md`. Consumes the Phase 1/4/5 backend as-is. **No backend file was touched.** `app/(tabs)/index.tsx` and `src/features/home/**` were not touched (Home is frozen). The web lane (entry below, same date) covers the same three features in `client-next/`; the two were built independently against the same contract.
+
+**Files changed** — `dealdirect-mobile/` only.
+
+Contract layer:
+- NEW `src/types/backend/shortlist.ts`, `src/types/backend/locality.ts`. NEW `src/api/endpoints/shortlist.ts` (`list, ids, add, merge, remove, setNote, share, revokeShare, shared`), `src/api/endpoints/localities.ts` (`list, detail, guidance`).
+- `src/types/backend/property.ts` — `PriceChange`, `PriceMarketComparison`, `PriceIntelligence`; `Property.priceIntelligence`; `ClaimDealRewardResponse.referral`.
+- `src/types/backend/savedSearch.ts` — `notifyPush`, read-only `lastMatchAt` / `matchCount`; `CreateSavedSearchRequest.notifyPush`.
+- `src/types/backend/common.ts` — `NOT_SHORTLISTED`, `EMPTY_SHORTLIST`, `LOCALITY_NOT_FOUND`, `LOCATION_REQUIRED`.
+- `src/api/queryKeys.ts` — `shortlist`, `shortlistList`, `shortlistIds`, `shortlistShared(token)`, `localities(params)`, `locality(slug, listingType)`, `priceGuidance(params)`.
+- `src/storage/mmkv.ts` — `PREF_KEYS.shortlistMergedFor`.
+
+Shortlist, server-backed (F7):
+- `src/features/shortlist/store.ts` — rewritten in role, not in mechanism. Still MMKV, still synchronous, still imports no API client. It is now the guest list AND the offline cache; new exports `setLocalShortlist`, `clearLocalShortlist`, `restoreLocalShortlist`, `findLocalShortlistEntry`, `setLocalShortlistNote`, `localShortlistIds`, `useLocalShortlist`, `localEntryToItem`. `toggleShortlist` / `removeFromShortlist` / `isShortlisted` / `useShortlist` were renamed to their `…Local…` variants; `useShortlist` now lives in `hooks.ts`.
+- NEW `src/features/shortlist/{types,adapters,api,hooks,merge}.ts` + `merge.test.ts` (14 cases). NEW `components/{ShareShortlistSheet,ShortlistNoteSheet}.tsx`; `components/{ShortlistButton,ShortlistRow}.tsx` rewritten.
+- NEW `app/shortlist/shared/[token].tsx` — public, read-only, "This is <label>'s shortlist".
+- `app/(tabs)/activity.tsx` — the Shortlist segment renders `useShortlistList()`, with a toolbar (Compare / Share), per-row notes, a sold/rented marker, and compare mode reusing `CompareBar` + `CompareSheet`.
+- `src/features/search/compare.ts` + `CompareBar` + `CompareSheet` — row set and props widened from `PropertySummary` to a new `ComparableProperty` (`negotiable`, `views`, `imageCount`, `coordinates` optional). The Negotiable row prints an em dash for unknown rather than "No".
+
+Saved searches (F8):
+- `src/features/savedSearches/{types,adapters,hooks,index}.ts` — `notifyPush`, `matchCount`, `lastMatchAt`, derived `isMuted`, new `matchLine()`. `useUpdateSavedSearchAlerts` writes all three channels and recomputes `isMuted` optimistically.
+- `components/SavedSearchRow.tsx` — three channel chips replacing the single in-app switch, the match line, and an explicit muted line. `components/SaveSearchSheet.tsx` — the same three channels at creation; the OS notification prompt is skipped when the user turned push off.
+
+Price intelligence (F19) and locality (F18):
+- NEW `src/features/properties/priceIntelligence.ts` + `priceIntelligence.test.ts` (26 cases) — the pure payload-to-lines function: a 3-point dead band around the median, "below" / "above" / "in line", honest scope wording, null handling for every field, history sorted newest first. NEW `components/PriceStory.tsx`.
+- `app/property/[id]/index.tsx` — a "Price" section under the facts; the locality line becomes a control only when a slug exists; "Open the full calculator" passes the price to `/tools/emi`.
+- NEW `src/features/locality/{format,hooks,index}.ts` + `format.test.ts` (21 cases), `components/{TrendBars,PriceGuidanceLine}.tsx`. NEW `app/locality/[slug].tsx`.
+- `src/features/listings/components/ListingForm.tsx` — one muted guidance line under the price field, debounced on (city, locality, listingType, bhk).
+
+Phase 5 and analytics:
+- `app/claim-reward/[verificationId].tsx` — `ReferralShareCard` at the reward moment, native Share of the server's message plus `${WEB_URL}/register?ref=CODE`. `app/rewards/index.tsx` already carried a referral card and was not touched.
+- `src/analytics/events.ts` — `shortlist_share { count }`, `locality_view { slug }`, `price_guidance_shown { city }`, emitted from the share sheet, the locality screen and the guidance line. `src/analytics/track.test.ts` — the whitelist count assertion moved 16 to 19.
+- NEW `src/lib/shortDate.ts` (`formatShortDay`), exported from `@/lib`.
+
+**Reason**
+Master plan Phases 1, 4 and 5, mobile lane. The shortlist stops being a device-local compromise and becomes the thing every portal has, without ever becoming the enquiry. A price stops being a number with no context. A locality gets a page that says what its listings ask, and says plainly that asking is not selling.
+
+**Architectural impact**
+- **The shortlist has two owners and one direction.** TanStack Query owns the truth for a signed-in user; the MMKV store owns the paint and is written by successful fetches and by optimistic mutations. Nothing reads the store to decide what to send the server except the one-time merge. The store still imports no API client.
+- **`useShortlist()` never issues a request.** Home reads it (`shortlist.length`) and HANDOFF §5.2 forbids an eager query there, so it observes `qk.shortlistList()` with `enabled: false` and falls back to the local store. `useShortlistList()` is the same key with `enabled` on and is called only by the Activity segment. `useShortlist()` must keep returning an array.
+- **The local-to-server handover is once per account per install**, decided by the pure `decideMerge` and guarded by `PREF_KEYS.shortlistMergedFor` (survives logout, like `deviceLinkedFor`). On success the local list is cleared and the list query is invalidated so the store repopulates from the server. Known gap, documented in `merge.ts`: a guest-era list created AFTER the first handover on the same install is not auto-merged. Re-arming the guard would resurrect rows the user deleted on another device, which is the worse failure.
+- **`useShortlistSync()` is mounted by `ShortlistButton` and the Activity Shortlist segment, never at the root.** A user who never touches the feature issues no shortlist request, and the launch path gains none.
+- **`ShortlistButton` now issues requests.** Its old doc comment promised it could not; that promise is superseded by F7 and the file says so. The invariant that survives: a shortlist entry still creates no Lead, notifies no owner, awards no points, and counts against no cap. Do not merge the shortlist and the interested list.
+- **`priceIntelligence.market.deltaPct` is interpreted in exactly one place.** Negative means the listing asks BELOW the median. Anything inside ±3 points reads as "in line". A market line without a `slug` renders nothing, because the locality page it would open does not exist.
+- **A locality below the sample floor is an empty state, not an error.** `GET /localities/:slug` 404s and `useLocality` reports `isMissing` separately from `error`, with retry disabled for that case. `GET /localities/guidance` answers 200 with a null body and the listing form renders nothing at all.
+- **The locality page is reached only from a server-issued slug** (`priceIntelligence.market.slug`). Composing a slug from city and locality strings would link to pages that 404 for every locality below the floor.
+- **Both pure modules format dates from a hand-written month table, not `Intl`.** Node under `en-IN` writes "Sept"; Hermes without full ICU writes something else. `src/lib/shortDate.ts` is the shared copy for app code; `priceIntelligence.ts` keeps its own because it must stay importable by `node --test` with no runtime imports.
+- **Compare now accepts `ComparableProperty`.** Every `PropertySummary` still satisfies it, so no existing call site moved, but a row must handle an absent `negotiable` rather than printing "No".
+- **The shared-shortlist route is public and read-only by construction** — `ShortlistRow` renders controls only for the props it is given, and that screen passes none. It raises no sheet and no confirmation, so it is safe as a cold-start deep link.
+
+**Migration notes**
+No schema change, no backend change, no new dependency, no new native module. Every new field is optional and every new surface is gated on its presence, so the app renders correctly against a backend older than Phase 1: the shortlist endpoints 404, `useShortlistList` falls back to the local store, and `PriceStory` and the locality entry points unmount. The device-local shortlists that already exist on installed devices are handed to the server on the first authenticated launch.
+
+`.expo/types/router.d.ts` is git-ignored and must be regenerated for the two new routes (`/locality/[slug]`, `/shortlist/shared/[token]`); `expo start` does it, or
+`EXPO_ROUTER_APP_ROOT="$PWD/app" node -e "require('expo-router/build/typed-routes').regenerateDeclarations('.expo/types')"`.
+
+**Docs updated**
+None. Debt markers: `dealdirect-mobile/docs/HANDOFF.md` §2.6 still describes saved searches as exposing two notification channels and §3.2 still says there is no private save — both are now stale. `AI/FILE_MAP.md` does not list `src/features/{shortlist,locality}`, `src/features/properties/priceIntelligence.ts` or `src/lib/shortDate.ts`; `AI/API_REFERENCE.md` still lacks `/shortlist` and `/localities`.
+
+**Verification**
+`npx tsc --noEmit` clean. `npx expo lint` 0 errors / 17 warnings (all pre-existing). `npm test` 346/346 across 49 suites (new: `src/features/shortlist/merge.test.ts` 14, `src/features/properties/priceIntelligence.test.ts` 26, `src/features/locality/format.test.ts` 21). `npx expo export --platform android` bundles (8.23 MB hbc). **Nothing was run on a device or emulator.** The shortlist handover, the share-link round trip, the note sheet, compare from the shortlist, the three-channel saved-search toggles, the price section, the locality screen and its trend bars, the listing-form guidance line and the claim-screen referral share are all unverified on hardware.
+
 ## 2026-09-05 — Web Phases 1 and 4: locality price pages, price intelligence, shortlist (client-next only)
 
 Plan of record: `DEALDIRECT-UPGRADE-MASTER-PLAN.md`, features F7, F18 and F19. Web lane only — `client-next/` plus this file. The backend was not touched; every endpoint used here was already implemented and tested in the backend entry below. The mobile app was not touched.

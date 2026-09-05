@@ -113,7 +113,16 @@ export type BackendErrorCode =
   | 'ALREADY_REVIEWED'
   | 'INVALID_RATING'
   // Reward claim (controllers/propertyController.js)
-  | 'PAYOUT_ON_HOLD';
+  | 'PAYOUT_ON_HOLD'
+  // Shortlist (Phase 1, F7). `NOT_SHORTLISTED` is a 404 on the note route and
+  // means the row went away on another device; `EMPTY_SHORTLIST` is a 409 on
+  // share and is a state, not a fault.
+  | 'NOT_SHORTLISTED'
+  | 'EMPTY_SHORTLIST'
+  // Locality price data (Phase 4, F18). Both are normal answers: below the
+  // sample floor there is nothing honest to publish.
+  | 'LOCALITY_NOT_FOUND'
+  | 'LOCATION_REQUIRED';
 
 /**
  * The error body. Note that `message` is a STRING here. On a small number of

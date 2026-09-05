@@ -17,6 +17,8 @@ export * from './review';
 export * from './agreement';
 export * from './notification';
 export * from './savedSearch';
+export * from './shortlist';
+export * from './locality';
 export * from './rewards';
 export * from './project';
 export * from './misc';

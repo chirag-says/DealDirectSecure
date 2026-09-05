@@ -20,7 +20,8 @@ export const savedSearchesEndpoints = {
     envelope: 'keyed',
     note:
       'Rejects a filter set where every field is empty; at least one filter is required. ' +
-      'Only whitelisted filter fields survive sanitisation.',
+      'Only whitelisted filter fields survive sanitisation. Accepts notifyEmail, ' +
+      'notifyInApp and (Phase 1) notifyPush; all three default true and are now honoured.',
   }),
 
   mine: defineEndpoint<void, SavedSearchListResponse>({
@@ -48,6 +49,9 @@ export const savedSearchesEndpoints = {
     path: ({ id }) => `/saved-searches/${id}`,
     auth: 'user',
     envelope: 'keyed',
+    note:
+      'Accepts notifyPush alongside notifyEmail/notifyInApp. `lastMatchAt` and `matchCount` ' +
+      'are read-only: they come back on `mine` and are never sent.',
   }),
 
   remove: defineEndpoint<void, OkEnvelope, { id: ObjectId }>({
