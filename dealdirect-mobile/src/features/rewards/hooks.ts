@@ -39,6 +39,8 @@ export function useWallet() {
     /** Spendable points. `totalPoints` is lifetime-earned and drives tier. */
     balance: wallet?.availablePoints ?? 0,
     lifetimePoints: wallet?.totalPoints ?? 0,
+    /** Milestone points: count toward tier, never redeemable. 0 before Phase 3. */
+    lockedPoints: wallet?.lockedPoints ?? 0,
     tier: wallet?.tier ?? null,
     tierMultiplier: wallet?.tierMultiplier ?? 1,
     nextTierProgress: wallet?.nextTierProgress ?? null,
@@ -105,6 +107,31 @@ export function useReferral() {
     referrals: statsQuery.data?.referrals ?? [],
     isLoading: enabled && (codeQuery.isPending || statsQuery.isPending),
     error: codeQuery.error ?? statsQuery.error,
+  };
+}
+
+/**
+ * The explainer numbers behind "How rewards work": milestone points, the
+ * close payout, the hold. Public, env-driven server-side and slow-moving, so
+ * it is cached for an hour. `milestones` is EMPTY when milestone rewards are
+ * off, and the screen renders nothing for that section rather than a heading
+ * over an empty list.
+ */
+export function useRewardsPolicy() {
+  const query = useQuery({
+    queryKey: qk.rewardsPolicy(),
+    queryFn: async ({ signal }) => {
+      const response = await call(rewardsEndpoints.policy, { signal });
+      return response.data;
+    },
+    staleTime: 60 * 60_000,
+  });
+
+  return {
+    policy: query.data ?? null,
+    isLoading: query.isPending,
+    error: query.error,
+    refresh: () => void query.refetch(),
   };
 }
 

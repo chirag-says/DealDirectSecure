@@ -77,3 +77,32 @@ export interface MyInquiriesResponse {
   success: true;
   inquiries: ContactInquiry[];
 }
+
+// --- Usage events (Phase 0) -----------------------------------------------
+
+/**
+ * `POST /events`. The name whitelist and the allowed props per name live in
+ * `src/analytics/events.ts`; the wire shape here is deliberately loose because
+ * the backend drops unknown names and props silently rather than rejecting the
+ * batch, so a typo costs an event, not a request.
+ */
+export interface UsageEventPayload {
+  name: string;
+  props?: Record<string, unknown>;
+  /** ISO-8601, the moment the event happened, not the moment it was sent. */
+  at?: IsoDate;
+}
+
+export interface IngestEventsRequest {
+  /** At most 50 per batch; the backend rejects a larger one. */
+  events: UsageEventPayload[];
+  platform: 'android' | 'ios';
+  /** Stable per-install id, so guests can be counted across sessions. */
+  anon?: string;
+}
+
+/** 202. `accepted` is how many of `events` survived the whitelist. */
+export interface IngestEventsResponse {
+  success: true;
+  accepted: number;
+}

@@ -8,6 +8,7 @@
  */
 
 import type { IsoDate, ObjectId, Timestamps } from './common';
+import type { BuyerContext, DealStage } from './deal';
 import type { Property } from './property';
 
 export type LeadStatus =
@@ -65,6 +66,16 @@ export interface Lead extends Timestamps {
     date: IsoDate;
   }>;
   isViewed?: boolean;
+
+  // --- Phase 2 (the deal spine). All optional: rows written before it carry
+  // none of these, and every reader must tolerate their absence.
+
+  /** Derived server-side; never sent by a client. */
+  stage?: DealStage;
+  /** When the owner first replied (status change, contact log, or message). */
+  firstOwnerResponseAt?: IsoDate | null;
+  /** Aggregate facts about the buyer, on `GET /leads` rows. Never a history. */
+  buyerContext?: BuyerContext | null;
 }
 
 // --- Requests -------------------------------------------------------------

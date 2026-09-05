@@ -12,7 +12,7 @@
  * different type; this one carries only what a card and a list row need.
  */
 
-import type { Property } from '@/types/backend/property';
+import type { OwnerStats, Property } from '@/types/backend/property';
 
 export type ListingIntent = 'rent' | 'sale';
 
@@ -160,6 +160,12 @@ export interface PropertyDetail extends PropertySummary {
   amenities: string[];
 
   owner: PropertyOwnerContact | null;
+  /**
+   * Trust facts about the owner (Phase 3): verification, reply time, review
+   * mean and count. Aggregate only, top-level on `GET /properties/:id`; null
+   * on a backend older than Phase 3 and on every list shape.
+   */
+  ownerStats: OwnerStats | null;
 
   addressLine?: string;
   state?: string;

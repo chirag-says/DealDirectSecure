@@ -53,6 +53,60 @@ did NOT update the docs, say so explicitly — that is a debt marker.
 
 ---
 
+## 2026-09-05 — Mobile Phases 2 and 3: the deal room, reviews, trust surfaces (mobile only)
+
+Plan of record: `DEALDIRECT-UPGRADE-MASTER-PLAN.md`. Consumes the backend entry below dated 2026-09-04 as-is. **No backend file was touched.** `app/(tabs)/index.tsx` and `src/features/home/**` were not touched (Home is frozen). Built across two sessions; the second finished D, E, F, H, I and K below after the first was cut off.
+
+**Files changed** — `dealdirect-mobile/` only.
+
+The deal (Phase 2):
+- NEW `src/api/endpoints/deals.ts` — `dealsEndpoints.{list, detail, proposeVisit, updateVisit, visitFeedback, openConversation, attest}` against `/api/deals`. NEW `src/types/backend/deal.ts` — `DealStage`, `Visit`, `DealListRow`, `DealDetail`, `BuyerContext`, every request/response.
+- NEW `src/features/deals/`: `hooks.ts` (`useMyDeals` infinite, `useDeal`, `useProposeVisit`, `useUpdateVisit`, `useVisitFeedback`, `useOpenConversation`, `useAttestClose`; every write invalidates `qk.deals` AND `qk.leads`), `stage.ts` (labels, tones, order), `visitState.ts` (which controls each party sees per visit status, pure), `visitTime.ts` (validation, 60-day cap), `components/{DealProgress, VisitCard, VisitSheet, DealRow, CounterpartCard, DealMessages, ReportMessageSheet, AgreementCard, CloseCard, BuyerContextCard}.tsx`, tests `stage.test.ts`, `visitState.test.ts`, `visitTime.test.ts`.
+- `app/deal/[leadId].tsx` — REPLACES the Phase 0 placeholder. Listing strip, progress, counterpart (phone on the buyer side only after `contactRevealed`), visits, messages, agreement (only when `agreementsEnabled`), close (verification, attestation, claim, review), buyer context (owner side). Behind `RequireAuth` with a `deal` intent. Emits `deal_open`, `visit_proposed`, `visit_confirmed`, `visit_done`, `message_sent`.
+- `src/socket/SocketProvider.tsx` — disconnects in its effect cleanup. **It is mounted ONLY by the deal page, around the message wall, and only when the deal has a conversation.** Not at the root; D2 (HANDOFF §9.1) stands.
+- `src/features/chat/{api,hooks,index}.ts`, `components/ChatComposer.tsx` — `sendMessage` returns `{ message, warning, wire }` so a lure warning the server appends lands in the thread and is re-emitted on the socket; `onFocus` on the composer. `src/api/endpoints/chat.ts` — `reportMessage` (`POST /chat/message/report`). `src/types/backend/chat.ts` — `warning`, `flagged`, the report request/response.
+- `src/auth/pendingIntent.ts` — `deal` and `review` intents (return-to only; nothing re-fires).
+- `src/api/errors.ts`, `src/types/backend/common.ts` — the Phase 2/3 error codes (`NOT_A_PARTY`, `VISIT_ALREADY_OPEN`, `CHAT_DISABLED`, `PAYOUT_ON_HOLD`, ...) and `details.holdUntil` / `details.visitId`.
+- `src/types/backend/lead.ts` — `stage`, `firstOwnerResponseAt`, `buyerContext` on `Lead`, all optional. NEW `src/features/leads/buyerContext.ts` — `buyerContextLine`, `buyerContextFacts`, `budgetFitLabel` (one wording for the row and the card).
+- `src/api/queryKeys.ts` — `deals`, `dealList`, `dealDetail`, `reviews`, `reviewEligibility`, `reviewsForUser`, `rewardsPolicy`.
+
+Reviews and trust (Phase 3):
+- NEW `src/api/endpoints/reviews.ts` — `reviewsEndpoints.{eligibility, submit, forUser, mine}`. NEW `src/types/backend/review.ts`.
+- NEW `src/features/reviews/`: `hooks.ts` (`useReviewEligibility`, `useSubmitReview`, `useUserReviews` infinite by 10), `components/{StarRating, ReviewCard, OwnerReviewsSheet}.tsx`.
+- `app/review/[verificationId].tsx` — REPLACES the Phase 0 placeholder. Keyed by the verification; renders the eligibility state the server reports; emits `review_submitted`.
+- `src/types/backend/property.ts` — `OwnerStats`, `Property.ownerStats`. `src/features/properties/{types,adapters}.ts` — `PropertyDetail.ownerStats` (null when absent). `src/features/properties/components/DetailOwner.tsx` — verification badge, "Usually replies within ~Nh", "★ overall · N verified reviews"; the reviews line is a control only when the page passes `onShowReviews`. `app/property/[id]/index.tsx` — threads `ownerStats`, owns `OwnerReviewsSheet` (list fetched only once opened). **Still never renders the owner's phone or email.**
+- `src/api/endpoints/rewards.ts`, `src/types/backend/rewards.ts` — `policy` (`GET /rewards/policy`), `RewardsWallet.lockedPoints`. `src/features/rewards/hooks.ts` — `useWallet().lockedPoints`, NEW `useRewardsPolicy` (1h stale). `app/rewards/index.tsx` — locked points line under the balance when > 0; "How rewards work" card (milestones only when non-empty, close payout line, hold days, point value). Numbers only.
+- `app/claim-reward/[verificationId].tsx` — 409 `PAYOUT_ON_HOLD` renders a calm "Reserved for you" state with `holdUntil`, not an error; both it and the success state offer "Review this deal" → `/review/:verificationId`.
+- `src/api/endpoints/users.ts`, `src/types/backend/user.ts` — `registerDevice` (`POST /users/device`). NEW `src/auth/deviceLink.ts` — `linkDeviceOnce(userId)`: posts the analytics installation id once per (install, account), guarded by `PREF_KEYS.deviceLinkedFor` (`src/storage/mmkv.ts`), fire-and-forget, errors swallowed and the guard left unset. `src/auth/AuthProvider.tsx` — calls it from the identity effect alongside push registration.
+
+Owner surfaces and Activity:
+- `app/(tabs)/activity.tsx` — the `enquiries` segment is labelled **"Deals"** (value unchanged: Home's tile and `hrefForTarget` send it) and renders `useMyDeals()` with `DealRow`, both roles, sorted by `updatedAt`, tap → `/deal/:id`, paginated. `EnquiryMeter` stays as the list header (from `useSavedProperties`), and a buyer-side row whose listing is still on the saved list gets an overflow that withdraws the enquiry via `useRemoveInterest`. Withdrawing frees the slot and leaves the deal row: the lead does not un-exist. `SavedPropertyCard`, `useSaveToggle` and `EnquirySheet` are no longer used on this screen.
+- `src/features/leads/components/LeadCard.tsx` — one muted `buyerContextLine` when `lead.buyerContext` is present. `app/owner/leads/[id].tsx` — primary "Open deal" button → `/deal/:leadId`. NEW `src/features/leads/thisWeek.ts` (+ test) — `summariseWeek`, `isWaitingOnOwner`. `app/owner/analytics.tsx` — "This week" block at the top from `useLeads()`: new leads in 7 days, leads waiting on the owner (no `firstOwnerResponseAt` when the field is present, else `isViewed === false`; older than 24h; not converted/lost), "N+" when more pages exist, plus "Your weekly report arrives every Monday."
+- `src/features/deals/components/{CounterpartCard,VisitSheet}.tsx` — two `&apos;` lint fixes only.
+
+**Reason**
+Master plan Phases 2 and 3, mobile lane: the lead becomes a deal the user can follow (visits, thread, agreement, close) from either side; trust content (reviews, verification, reply time) only verified parties can write; rewards that cannot be farmed before a verified close. The Activity tab is where a buyer already went to see enquiries, so that is where deals live.
+
+**Architectural impact**
+- **`SocketProvider` is mounted only inside `app/deal/[leadId].tsx`.** Nothing else in the app opens a socket. A screen that needs one mounts it itself and accepts the connect/disconnect cost.
+- **Chat and agreements are server-gated, not client-gated.** The deal page reads `chatEnabled` / `agreementsEnabled` from `GET /deals/:leadId` and renders a quiet "not available" line otherwise. `useOpenConversation` treats 503 `CHAT_DISABLED` as state, not fault.
+- **`Lead.stage` is never sent by the client.** Every deal write returns it; the hooks invalidate `qk.deals` and `qk.leads` together because one document backs both.
+- **The buyer never sees the owner's phone before `contactRevealed`**, and the public property detail still shows neither phone nor email. `ownerStats` is aggregate only.
+- **Withdrawing an enquiry does not remove the deal.** The Activity row stays; only the slot and the overflow go. Copy says so.
+- **`PAYOUT_ON_HOLD` is a state.** The claim screen must not render it as an error; the hold date comes from `error.details.holdUntil`.
+- **Device linkage is once per (install, account)** and its guard survives logout by design (`prefsStorage`, not user-scoped storage). A second account on the same phone re-sends, which is the case the fraud check exists for.
+- The "This week" figures are client-derived from the first lead page(s); they are lower bounds when `hasMore` and the screen says so with a "+". Exact counts would need a server field that does not exist.
+- The Activity "Deals" segment issues two authenticated requests (`GET /deals`, `GET /properties/saved`); a guest issues neither.
+
+**Migration notes**
+No schema change, no backend change, no new dependency, no new native module. Everything renders correctly against a backend older than Phase 2/3: every new field is optional and every new section is gated on its presence.
+
+**Docs updated**
+`dealdirect-mobile/docs/HANDOFF.md` §14 (written by the first session) already points at this entry. Debt markers: `AI/FILE_MAP.md` does not list `src/features/{deals,reviews}`, `src/auth/deviceLink.ts`, `src/features/leads/{buyerContext,thisWeek}.ts`; `AI/API_REFERENCE.md` still lacks `/deals`, `/reviews`, `/rewards/policy`, `/users/device`; `AI/MASTER_MEMORY.md`'s "scaffolding only" description of the mobile app is long stale.
+
+**Verification**
+`npx tsc --noEmit` clean. `npx expo lint` 0 errors / 17 warnings (12 pre-existing plus five `Array<T>` / unused-helper warnings from the first session's files, left as they are). `npm test` 285/285 across 34 suites (new: `src/features/leads/thisWeek.test.ts`, 9 cases). `npx expo export --platform android` bundles (8.15 MB hbc). **Nothing was run on a device or emulator.** The deal room flows (propose, confirm, done by both, feedback, message with a lure, report, attest, review), the Activity Deals list, the owner reviews sheet, the reserved-payout state and device linkage are all unverified on hardware; the installed dev client cannot load this JS without the rebuild the Phase 0 entry describes.
+
 ## 2026-09-04 — Mobile Phase 0: push tokens, tap routing, usage events, Sentry (mobile only)
 
 **Files changed** — `dealdirect-mobile/` only. **No backend file was touched.** The backend side of this (push-token routes, `/events`, `data.kind` on notifications) was already deployed by the backend lane and is consumed here as-is.

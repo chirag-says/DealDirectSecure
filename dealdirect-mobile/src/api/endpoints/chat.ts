@@ -11,6 +11,8 @@ import type {
   ConversationsResponse,
   GetMessagesParams,
   MessagesResponse,
+  ReportMessageRequest,
+  ReportMessageResponse,
   SendMessageRequest,
   SendMessageResponse,
   SocketTokenResponse,
@@ -78,6 +80,16 @@ export const chatEndpoints = {
       'On SUCCESS `message` is a Message OBJECT; on ERROR `message` is a STRING. Narrow on ' +
       '`success` first. Text is truncated to 5000 chars and HTML-escaped before storage, so ' +
       'decode entities when rendering. Emit the returned object over the socket afterwards.',
+  }),
+
+  reportMessage: defineEndpoint<ReportMessageRequest, ReportMessageResponse>({
+    method: 'POST',
+    path: '/chat/message/report',
+    auth: 'user',
+    envelope: 'data',
+    note:
+      '201 `{ data: { reportId } }` on a new report, 200 `{ duplicate: true }` on a repeat. ' +
+      '400 OWN_MESSAGE | REASON_REQUIRED (reason under 3 chars); 403 for a non-participant.',
   }),
 
   unreadCount: defineEndpoint<void, UnreadCountResponse>({

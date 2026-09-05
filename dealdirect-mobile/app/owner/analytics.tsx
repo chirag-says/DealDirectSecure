@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { View } from 'react-native';
 
 import { OwnerOnly } from '@/auth';
-import { LeadPipeline, useLeadAnalytics } from '@/features/leads';
+import { LeadPipeline, summariseWeek, useLeadAnalytics, useLeads } from '@/features/leads';
 import { radius, screenPadding, scrollBottomPadding, spacing, useTheme } from '@/theme';
 import type { LeadStatus } from '@/types/backend/lead';
 import {
@@ -77,6 +77,8 @@ function AnalyticsScreenContent() {
   const router = useRouter();
   const theme = useTheme();
   const { analytics, isLoading, error, refresh } = useLeadAnalytics(ANALYTICS_DAYS);
+  // The same first page the Leads screen holds; see `ThisWeekCard`.
+  const leadList = useLeads();
 
   const openLeads = (status?: LeadStatus) =>
     router.push(status ? `/owner/leads?status=${status}` : '/owner/leads');
@@ -112,7 +114,24 @@ function AnalyticsScreenContent() {
         padding: screenPadding,
         paddingBottom: scrollBottomPadding,
       }}
+      refreshing={leadList.isRefreshing}
+      onRefresh={() => {
+        refresh();
+        leadList.refresh();
+      }}
     >
+      {/*
+        THIS WEEK, FIRST. It previews the Monday digest email (Phase 2) with
+        the two numbers that email leads with, from rows already fetched.
+      */}
+      <ThisWeekCard
+        leads={leadList.leads}
+        hasMore={!!leadList.hasMore}
+        isLoading={leadList.isLoading}
+        error={leadList.error}
+        onPressWaiting={() => openLeads()}
+      />
+
       {/*
         THE ONE ACTIONABLE THING, FIRST.
 
@@ -243,6 +262,61 @@ const ANALYTICS_DAYS = 30;
 /** Days of the series actually plotted. Beyond this the bars are narrower than
  *  the gaps between them and the shape stops being readable on a phone. */
 const TREND_DAYS = 14;
+
+/**
+ * The owner's week: new leads in the last seven days and leads waiting on a
+ * first reply for more than a day, both derived on the client from the lead
+ * list (`features/leads/thisWeek.ts`). The list pages twenty at a time, so
+ * when more pages exist the figures are shown as "20+" rather than as exact.
+ *
+ * Loading is a skeleton of the same height, so nothing below it jumps. A
+ * failed lead list leaves the block out entirely: the analytics response has
+ * its own error state and this block must not stack a second one on it.
+ */
+function ThisWeekCard({
+  leads,
+  hasMore,
+  isLoading,
+  error,
+  onPressWaiting,
+}: {
+  leads: Parameters<typeof summariseWeek>[0];
+  hasMore: boolean;
+  isLoading: boolean;
+  error: unknown;
+  onPressWaiting: () => void;
+}) {
+  if (isLoading) {
+    return <Skeleton height={124} radius={radius.lg} className="mb-xl" />;
+  }
+  if (error) return null;
+
+  const week = summariseWeek(leads, hasMore);
+  const suffix = week.lowerBound ? '+' : '';
+
+  // Not wrapped in a `Card`: `Stat` tiles are surface-coloured, and a
+  // surface inside a surface has no edge. Same composition as the blocks
+  // below, so the screen reads as one system.
+  return (
+    <View className="mb-xl">
+      <SectionLabel>This week</SectionLabel>
+      <View className="mt-sm">
+        <StatRow>
+          <Stat label="New leads" value={`${week.newLeads}${suffix}`} detail="Last 7 days" />
+          <Stat
+            label="Waiting on you"
+            value={`${week.waiting}${suffix}`}
+            detail={week.waiting > 0 ? 'No reply for over a day' : 'Nobody is waiting'}
+            onPress={week.waiting > 0 ? onPressWaiting : undefined}
+          />
+        </StatRow>
+      </View>
+      <Text variant="caption" tone="muted" className="mt-sm">
+        Your weekly report arrives every Monday.
+      </Text>
+    </View>
+  );
+}
 
 /**
  * The lead-in.

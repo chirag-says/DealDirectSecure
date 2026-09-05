@@ -325,7 +325,12 @@ export function useMessageThread(conversationId: ObjectId | undefined): MessageT
       if (typingClearTimer.current) clearTimeout(typingClearTimer.current);
       if (stopTypingTimer.current) clearTimeout(stopTypingTimer.current);
     };
-  }, [conversationId, myUserId, queryClient]);
+    // `socketStatus` is a dependency on purpose. `onSocketEvent` is a no-op
+    // when no socket instance exists yet, and since the deal page mounts
+    // `SocketProvider` as a PARENT of this hook, the child's effect runs
+    // before the provider's `connectSocket` creates the instance. The first
+    // status change after creation re-runs this and subscribes for real.
+  }, [conversationId, myUserId, queryClient, socketStatus]);
 
   const history = useMemo(() => {
     const pages = query.data?.pages ?? [];
@@ -366,16 +371,22 @@ export function useMessageThread(conversationId: ObjectId | undefined): MessageT
       setLocal((current) => [...current, optimistic]);
 
       sendMessageRequest(conversationId, trimmed, messageType, myUserId)
-        .then((saved) => {
-          setLocal((current) =>
-            current.map((item) =>
-              item.clientId === clientId ? { ...saved, clientId, status: 'sent' } : item
-            )
-          );
+        .then(({ message: saved, warning, wire }) => {
+          setLocal((current) => {
+            const next = current.map((item) =>
+              item.clientId === clientId ? { ...saved, clientId, status: 'sent' as const } : item
+            );
+            // The server's own system warning follows the flagged message in
+            // the thread for both parties; the sender learns of it here.
+            return warning ? [...next, warning] : next;
+          });
 
           // REST persisted it; the socket only has to fan it out to whoever
-          // else is in the room right now. Never the other way around.
-          emitSendMessage({ conversationId, message: saved });
+          // else is in the room right now. Never the other way around. The
+          // BACKEND objects go over the wire, not the adapted ones: the
+          // receiving `isMessageShape` checks the backend's field names.
+          emitSendMessage({ conversationId, message: wire.message });
+          if (wire.warning) emitSendMessage({ conversationId, message: wire.warning });
           void queryClient.invalidateQueries({ queryKey: qk.chatConversations() });
         })
         .catch(() => {

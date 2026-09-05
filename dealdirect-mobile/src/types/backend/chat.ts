@@ -139,6 +139,30 @@ export interface MessagesResponse {
 export interface SendMessageResponse {
   success: true;
   message: Message;
+  /**
+   * Phase 2. When the text tripped the lure heuristics the message is saved
+   * anyway, `flagged` is true, and `warning` is a `messageType: 'system'`
+   * message the server also saved to the thread, which BOTH parties see.
+   * Absent on a backend older than Phase 2, so both are optional here.
+   */
+  warning?: Message | null;
+  flagged?: boolean;
+}
+
+/** `POST /chat/message/report`. `reason` must be at least 3 characters. */
+export interface ReportMessageRequest {
+  messageId: ObjectId;
+  reason: string;
+}
+
+/**
+ * 201 with `data.reportId` on a new report; 200 with `duplicate: true` when
+ * this user already reported this message. 400 `OWN_MESSAGE` for one's own.
+ */
+export interface ReportMessageResponse {
+  success: true;
+  data?: { reportId: ObjectId };
+  duplicate?: boolean;
 }
 
 export interface UnreadCountResponse {

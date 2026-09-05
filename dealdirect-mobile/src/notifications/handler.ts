@@ -9,15 +9,14 @@ import { prefsStorage, PREF_KEYS } from '@/storage';
  * ---------------------------------------------------------------------------
  * WHAT THIS IS NOT
  *
- * There is no server-initiated push here. `expo-notifications` needs a
- * device push token registered with a backend that can address it (FCM/APNs),
- * and this backend has no device-token model, no push service credentials,
- * and no route to register one — confirmed absent in the architecture audit
- * (`MOBILE_APP_ARCHITECTURE_PLAN.md` §0, finding #6). That is a genuine
- * backend addition, tracked as a separate change request, and nothing in this
- * file assumes it exists.
+ * This file is the LOCAL half: permission and presentation. Server push
+ * arrived in Phase 0 (2026-09-04): the backend now has a device-token model
+ * and `POST/DELETE /users/push-token`, the token lifecycle is
+ * `pushToken.ts`, and a tapped push is routed by `PushRouter.tsx`. Before
+ * that, the architecture audit (`MOBILE_APP_ARCHITECTURE_PLAN.md` §0,
+ * finding #6) had recorded all of it as absent; that note is history.
  *
- * What IS built: presenting a LOCAL notification (this device, this process)
+ * What this file builds: presenting a LOCAL notification (this device, this process)
  * the moment a `receive_message` socket event arrives, so a new chat message
  * is visible even when the recipient is on a different screen. Because
  * `SocketProvider` deliberately disconnects the socket on background (M6),

@@ -1,7 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { View } from 'react-native';
 
+import { track } from '@/analytics';
 import type { RailProperty } from '@/features/properties';
+import { registerPushTokenIfPermitted, requestNotificationPermissionOnce } from '@/notifications';
 import { radius, touchTarget, useTheme } from '@/theme';
 import { selection } from '@/native';
 import { PressableScale, Text, useToast } from '@/ui';
@@ -33,6 +35,19 @@ import { toggleShortlist, useIsShortlisted } from '../store';
  * The toast on the first add names the limitation — the list is on this device
  * — because a user who assumes it syncs will lose work and blame the app.
  * Removal is silent: there is nothing to disclose about forgetting something.
+ *
+ * ---------------------------------------------------------------------------
+ * THE PERMISSION MOMENT (Phase 0)
+ *
+ * An add is one of the two places the OS notification prompt is asked (the
+ * other is saving a search), and it is asked here rather than at launch
+ * because this is the first moment the user has shown they want to hear
+ * about something. `requestNotificationPermissionOnce` asks at most once
+ * ever; `registerPushTokenIfPermitted` then posts the device token if the
+ * answer was yes and there is a signed-in account to post it for. Neither
+ * touches the shortlist itself, and the store still imports no client: the
+ * only requests this button can cause are the token registration and the
+ * `shortlist_add` usage event, never anything to a property endpoint.
  */
 
 export interface ShortlistButtonProps {
@@ -50,6 +65,8 @@ export function ShortlistButton({ property }: ShortlistButtonProps) {
     selection();
     if (added) {
       toast.show('Shortlisted. Kept on this device, and the owner is not told.', 'success');
+      track('shortlist_add', { propertyId: property.id });
+      void requestNotificationPermissionOnce().then(registerPushTokenIfPermitted);
     }
   };
 

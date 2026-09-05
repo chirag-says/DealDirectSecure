@@ -12,6 +12,8 @@ export * from './taxonomy';
 export * from './property';
 export * from './chat';
 export * from './lead';
+export * from './deal';
+export * from './review';
 export * from './agreement';
 export * from './notification';
 export * from './savedSearch';

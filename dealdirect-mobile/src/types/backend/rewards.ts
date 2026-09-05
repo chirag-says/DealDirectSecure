@@ -34,6 +34,13 @@ export interface NextTierProgress {
 export interface RewardsWallet {
   totalPoints: number;
   availablePoints: number;
+  /**
+   * Phase 3. Milestone points (a visit done, an agreement signed). They count
+   * toward tier and are never redeemable: `addTransaction` routes any earn
+   * with `metadata.cashable === false` here instead of `availablePoints`.
+   * Absent on a backend older than Phase 3.
+   */
+  lockedPoints?: number;
   tier: RewardTier;
   tierMultiplier: number;
   nextTierProgress: NextTierProgress;
@@ -130,6 +137,33 @@ export interface RewardsStoreResponse {
 export interface RedeemRewardRequest {
   rewardSlug: string;
   bankDetails?: Record<string, unknown>;
+}
+
+/**
+ * `GET /rewards/policy`. Public. The numbers behind the rewards explainer,
+ * read from `config/rewardPolicy.js`, which is env-driven: `milestones` is
+ * EMPTY when milestone rewards are switched off, and the screen must render
+ * nothing for that section rather than a heading over an empty list.
+ */
+export interface RewardsPolicyResponse {
+  success: true;
+  data: {
+    milestones: Array<{
+      key: string;
+      points: number;
+      cashable: false;
+      /** One line: when this is awarded. */
+      when: string;
+    }>;
+    close: {
+      /** Fixed points on a verified close, on top of the draw. 0 when unset. */
+      fixedPoints: number;
+      drawBonus: true;
+      holdDays: number;
+      holdDaysFlagged: number;
+    };
+    pointValueRupees: number;
+  };
 }
 
 export interface RedeemRewardResponse {

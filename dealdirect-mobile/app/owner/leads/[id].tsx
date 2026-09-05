@@ -143,6 +143,21 @@ function LeadDetailScreenContent() {
           </View>
         </Card>
 
+        {/*
+          THE DEAL IS WHERE THE WORK HAPPENS.
+
+          Since Phase 2 a lead is also a deal: the visit, the thread and the
+          close live on `/deal/:leadId`, for both parties. This screen stays
+          the owner's CRM view (status, contact log), and the one primary
+          control on it leads to the deal.
+        */}
+        <Button
+          label="Open deal"
+          className="mt-base"
+          fullWidth
+          onPress={() => router.push(`/deal/${lead._id}`)}
+        />
+
         <View className="mt-base flex-row">
           {lead.userSnapshot.phone ? (
             <Button

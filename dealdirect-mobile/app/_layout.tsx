@@ -18,14 +18,21 @@ import { Pressable, Text as RNText, ScrollView, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { startAnalytics } from '@/analytics';
 import { createQueryClient, PERSIST_MAX_AGE, queryPersister, shouldPersistQuery } from '@/api';
 import { AuthProvider } from '@/auth';
+import { PushRouter } from '@/notifications';
+import { initSentry, wrapRoot } from '@/observability';
 import { dmSans, navigationThemes, ThemeProvider, useTheme } from '@/theme';
 import { FontOverrideProvider, OfflineBanner, ToastProvider } from '@/ui';
 
 // Held open until DM Sans (loaded for the Home redesign, see `theme/fonts.ts`)
 // is ready, so Home never flashes the system face before swapping to it.
 void SplashScreen.preventAutoHideAsync();
+
+// Before anything else can throw. A no-op without `EXPO_PUBLIC_SENTRY_DSN` or
+// without the native module; see `observability/sentry.ts`.
+initSentry();
 
 /**
  * Root layout and provider stack.
@@ -75,8 +82,12 @@ void SplashScreen.preventAutoHideAsync();
  */
 const FONT_GATE_MS = 3000;
 
-export default function RootLayout() {
+function RootLayout() {
   const [queryClient] = useState(createQueryClient);
+
+  // Usage events: the timer, the foreground/background flushes and the first
+  // `session_start`. Idempotent, so Fast Refresh cannot stack it.
+  useEffect(startAnalytics, []);
   const [fontsLoaded, fontError] = useFonts({
     DMSans_400Regular,
     DMSans_500Medium,
@@ -122,6 +133,10 @@ export default function RootLayout() {
         >
           <ThemeProvider>
             <AuthProvider>
+              {/* Push taps become routes here. Renders nothing; needs the
+                  auth tree so a tap into a signed-in screen lands on the
+                  screen's own sign-in prompt rather than a crash. */}
+              <PushRouter />
               {/*
                 DM Sans for the whole app. This used to be mounted at Home's
                 root only, which made every other screen render in the platform
@@ -143,6 +158,13 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+/**
+ * `Sentry.wrap` adds the touch-event and profiling hooks around the root; it
+ * is the identity when Sentry did not initialise. Named function above, so
+ * the export stays a component expo-router can pick up.
+ */
+export default wrapRoot(RootLayout);
 
 /**
  * The navigator, and the two pieces of chrome that have to agree with the

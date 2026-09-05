@@ -7,6 +7,12 @@
  * That reverses the "separate workstream" half of D3 (HANDOFF §9.1) by
  * explicit instruction; the deleted endpoints are unaffected either way.
  */
-export { useWallet, useTransactions, useReferral, useClaimDealReward } from './hooks';
+export {
+  useWallet,
+  useTransactions,
+  useReferral,
+  useClaimDealReward,
+  useRewardsPolicy,
+} from './hooks';
 export { useHubbleSession, HUBBLE_INTERNAL_URL, type HubbleSession } from './hubble';
 export { RewardReveal, type RewardRevealProps } from './components/RewardReveal';

@@ -47,7 +47,11 @@ export type PendingIntent =
   /** Resume a reward claim reached from a notification. */
   | { kind: 'claimReward'; verificationId: string }
   /** Return to a screen with nothing to re-fire. */
-  | { kind: 'open'; propertyId: string };
+  | { kind: 'open'; propertyId: string }
+  /** Return to a deal (a push tap on a lapsed session). Nothing re-fires. */
+  | { kind: 'deal'; leadId: string }
+  /** Return to the review form for a verified close. Nothing re-fires. */
+  | { kind: 'review'; verificationId: string };
 
 interface StoredIntent {
   intent: PendingIntent;
@@ -150,6 +154,13 @@ export function hrefForPendingIntent(intent: PendingIntent): Href {
       };
     case 'open':
       return { pathname: '/property/[id]', params: { id: intent.propertyId } };
+    case 'deal':
+      return { pathname: '/deal/[leadId]', params: { leadId: intent.leadId } };
+    case 'review':
+      return {
+        pathname: '/review/[verificationId]',
+        params: { verificationId: intent.verificationId },
+      };
   }
 }
 

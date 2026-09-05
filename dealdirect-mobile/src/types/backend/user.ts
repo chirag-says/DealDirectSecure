@@ -176,3 +176,64 @@ export interface SessionsResponse {
   success: true;
   sessions: UserSessionSummary[];
 }
+
+// --- Push tokens (Phase 0) ------------------------------------------------
+
+/** `platform` as the backend's push-token model spells it. */
+export type PushPlatform = 'ios' | 'android';
+
+/**
+ * `POST /users/push-token`. Registers this device's Expo push token against the
+ * signed-in account. Re-registering the same token is idempotent and re-points
+ * it at the current account, so a phone handed between two logins ends up
+ * addressed to whoever is signed in now.
+ */
+export interface RegisterPushTokenRequest {
+  /** `ExponentPushToken[...]`, from `expo-notifications`. */
+  token: string;
+  platform: PushPlatform;
+  /** Stable per-install id, so the backend can tell a reinstall from a new device. */
+  installationId?: string;
+  appVersion?: string;
+}
+
+export interface RegisterPushTokenResponse {
+  success: true;
+  data: {
+    id: ObjectId;
+    platform: PushPlatform;
+  };
+}
+
+/** `DELETE /users/push-token`. Takes a BODY on a DELETE, like `DELETE /users/me`. */
+export interface RemovePushTokenRequest {
+  token: string;
+}
+
+export interface RemovePushTokenResponse {
+  success: true;
+  removed: boolean;
+}
+
+/**
+ * `POST /users/logout`. The body is optional; when `pushToken` is present the
+ * backend deletes that device token in the same request, so a signed-out phone
+ * stops receiving the previous account's notifications.
+ */
+export interface LogoutRequest {
+  pushToken?: string;
+}
+
+/**
+ * `POST /users/device`. An opaque installation id (16 to 128 url-safe
+ * characters) the fraud-linkage check compares across accounts. Sent once per
+ * authenticated session with the analytics installation id; nothing else.
+ */
+export interface RegisterDeviceRequest {
+  deviceHash: string;
+}
+
+export interface RegisterDeviceResponse {
+  success: true;
+  message?: string;
+}

@@ -20,6 +20,7 @@ import type {
   ReferralsResponse,
   RedeemRewardRequest,
   RedeemRewardResponse,
+  RewardsPolicyResponse,
   RewardsStoreResponse,
   TransactionsResponse,
   WalletResponse,
@@ -40,6 +41,17 @@ export const rewardsEndpoints = {
     path: '/rewards/wallet',
     auth: 'user',
     envelope: 'keyed',
+    note: 'Carries `lockedPoints` (non-cashable milestone points) since Phase 3.',
+  }),
+
+  policy: defineEndpoint<void, RewardsPolicyResponse>({
+    method: 'GET',
+    path: '/rewards/policy',
+    auth: 'public',
+    envelope: 'data',
+    note:
+      'The explainer numbers. `milestones` is empty when milestone rewards are off; render ' +
+      'nothing for that section then. Numbers only, no promises.',
   }),
 
   hubbleConfig: defineEndpoint<void, HubbleConfigResponse>({

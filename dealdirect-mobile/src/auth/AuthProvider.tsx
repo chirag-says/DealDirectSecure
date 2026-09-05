@@ -17,6 +17,15 @@ import {
   setSessionFatalObserver,
   usersEndpoints,
 } from '@/api';
+// Imported from the file rather than the `@/notifications` barrel: that barrel
+// exports `PushBridge`, which imports `@/auth`, and the cycle would close here.
+import {
+  clearPushTokenCache,
+  peekCachedPushToken,
+  registerPushTokenIfPermitted,
+  setPushTokenUser,
+} from '@/notifications/pushToken';
+import { setSentryUser } from '@/observability';
 import { clearUserScopedStorage } from '@/storage';
 import type { User } from '@/types/backend/user';
 import {
@@ -25,6 +34,7 @@ import {
   hasStoredSession,
   restoreSessionCookie,
 } from './cookies';
+import { linkDeviceOnce } from './deviceLink';
 import type { LoginValues, RegisterValues } from './schemas';
 
 /**
@@ -113,6 +123,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         await clearSessionCookie();
         clearUserScopedStorage();
+        // The backend may or may not still hold this device's push token (a
+        // revoked session says nothing about it), but this app no longer has
+        // an account to register it for. Forgetting it locally means the next
+        // sign-in re-posts rather than trusting a stale record.
+        clearPushTokenCache();
         queryClient.clear();
         setUser(null);
         setEndedReason(reason);
@@ -157,6 +172,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSessionFatalObserver(null);
     };
   }, [endSession]);
+
+  /**
+   * Side effects of the session's identity, kept out of the state setters so
+   * every path that changes the user (cold start, login, refresh, teardown)
+   * pays them once here. Three consumers: crash reports carry `{ id, role }`
+   * and nothing else, push registration knows whom to register for, and the
+   * install is linked to the account for the close-deal fraud check. The
+   * last two are fire-and-forget and prompt for nothing; the push one only
+   * posts a token the OS has already been allowed to issue, and the device
+   * link is sent once per (install, account) and never again.
+   */
+  useEffect(() => {
+    setSentryUser(user ? { id: user._id, role: user.role } : null);
+    setPushTokenUser(user?._id ?? null);
+    if (status === 'authenticated' && user) {
+      void registerPushTokenIfPermitted();
+      void linkDeviceOnce(user._id);
+    }
+  }, [status, user]);
 
   const fetchMe = useCallback(async (): Promise<User> => {
     const response = await call(usersEndpoints.me);
@@ -304,7 +338,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async (): Promise<void> => {
     try {
-      await call(usersEndpoints.logout);
+      // The device token rides along so the backend drops it in the same
+      // request: a signed-out phone must not keep receiving this account's
+      // notifications. `endSession` clears the local copy afterwards.
+      const pushToken = peekCachedPushToken();
+      await call(usersEndpoints.logout, { data: pushToken ? { pushToken } : undefined });
     } catch {
       // A failed logout call must still clear the device. Leaving a session
       // mirrored locally because the network was down is the worse outcome.

@@ -19,10 +19,22 @@ export interface ChatComposerProps {
   onSend: (text: string) => void;
   onChangeText?: (text: string) => void;
   onStopTyping?: () => void;
+  /**
+   * The field took focus. The deal page embeds this composer part-way down
+   * a scrolling page and uses this to bring it above the keyboard; the
+   * thread screen, where the composer is already pinned, leaves it unset.
+   */
+  onFocus?: () => void;
   disabled?: boolean;
 }
 
-export function ChatComposer({ onSend, onChangeText, onStopTyping, disabled }: ChatComposerProps) {
+export function ChatComposer({
+  onSend,
+  onChangeText,
+  onStopTyping,
+  onFocus,
+  disabled,
+}: ChatComposerProps) {
   const theme = useTheme();
   const inputStyle = useTextInputStyle({ variant: 'callout' });
   const [text, setText] = useState('');
@@ -62,6 +74,7 @@ export function ChatComposer({ onSend, onChangeText, onStopTyping, disabled }: C
         // one, because the platform's own metrics are what clear a descender
         // and `ui/textInputStyle.ts` explains why a declared box does not.
         style={inputStyle}
+        onFocus={onFocus}
         onBlur={onStopTyping}
       />
 

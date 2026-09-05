@@ -1,18 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { FlashList } from '@shopify/flash-list';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 
 import { SignInPrompt } from '@/auth';
+import { DealRow, useMyDeals } from '@/features/deals';
 import { matchCity } from '@/features/home';
-import {
-  EnquiryMeter,
-  EnquirySheet,
-  useSaveToggle,
-  useSavedProperties,
-  type SaveToggle,
-} from '@/features/saved';
+import { EnquiryMeter, useRemoveInterest, useSavedProperties } from '@/features/saved';
 import {
   SavedSearchRow,
   useDeleteSavedSearch,
@@ -20,16 +15,11 @@ import {
   useUpdateSavedSearchAlerts,
   type SavedSearchSummary,
 } from '@/features/savedSearches';
-import {
-  PropertyListSkeleton,
-  PropertyRail,
-  SavedPropertyCard,
-  clearRecentlyViewed,
-  useRecentlyViewed,
-} from '@/features/properties';
+import { PropertyRail, clearRecentlyViewed, useRecentlyViewed } from '@/features/properties';
 import { BookingRow, useMyBookings } from '@/features/projects';
 import { ShortlistRow, removeFromShortlist, useShortlist } from '@/features/shortlist';
 import { gesture, radius, screenPadding, spacing, tabBarClearance, useTheme } from '@/theme';
+import type { DealListRow } from '@/types/backend/deal';
 import {
   EmptyState,
   ErrorState,
@@ -58,12 +48,12 @@ import {
  * Four segments now, in the order the user moves through them:
  *
  *   Shortlist   considering       device-local, free, unlimited
- *   Enquiries   contacted         server, capped at 5, owner notified
+ *   Deals       in motion         server, both roles, enquiries capped at 5
  *   Searches    watching          server, alerting
  *   Bookings    committed         server, money or a callback
  *
  * ---------------------------------------------------------------------------
- * SHORTLIST AND ENQUIRIES ARE TWO LISTS, AND THE SPLIT IS THE WHOLE POINT
+ * SHORTLIST AND DEALS ARE TWO LISTS, AND THE SPLIT IS THE WHOLE POINT
  *
  * `GET /properties/saved` reads the same `interestedUsers` array that
  * `POST /properties/interested/:id` writes. There is one server list, and
@@ -72,10 +62,11 @@ import {
  * It is capped at five.
  *
  * Calling that "Favourites" would be the single most misleading label in the
- * app — it implies private, free and unlimited, and it is none of those. So it
- * is called Enquiries, which is what it is, and the count line stays because
- * the backend refuses a sixth anywhere in the app and this is where a user
- * comes to make room.
+ * app — it implies private, free and unlimited, and it is none of those. It
+ * was called Enquiries; since Phase 2 (2026-09-04) the segment renders
+ * `GET /deals` instead, which is the same lead seen as a deal: stage, next
+ * visit, unread messages, and the owner's side of it too. The segment VALUE is
+ * still `enquiries`, because Home and the notification router send it.
  *
  * The list that label was hiding — the twenty flats you are still deciding
  * between — now exists separately, in `features/shortlist`, and creates no
@@ -114,7 +105,7 @@ export default function ActivityScreen() {
       {segment === 'shortlist' ? (
         <ShortlistList onOpenSearch={() => router.push('/(tabs)/search')} />
       ) : segment === 'enquiries' ? (
-        <InterestedList onOpenSearch={() => router.push('/(tabs)/search')} />
+        <DealsList onOpenSearch={() => router.push('/(tabs)/search')} />
       ) : segment === 'searches' ? (
         <SearchesList />
       ) : (
@@ -258,49 +249,93 @@ function BookingsList() {
   );
 }
 
-/**
- * Every card on this screen is by definition already saved, so its heart only
- * ever withdraws and the confirmation sheet is never raised from here. It is
- * mounted anyway: the sheet belongs to `useSaveToggle`, and a screen that owns
- * that hook without rendering its sheet is one refactor away from a tap that
- * silently does nothing.
- */
-function InterestedSheets({ save }: { save: SaveToggle }) {
-  return (
-    <EnquirySheet
-      visible={save.pending !== null}
-      subtitle={save.pending?.locationLabel || save.pending?.title}
-      remaining={save.remaining}
-      onConfirm={save.confirm}
-      onCancel={save.cancel}
-    />
-  );
-}
-
 /** Module-level so the reference is stable; see `PropertyList`'s note on why
  *  these are separators rather than a container `gap`. */
-const CardSeparator = () => <View style={{ height: spacing.base }} />;
 const RowSeparator = () => <View style={{ height: spacing.md }} />;
 
 const SEGMENTS = [
   // Shortlist first: it is the widest list, the cheapest act, and the one a
   // user opens this tab to look through.
   { label: 'Shortlist', value: 'shortlist' as const },
-  // "Enquiries", not "Favourites": adding to this list emails the owner and
-  // creates a lead. See `features/properties/interest.ts`.
-  { label: 'Enquiries', value: 'enquiries' as const },
+  // "Deals" over the value `enquiries`: the value is what Home's tile and the
+  // notification deep links send, and the label is what the list now holds.
+  // Every deal began as an enquiry, so the older name is not wrong, only
+  // narrower than the row. See `features/deals`.
+  { label: 'Deals', value: 'enquiries' as const },
   { label: 'Searches', value: 'searches' as const },
   { label: 'Bookings', value: 'bookings' as const },
 ];
 
-function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {
+/**
+ * The Deals segment.
+ *
+ * ---------------------------------------------------------------------------
+ * ONE LIST FOR BOTH SIDES
+ *
+ * `GET /deals` answers for the buyer who enquired AND for the owner of the
+ * listing, and this list shows both: an owner who is also looking for a flat
+ * has one place to see everything in motion. The role is named on the row only
+ * when the list actually mixes the two; a pure buyer never reads "Buying" five
+ * times.
+ *
+ * ---------------------------------------------------------------------------
+ * THE ENQUIRY CAP DID NOT GO AWAY
+ *
+ * Every buyer-side deal began as `POST /properties/interested/:id`, which is
+ * capped at five, and this is still where a user comes to make room. So the
+ * meter stays at the top, read from the same `GET /properties/saved` the old
+ * list rendered, and a buyer-side row whose listing is still on that list
+ * gets an overflow that withdraws the enquiry. Withdrawing frees the slot and
+ * leaves the deal where it is: the lead the owner already holds does not
+ * un-exist, so the row does not vanish and the copy does not claim it will.
+ */
+function DealsList({ onOpenSearch }: { onOpenSearch: () => void }) {
   const router = useRouter();
   const theme = useTheme();
-  const { items, isLoading, isRefreshing, error, refresh, used, requiresAuth } =
-    useSavedProperties();
-  const save = useSaveToggle();
+  const {
+    deals,
+    isLoading,
+    isRefreshing,
+    isFetchingMore,
+    hasMore,
+    error,
+    refresh,
+    loadMore,
+    requiresAuth,
+  } = useMyDeals();
+  // The cap, and which listings still hold a slot. Enabled by the same
+  // session the deals query is, so a guest sends neither request.
+  const saved = useSavedProperties();
+  const { remove } = useRemoveInterest();
 
   const openProperty = useCallback((id: string) => router.push(`/property/${id}`), [router]);
+  const openDeal = useCallback((leadId: string) => router.push(`/deal/${leadId}`), [router]);
+
+  const showRole = useMemo(() => {
+    const roles = new Set(deals.map((deal) => deal.role));
+    return roles.size > 1;
+  }, [deals]);
+
+  const savedIds = useMemo(() => new Set(saved.items.map((item) => item.id)), [saved.items]);
+
+  const withdraw = useCallback(
+    (deal: DealListRow) => {
+      const propertyId = deal.property?.id;
+      if (!propertyId) return;
+      Alert.alert(
+        'Withdraw this enquiry?',
+        'This frees one of your five enquiry slots. The owner already has your details and the deal stays in this list.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          // No toast: the removal is optimistic and rolls back on failure, so
+          // a confirmation here could outlive the thing it confirmed. The
+          // meter dropping and the overflow leaving the row are the feedback.
+          { text: 'Withdraw', style: 'destructive', onPress: () => remove(propertyId) },
+        ]
+      );
+    },
+    [remove]
+  );
 
   if (requiresAuth) {
     return (
@@ -309,20 +344,20 @@ function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {
         renderPrompt={(compact) => (
           <SignInPrompt
             compact={compact}
-            icon="heart-outline"
-            title="Your interested list"
-            description="Listings you tell an owner you are interested in appear here."
+            icon="chatbubbles-outline"
+            title="Your deals"
+            description="Every enquiry you send, and every one you receive on your listing, becomes a deal you can follow here."
           />
         )}
       />
     );
   }
 
-  if (isLoading) return <PropertyListSkeleton />;
+  if (isLoading) return <DealListSkeleton />;
 
-  if (error) return <ErrorState title="Could not load your list" onRetry={refresh} />;
+  if (error) return <ErrorState title="Could not load your deals" onRetry={refresh} />;
 
-  if (items.length === 0) {
+  if (deals.length === 0) {
     return (
       <NothingSavedYet
         onSelectProperty={openProperty}
@@ -338,11 +373,11 @@ function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {
                   backgroundColor: theme.colors.brandMuted,
                 }}
               >
-                <Ionicons name="heart" size={30} color={theme.colors.brand} />
+                <Ionicons name="chatbubbles" size={30} color={theme.colors.brand} />
               </View>
             }
-            title="Nothing saved yet"
-            description="Tap the heart on a listing to enquire about it. Saved listings appear here, up to five at a time."
+            title="No deals yet"
+            description="A deal starts when you tell an owner you are interested. It keeps the visit, the messages and the close in one place, up to five enquiries at a time."
             actionLabel="Browse properties"
             onAction={onOpenSearch}
           />
@@ -352,53 +387,81 @@ function InterestedList({ onOpenSearch }: { onOpenSearch: () => void }) {
   }
 
   return (
-    <>
     <FlashList
-      data={items}
+      data={deals}
       keyExtractor={(item) => item.id}
+      extraData={savedIds}
       contentContainerStyle={{
         paddingHorizontal: screenPadding,
         paddingBottom: tabBarClearance,
       }}
-      /*
-        A separator, not `gap`: FlashList positions cells absolutely, so flex
-        gap on the content container is inert. See `PropertyList` for the full
-        note. 16, matching the browse feed, so the two screens read as one
-        product at one density.
-      */
-      ItemSeparatorComponent={CardSeparator}
+      ItemSeparatorComponent={RowSeparator}
       ListHeaderComponentStyle={{ marginBottom: spacing.base }}
       refreshControl={
         <RefreshControl
           refreshing={isRefreshing}
-          onRefresh={refresh}
+          onRefresh={() => {
+            refresh();
+            saved.refresh();
+          }}
           tintColor={theme.colors.textMuted}
           colors={[theme.colors.accent]}
           progressBackgroundColor={theme.colors.surface}
         />
       }
-      ListHeaderComponent={<EnquiryMeter used={used} />}
-      /*
-        THE REMOVE ACTION IS ON THE CARD, NOT BETWEEN CARDS.
-
-        This list used to render a card, then a small red "Remove" link in the
-        gap beneath it, then the next card — putting the control nearer the
-        listing it does NOT act on than the one it does. See
-        `SavedPropertyCard` for the full reasoning and for why the
-        confirmation dialog went with it.
-      */
+      // The meter reads the saved list, which can fail on its own; a failed
+      // count is omitted rather than shown as "0 of 5", which would be a lie
+      // about the cap on exactly the screen that exists to manage it.
+      ListHeaderComponent={
+        !saved.isLoading && !saved.error ? <EnquiryMeter used={saved.used} /> : null
+      }
+      onEndReached={loadMore}
+      onEndReachedThreshold={0.4}
+      ListFooterComponent={
+        isFetchingMore ? (
+          <ActivityIndicator color={theme.colors.textMuted} style={{ marginTop: spacing.lg }} />
+        ) : hasMore ? null : (
+          <Text variant="caption" tone="muted" className="mt-lg text-center">
+            Tap a deal to see its visits, messages and close.
+          </Text>
+        )
+      }
       renderItem={({ item }) => (
-        <SavedPropertyCard
-          property={item}
-          onPress={openProperty}
-          busy={save.isBusy(item.id)}
-          onRemove={save.toggle}
+        <DealRow
+          deal={item}
+          showRole={showRole}
+          onPress={openDeal}
+          onOverflow={
+            item.role === 'buyer' && item.property && savedIds.has(item.property.id)
+              ? withdraw
+              : undefined
+          }
         />
       )}
-      />
+    />
+  );
+}
 
-      <InterestedSheets save={save} />
-    </>
+/** Mirrors `DealRow`'s geometry: a thumbnail beside two lines and a badge. */
+function DealListSkeleton() {
+  return (
+    <View style={{ paddingHorizontal: screenPadding, gap: spacing.md }}>
+      <Skeleton height={64} radius={radius.lg} />
+      {[0, 1, 2].map((index) => (
+        <View
+          key={index}
+          className="flex-row rounded-lg bg-surface p-md"
+          style={{ borderRadius: radius.lg }}
+        >
+          <Skeleton width={64} height={64} radius={radius.md} />
+          <View className="ml-md flex-1">
+            <Skeleton width="70%" height={16} />
+            <Skeleton width="45%" height={14} className="mt-sm" />
+            <Skeleton width="55%" height={12} className="mt-sm" />
+          </View>
+        </View>
+      ))}
+    </View>
   );
 }
 

@@ -102,8 +102,24 @@ export interface PropertyCategorizedImages {
   };
 }
 
+/**
+ * Trust facts about the owner, computed server-side for the PUBLIC detail
+ * response (Phase 3). Aggregate only: no phone, no email, no history.
+ * `responseHours` is null until the owner has answered at least three leads.
+ */
+export interface OwnerStats {
+  responseHours: number | null;
+  answered: number;
+  verified: boolean;
+  documentsVerified: boolean;
+  reviews: { count: number; overall: number | null };
+}
+
 export interface Property extends Timestamps {
   _id: ObjectId;
+
+  /** Top-level on `GET /properties/:id` only. Absent from every list shape. */
+  ownerStats?: OwnerStats | null;
 
   /** Populated with `name email phone profileImage` by `GET /properties/:id`. */
   owner?: ObjectId | Pick<User, '_id' | 'name' | 'email' | 'phone' | 'profileImage'>;

@@ -8,5 +8,13 @@ export {
   useMarkAllNotificationsRead,
   type NotificationsState,
 } from './hooks';
-export { resolveNotificationTarget, type NotificationTarget } from './targets';
+export {
+  resolveNotificationTarget,
+  resolveTargetFromData,
+  readNotificationKind,
+  hrefForTarget,
+  NOTIFICATION_KINDS,
+  type NotificationTarget,
+  type NotificationKind,
+} from './targets';
 export { NotificationRow, type NotificationRowProps } from './components/NotificationRow';

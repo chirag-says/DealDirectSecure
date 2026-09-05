@@ -6,6 +6,7 @@ import { relativeDay } from '@/lib';
 import { radius, spacing, useTheme } from '@/theme';
 import type { Lead } from '@/types/backend/lead';
 import { Avatar, Badge, PressableScale, PriceLabel, Text } from '@/ui';
+import { buyerContextLine } from '../buyerContext';
 import { statusLabel, statusTone } from '../status';
 
 /**
@@ -152,6 +153,18 @@ function LeadCardComponent({ lead, onPress }: LeadCardProps) {
 
             {price ? (
               <PriceLabel price={price} variant="subhead" numberOfLines={1} className="mt-xs" />
+            ) : null}
+
+            {/*
+              The buyer in aggregate (Phase 3). One muted line, not a score:
+              "3 weeks on DealDirect · 4 enquiries · 2 visits · Budget fits" is
+              four facts the owner can weigh; a number would be a ranking this
+              product has not agreed to. Absent on rows from an older backend.
+            */}
+            {lead.buyerContext ? (
+              <Text variant="caption" tone="muted" numberOfLines={1} className="mt-xs">
+                {buyerContextLine(lead.buyerContext)}
+              </Text>
             ) : null}
           </View>
         </View>

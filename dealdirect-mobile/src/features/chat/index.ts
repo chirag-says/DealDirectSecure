@@ -11,6 +11,7 @@ export {
   deleteConversationRequest,
   MESSAGE_PAGE_SIZE,
   type MessagePage,
+  type SentMessage,
 } from './api';
 export {
   useChatConversations,

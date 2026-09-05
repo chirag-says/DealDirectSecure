@@ -13,6 +13,8 @@ import type {
   BlogListParams,
   CreateInquiryRequest,
   CreateInquiryResponse,
+  IngestEventsRequest,
+  IngestEventsResponse,
   MyInquiriesResponse,
 } from '@/types/backend/misc';
 import type {
@@ -111,5 +113,19 @@ export const contactEndpoints = {
     auth: 'user',
     envelope: 'keyed',
     note: 'Response key is `inquiries`, not `data`.',
+  }),
+} as const;
+
+export const eventsEndpoints = {
+  ingest: defineEndpoint<IngestEventsRequest, IngestEventsResponse>({
+    method: 'POST',
+    path: '/events',
+    auth: 'optional',
+    envelope: 'keyed',
+    rateLimit: 'events',
+    note:
+      'Returns 202. Max 50 events per batch. Names outside the whitelist and props outside ' +
+      'each name\'s allowed set are dropped silently, not rejected. The cookie is attached ' +
+      'when present, so a signed-in user\'s events are attributed; `anon` covers guests.',
   }),
 } as const;

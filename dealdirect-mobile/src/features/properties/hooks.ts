@@ -1,3 +1,4 @@
+import { track } from '@/analytics';
 import { useInfiniteQuery, useQuery, type UseInfiniteQueryResult } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 
@@ -171,5 +172,6 @@ export function useRecordPropertyView(property: PropertyDetail | undefined): voi
     if (!property || recordedId.current === property.id) return;
     recordedId.current = property.id;
     recordView(property);
+    track('property_view', { propertyId: property.id, source: 'detail' });
   }, [property]);
 }

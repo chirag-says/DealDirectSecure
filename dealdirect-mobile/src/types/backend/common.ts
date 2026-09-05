@@ -83,7 +83,37 @@ export type BackendErrorCode =
   | 'LEGACY_BUILDER_LISTING'
   | 'DELETE_BLOCKED_DEPENDENTS'
   // Group buy (controllers/campaignController.js)
-  | 'CAMPAIGN_MEMBER_PAYMENT_PROTECTED';
+  | 'CAMPAIGN_MEMBER_PAYMENT_PROTECTED'
+  // Deals (controllers/dealController.js). Each is a refusal the user can act
+  // on, so each maps to its own line of copy in `features/deals`.
+  | 'NOT_A_PARTY'
+  | 'INVALID_ID'
+  | 'INVALID_TIME'
+  | 'TIME_IN_PAST'
+  | 'TOO_FAR_AHEAD'
+  | 'VISIT_ALREADY_OPEN'
+  | 'DEAL_CLOSED'
+  | 'OWN_PROPOSAL'
+  | 'NOT_PROPOSED'
+  | 'TIME_PASSED'
+  | 'NOT_OPEN'
+  | 'TOO_EARLY'
+  | 'ALREADY_CONFIRMED'
+  | 'BUYER_ONLY'
+  | 'VISIT_NOT_DONE'
+  | 'FEEDBACK_GIVEN'
+  | 'CHAT_DISABLED'
+  | 'NO_VERIFICATION'
+  | 'ALREADY_ATTESTED'
+  // Chat report (controllers/chatController.js)
+  | 'OWN_MESSAGE'
+  | 'REASON_REQUIRED'
+  // Reviews (controllers/reviewController.js)
+  | 'NOT_VERIFIED'
+  | 'ALREADY_REVIEWED'
+  | 'INVALID_RATING'
+  // Reward claim (controllers/propertyController.js)
+  | 'PAYOUT_ON_HOLD';
 
 /**
  * The error body. Note that `message` is a STRING here. On a small number of
@@ -103,6 +133,10 @@ export interface BackendErrorBody {
   blockReason?: string;
   /** Present on 403 from `requireRole`. */
   requiredRoles?: string[];
+  /** Present on 409 `PAYOUT_ON_HOLD`: when the held payout becomes claimable. */
+  holdUntil?: IsoDate;
+  /** Present on 409 `VISIT_ALREADY_OPEN`: the visit that is already open. */
+  visitId?: ObjectId;
 }
 
 // ---------------------------------------------------------------------------

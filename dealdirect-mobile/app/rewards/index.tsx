@@ -4,7 +4,7 @@ import { Share, View } from 'react-native';
 
 import { useAuth, SignInPrompt } from '@/auth';
 import { copyToClipboard, selection } from '@/native';
-import { useReferral, useTransactions, useWallet } from '@/features/rewards';
+import { useReferral, useRewardsPolicy, useTransactions, useWallet } from '@/features/rewards';
 import type { NextTierProgress, RewardTier, RewardTransaction } from '@/types/backend/rewards';
 import { screenPadding, scrollBottomPadding, spacing, touchTarget, useTheme } from '@/theme';
 import {
@@ -33,6 +33,7 @@ import {
  */
 export default function RewardsScreen() {
   const { status } = useAuth();
+  const theme = useTheme();
 
   const wallet = useWallet();
   const transactions = useTransactions();
@@ -94,6 +95,27 @@ export default function RewardsScreen() {
             points
           </Text>
 
+          {/*
+            Milestone points (Phase 3) sit outside the balance by construction:
+            the backend routes them into `lockedPoints`, never into
+            `availablePoints`. Shown only when there are any, and said plainly,
+            so nobody reads the balance and the tier as disagreeing.
+          */}
+          {!wallet.isLoading && !wallet.error && wallet.lockedPoints > 0 ? (
+            <View className="mt-md items-center px-md">
+              <View className="flex-row items-center">
+                <Ionicons name="lock-closed-outline" size={14} color={theme.colors.textMuted} />
+                <Text variant="footnote" tone="secondary" className="ml-xs">
+                  {wallet.lockedPoints.toLocaleString('en-IN')} locked
+                </Text>
+              </View>
+              <Text variant="caption" tone="muted" className="mt-xs text-center">
+                Locked milestone points count toward your tier and unlock only at a verified
+                close.
+              </Text>
+            </View>
+          ) : null}
+
           {wallet.error && !wallet.isLoading ? (
             <View className="mt-sm items-center">
               <Text variant="footnote" tone="danger">
@@ -138,6 +160,8 @@ export default function RewardsScreen() {
         />
 
         <RedeemCard />
+
+        <HowRewardsWork />
 
         <TransactionsSection
           transactions={transactions.transactions}
@@ -220,6 +244,109 @@ function RedeemCard() {
       </Text>
       <Button label="Browse rewards" onPress={() => router.push('/rewards/redeem')} />
     </Card>
+  );
+}
+
+/**
+ * The numbers behind the programme, from `GET /rewards/policy`.
+ *
+ * Numbers only, no promises: each line states what the server is configured
+ * to award and when, and nothing here says "earn up to" or "guaranteed". The
+ * milestone list renders only when the server has milestones switched on;
+ * the close payout and the hold are always present because a verified close
+ * is the one reward this programme has always paid.
+ *
+ * The section is an explainer, so a failed fetch gets one retry line rather
+ * than an error state of its own on a screen that already has the balance to
+ * worry about.
+ */
+function HowRewardsWork() {
+  const { policy, isLoading, error, refresh } = useRewardsPolicy();
+
+  if (isLoading) {
+    return <Skeleton height={140} radius={16} className="mt-base" />;
+  }
+
+  return (
+    <Card className="mt-base">
+      <Text variant="bodyEmphasis">How rewards work</Text>
+
+      {error || !policy ? (
+        <View className="mt-xs">
+          <Text variant="footnote" tone="secondary">
+            We could not load the details.
+          </Text>
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading how rewards work"
+            onPress={refresh}
+            className="mt-xs"
+          >
+            <Text variant="footnote" tone="accent">
+              Try again
+            </Text>
+          </PressableScale>
+        </View>
+      ) : (
+        <View className="mt-sm" style={{ gap: spacing.sm }}>
+          {policy.milestones.map((milestone) => (
+            <PolicyLine
+              key={milestone.key}
+              icon="flag-outline"
+              text={`${milestone.points.toLocaleString('en-IN')} locked points ${milestone.when}`}
+            />
+          ))}
+
+          <PolicyLine
+            icon="ribbon-outline"
+            text={
+              policy.close.fixedPoints > 0
+                ? `A verified close pays ${policy.close.fixedPoints.toLocaleString('en-IN')} points plus a reward draw.`
+                : 'A verified close pays a reward draw.'
+            }
+          />
+
+          <PolicyLine
+            icon="time-outline"
+            text={
+              policy.close.holdDaysFlagged > policy.close.holdDays
+                ? `Close rewards unlock after ${policy.close.holdDays} days, or ${policy.close.holdDaysFlagged} days when a deal needs an extra check.`
+                : `Close rewards unlock after ${policy.close.holdDays} days.`
+            }
+          />
+
+          {policy.pointValueRupees > 0 ? (
+            <PolicyLine
+              icon="cash-outline"
+              text={`1 point is worth ₹${policy.pointValueRupees.toLocaleString('en-IN')} at redemption.`}
+            />
+          ) : null}
+        </View>
+      )}
+    </Card>
+  );
+}
+
+function PolicyLine({
+  icon,
+  text,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  text: string;
+}) {
+  const theme = useTheme();
+  return (
+    <View className="flex-row items-start">
+      <Ionicons
+        name={icon}
+        size={16}
+        color={theme.colors.textMuted}
+        style={{ marginTop: 2 }}
+      />
+      <Text variant="footnote" tone="secondary" className="ml-sm flex-1">
+        {text}
+      </Text>
+    </View>
   );
 }
 

@@ -4,6 +4,8 @@ import { View } from 'react-native';
 import { ApiError } from '@/api';
 import { useAuth } from '@/auth';
 import { Button, Chip, Input, Sheet, Text } from '@/ui';
+import { track } from '@/analytics';
+import { registerPushTokenIfPermitted, requestNotificationPermissionOnce } from '@/notifications';
 import { useCreateSavedSearch } from '../hooks';
 import { PRICE_BAND_LABELS, PRICE_BAND_ORDER, type SavedSearchPriceBand } from '../types';
 
@@ -89,6 +91,10 @@ export function SaveSearchSheet({ visible, onClose, seedTerm, onSaved }: SaveSea
       });
       reset();
       onSaved?.();
+      track('saved_search_create', { city: trimmedCity || undefined });
+      // The OS prompt, asked once ever and only now: the alert this sheet
+      // promises is the first thing a notification would carry.
+      void requestNotificationPermissionOnce().then(registerPushTokenIfPermitted);
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 400

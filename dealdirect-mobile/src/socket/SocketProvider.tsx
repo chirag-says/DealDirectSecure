@@ -19,9 +19,18 @@ import { connectSocket, disconnectSocket } from './socketManager';
  * idempotent functions, so overlapping fires from the two effects around the
  * same moment are harmless rather than something that needs coordinating.
  *
- * Mount this once, above every screen that uses chat — it belongs inside
- * `AuthProvider` (needs `useAuth`) and does not need to be inside anything
- * chat-specific.
+ * ---------------------------------------------------------------------------
+ * WHERE IT IS MOUNTED (Phase 2, 2026-09-04)
+ *
+ * NOT at the root. D2 (HANDOFF §9.1) unmounted it there because a live socket
+ * serving no UI is a cost with no benefit. It is now mounted by the deal page
+ * (`app/deal/[leadId].tsx`), around the message wall only, and only when the
+ * deal has a conversation. So the socket lives exactly while a thread is on
+ * screen: the effect below connects on mount and DISCONNECTS on unmount (the
+ * cleanup that was missing when this was a root-level, never-unmounting
+ * component). The instance is kept, not destroyed, on that path: a second
+ * deal page a moment later reconnects cheaply, and the handshake is redone
+ * on every `connect` regardless.
  */
 export function SocketProvider({ children }: { children: React.ReactNode }) {
   const { status, refreshUser } = useAuth();
@@ -35,6 +44,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     }
 
     connectSocket({ onSessionFailure: () => void refreshUser() });
+    return () => disconnectSocket();
   }, [status, refreshUser]);
 
   useEffect(() => {

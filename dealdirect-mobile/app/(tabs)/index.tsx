@@ -27,7 +27,7 @@ import {
 } from '@/features/home';
 import { useLeads } from '@/features/leads';
 import { useMyProperties } from '@/features/listings';
-import { resolveNotificationTarget, useNotifications } from '@/features/notifications';
+import { hrefForTarget, resolveNotificationTarget, useNotifications } from '@/features/notifications';
 import { PropertyRail, type ListingIntent } from '@/features/properties';
 import { ProjectRail, useRecentProjects } from '@/features/projects';
 import { useSavedProperties } from '@/features/saved';
@@ -170,14 +170,7 @@ export default function HomeScreen() {
   const openNotification = useCallback(
     (notification: AppNotification) => {
       const target = resolveNotificationTarget(notification);
-      if (!target) {
-        router.push('/(tabs)/updates');
-        return;
-      }
-      if (target.kind === 'property') router.push(`/property/${target.id}`);
-      else if (target.kind === 'leads') router.push('/owner/leads');
-      else if (target.kind === 'dealReward') router.push(`/claim-reward/${target.verificationId}`);
-      else router.push({ pathname: '/(tabs)/activity', params: { segment: 'searches' } });
+      router.push(target ? hrefForTarget(target) : '/(tabs)/updates');
     },
     [router]
   );

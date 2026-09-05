@@ -3,9 +3,12 @@ import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { RefreshControl, View } from 'react-native';
 
+import { track } from '@/analytics';
 import { SignInPrompt } from '@/auth';
 import {
+  hrefForTarget,
   NotificationRow,
+  readNotificationKind,
   resolveNotificationTarget,
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
@@ -61,14 +64,10 @@ export default function UpdatesScreen() {
       if (!notification.isRead) markRead(notification._id);
 
       const target = resolveNotificationTarget(notification);
-      if (!target) return;
-
-      if (target.kind === 'property') router.push(`/property/${target.id}`);
-      else if (target.kind === 'leads') router.push('/owner/leads');
-      else if (target.kind === 'dealReward') router.push(`/claim-reward/${target.verificationId}`);
-      // A saved-search match. Landing on Activity's default segment would make
-      // the user find the search themselves, so the segment is named.
-      else router.push({ pathname: '/(tabs)/activity', params: { segment: 'searches' } });
+      track('notification_opened', {
+        kind: readNotificationKind(notification.data) ?? target?.kind ?? 'unknown',
+      });
+      if (target) router.push(hrefForTarget(target));
     },
     [markRead, router]
   );

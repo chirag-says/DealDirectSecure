@@ -33,6 +33,7 @@ import {
   useSectionRegistry,
 } from '@/features/properties';
 import { EnquirySheet, useSavedProperties } from '@/features/saved';
+import { OwnerReviewsSheet } from '@/features/reviews';
 import { RewardReveal } from '@/features/rewards';
 import { useSimilarProperties } from '@/features/search';
 import { relativeDay } from '@/lib';
@@ -116,6 +117,8 @@ export default function PropertyDetailScreen() {
   const { property, isLoading, isMissing, error, refresh } = usePropertyDetail(id);
 
   const [reporting, setReporting] = useState(false);
+  /** The owner's published reviews, fetched only once this opens. */
+  const [showingReviews, setShowingReviews] = useState(false);
 
   /**
    * `resume: 'enquire'` means the user pressed "I'm interested" as a guest and
@@ -591,7 +594,15 @@ export default function PropertyDetailScreen() {
 
           {owner ? (
             <Section title="Owner" navLabel="Owner">
-              <DetailOwner owner={owner} />
+              <DetailOwner
+                owner={owner}
+                ownerStats={property.ownerStats}
+                onShowReviews={
+                  property.ownerStats && property.ownerStats.reviews.count > 0
+                    ? () => setShowingReviews(true)
+                    : undefined
+                }
+              />
             </Section>
           ) : null}
 
@@ -697,6 +708,18 @@ export default function PropertyDetailScreen() {
         visible={reporting}
         onClose={() => setReporting(false)}
       />
+
+      {/* Public reviews of the owner, keyed by their user id. The card above
+          shows the count and mean from `ownerStats`; the list is requested
+          only when opened. */}
+      {owner ? (
+        <OwnerReviewsSheet
+          ownerId={owner.id}
+          ownerName={owner.name ?? 'this owner'}
+          visible={showingReviews}
+          onClose={() => setShowingReviews(false)}
+        />
+      ) : null}
 
       {/* Marking interest earns points. The response says how many, and until
           2026-08-13 that was discarded — see `interest.ts`. */}

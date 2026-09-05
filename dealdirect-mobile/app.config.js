@@ -166,6 +166,19 @@ const config = {
     // profile date of birth — both of which were free-text fields validated by
     // a regex because no picker was installed.
     '@react-native-community/datetimepicker',
+    // Crash reporting (Phase 0). The plugin writes `sentry.properties` for the
+    // native build's source-map upload; the upload itself needs
+    // SENTRY_AUTH_TOKEN in the build environment and is skipped without it.
+    // The runtime DSN is EXPO_PUBLIC_SENTRY_DSN, read in
+    // src/observability/sentry.ts; unset, the SDK never initialises.
+    [
+      '@sentry/react-native/expo',
+      {
+        organization: process.env.SENTRY_ORG || 'dealdirect',
+        project: process.env.SENTRY_PROJECT || 'dealdirect-mobile',
+        url: 'https://sentry.io/',
+      },
+    ],
   ],
 
   experiments: {

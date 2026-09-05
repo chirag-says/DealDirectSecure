@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 
+import { track } from '@/analytics';
 import { ApiError, call, propertiesEndpoints, qk } from '@/api';
 import { success } from '@/native';
 import { useAuth } from '@/auth';
@@ -151,10 +152,11 @@ export function useSaveToggle(): SaveToggle {
       return { previous };
     },
 
-    onSuccess: (_data, { add }) => {
+    onSuccess: (_data, { property, add }) => {
       // An acknowledgement, not a disclosure: the enquiry's consequences were
       // stated before it was sent, so this only has to confirm it landed.
       if (add) success();
+      if (add) track('contact_owner', { propertyId: property.id });
       toast.show(
         add ? 'Enquiry sent. The owner has your contact details.' : 'Enquiry withdrawn.',
         add ? 'success' : 'neutral'

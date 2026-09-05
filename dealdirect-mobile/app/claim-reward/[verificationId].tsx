@@ -53,6 +53,23 @@ function ClaimRewardScreen() {
   const [result, setResult] = useState<ClaimDealRewardResponse | null>(null);
   const attempted = useRef(false);
 
+  /**
+   * 409 `PAYOUT_ON_HOLD` is a STATE, not a fault. The close was approved and
+   * the reward is the user's; the backend holds it for a set number of days
+   * (`GET /rewards/policy` says how many, longer when the linkage check
+   * flagged the deal) and refuses a claim until `holdUntil`. Rendered calmly,
+   * with the date, and with the one thing the user CAN do meanwhile: review
+   * the deal, which is what the review request notification asks for too.
+   */
+  const onHold = error instanceof ApiError && error.code === 'PAYOUT_ON_HOLD' ? error : null;
+  const holdUntil = onHold?.details.holdUntil ? new Date(onHold.details.holdUntil) : null;
+  const holdUntilLabel =
+    holdUntil && !Number.isNaN(holdUntil.getTime())
+      ? holdUntil.toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })
+      : null;
+
+  const openReview = () => router.push(`/review/${verificationId}`);
+
   useEffect(() => {
     // `RequireAuth` renders its children while the session is still restoring,
     // so claiming has to wait for a DECIDED session. Firing during the probe
@@ -80,6 +97,32 @@ function ClaimRewardScreen() {
             <Skeleton width={160} height={20} className="mt-lg" />
             <Skeleton width={220} height={16} className="mt-sm" />
           </View>
+        ) : onHold && !result ? (
+          <>
+            <View
+              className="h-20 w-20 items-center justify-center rounded-full"
+              style={{ backgroundColor: theme.colors.accentMuted }}
+            >
+              <Ionicons name="time-outline" size={36} color={theme.colors.accent} />
+            </View>
+
+            <Text variant="title2" className="mt-lg text-center">
+              Reserved for you
+            </Text>
+            <Text variant="callout" tone="secondary" className="mt-xs text-center">
+              {holdUntilLabel
+                ? `Your reward is set aside and unlocks on ${holdUntilLabel}. Come back then to claim it.`
+                : 'Your reward is set aside and unlocks once the hold on this deal ends. Come back then to claim it.'}
+            </Text>
+
+            <Button label="View rewards" className="mt-2xl" onPress={() => router.replace('/rewards')} />
+            <Button
+              label="Review this deal"
+              variant="secondary"
+              className="mt-md"
+              onPress={openReview}
+            />
+          </>
         ) : error && !result ? (
           <ErrorState
             title="Could not claim this reward"
@@ -134,6 +177,13 @@ function ClaimRewardScreen() {
               label="View rewards"
               className="mt-2xl"
               onPress={() => router.replace('/rewards')}
+            />
+            {/* The other party is asked for one too; both publish together. */}
+            <Button
+              label="Review this deal"
+              variant="secondary"
+              className="mt-md"
+              onPress={openReview}
             />
           </>
         ) : null}

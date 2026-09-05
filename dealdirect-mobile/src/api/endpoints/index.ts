@@ -15,6 +15,8 @@ export { usersEndpoints } from './users';
 export { propertiesEndpoints } from './properties';
 export { chatEndpoints } from './chat';
 export { leadsEndpoints } from './leads';
+export { dealsEndpoints } from './deals';
+export { reviewsEndpoints } from './reviews';
 export { agreementsEndpoints } from './agreements';
 export { notificationsEndpoints } from './notifications';
 export { savedSearchesEndpoints } from './savedSearches';
@@ -25,4 +27,4 @@ export {
   campaignsEndpoints,
   bookingsEndpoints,
 } from './projects';
-export { taxonomyEndpoints, blogsEndpoints, contactEndpoints } from './misc';
+export { taxonomyEndpoints, blogsEndpoints, contactEndpoints, eventsEndpoints } from './misc';

@@ -40,7 +40,8 @@ export type RateLimitTier =
   | 'auth' // 5 / 15 min, successful requests not counted
   | 'search' // 20 / min
   | 'transactional' // 20 / hour
-  | 'groupBuy'; // 10 / 15 min
+  | 'groupBuy' // 10 / 15 min
+  | 'events'; // 30 batches / min, POST /events only
 
 export interface EndpointSpec<TPathParams = void> {
   readonly method: HttpMethod;

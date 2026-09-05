@@ -6,7 +6,7 @@
 
 import { call, chatEndpoints } from '@/api';
 import type { ObjectId } from '@/types/backend/common';
-import type { MessageType } from '@/types/backend/chat';
+import type { Message, MessageType } from '@/types/backend/chat';
 import { adaptConversation, adaptMessage } from './adapters';
 import type { ConversationSummary, ChatMessage } from './types';
 
@@ -53,6 +53,23 @@ export async function fetchMessagePage(
   return { items, page, hasMore: items.length === MESSAGE_PAGE_SIZE };
 }
 
+export interface SentMessage {
+  message: ChatMessage;
+  /**
+   * Phase 2: when the text tripped the server's lure heuristics, the system
+   * warning it saved to the thread. Both parties see it; the sender gets it
+   * here, the other party gets it over the socket (see `useMessageThread`).
+   */
+  warning: ChatMessage | null;
+  /**
+   * The backend objects, untouched, for the socket fan-out. The receiving
+   * client checks the relayed payload with `isMessageShape`, which wants the
+   * backend's field names (`_id`, `conversation`, `sender._id`), not the
+   * adapted ones. Emitting the adapted shape is silently dropped on receipt.
+   */
+  wire: { message: Message; warning: Message | null };
+}
+
 /**
  * Persists a message. This alone is the source of truth — see `useSendMessage`
  * for why the socket emit that follows it is fan-out only, never a substitute.
@@ -62,11 +79,16 @@ export async function sendMessageRequest(
   text: string,
   messageType: MessageType | undefined,
   myUserId: string
-) {
+): Promise<SentMessage> {
   const response = await call(chatEndpoints.sendMessage, {
     data: { conversationId, text, messageType },
   });
-  return adaptMessage(response.message, myUserId);
+  const warning = response.warning ?? null;
+  return {
+    message: adaptMessage(response.message, myUserId),
+    warning: warning ? adaptMessage(warning, myUserId) : null,
+    wire: { message: response.message, warning },
+  };
 }
 
 /**

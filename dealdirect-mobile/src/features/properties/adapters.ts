@@ -344,6 +344,7 @@ export function adaptPropertyDetail(property: Property): PropertyDetail {
     amenities: (property.amenities ?? []).map((a) => a?.trim()).filter((a): a is string => !!a),
 
     owner: resolveOwner(property),
+    ownerStats: property.ownerStats ?? null,
 
     addressLine: property.address?.line,
     state: property.address?.state,

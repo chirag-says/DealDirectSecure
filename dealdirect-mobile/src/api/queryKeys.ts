@@ -132,6 +132,8 @@ export const qk = {
   rewardsReferralCode: () => ['rewards', 'referralCode'] as const,
   rewardsReferrals: () => ['rewards', 'referrals'] as const,
   rewardsStore: () => ['rewards', 'store'] as const,
+  /** Public and slow-moving: the explainer numbers, not the user's balance. */
+  rewardsPolicy: () => ['rewards', 'policy'] as const,
 
   /** Owner's own listing(s). Separate from `properties.saved`: this is what the
    *  signed-in owner is SELLING, not what they marked interest in. */
@@ -141,6 +143,25 @@ export const qk = {
   leadList: (params: Record<string, string | number | undefined>) =>
     ['leads', 'list', params] as const,
   leadAnalytics: (days: number) => ['leads', 'analytics', days] as const,
+
+  /**
+   * Deals: the lead seen from either side (`GET /deals`). Its own domain,
+   * not under `leads`, because a buyer has deals and no leads, and because
+   * a visit or a message changes a deal without changing the owner's CRM
+   * list. Every deal mutation invalidates the whole domain: the list rows
+   * carry `stage`, `nextVisit` and `unread`, all of which a write can move.
+   */
+  deals: ['deals'] as const,
+  /** Infinite list. `page` is the page param and deliberately excluded. */
+  dealList: (params: Record<string, string | number | undefined>) =>
+    ['deals', 'list', params] as const,
+  dealDetail: (leadId: ObjectId) => ['deals', 'detail', leadId] as const,
+
+  reviews: ['reviews'] as const,
+  reviewEligibility: (verificationId: ObjectId) =>
+    ['reviews', 'eligibility', verificationId] as const,
+  /** Public, per subject. Infinite; `page` excluded as above. */
+  reviewsForUser: (userId: ObjectId) => ['reviews', 'user', userId] as const,
 
   blogs: ['blogs'] as const,
   /** Empty string is the unfiltered feed, so both share one prefix. */

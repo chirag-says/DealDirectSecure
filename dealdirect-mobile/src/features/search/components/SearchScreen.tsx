@@ -1,3 +1,4 @@
+import { track } from '@/analytics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
@@ -358,6 +359,7 @@ export function SearchScreen() {
    * first" is not.
    */
   const idle = !hasAnyCriteria(filters);
+  const trackedSearchKey = useRef<string | null>(null);
 
   /**
    * Remember a search worth resuming, once it has an answer.
@@ -371,6 +373,13 @@ export function SearchScreen() {
   useEffect(() => {
     if (idle || feed.isInitialLoading) return;
     recordResumableSearch(filters, feed.total);
+    // One `search` event per distinct filter set, once it has an answer. The
+    // key is the same identity `recordResumableSearch` uses, so scrolling a
+    // list for ten minutes (which changes nothing) reports nothing.
+    const key = JSON.stringify(filters);
+    if (trackedSearchKey.current === key) return;
+    trackedSearchKey.current = key;
+    track('search', { city: filters.city, listingType: filters.listingType, results: feed.total });
   }, [idle, filters, feed.isInitialLoading, feed.total]);
 
   const commit = useCallback(

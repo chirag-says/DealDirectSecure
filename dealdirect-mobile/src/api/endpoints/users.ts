@@ -13,9 +13,16 @@ import type {
   DeleteAccountResponse,
   ForgotPasswordRequest,
   LoginRequest,
+  LogoutRequest,
   ProfileResponse,
+  RegisterDeviceRequest,
+  RegisterDeviceResponse,
+  RegisterPushTokenRequest,
+  RegisterPushTokenResponse,
   RegisterRequest,
   RegisterResponse,
+  RemovePushTokenRequest,
+  RemovePushTokenResponse,
   ResendOtpRequest,
   ResetPasswordRequest,
   SessionsResponse,
@@ -78,11 +85,14 @@ export const usersEndpoints = {
       '(with blockReason), 400 EMAIL_NOT_VERIFIED.',
   }),
 
-  logout: defineEndpoint<void, OkEnvelope>({
+  logout: defineEndpoint<LogoutRequest, OkEnvelope>({
     method: 'POST',
     path: '/users/logout',
     auth: 'user',
     envelope: 'ok',
+    note:
+      'Body is optional. `{ pushToken }` deletes that device token in the same request, ' +
+      'so the phone stops receiving that account\'s push after sign-out.',
   }),
 
   logoutAll: defineEndpoint<void, OkEnvelope>({
@@ -171,6 +181,34 @@ export const usersEndpoints = {
     path: ({ sessionId }) => `/users/sessions/${sessionId}`,
     auth: 'user',
     envelope: 'ok',
+  }),
+
+  registerPushToken: defineEndpoint<RegisterPushTokenRequest, RegisterPushTokenResponse>({
+    method: 'POST',
+    path: '/users/push-token',
+    auth: 'user',
+    envelope: 'data',
+    note:
+      'Idempotent: the same token re-posted is re-pointed at the current account. ' +
+      'Called only after the OS permission is already granted; see notifications/pushToken.ts.',
+  }),
+
+  removePushToken: defineEndpoint<RemovePushTokenRequest, RemovePushTokenResponse>({
+    method: 'DELETE',
+    path: '/users/push-token',
+    auth: 'user',
+    envelope: 'keyed',
+    note: 'Takes a BODY on a DELETE: `{ token }`. `call()` sends `data` for every non-GET method.',
+  }),
+
+  registerDevice: defineEndpoint<RegisterDeviceRequest, RegisterDeviceResponse>({
+    method: 'POST',
+    path: '/users/device',
+    auth: 'user',
+    envelope: 'ok',
+    note:
+      'Opaque installation id, 16-128 url-safe chars. Fire-and-forget, once per authenticated ' +
+      'session (see auth/deviceLink.ts). Feeds the close-deal fraud-linkage check; nothing else.',
   }),
 
   sendUpgradeOtp: defineEndpoint<void, OkEnvelope>({

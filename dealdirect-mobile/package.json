@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
     "contract:check": "tsc --noEmit -p tsconfig.json",
-    "test": "node --test \"src/features/search/understanding/*.test.ts\"",
+    "test": "node --test \"src/**/*.test.ts\"",
     "test:parser": "node --test \"src/features/search/understanding/*.test.ts\""
   },
   "dependencies": {
@@ -23,6 +23,7 @@
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-community/netinfo": "11.4.1",
     "@react-native-cookies/cookies": "^6.2.1",
+    "@sentry/react-native": "~7.2.0",
     "@shopify/flash-list": "2.0.2",
     "@tanstack/query-persist-client-core": "^5.101.4",
     "@tanstack/query-sync-storage-persister": "^5.101.4",
