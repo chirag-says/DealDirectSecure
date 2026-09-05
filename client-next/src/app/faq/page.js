@@ -1,4 +1,6 @@
 import FAQContent from "./FAQContent";
+import { allFaqs } from "./faqData";
+import { FAQJsonLd, BreadcrumbJsonLd } from "../../components/JsonLd";
 
 export const metadata = {
     title: "FAQs — Deal Direct",
@@ -15,5 +17,13 @@ export const metadata = {
 };
 
 export default function FAQPage() {
-    return <FAQContent />;
+    return (
+        <>
+            {/* FAQPage markup drives the expandable Q&A rich result in search.
+                It reads the same faqData the page renders, so the two cannot drift. */}
+            <FAQJsonLd faqs={allFaqs.map((f) => ({ question: f.q, answer: f.a }))} />
+            <BreadcrumbJsonLd items={[{ name: 'Home', href: '/' }, { name: 'FAQs', href: '/faq' }]} />
+            <FAQContent />
+        </>
+    );
 }

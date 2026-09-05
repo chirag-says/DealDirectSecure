@@ -15,6 +15,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import api from "../../../utils/api";
 import { useAuth } from "../../../context/AuthContext";
+import PriceGuidance from "../../../components/PriceGuidance/PriceGuidance";
 
 // Fix for default marker icon in react-leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -954,6 +955,14 @@ export default function EditProperty() {
                         onChange={handleChange}
                         placeholder="Enter amount"
                         className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    />
+                    {/* What comparable homes are asking (F19). Reference only:
+                        it never prefills, gates or recommends. */}
+                    <PriceGuidance
+                        city={formData.city}
+                        locality={formData.locality}
+                        listingType={formData.listingType}
+                        bhk={formData.bhkType}
                     />
                 </div>
 

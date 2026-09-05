@@ -77,6 +77,15 @@ export default async function sitemap() {
             changeFrequency: 'monthly',
             priority: 0.5,
         },
+        // Locality asking-price pages. These are the only pages on the site
+        // that answer a query no listing can ("what do 2BHKs ask in Wakad"),
+        // so the index gets the same priority as /properties.
+        {
+            url: `${SITE_URL}/localities`,
+            lastModified: new Date(),
+            changeFrequency: 'weekly',
+            priority: 0.9,
+        },
         {
             url: `${SITE_URL}/press-impressions`,
             lastModified: new Date(),
@@ -154,5 +163,38 @@ export default async function sitemap() {
         }
     }
 
-    return [...staticPages, ...propertyPages, ...projectPages, ...blogPages];
+    // Enumerate every published locality, sale and rent separately.
+    //
+    // `GET /localities` only ever returns localities that cleared the sample
+    // floor, so nothing listed here can 404 for thin-content reasons. Both
+    // requests are individually guarded: if the API is down, `ssrFetch`
+    // returns null, the arrays stay empty and the sitemap still builds with
+    // its static and property entries rather than failing the whole route.
+    const localityPages = [];
+    for (const listingType of ['sale', 'rent']) {
+        const res = await ssrFetch(
+            `/api/localities?listingType=${listingType}&limit=2000`,
+            { revalidate: 3600, timeoutMs: 15000 }
+        );
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        for (const row of rows) {
+            if (!row?.slug) continue;
+            localityPages.push({
+                // Sale is the canonical bare URL; rent carries the parameter,
+                // matching the `alternates.canonical` the page itself emits.
+                url:
+                    listingType === 'rent'
+                        ? `${SITE_URL}/localities/${row.slug}?listingType=rent`
+                        : `${SITE_URL}/localities/${row.slug}`,
+                lastModified: new Date(),
+                // The figures move once a quarter, but the underlying listing
+                // counts move daily and a stale median is the one thing these
+                // pages cannot afford.
+                changeFrequency: 'weekly',
+                priority: 0.8,
+            });
+        }
+    }
+
+    return [...staticPages, ...propertyPages, ...projectPages, ...blogPages, ...localityPages];
 }

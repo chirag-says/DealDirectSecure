@@ -22,6 +22,11 @@ export default function robots() {
                     '/agreements',
                     '/my-bookings',
                     '/rewards/dashboard',
+                    // The shortlist is private by definition, and the prefix
+                    // rule also covers /shortlist/shared/<token>: a share link
+                    // is a private URL handed to one person, not content, and
+                    // must never become a search result.
+                    '/shortlist',
                     '/api/',
                 ],
             },

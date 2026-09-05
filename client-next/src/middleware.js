@@ -36,6 +36,12 @@ const PROTECTED_ROUTES = [
     '/saved-properties',
     '/my-bookings',
     '/rewards/dashboard',
+    // '/shortlist' is deliberately ABSENT. The matching rule below is
+    // `pathname === route || pathname.startsWith(route + '/')`, so listing it
+    // would also protect '/shortlist/shared/<token>' — a public read-only link
+    // meant for someone who has no DealDirect account at all. /shortlist
+    // guards itself in ShortlistContent.jsx instead, and robots.js keeps both
+    // out of the index.
 ];
 
 // Routes that should redirect TO dashboard if already authenticated

@@ -8,18 +8,36 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* layout.js loads Inter and exposes it as --font-inter. The old value here
+     pointed at --font-geist-sans, which nothing defines, so `font-sans`
+     resolved to nothing and the body rule below fell through to Arial —
+     the webfont was downloaded on every page load and never rendered. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* Custom scrollbar utilities */
 @layer utilities {
+  /* Used by the horizontal card rails and filter strips. These class names
+     were already in the markup but had no definition anywhere, so every
+     "hidden" scrollbar was in fact visible. */
+  .scrollbar-hide,
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar,
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
   }
@@ -54,4 +72,22 @@ body {
 .mobile-nav-item {
   animation: slideInRight 0.4s ease-out forwards;
   opacity: 0;
+}
+
+/* Respect the OS "reduce motion" setting everywhere, including the marquee
+   and the scroll-reveal transitions, which otherwise run regardless. */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .mobile-nav-item {
+    opacity: 1;
+  }
 }

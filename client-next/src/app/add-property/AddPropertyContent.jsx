@@ -20,6 +20,7 @@ import { taxonomyRefOrNull } from "../../utils/taxonomyRef";
 import { useAuth } from "../../context/AuthContext";
 import axios from "axios"; // Keep for metadata fetching (public endpoints)
 import RewardRevealRouter from "../../components/Rewards/RewardRevealRouter";
+import PriceGuidance from "../../components/PriceGuidance/PriceGuidance";
 
 // Get refreshOwnerPropertyStatus from AuthContext
 
@@ -1501,6 +1502,14 @@ export default function AddProperty() {
                                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-500">₹</div>
                                 <input name="expectedPrice" value={formData.expectedPrice} onChange={handleChange} type="number" className={`${inputStyle} pl-10`} placeholder="0" />
                             </div>
+                            {/* What comparable homes are asking (F19). Reference
+                                only: it never prefills, gates or recommends. */}
+                            <PriceGuidance
+                                city={formData.city}
+                                locality={formData.locality}
+                                listingType={formData.listingType}
+                                bhk={formData.bhkType}
+                            />
                         </div>
                     </div>
 

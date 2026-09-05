@@ -8,6 +8,7 @@ import api from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "react-toastify";
 import { formatPrice } from "../../utils/formatPrice";
+import SaveButton from "../../components/Shortlist/SaveButton";
 import {
   scoreRelated,
   shouldSuggestRelated,
@@ -38,6 +39,24 @@ import {
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents, Circle, ZoomControl } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+
+// Leaflet builds its markers from raw HTML strings, so React components can't be
+// used inside them. These are the same lucide glyphs the rest of the page uses,
+// inlined as SVG and drawn in currentColor so they inherit the marker's text colour.
+const svgIcon = (paths, size) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" ` +
+  `stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" ` +
+  `style="flex-shrink:0" aria-hidden="true">${paths}</svg>`;
+
+const ICON_HOME = (size = 12) => svgIcon(
+  '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/>' +
+  '<path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  size);
+
+const ICON_PIN = (size = 11) => svgIcon(
+  '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/>' +
+  '<circle cx="12" cy="10" r="3"/>',
+  size);
 
 // Custom marker styles
 const markerStyles = `
@@ -133,7 +152,7 @@ const createSimplePinMarker = (price, isHighlighted = false) => {
         align-items: center;
         gap: 4px;
       ">
-        🏠 ${formattedPrice}
+        ${ICON_HOME(12)} ${formattedPrice}
         <div style="
           position: absolute;
           bottom: -8px;
@@ -220,7 +239,7 @@ const createDetailedPropertyMarker = (property) => {
             gap: 3px;
             margin-top: 3px;
           ">
-            <span>📍</span>${location}
+            ${ICON_PIN(11)}${location}
           </div>
         </div>
         <div style="
@@ -1196,7 +1215,9 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                             <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${suggestion.type === 'project' ? 'bg-blue-100 text-blue-600' :
                               'bg-green-100 text-green-600'
                               }`}>
-                              {suggestion.type === 'project' ? '🏠' : '📍'}
+                              {suggestion.type === 'project'
+                                ? <FaBuilding size={16} />
+                                : <FaMapMarkerAlt size={16} />}
                             </div>
                           )}
                           <div className="flex-1 min-w-0">
@@ -1390,9 +1411,6 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                       <FaBell className="text-xs" />
                       Save this search & alerts
                     </button>
-                    <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-[10px] font-semibold text-emerald-700">
-                      Free during beta
-                    </span>
                   </div>
                 </div>
               )}
@@ -1517,8 +1535,9 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
               <div className="p-4 border-b border-slate-100 sticky top-0 bg-white z-10">
                 {droppedPin ? (
                   <div>
-                    <h2 className="font-bold text-green-600">
-                      🎯 {nearbyProperties.length} Nearby Properties
+                    <h2 className="font-bold text-green-600 flex items-center gap-1.5">
+                      <FaCrosshairs size={14} />
+                      {nearbyProperties.length} Nearby Properties
                     </h2>
                     <p className="text-xs text-slate-500 mt-1">Within {searchRadius} km of pin</p>
                   </div>
@@ -1550,8 +1569,9 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                           {p.address?.city}, {p.address?.state}
                         </p>
                         {p.distance !== undefined && (
-                          <p className="text-green-600 text-xs font-medium mt-1">
-                            📍 {p.distance.toFixed(1)} km away
+                          <p className="text-green-600 text-xs font-medium mt-1 flex items-center gap-1">
+                            <FaCrosshairs size={10} />
+                            {p.distance.toFixed(1)} km away
                           </p>
                         )}
                         <p className="text-red-600 font-bold mt-2">
@@ -1642,7 +1662,9 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                 {propertiesWithCoords.length === 0 && !droppedPin && (
                   <div className="leaflet-control absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[40]">
                     <div className="bg-white rounded-xl shadow-lg p-6 text-center max-w-sm">
-                      <div className="text-4xl mb-3">📍</div>
+                      <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                        <FaMapMarkerAlt className="text-2xl text-slate-400" />
+                      </div>
                       <h3 className="font-bold text-slate-800 mb-2">No Location Data</h3>
                       <p className="text-sm text-slate-500">
                         Properties don't have latitude/longitude coordinates saved in the database.
@@ -1660,7 +1682,9 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                     <Marker position={[droppedPin.lat, droppedPin.lng]} icon={pinDropIcon}>
                       <Popup>
                         <div className="text-center p-2">
-                          <p className="font-bold text-green-600">📍 Your Pin</p>
+                          <p className="font-bold text-green-600 flex items-center justify-center gap-1.5">
+                            <FaMapMarkerAlt size={12} /> Your Pin
+                          </p>
                           <p className="text-xs text-slate-500 mt-1">
                             {nearbyProperties.length} properties within {searchRadius} km
                           </p>
@@ -1703,11 +1727,12 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                         />
                         <h3 className="font-bold text-slate-800 text-sm line-clamp-2">{p.title}</h3>
                         <p className="text-slate-500 text-xs mt-1 flex items-center gap-1">
-                          <span>📍</span> {p.address?.city}, {p.address?.locality || p.address?.state}
+                          <FaMapMarkerAlt className="text-red-500" size={10} /> {p.address?.city}, {p.address?.locality || p.address?.state}
                         </p>
                         {p.distance !== undefined && (
-                          <p className="text-green-600 text-xs font-medium mt-1">
-                            🎯 {p.distance.toFixed(1)} km from your pin
+                          <p className="text-green-600 text-xs font-medium mt-1 flex items-center gap-1">
+                            <FaCrosshairs size={10} />
+                            {p.distance.toFixed(1)} km from your pin
                           </p>
                         )}
                         <div className="flex items-center justify-between mt-2">
@@ -1732,8 +1757,9 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
               <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-3 z-[40]">
                 {droppedPin ? (
                   <>
-                    <p className="text-xs text-green-600 font-medium">
-                      🎯 {nearbyProperties.length} properties within {searchRadius} km
+                    <p className="text-xs text-green-600 font-medium flex items-center gap-1.5">
+                      <FaCrosshairs size={11} />
+                      {nearbyProperties.length} properties within {searchRadius} km
                     </p>
                     <p className="text-xs text-slate-400 mt-1">
                       Drag radius slider to adjust
@@ -1741,8 +1767,9 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                   </>
                 ) : (
                   <>
-                    <p className="text-xs text-slate-600 font-medium">
-                      📍 {propertiesWithCoords.length} properties on map
+                    <p className="text-xs text-slate-600 font-medium flex items-center gap-1.5">
+                      <FaMapMarkerAlt className="text-red-500" size={11} />
+                      {propertiesWithCoords.length} properties on map
                     </p>
                     {filteredProperties.length - propertiesWithCoords.length > 0 && (
                       <p className="text-xs text-slate-400 mt-1">
@@ -1835,6 +1862,14 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                       <span className="bg-white/95 backdrop-blur-sm text-slate-800 text-xs font-bold px-3 py-1 rounded-md shadow-sm">
                         {formatCategoryDisplay(p.category?.name || p.categoryName || p.category || p.propertyCategory || "For Sale")}
                       </span>
+                    </div>
+                  )}
+
+                  {/* Save button (F7) — sits beside the heart, never replaces
+                      it. The heart tells the owner; the bookmark tells nobody. */}
+                  {!p.builder && (
+                    <div className="absolute top-3 right-14 z-10">
+                      <SaveButton propertyId={p._id} variant="icon" />
                     </div>
                   )}
 
@@ -2049,6 +2084,11 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                     >
                       {interestedIds.has(p._id) ? <FaHeart /> : <FaRegHeart />}
                     </button>
+                    {/* Save (F7) — under the heart here because the "Related"
+                        badge already occupies the space beside it. */}
+                    <div className="absolute top-14 right-3 z-10">
+                      <SaveButton propertyId={p._id} variant="icon" />
+                    </div>
                     <img
                       src={resolveImageSrc(p.images?.[0]) || FALLBACK_IMG}
                       alt={p.title}
@@ -2233,7 +2273,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                       onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK_IMG; }}
                     />
                     <span className="max-w-[120px] sm:max-w-[180px] truncate">{p.title}</span>
-                    <span className="text-[9px] text-slate-400">✕</span>
+                    <FaTimes className="text-[9px] text-slate-400" />
                   </button>
                 ))}
               </div>
@@ -2288,7 +2328,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                   className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm"
                   aria-label="Close comparison"
                 >
-                  ✕
+                  <FaTimes />
                 </button>
               </div>
             </div>

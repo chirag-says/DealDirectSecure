@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Home, Castle, Hotel, DoorOpen, X, Sparkles, Gift, Star } from 'lucide-react';
+import { Home, Castle, Hotel, DoorOpen, X, Sparkles, Gift, Gem, Trophy, Coins } from 'lucide-react';
 
 /**
  * PropertyHuntGame — Interactive door-reveal mini-game modal.
@@ -22,15 +22,17 @@ export default function PropertyHuntGame({ reward, onClose }) {
         { id: 2, icon: Hotel, label: 'Door C', color: 'from-amber-500 to-amber-600' },
     ];
 
-    const tierEmoji = {
-        common: { icon: Star, label: 'Common', bg: 'bg-gray-100 text-gray-700', glow: '' },
-        uncommon: { icon: Star, label: 'Uncommon', bg: 'bg-green-100 text-green-700', glow: '' },
-        rare: { icon: Sparkles, label: 'Rare', bg: 'bg-blue-100 text-blue-700', glow: 'shadow-blue-200' },
-        epic: { icon: Gift, label: 'Epic!', bg: 'bg-purple-100 text-purple-700', glow: 'shadow-purple-300' },
-        legendary: { icon: Gift, label: 'LEGENDARY!', bg: 'bg-amber-100 text-amber-700', glow: 'shadow-amber-300' },
+    // Ascending rarity, each band with its own icon. The two lowest used to
+    // share a generic star with the label doing all the work.
+    const tierStyles = {
+        common: { icon: Coins, label: 'Common', bg: 'bg-gray-100 text-gray-700', glow: '' },
+        uncommon: { icon: Sparkles, label: 'Uncommon', bg: 'bg-green-100 text-green-700', glow: '' },
+        rare: { icon: Gift, label: 'Rare', bg: 'bg-blue-100 text-blue-700', glow: 'shadow-blue-200' },
+        epic: { icon: Gem, label: 'Epic!', bg: 'bg-purple-100 text-purple-700', glow: 'shadow-purple-300' },
+        legendary: { icon: Trophy, label: 'LEGENDARY!', bg: 'bg-amber-100 text-amber-700', glow: 'shadow-amber-300' },
     };
 
-    const tier = tierEmoji[reward?.rewardTier] || tierEmoji.common;
+    const tier = tierStyles[reward?.rewardTier] || tierStyles.common;
     const TierIcon = tier.icon;
 
     const handleDoorClick = (doorId) => {

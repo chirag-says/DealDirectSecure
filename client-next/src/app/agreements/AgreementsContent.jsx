@@ -1272,9 +1272,12 @@ function AgreementGenerator() {
       {/* Footer Disclaimer */}
       <div className="max-w-4xl mx-auto mt-8 text-center">
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <p className="text-amber-800 text-xs sm:text-sm">
-            <strong>⚖️ Legal Disclaimer:</strong> This is an AI-generated draft for informational purposes only.
-            Please verify with a qualified lawyer and ensure proper stamp paper and registration as per the Registration Act, 1908.
+          <p className="text-amber-800 text-xs sm:text-sm flex items-start gap-2 text-left">
+            <FaGavel className="mt-0.5 flex-shrink-0" aria-hidden="true" />
+            <span>
+              <strong>Legal Disclaimer:</strong> This is an AI-generated draft for informational purposes only.
+              Please verify with a qualified lawyer and ensure proper stamp paper and registration as per the Registration Act, 1908.
+            </span>
           </p>
         </div>
       </div>

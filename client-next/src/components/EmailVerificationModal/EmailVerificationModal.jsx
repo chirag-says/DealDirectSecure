@@ -171,8 +171,9 @@ export default function EmailVerificationModal({ isOpen, onClose, user, onVerifi
 
                     {/* Benefits */}
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
-                      <p className="text-sm text-amber-800 font-medium mb-2">
-                        🏠 Why verify?
+                      <p className="text-sm text-amber-800 font-medium mb-2 flex items-center gap-2">
+                        <Home className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                        Why verify?
                       </p>
                       <ul className="text-xs text-amber-700 space-y-1">
                         <li>• List unlimited properties for free</li>

@@ -9,7 +9,7 @@ import {
     BarChart3, Link2, Gift, ScrollText, Users, CheckCircle,
     Zap, Handshake, Copy, Share2, ArrowUpRight, ArrowDownRight,
     ChevronLeft, ChevronRight, BookOpen, TrendingUp, Wallet,
-    Clock, Star, Award, Gem,
+    Clock, Medal, Award, Trophy, Gem,
 } from 'lucide-react';
 import HubbleStorefront from './RewardStorefront';
 
@@ -17,9 +17,9 @@ import HubbleStorefront from './RewardStorefront';
 // TIER CONFIG
 // ============================================
 const TIER_CONFIG = {
-    bronze: { icon: Award, color: '#a38b5e', bg: 'from-amber-50 to-orange-50', border: 'border-amber-200', label: 'Bronze' },
+    bronze: { icon: Medal, color: '#a38b5e', bg: 'from-amber-50 to-orange-50', border: 'border-amber-200', label: 'Bronze' },
     silver: { icon: Award, color: '#7b8a9e', bg: 'from-slate-50 to-gray-50', border: 'border-gray-300', label: 'Silver' },
-    gold: { icon: Star, color: '#c5940a', bg: 'from-yellow-50 to-amber-50', border: 'border-yellow-300', label: 'Gold' },
+    gold: { icon: Trophy, color: '#c5940a', bg: 'from-yellow-50 to-amber-50', border: 'border-yellow-300', label: 'Gold' },
     diamond: { icon: Gem, color: '#3b82f6', bg: 'from-blue-50 to-indigo-50', border: 'border-blue-300', label: 'Diamond' },
 };
 

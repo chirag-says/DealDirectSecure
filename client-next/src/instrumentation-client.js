@@ -2,7 +2,10 @@
 // The config you add here will be used whenever a user loads a page in their browser.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
-// Next.js 16+ with Turbopack uses instrumentation-client.js instead of sentry.client.config.js
+// Next.js 16+ with Turbopack uses instrumentation-client.js instead of
+// sentry.client.config.js. That older file used to sit alongside this one with a
+// near-identical Sentry.init() that Next never loaded — it has been deleted, so
+// this is now the only place client Sentry options are set.
 
 import * as Sentry from "@sentry/nextjs";
 
@@ -21,6 +24,11 @@ Sentry.init({
 
     // Only enable when DSN is present
     enabled: !!process.env.NEXT_PUBLIC_SENTRY_DSN,
+
+    // Match the backend's instrument.js: never let the SDK attach IPs, cookies
+    // or form values on its own. Anything Sentry needs is set deliberately —
+    // see setSentryUser() in src/utils/sentryUser.js.
+    sendDefaultPii: false,
 
     // Debug mode - set to true temporarily if issues persist
     debug: false,
@@ -43,8 +51,13 @@ Sentry.init({
     // Integrations
     integrations: [
         Sentry.replayIntegration({
+            // Text stays visible so a replay is actually diagnosable; input
+            // values are masked by the SDK's own default and are not unmasked
+            // here. blockAllMedia is on because the media on this site is
+            // property photographs, ID uploads and signed agreement documents,
+            // none of which should be leaving the browser for a bug report.
             maskAllText: false,
-            blockAllMedia: false,
+            blockAllMedia: true,
         }),
         Sentry.browserTracingIntegration(),
     ],

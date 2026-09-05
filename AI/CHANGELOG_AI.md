@@ -53,6 +53,77 @@ did NOT update the docs, say so explicitly — that is a debt marker.
 
 ---
 
+## 2026-09-05 — Web Phases 1 and 4: locality price pages, price intelligence, shortlist (client-next only)
+
+Plan of record: `DEALDIRECT-UPGRADE-MASTER-PLAN.md`, features F7, F18 and F19. Web lane only — `client-next/` plus this file. The backend was not touched; every endpoint used here was already implemented and tested in the backend entry below. The mobile app was not touched.
+
+**Files changed**
+
+New, pure logic (no React, and no arithmetic left in any component):
+- `client-next/src/utils/priceIntelligence.js` — money formatting, date phrasing, the market-position dead band, price-history rows, owner response and review wording
+- `client-next/src/utils/localityFormat.js` — quarter labels, page title and meta description, quarter-on-quarter wording, trend-bar geometry, the disclaimer text, `localityHref`
+- `client-next/src/utils/shortlistStore.js` — one shared client cache of saved property ids, read through `useSyncExternalStore`
+
+New routes (each is the required two files: server `page.js` plus a `'use client'` `*Content.jsx`):
+- `client-next/src/app/localities/page.js` + `LocalitiesContent.jsx` — index of published localities, filterable by city and by sale/rent
+- `client-next/src/app/localities/[slug]/page.js` + `LocalityContent.jsx` + `not-found.jsx` — the detail page
+- `client-next/src/app/shortlist/page.js` + `ShortlistContent.jsx` — the signed-in user's saved homes
+- `client-next/src/app/shortlist/shared/[token]/page.js` + `SharedShortlistContent.jsx` + `not-found.jsx` — read-only shared list
+
+New components:
+- `client-next/src/components/PriceIntelligence/PriceIntelligence.jsx` — the "Price" block on a listing
+- `client-next/src/components/PriceIntelligence/OwnerSignals.jsx` — verification badges, response time, review summary
+- `client-next/src/components/PriceGuidance/PriceGuidance.jsx` — the muted comparable-range line on the listing form's price step
+- `client-next/src/components/Shortlist/SaveButton.jsx` — the bookmark control; also exports `SAVE_PRIVACY_NOTE`
+- `client-next/src/components/Shortlist/ShortlistCard.jsx` — one saved home, shared by the private and the shared view
+
+Modified:
+- `client-next/src/components/JsonLd.jsx` — added `LocalityStatsJsonLd`
+- `client-next/src/app/sitemap.js` — `/localities` plus every published locality, sale and rent
+- `client-next/src/app/robots.js` — `Disallow: /shortlist`; the prefix rule also covers the share links
+- `client-next/src/middleware.js` — comment only, recording why `/shortlist` must NOT join `PROTECTED_ROUTES`
+- `client-next/src/app/properties/[id]/PropertyDetailsContent.jsx` — price block, owner signals, save button
+- `client-next/src/app/properties/PropertyListContent.jsx` — save button on both card variants
+- `client-next/src/app/add-property/AddPropertyContent.jsx` and `client-next/src/app/edit-property/[id]/EditPropertyContent.jsx` — price guidance on step 3
+- `client-next/src/components/Navbar/Navbar.jsx` — Shortlist link in the desktop dropdown and the mobile menu, with an inline bookmark glyph following that file's no-icon-package convention
+- `client-next/src/components/Footer/Footer.jsx` — site-wide "Locality Prices" link
+
+**Reason**
+
+The locality pages are the only part of the upgrade that earns organic search traffic, and the plan says so outright. Everything else in this lane exists to make those numbers useful at the point of decision: on the listing (where does this price sit), in the listing form (what are neighbours asking), and in the shortlist (the homes a buyer is actually weighing).
+
+**Architectural impact**
+
+Indexability, which is the part most likely to be got wrong by a later change:
+
+- **Indexable:** `/localities` and `/localities/[slug]`. Both are `dynamic = 'force-dynamic'` server components, so the medians are in the HTML before any JavaScript runs. The detail page exports `generateMetadata` carrying the locality, the city and the median in the title, and emits schema.org `Dataset` JSON-LD.
+- **Not indexable:** `/shortlist` and `/shortlist/shared/[token]`. Both set `robots: { index: false }` in metadata, both fall under `Disallow: /shortlist`, and neither is in the sitemap. A share link is a private URL handed to one person, not content.
+- **The sitemap now enumerates localities.** `sitemap.js` calls `GET /localities` once per listing type and emits one URL per published locality. Sale is the bare URL, rent carries `?listingType=rent`, matching the `alternates.canonical` each page emits. Both fetches are individually guarded: if the API is down the arrays stay empty and the sitemap still builds with its static, property, project and blog entries.
+
+New invariants:
+
+- A 404 from `GET /localities/:slug` is a NORMAL answer meaning "below the sample floor, nothing published". It becomes a real HTTP 404 through `notFound()` so a page with no numbers on it is never indexed as thin content. An unreachable backend is NOT a 404: it renders a calm unavailable state, because answering 404 during an outage would de-index every locality at once. Same three-way split the property detail page already uses.
+- The shortlist and the "I'm Interested" flow are separate controls everywhere. Saving is a slate bookmark, interest is the red heart. Saving touches only `/shortlist/*` and never `/properties/interested/*`, and the privacy note ("the owner is not told") is rendered beside the button and reused verbatim on `/shortlist`.
+- `/shortlist` is guarded inside its content component, NOT in `middleware.js`. The middleware match is `pathname === route || pathname.startsWith(route + '/')`, so listing `/shortlist` there would also block the public `/shortlist/shared/<token>`, which is meant for someone with no DealDirect account.
+- Price guidance never blocks submission, never prefills the price field, and is never phrased as a recommendation. It has no callback into form validation.
+- No component performs arithmetic on a price or a percentage. All of it, and every sentence built from a number, lives in the two utils modules. The listing-versus-median dead band is `MARKET_DEAD_BAND_PCT = 2`, so a 0.4% difference reads "in line with" rather than "below"; the quarter-on-quarter flat band is `QOQ_FLAT_BAND_PCT = 0.5`.
+- Nothing on these pages may be worded as a valuation. `disclaimerLines()` states, visibly on every locality page, that the figures are asking prices from live DealDirect listings, that publication requires at least `sampleFloor` listings, and that this is not a valuation.
+- `LocalityStatsJsonLd` emits `Dataset`, deliberately not `Product` or `Offer`. Marking a median asking price as an Offer would tell Google that DealDirect is selling a home at that price.
+
+Assumption a future session should check: `market.deltaPct` and `qoqPct` are read as signed values where negative means lower. The backend contract states this for `qoqPct` and it is inferred for `deltaPct`. If that sign is ever inverted, `classifyMarketPosition` in `priceIntelligence.js` is the single place to change.
+
+Also worth knowing: `/shortlist` and the older `/saved-properties` (backed by `GET /properties/saved`) now coexist and look similar to a user. They were left separate because merging them would change the behaviour of an existing feature, which is outside this lane.
+
+**Migration notes**
+
+None. No env vars, no schema, no build step. Deploy ordering is the obvious one: the backend carrying `/localities/*`, `/shortlist/*` and the `priceIntelligence` and `ownerStats` fields on `GET /properties/:id` must be live before this frontend is. Until it is, every new surface degrades to rendering nothing rather than erroring — the locality index shows its empty state, the price block and owner signals disappear, guidance stays silent, and `/shortlist` shows its "did not load" state.
+
+**Docs updated**
+
+None. `AI/API_REFERENCE.md` and `AI/FILE_MAP.md` still do not list the `/localities` and `/shortlist` routes or any of the new `client-next` files. That debt was opened by the backend entry below; this entry adds the frontend half of it. Flagging it rather than leaving it silent.
+
+---
+
 ## 2026-09-05 — Backend Phases 1, 4 and 5 of the upgrade master plan (additive)
 
 Plan of record: `DEALDIRECT-UPGRADE-MASTER-PLAN.md`. Additive as before: no existing route changed its contract, and every behaviour that costs money or sends a message is either off by default or narrower than what it replaces.

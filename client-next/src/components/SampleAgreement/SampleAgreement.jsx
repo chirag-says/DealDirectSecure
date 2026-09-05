@@ -7,6 +7,7 @@ import {
   FaLock,
   FaUserCheck,
   FaCertificate,
+  FaBalanceScale,
 } from "react-icons/fa";
 
 function SampleAgreement() {
@@ -56,7 +57,7 @@ function SampleAgreement() {
 
   return (
     <div className="min-h-screen mt-20 sm:mt-28 py-12 px-4 sm:px-8 lg:px-20 bg-white">
-      {/* 🛡️ Header */}
+      {/* Header */}
       <div className="text-center mb-16">
         <div className="flex justify-center mb-6">
           <div className="relative">
@@ -75,7 +76,7 @@ function SampleAgreement() {
           verified for your peace of mind.
         </p>
 
-        {/* 🏅 Trust Badges */}
+        {/* Trust Badges */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 mt-10 sm:mt-12 max-w-5xl mx-auto">
           {trustFeatures.map((feature, index) => (
             <div
@@ -96,7 +97,7 @@ function SampleAgreement() {
         </div>
       </div>
 
-      {/* 📄 Agreement Cards */}
+      {/* Agreement Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 max-w-7xl mx-auto">
         {agreements.map((agreement, index) => (
           <div
@@ -149,7 +150,7 @@ function SampleAgreement() {
         ))}
       </div>
 
-      {/* 🔒 Trust Footer */}
+      {/* Trust Footer */}
       <div className="mt-16 sm:mt-20 text-center">
         <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-4xl mx-auto shadow-sm border border-gray-200">
           <div className="flex items-center justify-center gap-2 sm:gap-3 mb-4">
@@ -186,9 +187,12 @@ function SampleAgreement() {
           </div>
         </div>
 
-        <p className="text-gray-500 text-xs sm:text-sm mt-8 max-w-2xl mx-auto px-2">
-          ⚖️ All agreements provided here are professionally drafted templates.
-          Please consult a certified legal advisor for specific legal advice.
+        <p className="text-gray-500 text-xs sm:text-sm mt-8 max-w-2xl mx-auto px-2 flex items-start justify-center gap-2 text-left sm:text-center">
+          <FaBalanceScale className="mt-0.5 flex-shrink-0 text-gray-400" aria-hidden="true" />
+          <span>
+            All agreements provided here are professionally drafted templates.
+            Please consult a certified legal advisor for specific legal advice.
+          </span>
         </p>
       </div>
     </div>

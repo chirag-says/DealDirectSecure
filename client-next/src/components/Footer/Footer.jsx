@@ -57,6 +57,10 @@ const Footer = () => {
       // programme was reachable only by people who had already signed up for
       // it. The footer renders on every page, including for guests.
       { name: "Rewards", path: "/rewards" },
+      // Site-wide link into the locality price pages. They are the only pages
+      // that answer a question no listing can, and a footer link on every page
+      // is the strongest internal signal we can give them.
+      { name: "Locality Prices", path: "/localities" },
       { name: "FAQs", path: "/faq" },
     ],
     "Support": [

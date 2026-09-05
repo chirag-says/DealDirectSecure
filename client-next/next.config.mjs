@@ -28,6 +28,11 @@ const CSP_REPORT_ONLY = [
   "img-src 'self' data: blob: https://res.cloudinary.com https://*.cloudinary.com https://images.unsplash.com https://plus.unsplash.com https://*.tile.openstreetmap.org https://*.gstatic.com https://raw.githubusercontent.com",
   "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com",
   "connect-src 'self' https://nominatim.openstreetmap.org https://res.cloudinary.com https://*.sentry.io",
+  // Sentry Session Replay compresses events in a Web Worker built from a blob
+  // URL. With no worker-src the browser falls back to script-src, which has no
+  // blob: source, so the worker is refused — currently only reported, but it
+  // would silently disable replay the day this policy is enforced.
+  "worker-src 'self' blob:",
   // The four live embeds. Narrow this list before enforcing, do not widen it.
   "frame-src 'self' https://www.google.com https://www.youtube.com https://youtube.com https://sdk.myhubble.money https://sdk.dev.myhubble.money",
   "object-src 'none'",
@@ -129,8 +134,9 @@ export default withSentryConfig(
     // Upload a larger set of source maps for prettier stack traces (increases build time)
     widenClientFileUpload: true,
 
-    // Transpiles SDK to be compatible with IE11 (increases bundle size)
-    transpileClientSDK: true,
+    // transpileClientSDK was removed here: the option was dropped in @sentry/nextjs v8
+    // and this project is on v10, so it was an ignored key that also implied IE11
+    // support the app has never had (Next 16 targets modern browsers regardless).
 
     // Routes browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers
     tunnelRoute: "/monitoring",

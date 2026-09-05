@@ -1,13 +1,10 @@
-# ==============================================================
-# DealDirect — Public Site (Next.js 16 App Router)
-#
-# This repo is standalone: nothing above this folder is ignored on
-# its behalf, so everything needed must be listed here.
-# ==============================================================
+# DealDirect web — Next.js 16 (App Router, Turbopack), own repo, own hosting.
 
-# ---------- Dependencies ----------
+# ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
 /node_modules
-/.pnp
+.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -16,42 +13,49 @@
 !.yarn/versions
 !.yarn/sdks
 
-# ---------- Next.js build output ----------
+# ---------------------------------------------------------------------------
+# Build output
+#
+# `.next` holds both dev and production artifacts. Running `next build` while
+# a dev server is using the same directory leaves a mixed state: freshly
+# compiled server output alongside stale client chunks, which surfaces as a
+# React hydration mismatch rather than as any kind of build error. If that
+# happens, delete `.next` and restart.
+# ---------------------------------------------------------------------------
 /.next/
 /out/
 /build
 .turbo/
 next-env.d.ts
+*.tsbuildinfo
 
-# ---------- Secrets ----------
-# .env.local          → dev config + NEXT_PUBLIC_MAPPLES_API_KEY
-# .env.production     → contains a real SENTRY_AUTH_TOKEN (build-time
-#                       credential that can upload source maps and read
-#                       the Sentry project). MUST NOT be committed.
+# ---------------------------------------------------------------------------
+# Secrets
 #
-# Anything NEXT_PUBLIC_* is inlined into the browser bundle and is
-# public by definition — restrict those keys at the provider by
-# domain, never rely on them being secret.
+# NEXT_PUBLIC_* values are compiled into the browser bundle and are public by
+# definition. Anything here that is NOT prefixed NEXT_PUBLIC_ is server-only
+# and genuinely secret.
+# ---------------------------------------------------------------------------
 .env
-.env.local
-.env.development
-.env.development.local
-.env.test
-.env.test.local
-.env.production
-.env.production.local
-.env*.local
+.env.*
+!.env.example
 
-# Sentry
 .sentryclirc
 .env.sentry-build-plugin
-
 *.pem
 *.key
 *.p12
 *.pfx
+credentials.json
 
-# ---------- Logs ----------
+# ---------------------------------------------------------------------------
+# Deployment and hosting
+# ---------------------------------------------------------------------------
+.vercel
+
+# ---------------------------------------------------------------------------
+# Logs, coverage, test artifacts
+# ---------------------------------------------------------------------------
 build.log
 *.log
 npm-debug.log*
@@ -59,28 +63,37 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# ---------- Ad-hoc diagnostics ----------
-test-*.js
-__*.js
-*.local.js
-tmp/
-temp/
-*.tmp
-
-# ---------- Testing / coverage ----------
 /coverage
 .nyc_output/
 /playwright-report/
 /test-results/
 
-# ---------- Deployment ----------
-.vercel
+# ---------------------------------------------------------------------------
+# SCRATCH
+#
+# Explicit markers only. The previous file carried `test-*.js`, which would
+# have matched a real component or route file named with that prefix and
+# removed it from git without any visible sign.
+# ---------------------------------------------------------------------------
+scratch/
+*.scratch.js
+*.scratch.jsx
+*.local.js
+tmp/
+temp/
+*.tmp
 
-# ---------- TypeScript (if ever added) ----------
-*.tsbuildinfo
+# Database dumps, in case one is ever taken from this directory.
+dump/
+dumps/
+backups/
+*.bson
+*.archive
 
-# ---------- Editors & tooling ----------
-.vscode/
+# ---------------------------------------------------------------------------
+# Editors and OS
+# ---------------------------------------------------------------------------
+.vscode/*
 !.vscode/extensions.json
 .idea/
 *.swp
@@ -89,27 +102,10 @@ temp/
 *~
 .gemini/
 .claude/
-
-# ---------- OS ----------
 .DS_Store
-.DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
-ehthumbs.db
 Thumbs.db
+ehthumbs.db
 desktop.ini
-
-# ==============================================================
-# DELIBERATELY NOT IGNORED
-#
-#   package-lock.json — required for reproducible builds.
-#
-#   src/app/sitemap.js, src/app/robots.js — source files that Next
-#   compiles into /sitemap.xml and /robots.txt. Do not add
-#   "sitemap.xml" or "robots.txt" patterns here; they would not
-#   match these but the confusion is easy to create.
-#
-#   public/ — contains press PDFs and sample agreement PDFs that the
-#   site serves. The backend ignores *.pdf; this app must not.
-# ==============================================================

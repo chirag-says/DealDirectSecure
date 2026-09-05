@@ -28,6 +28,9 @@ import { toast } from "react-toastify";
 import api from "../../../utils/api";
 import { useAuth } from "../../../context/AuthContext";
 import { formatPrice } from "../../../utils/formatPrice";
+import PriceIntelligence from "../../../components/PriceIntelligence/PriceIntelligence";
+import OwnerSignals from "../../../components/PriceIntelligence/OwnerSignals";
+import SaveButton, { SAVE_PRIVACY_NOTE } from "../../../components/Shortlist/SaveButton";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -1170,6 +1173,9 @@ const PropertyDetails = ({ initialProperty }) => {
                     </span>
                   </p>
                 )}
+                {/* Verification, response time and reviews — each hidden when
+                    the backend has nothing solid to say (F17/F19). */}
+                <OwnerSignals stats={property.ownerStats} />
               </div>
 
               {/* Price block */}
@@ -1214,6 +1220,14 @@ const PropertyDetails = ({ initialProperty }) => {
                     </span>
                   )}
                 </div>
+
+                {/* Price intelligence (F19): last drop, days listed, position
+                    against the locality median, and the history behind a
+                    disclosure. Renders nothing when the backend has nothing. */}
+                <PriceIntelligence
+                  data={property.priceIntelligence}
+                  listingType={property.listingType}
+                />
               </div>
 
               {/* Quick facts */}
@@ -1269,6 +1283,13 @@ const PropertyDetails = ({ initialProperty }) => {
                   }
                 />
 
+                {/* Shortlist (F7) — a separate control on purpose. "I'm
+                    Interested" above notifies the owner and creates a lead;
+                    this does neither, and the note under it says so. */}
+                <SaveButton propertyId={id} variant="full" />
+                <p className="text-center text-xs text-slate-500">
+                  {SAVE_PRIVACY_NOTE}
+                </p>
               </div>
             </div>
           </div>

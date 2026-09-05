@@ -26,6 +26,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import api, { authApi, setAuthErrorHandler } from '../utils/api';
+import { setSentryUser } from '../utils/sentryUser';
 
 
 
@@ -129,6 +130,16 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         checkAuth();
     }, [checkAuth]);
+
+    // Keep Sentry's user context in step with auth state.
+    //
+    // Keying off `user` rather than calling this from login() and logout()
+    // covers every path that changes it — the mount-time checkAuth, a normal
+    // login, a logout, and the 401 handler below that clears the session on
+    // expiry. There is no route that can set a user and skip this.
+    useEffect(() => {
+        setSentryUser(user);
+    }, [user]);
 
     // ============================================
     // HANDLE AUTH ERRORS (401/403)

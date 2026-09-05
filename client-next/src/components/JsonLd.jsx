@@ -198,6 +198,108 @@ export function PropertyJsonLd({ property }) {
     );
 }
 
+// ─── Locality Price Statistics (for /localities/[slug]) ─────────────────
+/**
+ * Structured data for a locality asking-price page.
+ *
+ * Deliberately `Dataset`, not `Product` or `Offer`. A median asking price is a
+ * statistic about a place, not a thing anyone can buy: marking it as an Offer
+ * would tell Google that DealDirect is selling a home at ₹42L, which is false
+ * and is the kind of markup that earns a manual action. `Dataset` with
+ * `spatialCoverage` and `variableMeasured` says what the page actually is.
+ *
+ * @param {{ detail: Object, sampleFloor: number|null|undefined }} props
+ */
+export function LocalityStatsJsonLd({ detail, sampleFloor }) {
+    if (!detail || !detail.slug) return null;
+
+    const headline = detail.headline || {};
+    const place = [detail.locality, detail.city].filter(Boolean).join(', ');
+    const isRent = String(detail.listingType || '').toLowerCase() === 'rent';
+    const url = isRent
+        ? `${SITE_URL}/localities/${detail.slug}?listingType=rent`
+        : `${SITE_URL}/localities/${detail.slug}`;
+
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+
+    const variables = [
+        num(headline.medianAsking) !== undefined && {
+            '@type': 'PropertyValue',
+            name: isRent ? 'Median asking rent' : 'Median asking price',
+            value: headline.medianAsking,
+            unitText: 'INR',
+        },
+        num(headline.p25) !== undefined && {
+            '@type': 'PropertyValue',
+            name: '25th percentile asking price',
+            value: headline.p25,
+            unitText: 'INR',
+        },
+        num(headline.p75) !== undefined && {
+            '@type': 'PropertyValue',
+            name: '75th percentile asking price',
+            value: headline.p75,
+            unitText: 'INR',
+        },
+        num(headline.medianPerSqft) !== undefined && {
+            '@type': 'PropertyValue',
+            name: 'Median asking price per square foot',
+            value: headline.medianPerSqft,
+            unitText: 'INR',
+        },
+        num(headline.count) !== undefined && {
+            '@type': 'PropertyValue',
+            name: 'Listings in sample',
+            value: headline.count,
+        },
+    ].filter(Boolean);
+
+    const description = [
+        `Median ${isRent ? 'asking rent' : 'asking price'} for homes ${isRent ? 'to rent' : 'for sale'} in ${place}`,
+        num(headline.count) !== undefined ? `, from ${headline.count} live DealDirect listings` : '',
+        detail.period ? ` in ${detail.period}` : '',
+        '. Asking prices only; not a valuation and not a record of sold prices.',
+    ].join('');
+
+    const schema = {
+        '@context': 'https://schema.org',
+        '@type': 'Dataset',
+        name: `${isRent ? 'Asking rents' : 'Asking prices'} in ${place}`,
+        description,
+        url,
+        isAccessibleForFree: true,
+        license: `${SITE_URL}/terms`,
+        creator: {
+            '@type': 'Organization',
+            name: SITE_NAME,
+            url: SITE_URL,
+        },
+        ...(detail.period && { temporalCoverage: detail.period }),
+        about: `${isRent ? 'Residential rental' : 'Residential resale'} asking prices in ${place}`,
+        spatialCoverage: {
+            '@type': 'Place',
+            name: place,
+            address: {
+                '@type': 'PostalAddress',
+                ...(detail.locality && { addressLocality: detail.locality }),
+                ...(detail.city && { addressRegion: detail.city }),
+                addressCountry: 'IN',
+            },
+        },
+        ...(variables.length > 0 && { variableMeasured: variables }),
+        ...(typeof sampleFloor === 'number' && {
+            measurementTechnique: `Median of live listing asking prices; published only where at least ${sampleFloor} listings exist in the quarter.`,
+        }),
+    };
+
+    return (
+        <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+        />
+    );
+}
+
 // ─── FAQ Schema (optional, for Why Us / About pages) ────────────────────
 /**
  * @param {{ faqs: Array<{ question: string, answer: string }> }} props

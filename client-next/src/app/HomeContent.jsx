@@ -26,6 +26,13 @@ import {
     FaArrowRight,
     FaCheckCircle
 } from "react-icons/fa";
+import {
+    Sparkles,
+    Construction,
+    KeyRound,
+    BadgeCheck,
+    FileText,
+} from "lucide-react";
 import HeroSection from "../components/HeroSection/HeroSection";
 const TopLocalities = dynamic(
   () => import("../components/TopLocalities/TopLocalities"),
@@ -100,6 +107,125 @@ const formatCategoryDisplay = (name) => {
     return value || "Property";
 };
 
+const PROJECT_FALLBACK_IMG = 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800';
+
+/**
+ * Status colours match the /projects listing exactly, and every badge pairs the
+ * colour with an icon and the status word — colour is never the only carrier.
+ */
+const PROJECT_STATUS = {
+    'New Launch': { icon: Sparkles, pill: 'bg-blue-700' },
+    'Under Construction': { icon: Construction, pill: 'bg-amber-600' },
+    'Ready To Move': { icon: KeyRound, pill: 'bg-emerald-600' },
+    'Completed': { icon: BadgeCheck, pill: 'bg-slate-700' },
+};
+
+const compactPrice = (n) => {
+    if (!n || n <= 0) return null;
+    if (n >= 1e7) return `₹${(n / 1e7).toFixed(2).replace(/\.?0+$/, '')} Cr`;
+    if (n >= 1e5) return `₹${(n / 1e5).toFixed(0)} L`;
+    return `₹${n.toLocaleString('en-IN')}`;
+};
+
+function BuilderProjectCard({ project, onOpen }) {
+    const builderName = project.builder?.company || project.builder?.name;
+    const heroImg = project.media?.exteriorImages?.[0];
+    const projectName = project.basics?.name || 'Builder Project';
+    const status = project.basics?.status || 'New Launch';
+    const cfg = PROJECT_STATUS[status] || PROJECT_STATUS['New Launch'];
+    const StatusIcon = cfg.icon;
+    const loc = [project.location?.locality, project.location?.city].filter(Boolean).join(', ');
+
+    const min = compactPrice(project.priceRange?.min);
+    const max = compactPrice(project.priceRange?.max);
+    const priceLabel = min
+        ? (max && project.priceRange?.max !== project.priceRange?.min ? `${min} – ${max}` : min)
+        : null;
+
+    const configs = project.unitTypeCount || 0;
+    const units = project.overview?.totalUnits;
+    const possession = project.overview?.possessionDate
+        ? new Date(project.overview.possessionDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+        : null;
+
+    return (
+        <article
+            onClick={onOpen}
+            className="group relative flex min-w-[300px] w-[300px] flex-shrink-0 snap-start cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+        >
+            <div className="relative h-48 overflow-hidden">
+                <span className={`absolute left-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm ${cfg.pill}`}>
+                    <StatusIcon className="h-3 w-3" aria-hidden="true" />
+                    {status}
+                </span>
+                <span className="absolute right-3 top-3 z-10 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-sm">
+                    {project.basics?.subType || project.basics?.category || 'Residential'}
+                </span>
+
+                <Image
+                    src={heroImg || PROJECT_FALLBACK_IMG}
+                    alt={projectName}
+                    fill
+                    sizes="300px"
+                    className="object-cover transition-transform duration-700 group-hover:scale-105"
+                    onError={(e) => (e.currentTarget.src = PROJECT_FALLBACK_IMG)}
+                />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-950/5 to-transparent" />
+                {builderName && (
+                    <p className="absolute bottom-3 left-3 right-3 flex items-center gap-1.5 truncate text-[13px] font-semibold text-white">
+                        <FaBuilding className="shrink-0 text-[10px] text-white/70" aria-hidden="true" />
+                        <span className="truncate">{builderName}</span>
+                    </p>
+                )}
+            </div>
+
+            <div className="flex flex-1 flex-col p-4">
+                <h3 className="truncate text-base font-bold tracking-tight text-gray-900 transition-colors group-hover:text-blue-800">
+                    {projectName}
+                </h3>
+                <p className="mt-1 flex items-center gap-1.5 truncate text-sm text-gray-500">
+                    <FaMapMarkerAlt className="shrink-0 text-slate-400" aria-hidden="true" />
+                    {loc || 'India'}
+                </p>
+
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                    {configs > 0 && (
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700">
+                            {configs} Config{configs !== 1 ? 's' : ''}
+                        </span>
+                    )}
+                    {units && (
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700">
+                            {units} Units
+                        </span>
+                    )}
+                    {possession && (
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700">
+                            {possession}
+                        </span>
+                    )}
+                </div>
+
+                <div className="mt-auto flex items-end justify-between gap-2 border-t border-gray-100 pt-3.5 mt-4">
+                    <div className="min-w-0">
+                        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                            {priceLabel ? 'Starting from' : 'Price'}
+                        </p>
+                        {priceLabel
+                            ? <p className="truncate text-lg font-bold leading-none tracking-tight text-gray-900 tabular-nums">{priceLabel}</p>
+                            : <p className="text-sm leading-none text-slate-400">On request</p>}
+                    </div>
+                    {project.basics?.reraNumber && (
+                        <span className="inline-flex shrink-0 items-center gap-1 pb-0.5 text-xs font-semibold text-emerald-700">
+                            <FaCheckCircle className="text-[10px]" aria-hidden="true" /> RERA
+                        </span>
+                    )}
+                </div>
+            </div>
+        </article>
+    );
+}
+
 const HomeContent = ({ initialProperties = [], initialCategories = [], initialPropertyTypes = [], initialLatestPosts = [], initialBuilderProjects = [], propertiesUnavailable = false }) => {
     const [properties] = useState(initialProperties);
     const [builderProjects] = useState(initialBuilderProjects);
@@ -162,7 +288,7 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
                 propertyTypes={propertyTypeOptions}
             />
 
-            {/* 🏙 Featured Properties */}
+            {/* Featured Properties */}
             <section ref={propertiesSectionRef} className="relative py-10 bg-white">
                 <div className="max-w-7xl mx-auto px-6">
                     <div className="flex flex-col sm:justify-between sm:flex-row  justify-center items-center sm:items-end mb-3">
@@ -258,121 +384,59 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
                 </div>
             </section>
 
-            {/* Builder Projects Section — only shown when 5+ projects are listed */}
-            {builderProjects.length >= 5 && (
-                <section className="relative py-10 bg-gradient-to-b from-indigo-50/60 to-white">
+            {/* Builder Projects Section — only shown when 4+ projects are listed.
+
+                This rail deliberately mirrors the Popular Properties rail above it:
+                same card width, same image height, same section header shape, same
+                price-on-the-baseline footer. It previously used a violet accent, a
+                tinted section background and a different internal layout, which is
+                what made builder inventory read as a bolted-on module rather than
+                part of the same catalogue. Blue is the second colour in the
+                DealDirect mark, so it separates the two feeds without introducing
+                a third brand colour. */}
+            {builderProjects.length >= 4 && (
+                <section className="relative border-y border-slate-100 bg-slate-50 py-10">
                     <div className="max-w-7xl mx-auto px-6">
                         <div className="flex flex-col sm:justify-between sm:flex-row justify-center items-center sm:items-end mb-3">
                             <div>
                                 <h2 className="text-[1.65rem] sm:text-3xl text-center sm:text-left font-bold text-gray-900">
-                                    Builder <span className="text-indigo-600">Projects</span>
+                                    Builder <span className="text-blue-700">Projects</span>
                                 </h2>
                                 <p className="text-gray-500 mt-2 text-sm sm:text-base text-center sm:text-left max-w-lg">
-                                    Premium developer projects — buy directly from verified builders.
+                                    New construction, straight from RERA-registered developers.
                                 </p>
                             </div>
                             <button
                                 onClick={() => router.push('/projects')}
-                                className="text-indigo-600 py-2 text-sm sm:text-base font-semibold hover:text-indigo-700 transition flex items-center gap-1.5 sm:gap-2 pb-1 border-b-2 border-transparent hover:border-indigo-600"
+                                className="text-blue-700 py-2 text-sm sm:text-base font-semibold hover:text-blue-800 transition flex items-center gap-1.5 sm:gap-2 pb-1 border-b-2 border-transparent hover:border-blue-700"
                             >
                                 View All <FaArrowRight className="text-xs sm:text-sm" />
                             </button>
                         </div>
 
                         <div className="relative group">
-                            <button onClick={() => scroll('left', builderScrollRef)} className="absolute -left-2 sm:-left-4 top-1/2 -translate-y-1/2 z-10 w-8 h-8 sm:w-10 sm:h-10 bg-white backdrop-blur-sm rounded-full shadow-xl flex items-center justify-center text-gray-800 hover:text-indigo-600 transition-all border border-gray-100 opacity-0 group-hover:opacity-100">
+                            <button aria-label="Scroll left" onClick={() => scroll('left', builderScrollRef)} className="absolute -left-2 sm:-left-4 top-1/2 -translate-y-1/2 z-10 w-8 h-8 sm:w-10 sm:h-10 bg-white rounded-full shadow-xl flex items-center justify-center text-gray-800 hover:text-blue-700 transition-all border border-gray-100 opacity-0 group-hover:opacity-100 focus-visible:opacity-100">
                                 <FaChevronLeft className="text-xs sm:text-sm" />
                             </button>
-                            <button onClick={() => scroll('right', builderScrollRef)} className="absolute -right-2 sm:-right-4 top-1/2 -translate-y-1/2 z-10 w-8 h-8 sm:w-10 sm:h-10 bg-white backdrop-blur-sm rounded-full shadow-xl flex items-center justify-center text-gray-800 hover:text-indigo-600 transition-all border border-gray-100 opacity-0 group-hover:opacity-100">
+                            <button aria-label="Scroll right" onClick={() => scroll('right', builderScrollRef)} className="absolute -right-2 sm:-right-4 top-1/2 -translate-y-1/2 z-10 w-8 h-8 sm:w-10 sm:h-10 bg-white rounded-full shadow-xl flex items-center justify-center text-gray-800 hover:text-blue-700 transition-all border border-gray-100 opacity-0 group-hover:opacity-100 focus-visible:opacity-100">
                                 <FaChevronRight className="text-xs sm:text-sm" />
                             </button>
 
-                            <div ref={builderScrollRef} className="flex gap-6 overflow-x-auto pb-8 pt-2 snap-x snap-mandatory scrollbar-hide px-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                                {builderProjects.slice(0, 8).map((project) => {
-                                    const builderName = project.builder?.company || project.builder?.name;
-                                    const heroImg = project.media?.exteriorImages?.[0];
-                                    const projectName = project.basics?.name || 'Builder Project';
-                                    const status = project.basics?.status || 'New Launch';
-                                    const loc = [project.location?.locality, project.location?.city].filter(Boolean).join(', ');
-                                    const statusColors = {
-                                        'New Launch': 'bg-indigo-600',
-                                        'Under Construction': 'bg-amber-500',
-                                        'Ready To Move': 'bg-emerald-500',
-                                        'Completed': 'bg-slate-500',
-                                    };
-                                    return (
-                                        <div
-                                            key={project._id}
-                                            onClick={() => router.push(`/projects/${project._id}`)}
-                                            className="group relative bg-white rounded-2xl shadow-md hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border border-indigo-100 overflow-hidden cursor-pointer min-w-[300px] w-[300px] flex-shrink-0 snap-start"
-                                        >
-                                            <div className="relative h-48 overflow-hidden">
-                                                {/* Status badge */}
-                                                <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5">
-                                                    <span className={`${statusColors[status] || 'bg-indigo-600'} text-white text-[11px] font-bold px-2.5 py-1 rounded-full shadow-sm`}>
-                                                        {status}
-                                                    </span>
-                                                </div>
-
-                                                {/* Category badge */}
-                                                <span className="absolute top-3 right-3 z-10 bg-white/90 backdrop-blur text-slate-700 text-[11px] font-bold px-2.5 py-1 rounded-full shadow">
-                                                    {project.basics?.subType || project.basics?.category || 'Residential'}
-                                                </span>
-
-                                                <div className="relative h-full w-full">
-                                                    <Image
-                                                        src={heroImg || 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800'}
-                                                        alt={projectName}
-                                                        fill
-                                                        sizes="300px"
-                                                        className="object-cover group-hover:scale-110 transition-transform duration-700"
-                                                        onError={(e) => (e.currentTarget.src = 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800')}
-                                                    />
-                                                </div>
-                                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                                                {builderName && (
-                                                    <p className="absolute bottom-3 left-3 text-white text-[11px] font-semibold bg-black/40 backdrop-blur-sm px-2 py-0.5 rounded-lg flex items-center gap-1">
-                                                        <FaBuilding className="text-[9px]" /> {builderName}
-                                                    </p>
-                                                )}
-                                            </div>
-
-                                            <div className="p-4">
-                                                <h3 className="text-base font-bold text-gray-900 mb-1 truncate">{projectName}</h3>
-                                                <p className="text-sm text-gray-500 mb-3 flex items-center gap-1">
-                                                    <FaMapMarkerAlt className="text-red-500" /> {loc || 'India'}
-                                                </p>
-                                                <div className="flex items-center justify-between border-t border-gray-100 pt-3 mt-3">
-                                                    <div className="text-xs text-slate-500 space-y-0.5">
-                                                        {project.overview?.totalUnits && (
-                                                            <p className="font-semibold text-slate-700">{project.overview.totalUnits} Units</p>
-                                                        )}
-                                                        {project.priceRange?.min && (
-                                                            <p className="text-indigo-700 font-bold text-sm">
-                                                                ₹{project.priceRange.min >= 1e7 ? `${(project.priceRange.min/1e7).toFixed(1)}Cr` : `${(project.priceRange.min/1e5).toFixed(0)}L`}
-                                                                {project.priceRange.max && project.priceRange.max !== project.priceRange.min
-                                                                    ? ` - ₹${project.priceRange.max >= 1e7 ? `${(project.priceRange.max/1e7).toFixed(1)}Cr` : `${(project.priceRange.max/1e5).toFixed(0)}L`}`
-                                                                    : ''}
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                    {project.basics?.reraNumber && (
-                                                        <span className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded-md font-medium">
-                                                            <FaCheckCircle className="text-[9px]" /> RERA
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                            <div ref={builderScrollRef} className="flex gap-6 overflow-x-auto pb-8 pt-2 snap-x snap-mandatory scrollbar-hide px-2">
+                                {builderProjects.slice(0, 8).map((project) => (
+                                    <BuilderProjectCard
+                                        key={project._id}
+                                        project={project}
+                                        onOpen={() => router.push(`/projects/${project._id}`)}
+                                    />
+                                ))}
                             </div>
                         </div>
                     </div>
                 </section>
             )}
 
-            {/* 🛠 How Deal Direct Works Section */}
+            {/* How Deal Direct Works Section */}
             <section className="py-8 sm:py-16 bg-white relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-96 h-96 bg-blue-100/50 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
                 <div className="absolute bottom-0 right-0 w-96 h-96 bg-purple-100/50 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
@@ -461,7 +525,7 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
 
             <TopLocalities />
 
-            {/* 🏙 Explore Popular Cities */}
+            {/* Explore Popular Cities */}
             <section className="py-12 bg-white">
                 <div className="max-w-7xl mx-auto px-6">
                     <h2 className="text-3xl font-bold text-gray-900 mb-4">
@@ -570,7 +634,7 @@ function LatestBlogSection({ initialPosts = [] }) {
                                                 />
                                             ) : (
                                                 <div className="w-full h-full flex items-center justify-center">
-                                                    <span className="text-5xl opacity-20">📝</span>
+                                                    <FileText className="h-12 w-12 text-white/25" aria-hidden="true" />
                                                 </div>
                                             )}
                                             <div className="absolute top-3 left-3">

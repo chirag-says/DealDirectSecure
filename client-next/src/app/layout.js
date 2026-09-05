@@ -49,6 +49,15 @@ export const metadata = {
     index: true,
     follow: true,
   },
+  manifest: '/manifest.webmanifest',
+};
+
+export const viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#0f172a' },
+  ],
+  colorScheme: 'light dark',
 };
 
 export default function RootLayout({ children }) {
