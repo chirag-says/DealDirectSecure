@@ -28,14 +28,49 @@
  * this cannot be delivered as an OTA update.
  */
 
-import {
-  GoogleSignin,
-  isErrorWithCode,
-  isSuccessResponse,
-  statusCodes,
-} from '@react-native-google-signin/google-signin';
-
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from '@/config/env';
+
+/**
+ * The SDK, loaded lazily and allowed to be absent.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS NOT A STATIC IMPORT
+ *
+ * `@react-native-google-signin/google-signin` is a NATIVE module. Expo Go ships
+ * a fixed set of native modules and this is not among them, so importing it
+ * there throws at module-evaluation time. `AuthProvider` imports this file to
+ * get `forgetGoogleAccount`, and AuthProvider is mounted at the root — so a
+ * static import crashes the ENTIRE APP on launch in Expo Go, before any screen
+ * renders. Not "Google sign-in is unavailable": a white screen.
+ *
+ * A require() inside a try means a build without the native side degrades to
+ * "no Google button" and everything else in the app keeps working. That is what
+ * makes the rest of this release testable in Expo Go while Google itself needs
+ * a dev build.
+ */
+type GoogleSdk = typeof import('@react-native-google-signin/google-signin');
+
+let sdk: GoogleSdk | null | undefined;
+
+function loadSdk(): GoogleSdk | null {
+  if (sdk !== undefined) return sdk;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    sdk = require('@react-native-google-signin/google-signin') as GoogleSdk;
+  } catch {
+    sdk = null;
+  }
+  return sdk;
+}
+
+/** True only in a build whose native side actually carries the SDK. */
+export function isGoogleSignInAvailable(): boolean {
+  return loadSdk() !== null;
+}
+
+/** Shown when the build has no native Google SDK — Expo Go, chiefly. */
+const EXPO_GO_MESSAGE =
+  'Google sign-in needs a development build. It cannot run in Expo Go. Use email and password here.';
 
 /** The user backed out of the Google sheet. Not an error worth showing. */
 export class GoogleSignInCancelled extends Error {
@@ -61,7 +96,9 @@ export class GoogleSignInUnavailable extends Error {
  * a feature that is not switched on.
  */
 export function isGoogleSignInConfigured(): boolean {
-  return GOOGLE_WEB_CLIENT_ID.length > 0;
+  // BOTH conditions. A client ID with no native SDK (Expo Go) would render a
+  // button that crashes on tap, which is worse than no button.
+  return GOOGLE_WEB_CLIENT_ID.length > 0 && isGoogleSignInAvailable();
 }
 
 let configured = false;
@@ -69,7 +106,10 @@ let configured = false;
 function ensureConfigured(): void {
   if (configured) return;
 
-  GoogleSignin.configure({
+  const google = loadSdk();
+  if (!google) throw new GoogleSignInUnavailable(EXPO_GO_MESSAGE);
+
+  google.GoogleSignin.configure({
     webClientId: GOOGLE_WEB_CLIENT_ID,
     ...(GOOGLE_IOS_CLIENT_ID ? { iosClientId: GOOGLE_IOS_CLIENT_ID } : {}),
     // No server auth code and no offline access: the backend verifies an ID
@@ -91,8 +131,10 @@ function ensureConfigured(): void {
  * Both are expected outcomes with their own handling, not faults.
  */
 export async function signInWithGoogle(): Promise<string> {
-  if (!isGoogleSignInConfigured()) {
-    throw new GoogleSignInUnavailable('Google sign-in is not available in this build.');
+  const google = loadSdk();
+  if (!google) throw new GoogleSignInUnavailable(EXPO_GO_MESSAGE);
+  if (!GOOGLE_WEB_CLIENT_ID) {
+    throw new GoogleSignInUnavailable('Google sign-in is not configured in this build.');
   }
 
   ensureConfigured();
@@ -100,17 +142,17 @@ export async function signInWithGoogle(): Promise<string> {
   try {
     // Android only, and a no-op elsewhere. A device without current Play
     // Services shows the system update prompt rather than failing silently.
-    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    await google.GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
     // Signing out first makes the account picker appear every time. Without
     // it the SDK silently reuses the last account, so a user with two Google
     // accounts on the phone cannot switch, and someone handed a friend's
     // device signs into the friend's account without being asked.
-    await GoogleSignin.signOut();
+    await google.GoogleSignin.signOut();
 
-    const response = await GoogleSignin.signIn();
+    const response = await google.GoogleSignin.signIn();
 
-    if (!isSuccessResponse(response)) {
+    if (!google.isSuccessResponse(response)) {
       throw new GoogleSignInCancelled();
     }
 
@@ -129,14 +171,14 @@ export async function signInWithGoogle(): Promise<string> {
       throw error;
     }
 
-    if (isErrorWithCode(error)) {
+    if (google.isErrorWithCode(error)) {
       switch (error.code) {
-        case statusCodes.SIGN_IN_CANCELLED:
+        case google.statusCodes.SIGN_IN_CANCELLED:
           throw new GoogleSignInCancelled();
-        case statusCodes.IN_PROGRESS:
+        case google.statusCodes.IN_PROGRESS:
           // A second tap while the first sheet is still opening.
           throw new GoogleSignInCancelled();
-        case statusCodes.PLAY_SERVICES_NOT_AVAILABLE:
+        case google.statusCodes.PLAY_SERVICES_NOT_AVAILABLE:
           throw new GoogleSignInUnavailable(
             'Google Play Services is not available on this device. Please sign in with email instead.'
           );
@@ -161,7 +203,7 @@ export async function forgetGoogleAccount(): Promise<void> {
 
   try {
     ensureConfigured();
-    await GoogleSignin.signOut();
+    await loadSdk()!.GoogleSignin.signOut();
   } catch {
     // Best effort. Failing to clear a cache must never block signing out of
     // the app, which is the thing the user actually asked for.
