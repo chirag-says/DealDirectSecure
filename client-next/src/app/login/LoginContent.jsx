@@ -9,6 +9,7 @@ import { toast } from "react-toastify";
 import { Mail, Lock, Eye, EyeOff, Loader2, X, ArrowLeft, KeyRound, CheckCircle, AlertTriangle, Phone } from "lucide-react";
 import dealDirectLogo from "../../assets/dealdirect_logo.png";
 import { useAuth } from "../../context/AuthContext";
+import GoogleAuthPanel from "../../components/Auth/GoogleAuthPanel";
 
 export default function Login() {
   const [formData, setFormData] = useState({ email: "", password: "", phone: "" });
@@ -111,6 +112,11 @@ export default function Login() {
             reason: result.errorData.blockReason || 'No reason provided',
             blockedAt: result.errorData.blockedAt
           });
+        } else if (result.errorData?.code === 'USE_GOOGLE_SIGNIN') {
+          // The account exists but was created with Google, so it has no
+          // password to match. "Invalid credentials" would leave someone
+          // certain their account had vanished; name the door that works.
+          toast.error("This account signs in with Google. Use the Google button above.");
         } else {
           toast.error(result.message || "Invalid credentials. Please try again.");
         }
@@ -302,6 +308,11 @@ export default function Login() {
                 </div>
               </div>
             )}
+
+            <GoogleAuthPanel
+              onSuccess={() => router.push(redirectPath)}
+              dividerLabel="or log in with email"
+            />
 
             <form onSubmit={handleSubmit} className="space-y-6">
 

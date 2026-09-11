@@ -8,6 +8,7 @@ import ReactCrop, { centerCrop, makeAspectCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
 import api from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
+import GoogleSignInButton from "../../components/Auth/GoogleSignInButton";
 import {
   User,
   Mail,
@@ -421,22 +422,44 @@ const Profile = () => {
     }
   };
 
-  const handleDeleteAccount = async () => {
+  /**
+   * Whether this account can be proved with a password at all.
+   *
+   * `authMethods` is reported by GET /users/me. It is ABSENT on responses that
+   * did not read those fields, which is not the same as "no password" — so the
+   * default is the password path, preserving the behaviour every account had
+   * before this field existed.
+   */
+  const usesGoogleOnly = user?.authMethods
+    ? !user.authMethods.password && user.authMethods.google
+    : false;
+
+  /**
+   * Delete the account, having proved it is yours.
+   *
+   * Two kinds of proof, because there are two kinds of account. A password
+   * account sends its password. A Google account has none, so it sends a
+   * freshly minted Google ID token whose `sub` the backend requires to match
+   * this account's own. Accepting only a password would leave Google accounts
+   * permanently undeletable.
+   */
+  const handleDeleteAccount = async (proof) => {
     if (deleteConfirmationMatch !== `DELETE-${user?.email}`) {
       toast.error('The confirmation phrase does not match.');
       return;
     }
 
-    if (!deletePassword) {
+    const body = proof || (deletePassword ? { password: deletePassword } : null);
+    if (!body) {
       toast.error('Please enter your current password to confirm.');
       return;
     }
 
     try {
       setIsDeleting(true);
-      // The server re-checks this password before deleting anything. The typed
-      // phrase above is a client-side speed bump; the password is the control.
-      const res = await api.delete('/users/me', { data: { password: deletePassword } });
+      // The server re-checks this before deleting anything. The typed phrase
+      // above is a client-side speed bump; this is the control.
+      const res = await api.delete('/users/me', { data: body });
       if (res.data?.success) {
         toast.success(res.data.message || 'Account successfully deleted.');
         setShowDeleteModal(false);
@@ -1422,23 +1445,46 @@ const Profile = () => {
                 />
               </div>
 
-              <div className="space-y-2">
-                <label htmlFor="delete-password" className="block text-sm font-medium text-slate-700">
-                  Enter your current password
-                </label>
-                <input
-                  id="delete-password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={deletePassword}
-                  onChange={(e) => setDeletePassword(e.target.value)}
-                  placeholder="Current password"
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition"
-                />
-                <p className="text-xs text-slate-500">
-                  We ask for this so a live session on a shared or unattended device cannot delete your account.
-                </p>
-              </div>
+              {usesGoogleOnly ? (
+                <div className="space-y-3">
+                  <p className="text-sm font-medium text-slate-700">
+                    Confirm with Google to delete your account
+                  </p>
+                  {deleteConfirmationMatch === `DELETE-${user?.email}` ? (
+                    <GoogleSignInButton
+                      text="continue_with"
+                      onCredential={(idToken) => handleDeleteAccount({ idToken })}
+                    />
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      Type the confirmation phrase above first.
+                    </p>
+                  )}
+                  <p className="text-xs text-slate-500">
+                    We ask for this so a live session on a shared or unattended device cannot delete
+                    your account. Signing in again proves the device is in your hands right now,
+                    which is what a stale session cannot do.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <label htmlFor="delete-password" className="block text-sm font-medium text-slate-700">
+                    Enter your current password
+                  </label>
+                  <input
+                    id="delete-password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    placeholder="Current password"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition"
+                  />
+                  <p className="text-xs text-slate-500">
+                    We ask for this so a live session on a shared or unattended device cannot delete your account.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Modal Footer */}
@@ -1451,7 +1497,11 @@ const Profile = () => {
                 Cancel
               </button>
               <button
-                onClick={handleDeleteAccount}
+                onClick={() => handleDeleteAccount()}
+                // Hidden for a Google account: the Google button in the body IS
+                // the submit, and a second button that cannot work would read as
+                // the real one being broken.
+                hidden={usesGoogleOnly}
                 disabled={isDeleting || deleteConfirmationMatch !== `DELETE-${user?.email}` || !deletePassword}
                 className="px-5 py-2.5 bg-red-600 text-white hover:bg-red-700 rounded-xl font-medium transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >

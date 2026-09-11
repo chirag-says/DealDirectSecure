@@ -142,6 +142,53 @@ export const setAuthErrorHandler = (handler) => {
     onAuthError = handler;
 };
 
+// ============================================
+// JUST-IN-TIME PHONE VERIFICATION
+//
+// Six backend actions answer 403 PHONE_VERIFICATION_REQUIRED until the account
+// has proved a mobile number: listing a property, editing a listing, expressing
+// interest, closing a deal, signing an agreement, claiming a reward.
+//
+// Handled per page that would be six copies of the same catch-open-modal-and-
+// resume, and the sixth is the one that gets forgotten — leaving one action
+// dead-ending on a permissions error the user cannot act on.
+//
+// So it is handled once, here, in the response interceptor: raise the modal,
+// wait, and REPLAY the original request. The page sees a slower response and
+// nothing else. The user presses "I'm interested", verifies, and the enquiry
+// they were making goes through, rather than being discarded.
+// ============================================
+
+const PHONE_GATE_CODE = 'PHONE_VERIFICATION_REQUIRED';
+
+/** Set by PhoneVerificationModal. Resolves true when the phone is verified. */
+let presentPhoneVerification = null;
+
+export const setPhoneVerificationPresenter = (presenter) => {
+    presentPhoneVerification = presenter;
+};
+
+/**
+ * One shared in-flight verification.
+ *
+ * A page can easily fire two gated requests at once. Without coalescing that is
+ * two modals, two OTPs sent and two SMS charges, so every waiter queues behind
+ * the first.
+ */
+let phoneVerificationInFlight = null;
+
+const requestPhoneVerification = () => {
+    if (!presentPhoneVerification) return Promise.resolve(false);
+
+    if (!phoneVerificationInFlight) {
+        phoneVerificationInFlight = Promise.resolve(presentPhoneVerification()).finally(() => {
+            phoneVerificationInFlight = null;
+        });
+    }
+
+    return phoneVerificationInFlight;
+};
+
 api.interceptors.response.use(
     (response) => {
         // Success - return the response
@@ -220,6 +267,27 @@ api.interceptors.response.use(
                 }
             }
 
+            // The phone gate, intercepted before anything treats it as a
+            // permission failure. Raise the modal, then replay the request the
+            // user actually made so it completes instead of being thrown away.
+            //
+            // `_phoneGateRetried` marks the replay. A replay that is STILL gated
+            // must not reopen the modal: something is wrong that another code
+            // cannot fix, and retrying would spin the user in a loop with no
+            // way out. The second refusal is allowed through as an ordinary
+            // error.
+            if (status === 403 && data?.code === PHONE_GATE_CODE) {
+                const original = error.config || {};
+                if (!original._phoneGateRetried) {
+                    return requestPhoneVerification().then((verified) => {
+                        if (!verified) return Promise.reject(error);
+                        original._phoneGateRetried = true;
+                        return api.request(original);
+                    });
+                }
+                return Promise.reject(error);
+            }
+
             // Handle forbidden errors
             if (status === 403) {
                 console.warn('Access forbidden');
@@ -270,9 +338,57 @@ export const authApi = {
         return response.data;
     },
 
-    // Register
+    /**
+     * Register.
+     *
+     * `/users/register-direct`, not `/users/register`. The account is created
+     * and the session established in one call, with no OTP and no phone number
+     * — the number is collected later by the phone gate, at the first action
+     * that needs one, and the owner role is granted server-side on the first
+     * listing. `/users/register` is the legacy OTP path and is no longer used
+     * by this site.
+     */
     register: async (userData) => {
-        const response = await api.post('/users/register', userData);
+        const response = await api.post('/users/register-direct', userData);
+        return response.data;
+    },
+
+    // --- Google sign-in ---------------------------------------------------
+
+    /**
+     * Exchange Google's signed credential for a DealDirect session.
+     *
+     * A 409 `GOOGLE_LINK_REQUIRED` is NOT a failure: it means the email already
+     * has a password account, no session was issued, and the caller must
+     * collect that password and call `linkGoogle` with the SAME idToken. The
+     * backend refuses to merge on an email match alone because registration
+     * here has never verified email, so an unlinked account could belong to
+     * anyone who typed that address.
+     */
+    googleSignIn: async (idToken, referralCode) => {
+        const response = await api.post('/users/auth/google', { idToken, referralCode });
+        return response.data;
+    },
+
+    googleLink: async (idToken, password) => {
+        const response = await api.post('/users/auth/google/link', { idToken, password });
+        return response.data;
+    },
+
+    // --- Just-in-time phone verification ----------------------------------
+
+    sendPhoneOtp: async (phone) => {
+        const response = await api.post('/users/phone/send-otp', { phone });
+        return response.data;
+    },
+
+    verifyPhoneOtp: async (otp) => {
+        const response = await api.post('/users/phone/verify-otp', { otp });
+        return response.data;
+    },
+
+    phoneStatus: async () => {
+        const response = await api.get('/users/phone/status');
         return response.data;
     },
 

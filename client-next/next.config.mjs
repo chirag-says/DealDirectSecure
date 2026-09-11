@@ -23,18 +23,28 @@ const isProduction = process.env.NODE_ENV === 'production';
  */
 const CSP_REPORT_ONLY = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://sdk.myhubble.money https://sdk.dev.myhubble.money",
+  // accounts.google.com serves the Google Identity Services client that renders
+  // the sign-in button. Without it the button never appears and the failure is
+  // visible only in the console.
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://sdk.myhubble.money https://sdk.dev.myhubble.money https://accounts.google.com",
   "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com",
   "img-src 'self' data: blob: https://res.cloudinary.com https://*.cloudinary.com https://images.unsplash.com https://plus.unsplash.com https://*.tile.openstreetmap.org https://*.gstatic.com https://raw.githubusercontent.com",
   "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com",
-  "connect-src 'self' https://nominatim.openstreetmap.org https://res.cloudinary.com https://*.sentry.io",
+  "connect-src 'self' https://nominatim.openstreetmap.org https://res.cloudinary.com https://*.sentry.io https://accounts.google.com",
   // Sentry Session Replay compresses events in a Web Worker built from a blob
   // URL. With no worker-src the browser falls back to script-src, which has no
   // blob: source, so the worker is refused — currently only reported, but it
   // would silently disable replay the day this policy is enforced.
   "worker-src 'self' blob:",
-  // The four live embeds. Narrow this list before enforcing, do not widen it.
-  "frame-src 'self' https://www.google.com https://www.youtube.com https://youtube.com https://sdk.myhubble.money https://sdk.dev.myhubble.money",
+  // The live embeds. Narrow this list before enforcing, do not widen it.
+  //
+  // accounts.google.com was added for Google sign-in: GIS renders both the
+  // button and the account chooser in an iframe from that origin, so without it
+  // sign-in is dead. This was caught by the report-only policy doing its job —
+  // the violation was logged while the button still worked, which is exactly
+  // the window this policy exists to provide. Enforcing it without this entry
+  // would have shipped a sign-in button that does nothing.
+  "frame-src 'self' https://www.google.com https://www.youtube.com https://youtube.com https://sdk.myhubble.money https://sdk.dev.myhubble.money https://accounts.google.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",

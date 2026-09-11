@@ -10,7 +10,6 @@ import {
 import { toast } from "react-toastify";
 
 import { motion, AnimatePresence } from "framer-motion";
-import EmailVerificationModal from "../../components/EmailVerificationModal/EmailVerificationModal";
 import locationData from "../../data/real-estate-locations.json";
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -383,7 +382,6 @@ export default function AddProperty() {
     // Auth state using AuthContext
     const { user: authUser, isAuthenticated, loading: authLoading, ownerHasProperty, refreshOwnerPropertyStatus } = useAuth();
     const [user, setUser] = useState(null);
-    const [showVerificationModal, setShowVerificationModal] = useState(false);
     const [isAuthorized, setIsAuthorized] = useState(false);
     const hasSubmittedRef = useRef(false);
 
@@ -400,33 +398,32 @@ export default function AddProperty() {
         setUser(authUser);
         const role = (authUser.role || "user").toLowerCase();
 
-        if (role === "agent") {
-            // Agents can list unlimited properties
-            setIsAuthorized(true);
-        } else if (role === "owner") {
-            // Owners can only list ONE property - use context's ownerHasProperty
-            // BUT skip redirect if we just submitted (reward modal may be showing)
-            if (ownerHasProperty && !hasSubmittedRef.current) {
-                toast.info(
-                    "You can list only one property as an owner. Please edit your existing listing.",
-                );
-                router.push("/my-properties");
-                return;
-            }
-            setIsAuthorized(true);
-        } else {
-            // Buyer/User needs to verify email to become owner
-            setShowVerificationModal(true);
+        // A buyer is NO LONGER turned away here.
+        //
+        // This used to raise the upgrade modal for anyone who was not already
+        // an owner, and that modal ran its own OTP against
+        // /users/send-upgrade-otp. Two things retired it. The role is no longer
+        // applied for: `ensureOwnerRole` grants it server-side the moment an
+        // account first posts a listing, behind the phone check. And the modal
+        // is broken for the accounts this release creates — it texts
+        // `user.phone`, which a Google account does not have until the phone
+        // gate collects one.
+        //
+        // So the form simply opens. Submitting it is what makes an owner, and
+        // the phone gate fires from the API layer at that moment, once.
+        //
+        // The one-listing cap is unchanged: it is a separate product rule and
+        // only applies to someone who is ALREADY an owner.
+        if (role === "owner" && ownerHasProperty && !hasSubmittedRef.current) {
+            toast.info(
+                "You can list only one property as an owner. Please edit your existing listing.",
+            );
+            router.push("/my-properties");
+            return;
         }
-    }, [authLoading, isAuthenticated, authUser, ownerHasProperty, router]);
 
-    const handleVerificationSuccess = () => {
-        // User state will be automatically updated via AuthContext's checkAuth
-        // which runs after successful verification completes
         setIsAuthorized(true);
-        setShowVerificationModal(false);
-        toast.success("You can now list your property!");
-    };
+    }, [authLoading, isAuthenticated, authUser, ownerHasProperty, router]);
 
     // UI state
     const [currentStep, setCurrentStep] = useState(1);
@@ -1961,7 +1958,10 @@ export default function AddProperty() {
         );
     };
 
-    if (!isAuthorized) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><EmailVerificationModal isOpen={showVerificationModal} onClose={() => router.push("/")} user={user} onVerified={handleVerificationSuccess} /></div>;
+    // Authorisation is now only "signed in, and not already at the one-listing
+    // cap" — both of which redirect above rather than rendering anything. This
+    // is the brief moment before that effect has run.
+    if (!isAuthorized) return <div className="min-h-screen bg-gray-50" />;
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row font-sans text-gray-900">
