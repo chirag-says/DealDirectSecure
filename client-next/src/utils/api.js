@@ -110,15 +110,60 @@ export const fetchCsrfToken = async () => {
 // REQUEST INTERCEPTOR
 // ============================================
 
+/**
+ * One in-flight bootstrap, shared by every caller that needs the token.
+ *
+ * Without it, a page firing two mutations at once fetches the token twice.
+ */
+let csrfBootstrap = null;
+
+/**
+ * The `csrf_token` cookie, fetching one first if the browser does not have it.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS NEEDED, AND WHY IT WAS NOT BEFORE
+ *
+ * The double-submit pattern needs the cookie to EXIST before the first guarded
+ * mutation. Nothing ever bootstrapped it: the backend attaches it to whichever
+ * response the browser happens to receive first, and until now every guarded
+ * route was one a visitor could only reach after some earlier GET, so the
+ * cookie was always incidentally already there.
+ *
+ * Google sign-in broke that assumption. It is the FIRST request a logged-out
+ * visitor makes on a freshly loaded /login page — `checkAuth` does not call the
+ * API at all without a `session_exists` cookie — so there was no prior
+ * response, no cookie, no header, and `requireCsrf` answered "Security token
+ * missing. Please refresh the page and try again." Refreshing did not help,
+ * because the reload made no backend request either.
+ *
+ * Fetching on demand fixes every guarded route at once, not just the two that
+ * happened to expose the gap (the phone-verification routes have the same
+ * shape: they can be the first mutation a session makes).
+ */
+const ensureCsrfToken = async () => {
+    const existing = getCookie(CSRF_COOKIE_NAME);
+    if (existing) return existing;
+
+    if (!csrfBootstrap) {
+        csrfBootstrap = fetchCsrfToken().finally(() => {
+            csrfBootstrap = null;
+        });
+    }
+
+    return csrfBootstrap;
+};
+
 api.interceptors.request.use(
-    (config) => {
+    async (config) => {
         // For state-changing requests (POST, PUT, PATCH, DELETE),
-        // include the CSRF token from the cookie in the header
+        // include the CSRF token from the cookie in the header.
         const method = (config.method || '').toUpperCase();
         const stateChangingMethods = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
         if (stateChangingMethods.includes(method)) {
-            const csrfToken = getCookie(CSRF_COOKIE_NAME);
+            // The /csrf-token call inside this helper is a GET, so it cannot
+            // re-enter this branch and recurse.
+            const csrfToken = await ensureCsrfToken();
             if (csrfToken) {
                 config.headers[CSRF_HEADER_NAME] = csrfToken;
             }
