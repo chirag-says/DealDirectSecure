@@ -1,11 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
 import { Alert, ScrollView, View } from 'react-native';
 
-import { ApiError } from '@/api';
 import { useAuth, SignInPrompt } from '@/auth';
-import { useOwnerUpgrade } from '@/features/profile';
 import { useWallet } from '@/features/rewards';
 import {
   screenPadding,
@@ -20,14 +17,12 @@ import {
   Badge,
   Button,
   Card,
-  Input,
   ListGroup,
   ListRow,
   Refreshable,
   Screen,
   ScreenHeader,
   Segmented,
-  Sheet,
   Skeleton,
   Text,
 } from '@/ui';
@@ -380,105 +375,35 @@ function OwnerCard() {
 }
 
 /**
- * Buyer/user role: the upgrade entry point. The two-step OTP flow runs inside
- * a sheet so leaving it mid-flow does not lose the screen underneath.
+ * Buyer/user role: the route into listing.
+ *
+ * This used to be a "Become an owner" card that ran a second OTP flow of its
+ * own. Two things killed it. The role is no longer something you apply for —
+ * `ensureOwnerRole` grants it server-side the moment an account first posts a
+ * listing — so the card offered a parallel path to a destination the listing
+ * form already reaches. And it was actively broken for the accounts this
+ * release creates: it texted `user.phone`, which a Google account does not have
+ * yet, while its own enablement check read `isVerified`, which has never meant
+ * what its name says.
+ *
+ * So it points at the listing form. The phone check happens inside that flow,
+ * once, at the moment it is justified.
  */
 function UpgradeCard() {
-  const [open, setOpen] = useState(false);
-  const { user } = useAuth();
+  const router = useRouter();
 
   return (
-    <>
-      <Card className="mt-xl">
-        <Text variant="bodyEmphasis">List your property on DealDirect</Text>
-        <Text variant="footnote" tone="secondary" className="mt-xs mb-base">
-          Upgrade to an owner account to post a listing and manage leads directly.
-        </Text>
-        <Button
-          label="Become an owner"
-          variant="secondary"
-          disabled={!user?.isVerified}
-          onPress={() => setOpen(true)}
-        />
-        {!user?.isVerified ? (
-          <Text variant="footnote" tone="secondary" className="mt-sm">
-            Verify your email first to unlock this.
-          </Text>
-        ) : null}
-      </Card>
-
-      <OwnerUpgradeSheet visible={open} onClose={() => setOpen(false)} />
-    </>
-  );
-}
-
-function OwnerUpgradeSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const { otpSent, sendOtp, isSending, sendError, verifyOtp, isVerifying, verifyError, reset } =
-    useOwnerUpgrade();
-  const [otp, setOtp] = useState('');
-
-  const close = () => {
-    reset();
-    setOtp('');
-    onClose();
-  };
-
-  const handleSend = async () => {
-    try {
-      await sendOtp();
-    } catch {
-      // surfaced via sendError below
-    }
-  };
-
-  const handleVerify = async () => {
-    try {
-      await verifyOtp(otp);
-      close();
-    } catch {
-      // surfaced via verifyError below
-    }
-  };
-
-  return (
-    <Sheet visible={visible} onClose={close} title="Become an owner">
-      <View className="px-lg pb-lg">
-        {!otpSent ? (
-          <>
-            <Text variant="callout" tone="secondary" className="mb-lg">
-              We will send a one-time code to your registered email to confirm the upgrade.
-            </Text>
-            {sendError instanceof ApiError ? (
-              <Text variant="footnote" tone="danger" className="mb-base">
-                {sendError.message}
-              </Text>
-            ) : null}
-            <Button label="Send code" loading={isSending} onPress={() => void handleSend()} />
-          </>
-        ) : (
-          <>
-            <Text variant="callout" tone="secondary" className="mb-base">
-              Enter the code we just sent you.
-            </Text>
-            <Input
-              label="Verification code"
-              placeholder="6-digit code"
-              keyboardType="number-pad"
-              value={otp}
-              onChangeText={setOtp}
-              maxLength={6}
-              error={verifyError instanceof ApiError ? verifyError.message : undefined}
-            />
-            <Button
-              label="Confirm"
-              className="mt-base"
-              loading={isVerifying}
-              disabled={otp.length < 4}
-              onPress={() => void handleVerify()}
-            />
-          </>
-        )}
-      </View>
-    </Sheet>
+    <Card className="mt-xl">
+      <Text variant="bodyEmphasis">List your property on DealDirect</Text>
+      <Text variant="footnote" tone="secondary" className="mt-xs mb-base">
+        Post a listing and manage leads directly. We will ask you to verify your mobile number
+        once, as part of posting.
+      </Text>
+      <Button
+        label="List a property"
+        variant="secondary"
+        onPress={() => router.push('/owner/property/new')}
+      />
+    </Card>
   );
 }

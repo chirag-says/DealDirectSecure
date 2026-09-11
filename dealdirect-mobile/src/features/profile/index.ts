@@ -4,6 +4,5 @@ export {
   useSessions,
   useRevokeSession,
   useDeleteAccount,
-  useOwnerUpgrade,
   type UpdateProfileValues,
 } from './hooks';

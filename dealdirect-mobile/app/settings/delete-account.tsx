@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
 import { ApiError } from '@/api';
-import { RequireAuth } from '@/auth';
+import { GoogleSignInCancelled, RequireAuth, signInWithGoogle, useAuth } from '@/auth';
 import { confirmWithBiometrics } from '@/native';
 import { useDeleteAccount } from '@/features/profile';
 import { Button, Input, Screen, ScreenHeader, Text, useToast } from '@/ui';
@@ -15,7 +15,7 @@ export default function DeleteAccountRoute() {
     <RequireAuth
       title="Delete account"
       promptTitle="Delete your account"
-      promptDescription="Sign in to the account you want to delete. Deletion is permanent and needs your password."
+      promptDescription="Sign in to the account you want to delete. Deletion is permanent and has to be re-confirmed."
       icon="trash-outline"
       backTo="/settings"
     >
@@ -30,20 +30,35 @@ export default function DeleteAccountRoute() {
  * single tap.
  *
  * Two confirmations, doing different jobs. The typed word is a speed bump
- * against a mis-tap; the password is the actual authorisation, re-checked
- * server-side against the hash before anything is deleted. The website asks for
- * the phrase `DELETE-<email>`; that is a keyboard-sized decision, not a security
- * one, and a bare word is the right version of it on a phone.
+ * against a mis-tap; re-authentication is the actual authorisation, re-checked
+ * server-side before anything is deleted. The website asks for the phrase
+ * `DELETE-<email>`; that is a keyboard-sized decision, not a security one, and a
+ * bare word is the right version of it on a phone.
+ *
+ * WHICH proof is asked for depends on the account. A Google account has no
+ * password, so it re-confirms through Google instead — the backend requires
+ * that token's `sub` to match this account's own. Showing a password field to
+ * someone who has never had a password would be an unpassable wall in front of
+ * the one screen App Store review insists must work.
  */
 function DeleteAccountScreen() {
   const router = useRouter();
   const toast = useToast();
+  const { user } = useAuth();
   const { deleteAccount, isPending, error } = useDeleteAccount();
   const [confirmText, setConfirmText] = useState('');
   const [password, setPassword] = useState('');
+  const [googleError, setGoogleError] = useState<string | null>(null);
 
-  const canDelete =
-    confirmText.trim().toUpperCase() === CONFIRM_WORD && password.length > 0;
+  // Absent `authMethods` means the profile read did not report them, NOT that
+  // the account has no password. Defaulting to the password path keeps the
+  // long-standing behaviour for every account that predates this field.
+  const usesGoogleOnly = user?.authMethods
+    ? !user.authMethods.password && user.authMethods.google
+    : false;
+
+  const wordTyped = confirmText.trim().toUpperCase() === CONFIRM_WORD;
+  const canDelete = wordTyped && (usesGoogleOnly || password.length > 0);
 
   const handleDelete = async () => {
     if (!canDelete) return;
@@ -61,8 +76,26 @@ function DeleteAccountScreen() {
     const confirmed = await confirmWithBiometrics('Confirm you want to delete your account');
     if (!confirmed) return;
 
+    setGoogleError(null);
+
     try {
-      const response = await deleteAccount(password);
+      // A Google account proves itself by passing Google's challenge again,
+      // right now. That is what a stale session cannot do, and it is the same
+      // standard the password path holds to.
+      let proof: { password: string } | { idToken: string };
+      if (usesGoogleOnly) {
+        try {
+          proof = { idToken: await signInWithGoogle() };
+        } catch (err) {
+          if (err instanceof GoogleSignInCancelled) return;
+          setGoogleError('Could not confirm with Google. Your account was not deleted.');
+          return;
+        }
+      } else {
+        proof = { password };
+      }
+
+      const response = await deleteAccount(proof);
 
       // The success message promises the listings are gone. When the cascade
       // kept some back as deal evidence, say so instead of letting the promise
@@ -109,17 +142,29 @@ function DeleteAccountScreen() {
           placeholder={CONFIRM_WORD}
         />
 
-        <Input
-          label="Your password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoCapitalize="none"
-          autoComplete="current-password"
-          textContentType="password"
-          containerClassName="mt-base"
-          error={wrongPassword ? 'That password is not correct.' : undefined}
-        />
+        {usesGoogleOnly ? (
+          <Text variant="footnote" tone="secondary" className="mt-base">
+            You will be asked to confirm with Google before anything is deleted.
+          </Text>
+        ) : (
+          <Input
+            label="Your password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoCapitalize="none"
+            autoComplete="current-password"
+            textContentType="password"
+            containerClassName="mt-base"
+            error={wrongPassword ? 'That password is not correct.' : undefined}
+          />
+        )}
+
+        {googleError ? (
+          <Text variant="footnote" tone="danger" className="mt-base">
+            {googleError}
+          </Text>
+        ) : null}
 
         {error instanceof ApiError && !wrongPassword ? (
           <Text variant="footnote" tone="danger" className="mt-base">

@@ -78,16 +78,20 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
+/**
+ * Registration. Name, email, password — and nothing else.
+ *
+ * `phone` and `role` are BOTH gone, and their absence is the feature. The role
+ * is granted server-side on the first listing attempt, and the phone is
+ * verified just in time by the gate sheet. Asking for a number here and
+ * verifying it later would be asking for the same thing twice; asking someone
+ * to declare whether they are a buyer or an owner before they have seen a
+ * single listing was a question most people answered wrongly.
+ */
 export const registerSchema = z.object({
   name: z.string().trim().min(2, 'Enter your name'),
   email: emailSchema,
-  phone: phoneSchema,
   password: passwordSchema,
-  // Backend normalises anything that is not the literal "owner" to "user".
-  // No `.default()` here: it would make the parsed INPUT type optional while
-  // the OUTPUT type stayed required, which react-hook-form's resolver rejects.
-  // The form supplies the initial value instead.
-  role: z.enum(['user', 'owner']),
   referralCode: z.string().trim().optional(),
 });
 

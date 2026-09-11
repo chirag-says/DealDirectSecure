@@ -12,8 +12,11 @@ import type {
   DeleteAccountRequest,
   DeleteAccountResponse,
   ForgotPasswordRequest,
+  GoogleLinkRequest,
+  GoogleSignInRequest,
   LoginRequest,
   LogoutRequest,
+  PhoneStatusResponse,
   ProfileResponse,
   RegisterDeviceRequest,
   RegisterDeviceResponse,
@@ -25,8 +28,11 @@ import type {
   RemovePushTokenResponse,
   ResendOtpRequest,
   ResetPasswordRequest,
+  SendPhoneOtpRequest,
+  SendPhoneOtpResponse,
   SessionsResponse,
   VerifyOtpRequest,
+  VerifyPhoneOtpRequest,
 } from '@/types/backend/user';
 import type { ObjectId, OkEnvelope } from '@/types/backend/common';
 import { defineEndpoint } from './_contract';
@@ -211,12 +217,81 @@ export const usersEndpoints = {
       'session (see auth/deviceLink.ts). Feeds the close-deal fraud-linkage check; nothing else.',
   }),
 
+  // --- Google sign-in ----------------------------------------------------
+
+  googleSignIn: defineEndpoint<GoogleSignInRequest, AuthResponse>({
+    method: 'POST',
+    path: '/users/auth/google',
+    auth: 'public',
+    envelope: 'keyed',
+    rateLimit: 'auth',
+    note:
+      'Takes Google\'s signed idToken and ESTABLISHES THE SESSION via Set-Cookie. ' +
+      '201 for a new account, 200 for a returning one. ' +
+      '409 GOOGLE_LINK_REQUIRED means the email already has a PASSWORD account and no ' +
+      'session was issued — collect that password and call googleLink. That refusal is a ' +
+      'step in the flow, not an error: the backend will not merge on an email match alone, ' +
+      'because registration never verified email.',
+  }),
+
+  googleLink: defineEndpoint<GoogleLinkRequest, AuthResponse>({
+    method: 'POST',
+    path: '/users/auth/google/link',
+    auth: 'public',
+    envelope: 'keyed',
+    rateLimit: 'auth',
+    note:
+      'Second half of a 409 GOOGLE_LINK_REQUIRED. Attaches Google to the existing account ' +
+      'and signs in. Shares the password-login lockout counter, so repeated wrong passwords ' +
+      'return 423 ACCOUNT_LOCKED exactly as /users/login does.',
+  }),
+
+  // --- Just-in-time phone verification -----------------------------------
+
+  sendPhoneOtp: defineEndpoint<SendPhoneOtpRequest, SendPhoneOtpResponse>({
+    method: 'POST',
+    path: '/users/phone/send-otp',
+    auth: 'user',
+    envelope: 'keyed',
+    note:
+      'Sends a 6-digit SMS code to link a number to the signed-in account. ' +
+      'Capped at 3 sends per 15 minutes PER ACCOUNT (429 OTP_SEND_LIMIT, with retryAfter) — ' +
+      'a new IP does not buy more. 409 PHONE_ALREADY_LINKED if another account holds it. ' +
+      'Returns alreadyVerified:true and sends nothing when it is already this account\'s number.',
+  }),
+
+  verifyPhoneOtp: defineEndpoint<VerifyPhoneOtpRequest, AuthResponse>({
+    method: 'POST',
+    path: '/users/phone/verify-otp',
+    auth: 'user',
+    envelope: 'keyed',
+    note:
+      'Links the number and returns the updated user. Five wrong guesses BURN the code ' +
+      '(400 OTP_INVALID carries attemptsRemaining; the sixth attempt is OTP_EXPIRED), so the ' +
+      'UI must show the count rather than let the code appear to stop working.',
+  }),
+
+  phoneStatus: defineEndpoint<void, PhoneStatusResponse>({
+    method: 'GET',
+    path: '/users/phone/status',
+    auth: 'user',
+    envelope: 'keyed',
+    note:
+      'For a client resuming mid-flow — after the app was killed while the user read the SMS, ' +
+      'which is the normal case, not the rare one.',
+  }),
+
+  // --- Legacy ------------------------------------------------------------
+  //
+  // Superseded by the phone gate: the role is now granted server-side on the
+  // first listing attempt. Kept so published builds keep working.
+
   sendUpgradeOtp: defineEndpoint<void, OkEnvelope>({
     method: 'POST',
     path: '/users/send-upgrade-otp',
     auth: 'user',
     envelope: 'ok',
-    note: 'Buyer to owner upgrade. Requires a VERIFIED account (requireVerified).',
+    note: 'LEGACY. Buyer to owner upgrade. Requires a VERIFIED account (requireVerified).',
   }),
 
   verifyUpgradeOtp: defineEndpoint<{ otp: string }, OkEnvelope>({
@@ -224,6 +299,6 @@ export const usersEndpoints = {
     path: '/users/verify-upgrade-otp',
     auth: 'user',
     envelope: 'ok',
-    note: 'On success the role becomes `owner`. Refetch the profile afterwards.',
+    note: 'LEGACY. On success the role becomes `owner`. Refetch the profile afterwards.',
   }),
 } as const;

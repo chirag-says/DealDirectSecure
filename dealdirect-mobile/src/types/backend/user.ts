@@ -44,7 +44,39 @@ export interface User extends Timestamps {
   role: UserRole;
   profileImage?: string;
   bio?: string;
+  /**
+   * "This account is usable" — nothing more, despite the name.
+   *
+   * It never proved an email: `registerUser` sets it after a PHONE OTP and
+   * `registerUserDirect` sets it at creation with no proof of anything. Use
+   * `phoneVerified` / `emailVerified` below for any real decision. Kept because
+   * `loginUser` still answers 400 EMAIL_NOT_VERIFIED against it.
+   */
   isVerified: boolean;
+  /** True only when Google vouched for the inbox. Nothing else sets it. */
+  emailVerified?: boolean;
+  /**
+   * True only once an OTP sent to `phone` was entered.
+   *
+   * This is what the just-in-time gate reads. A false value is normal, not an
+   * error state: an account browses, searches and shortlists perfectly well
+   * without it, and is only asked at the first action that needs a real number.
+   */
+  phoneVerified?: boolean;
+  /**
+   * Which doors this account can come in by. Values are never sent, only
+   * existence.
+   *
+   * Present on `GET /users/me` and `/users/profile`, ABSENT elsewhere — the
+   * underlying fields are `select: false` and only the profile read asks for
+   * them. Absent means "not reported", never "none": treating a missing
+   * `authMethods` as `{ password: false }` would tell a password user they have
+   * no password.
+   *
+   * Needed because a Google account has no password, so any screen that assumes
+   * one — change password, delete account — strands the user without this.
+   */
+  authMethods?: { password: boolean; google: boolean };
   isBlocked?: boolean;
   isActive?: boolean;
   referralCode?: string;
@@ -77,8 +109,24 @@ export interface RegisterRequest {
   name: string;
   email: string;
   password: string;
-  phone: string;
-  /** Anything other than the literal `"owner"` is normalised to `"user"`. */
+  /**
+   * OPTIONAL since the auth unification, and the app no longer sends it.
+   *
+   * `registerUserDirect` treats a missing number as valid (`isValidPhoneNumber`
+   * returns true for an empty value) and the account is created without one.
+   * The number arrives later, through the just-in-time verification sheet, at
+   * the first action that actually needs it — collecting it here as well would
+   * be asking for the same thing twice.
+   *
+   * Still required by the LEGACY `/users/register` route, which is the only
+   * caller that should set it.
+   */
+  phone?: string;
+  /**
+   * LEGACY. Anything other than the literal `"owner"` is normalised to `"user"`.
+   * The app no longer sends this: the role is granted server-side on the first
+   * listing attempt.
+   */
   role?: 'owner' | 'user';
   referralCode?: string;
 }
@@ -127,7 +175,17 @@ export interface ChangePasswordRequest {
  * holding the phone.
  */
 export interface DeleteAccountRequest {
-  password: string;
+  /** Required for an account that has a password. */
+  password?: string;
+  /**
+   * Required INSTEAD for a Google account, which has no password.
+   *
+   * Must be minted fresh: the backend checks its `sub` against the account's
+   * own `googleId`, so a token for a different Google account deletes nothing.
+   * Requiring a password here would have left Google accounts permanently
+   * undeletable, which fails App Store review as well as the user.
+   */
+  idToken?: string;
 }
 
 export interface DeleteAccountResponse {
@@ -140,6 +198,64 @@ export interface DeleteAccountResponse {
    * showing — the success message promises the listings are gone.
    */
   retainedListings?: number;
+}
+
+// --- Google sign-in -------------------------------------------------------
+
+/**
+ * `POST /users/auth/google` and `POST /users/auth/google/link`.
+ *
+ * `idToken` is Google's signed JWT, straight from the native sign-in sheet. The
+ * backend verifies it against Google's public keys and reads the email out of
+ * the token itself, so sending an email alongside it achieves nothing.
+ */
+export interface GoogleSignInRequest {
+  idToken: string;
+  /** Carried through first sign-in so referral attribution is not lost. */
+  referralCode?: string;
+}
+
+/**
+ * The link step, reached only after a 409 `GOOGLE_LINK_REQUIRED`.
+ *
+ * The existing account's password is what authorises attaching Google to it.
+ * The backend will not merge on an email match alone, because registration
+ * never verified email and a silent merge would let anyone who squatted your
+ * address collect your account.
+ */
+export interface GoogleLinkRequest {
+  idToken: string;
+  password: string;
+}
+
+// --- Phone verification ---------------------------------------------------
+
+export interface SendPhoneOtpRequest {
+  /** Ten digits, no country code. `/^[6-9]\d{9}$/`. */
+  phone: string;
+}
+
+export interface SendPhoneOtpResponse {
+  success: true;
+  message: string;
+  /** Last two digits, for "ending 47" copy. Absent when already verified. */
+  phoneHint?: string;
+  expiresInSeconds?: number;
+  /** True when this number is already the account's verified number. */
+  alreadyVerified?: boolean;
+}
+
+export interface VerifyPhoneOtpRequest {
+  otp: string;
+}
+
+/** `GET /users/phone/status`. For a client resuming mid-flow. */
+export interface PhoneStatusResponse {
+  success: true;
+  phoneVerified: boolean;
+  phone: string | null;
+  pendingPhoneHint: string | null;
+  attemptsRemaining: number | null;
 }
 
 // --- Response bodies ------------------------------------------------------

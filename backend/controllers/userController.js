@@ -105,8 +105,23 @@ const isValidPhoneNumber = (phone) => {
 export const sanitizeUserResponse = (user) => {
   const safeUser = user.toObject ? user.toObject() : { ...user };
 
+  // Which doors this account can come in by. The VALUES are never returned —
+  // only whether each exists.
+  //
+  // `password` and `googleId` are both `select: false`, so a read that did not
+  // ask for them omits the keys entirely rather than setting them undefined.
+  // That distinction is the whole point of the `in` check: emitting `false`
+  // for a field we simply did not read would tell the client a Google account
+  // has no Google, and it would act on that. Undefined means "not reported",
+  // which a client can recognise; a wrong boolean it cannot.
+  const knowsAuthMethods = "password" in safeUser || "googleId" in safeUser;
+  const authMethods = knowsAuthMethods
+    ? { password: !!safeUser.password, google: !!safeUser.googleId }
+    : undefined;
+
   // Whitelist approach - only include safe fields
   return {
+    ...(authMethods ? { authMethods } : {}),
     _id: safeUser._id,
     id: safeUser._id,
     name: safeUser.name,
@@ -904,7 +919,13 @@ export const getProfile = async (req, res) => {
   try {
     // req.user is already populated by authMiddleware
     // But fetch fresh data to ensure latest info
-    const user = await User.findById(req.user._id);
+    //
+    // `+password +googleId` are selected only so sanitizeUserResponse can
+    // report WHICH sign-in methods this account has — neither value is
+    // returned. Clients need that to avoid dead ends: a Google account has no
+    // password to "change" and cannot be deleted by typing one, so a screen
+    // that assumes a password exists strands the user with no way forward.
+    const user = await User.findById(req.user._id).select("+password +googleId");
 
     if (!user) {
       return res.status(404).json({

@@ -33,7 +33,13 @@ export class ApiError extends Error {
   /** Extra fields the backend attaches to specific failures. */
   readonly details: Pick<
     BackendErrorBody,
-    'blockReason' | 'lockoutUntil' | 'requiredRoles' | 'holdUntil' | 'visitId'
+    | 'blockReason'
+    | 'lockoutUntil'
+    | 'requiredRoles'
+    | 'holdUntil'
+    | 'visitId'
+    | 'attemptsRemaining'
+    | 'email'
   >;
 
   constructor(init: {
@@ -225,6 +231,8 @@ export function normalizeError(error: unknown): ApiError {
         requiredRoles: body?.requiredRoles,
         holdUntil: body?.holdUntil,
         visitId: body?.visitId,
+        attemptsRemaining: body?.attemptsRemaining,
+        email: body?.email,
       },
     });
   }

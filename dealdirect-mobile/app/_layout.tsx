@@ -20,7 +20,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { startAnalytics } from '@/analytics';
 import { createQueryClient, PERSIST_MAX_AGE, queryPersister, shouldPersistQuery } from '@/api';
-import { AuthProvider } from '@/auth';
+import { AuthProvider, PhoneVerificationSheet } from '@/auth';
 import { AnimatedSplash } from '@/features/onboarding';
 import { PushRouter } from '@/notifications';
 import { initSentry, wrapRoot } from '@/observability';
@@ -156,6 +156,18 @@ function RootLayout() {
                     it, and inside the theme so it can read colours. */}
                 <ToastProvider>
                   <Navigation />
+                  {/*
+                    The just-in-time phone gate. Mounted once, here, because it
+                    is raised by the API layer rather than by a screen: a gated
+                    request opens it, waits, and then replays itself.
+
+                    It has to sit ABOVE the Stack so it paints over whatever
+                    screen triggered it, and it must never be a route — routing
+                    away would lose the listing the user was standing on, which
+                    is the exact failure this design exists to prevent. Renders
+                    nothing until the backend refuses a gated action.
+                  */}
+                  <PhoneVerificationSheet />
                   <OfflineBanner />
                   {splashDone ? null : <AnimatedSplash onDone={onSplashDone} />}
                 </ToastProvider>

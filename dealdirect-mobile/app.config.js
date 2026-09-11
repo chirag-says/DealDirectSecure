@@ -22,6 +22,27 @@
  * the scheme are declared at this stage.
  */
 
+/**
+ * Google's iOS SDK expects its callback URL scheme to be the iOS client ID with
+ * its dot-separated parts reversed:
+ *
+ *   1234-abcd.apps.googleusercontent.com
+ *   → com.googleusercontent.apps.1234-abcd
+ *
+ * Derived rather than configured as a second variable, because the two can only
+ * ever disagree by mistake, and the mistake is invisible: the wrong scheme
+ * builds fine and sign-in hangs at the callback.
+ *
+ * Returns a harmless placeholder when no iOS client ID is set. The plugin
+ * requires the option to be a string, and a build with Google unconfigured is a
+ * supported state — the buttons simply do not render.
+ */
+function reversedIosClientId(clientId) {
+  const trimmed = (clientId || '').trim();
+  if (!trimmed) return 'com.googleusercontent.apps.unconfigured';
+  return trimmed.split('.').reverse().join('.');
+}
+
 /** @type {import('expo/config').ExpoConfig} */
 const config = {
   name: 'DealDirect',
@@ -177,6 +198,28 @@ const config = {
         organization: process.env.SENTRY_ORG || 'dealdirect',
         project: process.env.SENTRY_PROJECT || 'dealdirect-mobile',
         url: 'https://sentry.io/',
+      },
+    ],
+    // Google Sign-In. A NATIVE module: it does not exist in Expo Go, and adding
+    // it changes the fingerprint, so the first build carrying it cannot be
+    // delivered as an OTA update.
+    //
+    // `iosUrlScheme` is the iOS client ID with its dot-separated parts
+    // REVERSED, which is how Google's iOS SDK expects the callback scheme.
+    // Passing the plain client ID here produces a scheme that never fires and a
+    // sign-in that hangs on the callback.
+    //
+    // Android needs no option here, but it does need the signing-certificate
+    // SHA-1 registered against the Android OAuth client, one per variant
+    // (debug, upload, Play App Signing).
+    //
+    // The client IDs themselves are read at RUNTIME from EXPO_PUBLIC_* through
+    // src/config/env.ts, not from here, so a build with none configured simply
+    // hides the Google buttons rather than failing.
+    [
+      '@react-native-google-signin/google-signin',
+      {
+        iosUrlScheme: reversedIosClientId(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID),
       },
     ],
   ],

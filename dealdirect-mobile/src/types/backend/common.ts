@@ -72,6 +72,36 @@ export type BackendErrorCode =
   // is over — see the note on it in api/errors.ts.
   | 'PASSWORD_REQUIRED'
   | 'INVALID_PASSWORD'
+  // Google sign-in (controllers/authGoogleController.js).
+  //
+  // GOOGLE_LINK_REQUIRED is the important one: a 409 saying the email already
+  // has a password account, which must be proved before Google is attached. It
+  // is NOT a failure to show as an error — it is a step in the flow.
+  | 'GOOGLE_LINK_REQUIRED'
+  | 'GOOGLE_ALREADY_LINKED'
+  | 'GOOGLE_INVALID_TOKEN'
+  | 'GOOGLE_EMAIL_NOT_VERIFIED'
+  | 'GOOGLE_NOT_CONFIGURED'
+  | 'GOOGLE_CONFIRMATION_REQUIRED'
+  | 'INVALID_GOOGLE_CONFIRMATION'
+  | 'USE_GOOGLE_SIGNIN'
+  | 'NO_PASSWORD_SET'
+  | 'NO_PHONE_ON_ACCOUNT'
+  // Just-in-time phone verification (middleware/requirePhoneVerified.js and
+  // controllers/phoneVerificationController.js).
+  //
+  // PHONE_VERIFICATION_REQUIRED is a 403 that the API layer INTERCEPTS: it
+  // opens the verification sheet and replays the original request on success,
+  // so screens never see it. See auth/phoneGate.ts.
+  | 'PHONE_VERIFICATION_REQUIRED'
+  | 'PHONE_ALREADY_LINKED'
+  | 'INVALID_PHONE'
+  | 'OTP_EXPIRED'
+  | 'OTP_INVALID'
+  | 'OTP_ATTEMPTS_EXCEEDED'
+  | 'OTP_SEND_LIMIT'
+  | 'SMS_NOT_CONFIGURED'
+  | 'SMS_SEND_FAILED'
   // Bookings and inventory (controllers/bookingController.js). Every one of
   // these is a refusal the buyer can act on, so each needs its own copy and its
   // own next step rather than a generic error line.
@@ -146,6 +176,20 @@ export interface BackendErrorBody {
   holdUntil?: IsoDate;
   /** Present on 409 `VISIT_ALREADY_OPEN`: the visit that is already open. */
   visitId?: ObjectId;
+  /**
+   * Present on 409 `GOOGLE_LINK_REQUIRED`: the address that already has an
+   * account, read out of the verified Google token rather than the request.
+   * Shown in the link prompt so the user knows which password is being asked
+   * for — they may well have several.
+   */
+  email?: string;
+  /**
+   * Present on 400 `OTP_INVALID`: guesses left before the code is burned.
+   *
+   * Worth surfacing. A code that silently stops working after five tries reads
+   * as a broken app; a count reads as a rule.
+   */
+  attemptsRemaining?: number;
 }
 
 // ---------------------------------------------------------------------------

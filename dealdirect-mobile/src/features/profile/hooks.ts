@@ -152,17 +152,23 @@ export function useRevokeSession() {
 /**
  * Permanent account deletion.
  *
- * The password is not optional and never was: `deleteAccount` refuses a body
- * without one and re-checks it against the hash before touching any data. This
- * sent no body at all, so every deletion attempt from the app came back 400
+ * Re-authentication is not optional and never was: `deleteAccount` refuses an
+ * unproven body and re-checks the proof before touching any data. This once
+ * sent no body at all, so every deletion attempt came back 400
  * `PASSWORD_REQUIRED` — the one flow App Store review is guaranteed to exercise.
+ *
+ * There are now two kinds of proof, because there are two kinds of account. A
+ * password account sends its password. A Google account has none, so it sends a
+ * freshly minted Google ID token instead, which the backend requires to match
+ * that account's own `googleId`. Accepting only a password would have made
+ * Google accounts undeletable — the same App Store failure, wearing a new hat.
  */
 export function useDeleteAccount() {
   const { logout } = useAuth();
 
   const mutation = useMutation({
-    mutationFn: (password: string) =>
-      call(usersEndpoints.deleteAccount, { data: { password } }),
+    mutationFn: (proof: { password: string } | { idToken: string }) =>
+      call(usersEndpoints.deleteAccount, { data: proof }),
     // The account no longer exists server-side once this resolves, so the
     // local session is torn down the same way a normal logout would.
     onSuccess: () => logout(),
@@ -175,39 +181,16 @@ export function useDeleteAccount() {
   };
 }
 
-// --- Buyer to owner upgrade ----------------------------------------------
-
-/**
- * `requireVerified` gates both calls, so an unverified email is rejected by
- * the backend before an OTP is ever sent. That 400 surfaces through
- * `sendOtp`'s error like any other.
- */
-export function useOwnerUpgrade() {
-  const { refreshUser } = useAuth();
-  const [otpSent, setOtpSent] = useState(false);
-
-  const sendMutation = useMutation({
-    mutationFn: () => call(usersEndpoints.sendUpgradeOtp),
-    onSuccess: () => setOtpSent(true),
-  });
-
-  const verifyMutation = useMutation({
-    mutationFn: (otp: string) => call(usersEndpoints.verifyUpgradeOtp, { data: { otp } }),
-    onSuccess: () => refreshUser(),
-  });
-
-  return {
-    otpSent,
-    sendOtp: sendMutation.mutateAsync,
-    isSending: sendMutation.isPending,
-    sendError: sendMutation.error,
-    verifyOtp: verifyMutation.mutateAsync,
-    isVerifying: verifyMutation.isPending,
-    verifyError: verifyMutation.error,
-    reset: () => {
-      setOtpSent(false);
-      sendMutation.reset();
-      verifyMutation.reset();
-    },
-  };
-}
+// --- Buyer to owner upgrade: REMOVED -------------------------------------
+//
+// `useOwnerUpgrade` drove a "Become an owner" sheet that ran its own OTP against
+// `/users/send-upgrade-otp`. Both are superseded: the role is granted
+// server-side by `ensureOwnerRole` when an account first posts a listing, and
+// the phone is verified by the just-in-time gate.
+//
+// It was also broken for the accounts this release creates. It texted
+// `user.phone`, which a Google account does not have until the gate collects
+// one, and gated its own button on `isVerified`, which a Google account has set
+// to true. So the button was enabled and the send failed.
+//
+// The backend routes stay live for published builds that still call them.
