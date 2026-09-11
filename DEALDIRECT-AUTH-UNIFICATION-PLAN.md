@@ -1,6 +1,6 @@
 # DealDirect Auth Unification — Google Sign-In + Just-In-Time Phone Verification
 
-**Status:** Phase 1 (backend) built and tested. Phases 2 (mobile) and 3 (website) not started.
+**Status:** Phases 1-3 built and verified. Phase 0 (Google Cloud Console) and Phase 4 (deploy) are Chirag's.
 **Date:** 2026-09-10, updated 2026-09-11 with what implementation corrected
 **Scope:** `backend/`, `dealdirect-mobile/`, `client-next/` — all three in one cutover
 **Classification:** Arch + Feature + SecReview + Migration
@@ -294,10 +294,14 @@ deployable on its own, today, with zero client impact. That property is what mak
 
 Still to do before deploying it: run the migration dry run against a copy of production, then `--up`.
 
-**Phase 2 — Mobile.** Screens, sheets, replay interceptor, native module, dev build, QA against the
-existing mobile QA script.
+**Phase 2 — Mobile. Built.** Screens, sheets, the replay interceptor, the native module.
+357 tests, tsc clean, lint 0 errors. Not yet run on a device: that needs a dev build, which needs
+the Android SHA-1 from Phase 0.
 
-**Phase 3 — Website.** Same feature set, web idioms.
+**Phase 3 — Website. Built.** Same feature set in web idioms. Build compiles; the register and login
+pages were checked rendering in a browser. The CSP needed `accounts.google.com` on `frame-src`,
+`script-src` and `connect-src` — GIS renders its account chooser in an iframe from that origin, and
+the report-only policy caught the violation while the button still worked.
 
 **Phase 4 — Deploy.** Backend first, always. Each app folder is its own repo with its own Hostinger
 hosting, so the order is enforced by hand, not by CI: **backend → website → store submission.** The
@@ -332,9 +336,50 @@ depend on the backend being right.
 
 ---
 
-## 11. Open items
+## 11. What the clients turned up that the plan did not
+
+Both frontends assumed things the new flow invalidates. Each was a live break, not a tidy-up.
+
+**An account can now have no password.** Four backend paths called `bcrypt.compare` against the
+missing hash (§6.5). On the clients, account deletion asked for a password on both platforms — which
+would have made Google accounts permanently undeletable, an App Store rejection as well as a
+data-rights failure. Both now confirm through Google instead, with the token required to match that
+account's own `googleId`.
+
+**An account can now have no phone**, and the buyer-to-owner upgrade UI texted it. The mobile profile
+card and the website's `EmailVerificationModal` (raised from add-property and the Navbar) both called
+`/users/send-upgrade-otp`, which sends to `user.phone`. The mobile card additionally gated its own
+button on `isVerified`, which a Google account has set to true — so the button was enabled and the
+send failed. Both are gone; both entry points now go to the listing form, which is what grants the
+role.
+
+**Both clients refused buyers from the create-listing route.** `OwnerOnly` on mobile and the
+`isAuthorized` check on the website. After this change that route is the only door into the owner
+role, so refusing there closed it — and mobile's refusal screen offered "List a property", which
+looped straight back to itself.
+
+**The website's CSP would have killed Google sign-in silently.** GIS renders both the button and the
+account chooser in an iframe from `accounts.google.com`, which `frame-src` did not allow;
+`script-src` and `connect-src` needed it too. The report-only policy caught it while the button still
+worked, which is exactly the window that policy exists to provide. Enforcing the CSP without this
+would have shipped a sign-in button that does nothing.
+
+**`client-next/src/components/AuthModal/AuthModal.jsx` is dead** — 487 lines, referenced from
+nowhere, still implementing the retired two-role OTP registration. Left untouched, flagged
+separately. It is the most copy-pasteable example of a flow that no longer matches the backend.
+
+**The mobile API contract was not checking request bodies.** `TRequest` appeared in both parameters
+of `call()`, so a body missing a required field widened the type rather than failing. `NoInfer` pins
+it to what the endpoint declares; the codebase already satisfied it, so this cost one word and zero
+errors.
+
+---
+
+## 12. Open items
 
 1. **Name for Google users.** Google gives a display name; we take it. If the user later edits it, that is a normal profile edit. No decision needed unless you want the name locked to Google.
 2. **Profile photo.** Google returns a picture URL. Cheap to adopt as the default `profileImage`, and it makes new accounts look populated instead of empty. Worth doing, say the word.
 3. **Apple Sign-In.** Not in scope. But if this app goes to the iOS App Store with Google sign-in and no Apple sign-in, App Review rejects it under Guideline 4.8. That is not a maybe. Flagging it now because it changes the iOS timeline, not the Android one.
 4. **Email verification at registration.** The real fix for the D2 residual risk. Deliberately out of scope here; it deserves its own change.
+5. **The login form still has a phone field that is sent nowhere.** Its own comment says so: the API authenticates on email and password only, and the field neither blocks submission nor travels anywhere. It was harmless when every account had a phone. Now that Google accounts have none until the gate collects one, asking for it on the login form is actively misleading. One line to remove — left alone because it is visible UI and the call is yours.
+6. **Google profile photo.** The token carries a `picture` URL and the backend already stores it on a new Google account. Nothing further needed unless you want it suppressed.

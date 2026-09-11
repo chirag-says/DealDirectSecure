@@ -53,6 +53,55 @@ did NOT update the docs, say so explicitly — that is a debt marker.
 
 ---
 
+## 2026-09-11 — Auth unification, phases 2 and 3: the two clients (mobile + website)
+
+**Files changed**
+
+*Mobile (`dealdirect-mobile/`)*
+- `src/auth/phoneGate.ts` + `phoneGate.test.ts` — **new.** Single-flight coordinator for the gate. Dependency-free by design, so the transport layer can use it without a cycle and its rules are testable without pulling React Native into the test process.
+- `src/api/request.ts` — `call()` catches `PHONE_VERIFICATION_REQUIRED`, raises the sheet, and REPLAYS the request. Also `data?: NoInfer<TRequest>` (see below).
+- `src/auth/googleSignIn.ts` — **new.** Wraps `@react-native-google-signin/google-signin`, returns only the ID token.
+- `src/auth/components/{PhoneVerificationSheet,GoogleAuthButton,GoogleLinkSheet}.tsx` — **new.**
+- `src/auth/AuthProvider.tsx` — `signInWithGoogle`, `linkGoogleAccount`, `sendPhoneOtp`, `verifyPhoneOtp`. `register()` (the legacy owner path) removed.
+- `app/(auth)/{login,register}.tsx`, `app/(tabs)/profile.tsx`, `app/settings/delete-account.tsx`, `app/owner/property/new.tsx`, `src/auth/components/OwnerOnly.tsx`, `src/features/profile/hooks.ts`, `app.config.js`, `src/config/env.ts`.
+
+*Website (`client-next/`)*
+- `src/components/Auth/{GoogleSignInButton,GoogleAuthPanel,GoogleLinkModal,PhoneVerificationModal}.jsx` — **new.** GIS, not next-auth.
+- `src/utils/api.js` — the gate interception and replay in the response interceptor; Google and phone methods.
+- `src/context/AuthContext.jsx` — the same four methods; `canAddProperty` no longer requires the owner role.
+- `src/app/{ClientLayout,register/RegisterContent,login/LoginContent,add-property/AddPropertyContent,profile/ProfileContent}.jsx`, `src/components/Navbar/Navbar.jsx`, `next.config.mjs`, `.env.example`.
+
+*Backend*
+- `controllers/userController.js` — `getProfile` selects `+password +googleId` so `sanitizeUserResponse` can report `authMethods: { password, google }`. Values are never returned, only existence.
+
+**Reason**
+Phase 1 made the backend capable of the new flow. These are the two clients actually using it.
+
+**Architectural impact**
+
+1. **The gate is transport-layer, not per screen.** Both clients intercept the 403, raise their sheet/modal, and replay the original request. A screen sees a slower response and nothing else. Do NOT add a per-screen handler for `PHONE_VERIFICATION_REQUIRED`; it will not fire.
+2. **Concurrent gated requests share one presentation.** Without that, a burst sends several OTPs and bills several SMS.
+3. **A replay is never re-gated.** Mobile passes `skipPhoneGate`, the website sets `_phoneGateRetried` on the axios config. Removing either creates a loop the user cannot escape.
+4. **`authMethods` is present ONLY on `GET /users/me` and `/users/profile`.** Absent means "not reported", never "none" — the underlying fields are `select: false` and only the profile read asks for them. Treating a missing `authMethods` as `{ password: false }` would tell a password user they have no password.
+5. **Both clients' create-listing routes now admit non-owners.** Mobile `OwnerOnly` gained `allowNewOwners`; the website's `AddPropertyContent` dropped its role branch. That route is the only door into the owner role, so refusing there closed it.
+6. **The buyer-to-owner upgrade UI is gone from both clients.** `useOwnerUpgrade` (mobile) and `EmailVerificationModal`'s call sites (website). The backend routes stay live for published app builds.
+7. **`client-next/src/components/AuthModal/AuthModal.jsx` is DEAD** — referenced from nowhere, still implementing the retired two-role OTP registration. Left in place; flagged for a separate decision. Do not revive it without updating it.
+8. **Mobile's `CallOptions.data` is now `NoInfer<TRequest>`.** `TRequest` appeared in both parameters of `call()`, so a body missing a required field widened the type instead of failing — meaning request types were not actually enforced anywhere. The codebase already satisfied the stricter rule.
+
+**Migration notes**
+- New env vars: `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` / `_IOS` (mobile), `NEXT_PUBLIC_GOOGLE_CLIENT_ID` (website). All unset ⇒ the Google buttons do not render and email + password works unchanged.
+- **The website CSP needed `https://accounts.google.com` on `frame-src`, `script-src` and `connect-src`.** GIS renders its account chooser in an iframe from that origin. The policy is report-only, so the violation was logged while the button still worked; enforcing it without this entry would ship a sign-in button that does nothing.
+- The website's OAuth origin must be added to the Google client's "Authorised JavaScript origins", or GIS refuses to render with the reason only in the console.
+- **Mobile is a native-module change**, so the fingerprint changes and the first build carrying it CANNOT ship as an OTA update. Android also needs the signing-certificate SHA-1 registered per variant, including the Play App Signing key.
+
+**Verification**
+Mobile: 357 tests, `tsc --noEmit` clean, lint 0 errors. Not run on a device — that needs a dev build, which needs the Android SHA-1. Website: build compiles; register and login verified rendering in a browser; lint introduces nothing new. Backend: 753 unit + 1106 integration still pass.
+
+**Docs updated**
+`CHANGELOG_AI.md` and `DEALDIRECT-AUTH-UNIFICATION-PLAN.md` (§11 records what the clients turned up that the plan missed). **`AI/AUTH_SYSTEM.md`, `AI/API_REFERENCE.md` and `AI/COMPONENT_INDEX.md` are stale** and were not rewritten — a deliberate debt marker, now covering all three phases rather than one.
+
+---
+
 ## 2026-09-11 — Auth unification, phase 1: Google Sign-In and the just-in-time phone gate (backend only)
 
 **Files changed**
