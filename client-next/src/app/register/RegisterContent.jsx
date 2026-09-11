@@ -6,22 +6,42 @@ import Link from 'next/link';
 import React, { useState, useEffect } from "react";
 import api from "../../utils/api";
 import { toast } from "react-toastify";
-import { User, Mail, Lock, Eye, EyeOff, Loader2, CheckCircle, ShieldCheck, RefreshCw, Home, Search, Phone, Gift } from "lucide-react";
+import { User, Mail, Lock, Eye, EyeOff, Loader2, CheckCircle, Gift } from "lucide-react";
 import dealDirectLogo from "../../assets/dealdirect_logo.png";
 import { useAuth } from "../../context/AuthContext";
+import GoogleAuthPanel from "../../components/Auth/GoogleAuthPanel";
 
-
-
+/**
+ * Registration. One form, for everyone.
+ *
+ * WHAT USED TO BE HERE
+ *
+ * This page opened with "I want to: Find Property / List Property", and that
+ * choice decided everything after it. "List Property" ran an SMS OTP before the
+ * account existed and added a second step to the form; "Find Property" did not.
+ *
+ * Both are gone. The choice was asked at the worst moment — before anyone has
+ * seen a listing, they are made to declare which kind of person they are — and
+ * it was wrong as often as not, since most owners browse before they list. And
+ * the OTP was a toll gate on a stranger who had not yet been given a reason to
+ * spend one.
+ *
+ * Neither fact is asked for here now. The account is created immediately, and
+ * both are established later, at the moment they matter:
+ *
+ *   - the ROLE is granted server-side the first time the account posts a
+ *     listing (`ensureOwnerRole`)
+ *   - the PHONE is verified by the modal the API layer raises when a gated
+ *     action is refused (`PhoneVerificationModal`)
+ *
+ * The phone field is gone from this form entirely. Collecting a number here and
+ * verifying it later would be asking for the same thing twice.
+ */
 export default function Register() {
-  const [formData, setFormData] = useState({ name: "", email: "", password: "", phone: "", agree: false, referralCode: "" });
+  const [formData, setFormData] = useState({ name: "", email: "", password: "", agree: false, referralCode: "" });
 
-  const [userType, setUserType] = useState("buyer"); // "buyer" or "owner"
-  const [otp, setOtp] = useState("");
-  const [step, setStep] = useState(1); // 1: Details, 2: OTP (only for owners)
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [resendLoading, setResendLoading] = useState(false);
-  const [resendTimer, setResendTimer] = useState(0);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -40,35 +60,10 @@ export default function Register() {
   }, [searchParams]);
 
 
-  // Countdown timer for resend OTP
-  useEffect(() => {
-    let interval;
-    if (resendTimer > 0) {
-      interval = setInterval(() => {
-        setResendTimer((prev) => prev - 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [resendTimer]);
-
-
-
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    let newValue = type === "checkbox" ? checked : value;
-
-    if (name === "phone") {
-      newValue = newValue.replace(/[^0-9]/g, "").slice(0, 10);
-    }
-
-    setFormData((f) => ({ ...f, [name]: newValue }));
-  };
-
-  // Safari macOS may fire onInput but not onChange during autofill
-  const handlePhoneInput = (e) => {
-    const cleaned = (e.target.value || "").replace(/[^0-9]/g, "").slice(0, 10);
-    setFormData((f) => ({ ...f, phone: cleaned }));
+    setFormData((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
   };
 
   // Password validation helper
@@ -91,30 +86,17 @@ export default function Register() {
     return { valid: true };
   };
 
-  // Handle registration - different flow for buyer vs owner
+  /**
+   * One registration path: create the account and the session in a single call.
+   *
+   * `/users/register-direct`, never `/users/register`. No OTP, no phone number,
+   * no role — see the note at the top of this file for why none of the three is
+   * asked for at signup any more.
+   */
   const handleRegister = async (e) => {
     e.preventDefault();
     if (!formData.agree) return toast.error("Please accept the Terms & Privacy Policy");
 
-    // Defensive re-clean for Safari macOS autofill that may bypass onChange
-    const cleanPhone = (formData.phone || "").replace(/[^0-9]/g, "").slice(0, 10);
-
-    if (!cleanPhone) {
-      toast.error("Please enter your phone number");
-      return;
-    }
-
-    if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
-      toast.error("Please enter a valid 10-digit phone number");
-      return;
-    }
-
-    // Update formData with cleaned phone in case autofill bypassed onChange
-    if (cleanPhone !== formData.phone) {
-      setFormData((f) => ({ ...f, phone: cleanPhone }));
-    }
-
-    // Client-side password validation
     const passwordCheck = validatePassword(formData.password);
     if (!passwordCheck.valid) {
       toast.error(passwordCheck.message);
@@ -123,39 +105,25 @@ export default function Register() {
 
     setIsLoading(true);
     try {
-      if (userType === "buyer") {
-        // Buyers: Direct registration without OTP
-        const res = await api.post('/users/register-direct', {
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-          role: "user",
-          phone: formData.phone,
-          referralCode: formData.referralCode || undefined,
-        });
+      const res = await api.post('/users/register-direct', {
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        referralCode: formData.referralCode || undefined,
+      });
 
-        const { user } = res.data;
-        updateUser(user);
-
-        toast.success("Registration successful! Welcome to DealDirect.");
-        router.push(redirectPath);
-      } else {
-        // Owners: Require OTP verification
-        await api.post('/users/register', {
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-          role: "owner",
-          phone: formData.phone,
-          referralCode: formData.referralCode || undefined,
-        });
-
-        toast.success("OTP sent to your phone number! Please verify to complete registration.");
-        setStep(2);
-        setResendTimer(60);
-      }
+      updateUser(res.data.user);
+      toast.success("Registration successful! Welcome to DealDirect.");
+      router.push(redirectPath);
     } catch (err) {
       const errorData = err.response?.data;
+
+      // An email that already signs in with Google cannot take a password here.
+      // Point at the door that works instead of at the refusal.
+      if (errorData?.code === 'USE_GOOGLE_SIGNIN') {
+        toast.error("This email already signs in with Google. Use the Google button above.");
+        return;
+      }
 
       toast.error(errorData?.message || err.message || "Registration failed. Please check your details and try again.");
       console.error("Registration error:", err.response?.status, errorData);
@@ -170,46 +138,11 @@ export default function Register() {
   // passwordChangeRequired flag, and /users/verify-mfa and
   // /users/change-password-required are not routes. MFA is an admin feature and
   // lives in the Admin app.
-
-  const handleResendOtp = async () => {
-    if (resendTimer > 0) return;
-
-    setResendLoading(true);
-    try {
-      await api.post('/users/resend-otp', {
-        email: formData.email
-      });
-      toast.success("New OTP sent to your phone number!");
-      setResendTimer(60); // Reset countdown
-      setOtp(""); // Clear old OTP input
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to resend OTP. Please try again.");
-    } finally {
-      setResendLoading(false);
-    }
-  };
-
-  const handleVerifyOtp = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-    try {
-      const res = await api.post('/users/verify-otp', {
-        email: formData.email,
-        otp,
-        referralCode: formData.referralCode || undefined,
-      });
-
-      const { user } = res.data;
-      updateUser(user);
-
-      toast.success("Registration successful! Welcome aboard.");
-      router.push(redirectPath);
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Invalid OTP. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  //
+  // The OTP step, its resend timer and `handleVerifyOtp` went in the auth
+  // unification. The phone OTP is no longer part of registration at all; it
+  // fires just in time, from PhoneVerificationModal, at the first action that
+  // needs a real number.
 
   // Render password change requirement form
   return (
@@ -260,49 +193,16 @@ export default function Register() {
         <div className="md:w-1/2 w-full p-8 md:p-12 flex flex-col justify-center">
           <div className="max-w-md mx-auto w-full">
 
-            {step === 1 ? (
-              <>
-                <div className="text-center mb-8">
-                  <h2 className="text-3xl font-bold text-slate-800">Create Account</h2>
-                  <p className="text-slate-500 mt-2">Join us to unlock exclusive property deals.</p>
-                </div>
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-slate-800">Create Account</h2>
+              <p className="text-slate-500 mt-2">Join us to unlock exclusive property deals.</p>
+            </div>
 
-                {/* User Type Selector */}
-                <div className="mb-6">
-                  <label className="text-sm font-medium text-slate-700 block mb-3">I want to</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setUserType("buyer")}
-                      className={`flex flex-col items-center p-4 rounded-xl border-2 transition-all ${userType === "buyer"
-                        ? "border-blue-600 bg-blue-50 text-blue-700"
-                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                        }`}
-                    >
-                      <Search className={`w-6 h-6 mb-2 ${userType === "buyer" ? "text-blue-600" : "text-slate-400"}`} />
-                      <span className="font-semibold text-sm">Find Property</span>
-                      <span className="text-xs mt-1 opacity-70">Browse & Buy</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setUserType("owner")}
-                      className={`flex flex-col items-center p-4 rounded-xl border-2 transition-all ${userType === "owner"
-                        ? "border-blue-600 bg-blue-50 text-blue-700"
-                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                        }`}
-                    >
-                      <Home className={`w-6 h-6 mb-2 ${userType === "owner" ? "text-blue-600" : "text-slate-400"}`} />
-                      <span className="font-semibold text-sm">List Property</span>
-                      <span className="text-xs mt-1 opacity-70">Sell or Rent</span>
-                    </button>
-                  </div>
-                  {userType === "owner" && (
-                    <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      Phone verification required to list properties
-                    </p>
-                  )}
-                </div>
+            <GoogleAuthPanel
+              referralCode={formData.referralCode || undefined}
+              onSuccess={() => router.push(redirectPath)}
+              dividerLabel="or sign up with email"
+            />
 
                 <form onSubmit={handleRegister} className="space-y-5">
                   {/* Name Input */}
@@ -322,31 +222,6 @@ export default function Register() {
                         className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:border-blue-900 transition-colors outline-none text-slate-800"
                       />
                     </div>
-                  </div>
-
-                  {/* Phone Input */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 block">Phone Number</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Phone className="h-5 w-5 text-slate-400" />
-                      </div>
-                      <input
-                        type="tel"
-                        name="phone"
-                        placeholder="10-digit mobile number"
-                        value={formData.phone}
-                        onChange={handleChange}
-                        onInput={handlePhoneInput}
-                        autoComplete="tel-national"
-                        inputMode="numeric"
-                        required
-                        className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:border-blue-900 transition-colors outline-none text-slate-800"
-                      />
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      Used for important updates about your account and visits.
-                    </p>
                   </div>
 
                   {/* Email Input */}
@@ -451,10 +326,10 @@ export default function Register() {
                     {isLoading ? (
                       <>
                         <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        {userType === "owner" ? "Sending OTP..." : "Creating Account..."}
+                        Creating Account...
                       </>
                     ) : (
-                      userType === "owner" ? "Verify & Create Account" : "Create Account"
+                      "Create Account"
                     )}
                   </button>
                 </form>
@@ -466,93 +341,6 @@ export default function Register() {
                     Log in here
                   </Link>
                 </div>
-              </>
-            ) : (
-              <>
-                {/* OTP STEP */}
-                <div className="text-center mb-8">
-                  <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
-                    <ShieldCheck className="w-8 h-8 text-blue-600" />
-                  </div>
-                  <h2 className="text-3xl font-bold text-slate-800">Verify Phone</h2>
-                  <p className="text-slate-500 mt-2">
-                    We've sent a verification code to <br /> <span className="font-semibold text-slate-800">{formData.phone}</span>
-                  </p>
-                </div>
-
-                <form onSubmit={handleVerifyOtp} className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 block text-center">Enter 6-Digit OTP</label>
-                    <input
-                      type="text"
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
-                      onInput={(e) => setOtp((e.target.value || "").replace(/[^0-9]/g, '').slice(0, 6))}
-                      placeholder="123456"
-                      autoComplete="one-time-code"
-                      inputMode="numeric"
-                      required
-                      className="w-full text-center text-2xl tracking-widest py-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-900 focus:border-blue-900 transition-colors outline-none text-slate-800"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full bg-slate-900 text-white py-3.5 rounded-lg font-semibold hover:bg-slate-800 focus:ring-4 focus:ring-slate-200 transition-all flex items-center justify-center"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Verifying...
-                      </>
-                    ) : (
-                      "Verify & Register"
-                    )}
-                  </button>
-
-                  {/* Resend OTP Section */}
-                  <div className="text-center space-y-2">
-                    <p className="text-sm text-slate-500">Didn't receive the code?</p>
-                    <button
-                      type="button"
-                      onClick={handleResendOtp}
-                      disabled={resendTimer > 0 || resendLoading}
-                      className={`inline-flex items-center text-sm font-medium transition-colors ${resendTimer > 0
-                        ? 'text-slate-400 cursor-not-allowed'
-                        : 'text-blue-900 hover:text-blue-700 hover:underline cursor-pointer'
-                        }`}
-                    >
-                      {resendLoading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-                          Sending...
-                        </>
-                      ) : resendTimer > 0 ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 mr-1.5" />
-                          Resend in {resendTimer}s
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw className="w-4 h-4 mr-1.5" />
-                          Resend OTP
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="w-full text-slate-500 text-sm hover:text-slate-700"
-                  >
-                    Change Phone / Go Back
-                  </button>
-                </form>
-              </>
-            )}
-
           </div>
         </div>
 

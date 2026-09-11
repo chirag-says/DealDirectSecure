@@ -217,6 +217,9 @@ function Navigation() {
         {/* The first-launch welcome. A fade, because it arrives from under
             the launch motion rather than from a tap. */}
         <Stack.Screen name="welcome" options={{ animation: 'fade', gestureEnabled: false }} />
+        {/* The permissions primer: no swipe back, it is dismissed by its own
+            Continue and never shown again. */}
+        <Stack.Screen name="setup" options={{ animation: 'fade', gestureEnabled: false }} />
       </Stack>
     </NavigationThemeProvider>
   );

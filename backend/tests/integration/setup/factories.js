@@ -55,6 +55,13 @@ async function testPasswordHash() {
 /**
  * Create a verified user. `role` is one of user | buyer | owner.
  * Pass `password` in overrides to set a different plaintext.
+ *
+ * `phoneVerified` defaults to true to match what the auth-unification migration
+ * does to the live collection: every existing user holding a phone and marked
+ * isVerified is grandfathered through the new just-in-time gate. A fixture
+ * stands in for a pre-existing user, so it has to carry the same grant, or
+ * every suite touching a gated route would fail on a state no real account is
+ * in. Pass `phoneVerified: false` to exercise the gate itself.
  */
 export async function makeUser(overrides = {}) {
   const User = mongoose.model('User');
@@ -69,6 +76,7 @@ export async function makeUser(overrides = {}) {
     phone: `99999${String(10000 + n).slice(-5)}`,
     role: 'user',
     isVerified: true,
+    phoneVerified: true,
     ...rest,
   });
   await doc.save();

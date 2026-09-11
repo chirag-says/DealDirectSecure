@@ -370,6 +370,11 @@ const sanitizeUser = (user) => {
     "password",
     "otp",
     "otpExpires",
+    // Both are `select: false`, so the session populate already omits them.
+    // Listed anyway: req.user is echoed back by several controllers, and one
+    // future query that selects them explicitly should not leak them.
+    "googleId",
+    "pendingPhone",
     "resetPasswordOtp",
     "resetPasswordOtpExpires",
     "blockReason",

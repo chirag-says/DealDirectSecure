@@ -29,6 +29,12 @@ import {
   exportOwnersCSV,
   deleteAccount
 } from "../controllers/userController.js";
+import { googleSignIn, googleLinkAccount } from "../controllers/authGoogleController.js";
+import {
+  sendPhoneOtp,
+  verifyPhoneOtp,
+  getPhoneStatus,
+} from "../controllers/phoneVerificationController.js";
 import { getOwnersWithProjects } from "../controllers/propertyController.js";
 import {
   authMiddleware,
@@ -62,6 +68,14 @@ router.post("/resend-otp", authRateLimit, resendOtp);
 
 // Login
 router.post("/login", authRateLimit, loginUser);
+
+// Google Sign-In.
+//
+// Both share loginUser's rate limiter. /link in particular needs it: it takes a
+// password, so without a limiter it would be an unthrottled guessing oracle for
+// the very credential /login throttles.
+router.post("/auth/google", authRateLimit, googleSignIn);
+router.post("/auth/google/link", authRateLimit, googleLinkAccount);
 
 // Password Reset (public)
 router.post("/forgot-password", authRateLimit, forgotPassword);
@@ -97,8 +111,30 @@ router.delete("/push-token", authMiddleware, removePushToken);
 router.post("/device", authMiddleware, registerDevice);
 
 // ============================================
-// UPGRADE ROUTES (Buyer to Owner)
+// PHONE VERIFICATION (just-in-time)
 // ============================================
+//
+// Reached when a gated action returns 403 PHONE_VERIFICATION_REQUIRED. No
+// `requireVerified` here on purpose: an account that has not proved a phone is
+// exactly the account that needs these, so gating them on verification would
+// make the gate impossible to pass.
+//
+// Rate limiting lives inside the controller rather than in authRateLimit, which
+// counts per IP. The meaningful limits here are per account and per phone
+// number: one office behind one NAT is not three abusers, and an attacker on a
+// phone network can change IP at will.
+
+router.get("/phone/status", authMiddleware, getPhoneStatus);
+router.post("/phone/send-otp", authMiddleware, sendPhoneOtp);
+router.post("/phone/verify-otp", authMiddleware, verifyPhoneOtp);
+
+// ============================================
+// UPGRADE ROUTES (Buyer to Owner) — LEGACY
+// ============================================
+//
+// Superseded by ensureOwnerRole, which promotes on the first listing attempt.
+// Kept alive because published app builds still call them and cannot be forced
+// to update. Retire once telemetry shows those builds are gone.
 
 router.post("/send-upgrade-otp", authMiddleware, requireVerified, sendUpgradeOtp);
 router.post("/verify-upgrade-otp", authMiddleware, requireVerified, verifyUpgradeOtp);

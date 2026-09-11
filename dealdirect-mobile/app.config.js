@@ -54,8 +54,13 @@ const config = {
                          binding constraint; 62% clears a circular mask with
                          margin. `backgroundColor` below is what shows around it.
 
-      splash-icon.png    1024², transparent, mark at 46% — a splash mark sits
-                         smaller than an icon because nothing crops it.
+      splash-icon.png    1024², transparent, mark at 46%. NO LONGER USED for
+                         the splash (2026-09-06): it was a separate, softer
+                         rendering of the mark with ragged curves and a faint
+                         box around it, and it did not match the icon. The
+                         splash now shows icon.png itself, the one clean
+                         source, on the same white it already carries. Kept on
+                         disk only until nothing else references it.
 
     White background rather than brand red: the mark is a red 'd' and a blue 'd'
     drawn with a white keyline, and that keyline needs white behind it to read
@@ -88,6 +93,21 @@ const config = {
   // config. The url is derived from the project id and is not a credential.
   updates: {
     url: 'https://u.expo.dev/9d0ec43d-f62d-4bf2-8c59-549fb239b8a0',
+    /*
+      THE CHANNEL, FOR BUILDS MADE OUTSIDE EAS BUILD (2026-09-06).
+
+      EAS Build writes the profile's channel into the app for you. A local
+      Gradle build does not, and a binary with no channel never receives an
+      update: it has no way to say which branch it wants, so the server has
+      nothing to answer. The APK shipped on 2026-09-06 was built that way,
+      which is why it could not be updated over the air. This header is what
+      a local build was missing. "preview" matches the internal-distribution
+      profile in eas.json, the one the APK is built with; an EAS Build with a
+      profile of its own overrides it.
+    */
+    requestHeaders: {
+      'expo-channel-name': 'preview',
+    },
   },
 
   // `fingerprint` hashes the native side (packages, plugins, native config) and
@@ -111,12 +131,15 @@ const config = {
 
         `resizeMode: 'contain'` rather than 'cover': the mark has fixed
         proportions and cropping it on a narrow device would cut a letter in
-        half. The background matches the icon's, so the splash and the launcher
-        icon are the same white plate.
+        half. The image is the app icon itself, an opaque white plate, on the
+        same white, so only the mark is visible and it is drawn from the same
+        pixels as the launcher icon. `AnimatedSplash` draws the same file at
+        the same width, which is what makes the native-to-animated handoff
+        invisible.
       */
       'expo-splash-screen',
       {
-        image: './assets/splash-icon.png',
+        image: './assets/icon.png',
         imageWidth: 200,
         resizeMode: 'contain',
         backgroundColor: '#FFFFFF',
@@ -167,8 +190,11 @@ const config = {
     // a regex because no picker was installed.
     '@react-native-community/datetimepicker',
     // Crash reporting (Phase 0). The plugin writes `sentry.properties` for the
-    // native build's source-map upload; the upload itself needs
-    // SENTRY_AUTH_TOKEN in the build environment and is skipped without it.
+    // native build's source-map upload. The upload needs SENTRY_AUTH_TOKEN in
+    // the build environment and is NOT skipped without it: the Gradle task
+    // fails the whole release build (verified 2026-09-06). A build with no
+    // token must set SENTRY_DISABLE_AUTO_UPLOAD=true; eas.json does this for
+    // the development and preview profiles.
     // The runtime DSN is EXPO_PUBLIC_SENTRY_DSN, read in
     // src/observability/sentry.ts; unset, the SDK never initialises.
     [

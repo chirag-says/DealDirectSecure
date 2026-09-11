@@ -23,9 +23,35 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: [true, "Password is required"],
+      // Conditional: a Google account has no password and never will unless the
+      // user sets one. Making this unconditionally required would make every
+      // Google user unsaveable.
+      //
+      // Scoped to `isNew` on purpose. On a new document every path is present,
+      // so `this.googleId` is trustworthy. On an existing one it usually is
+      // not: googleId and password are both `select: false`, so a routine
+      // `findOne().save()` sees googleId as undefined, concludes a password is
+      // required, finds none selected either, and would fail validation on an
+      // account that is perfectly valid. Mongoose does skip validators on
+      // unselected paths, so that would not actually fire today — but making
+      // the rule depend on that subtlety is how it breaks later.
+      required: [
+        function () {
+          return this.isNew && !this.googleId;
+        },
+        "Password is required",
+      ],
       minlength: [8, "Password must be at least 8 characters"],
       select: false, // Never return password by default
+    },
+    // Google's `sub` claim — stable for the life of the Google account, unlike
+    // the email address, which Workspace admins can reassign to a different
+    // person. Always match on this first and treat email as a fallback lookup.
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      select: false,
     },
     role: {
       type: String,
@@ -88,7 +114,12 @@ const userSchema = new mongoose.Schema(
       smsNotifications: { type: Boolean, default: false },
     },
 
-    // Email Verification
+    // Account usability. Despite the historic name and the "email verification"
+    // wording in authUser.requireVerified, nothing here ever proved an email:
+    // registerUser sets it after a *phone* OTP, and registerUserDirect sets it
+    // on creation with no proof of anything. Too many call sites read it to
+    // safely change what it means, so it keeps its current meaning — "this
+    // account is usable" — and the two fields below carry the real claims.
     isVerified: {
       type: Boolean,
       default: false
@@ -100,6 +131,33 @@ const userSchema = new mongoose.Schema(
     otpExpires: {
       type: Date,
       select: false,
+    },
+
+    // ------------------------------------------------------------------
+    // Auth unification: explicit identity proofs.
+    //
+    // `emailVerified` is set only by Google, which is the only source that
+    // actually checks an inbox. Password registration still does not.
+    //
+    // `phoneVerified` is set only by entering an OTP sent to that number, and
+    // is what every just-in-time gate reads. Nothing new reads `isVerified`.
+    // ------------------------------------------------------------------
+    emailVerified: { type: Boolean, default: false },
+    phoneVerified: { type: Boolean, default: false },
+    phoneVerifiedAt: { type: Date, default: null },
+
+    // The in-flight phone link. Deliberately NOT stored in the `otp` field
+    // above: that one field is shared by registration, the owner upgrade and
+    // password reset, so two concurrent flows silently overwrite each other.
+    // The pending number also has nowhere else to live, since it must not touch
+    // `phone` until an OTP proves it.
+    pendingPhone: {
+      phone: { type: String, select: false },
+      otp: { type: String, select: false },
+      expires: { type: Date, select: false },
+      attempts: { type: Number, default: 0, select: false },
+      sends: { type: Number, default: 0, select: false },
+      windowStart: { type: Date, select: false },
     },
 
     // Security Fields
@@ -195,6 +253,8 @@ const userSchema = new mongoose.Schema(
         delete ret.password;
         delete ret.otp;
         delete ret.otpExpires;
+        delete ret.googleId;
+        delete ret.pendingPhone;
         delete ret.resetPasswordOtp;
         delete ret.resetPasswordOtpExpires;
         delete ret.blockReason;
@@ -245,6 +305,10 @@ userSchema.pre("save", async function (next) {
 // email is declared `unique: true` inline, which already builds this index.
 userSchema.index({ role: 1 });
 userSchema.index({ isVerified: 1 });
+// googleId is declared `unique: true, sparse: true` inline, which builds its
+// own index. phoneVerified is indexed because the migration and any future
+// re-verification sweep both filter on it across the whole collection.
+userSchema.index({ phoneVerified: 1 });
 userSchema.index({ isBlocked: 1 });
 userSchema.index({ createdAt: -1 });
 // referralCode is declared `unique: true, sparse: true` inline.
@@ -315,7 +379,7 @@ userSchema.methods.changedPasswordAfter = function (jwtTimestamp) {
 
 // Static method: Filter safe fields for API response
 userSchema.statics.getSafeFields = function () {
-  return "-password -otp -otpExpires -resetPasswordOtp -resetPasswordOtpExpires -blockReason -blockedAt -blockedBy -security.failedLoginAttempts -security.lockoutUntil -security.lastLoginIp";
+  return "-password -otp -otpExpires -googleId -pendingPhone -resetPasswordOtp -resetPasswordOtpExpires -blockReason -blockedAt -blockedBy -security.failedLoginAttempts -security.lockoutUntil -security.lastLoginIp";
 };
 
 // Static method: Get public profile fields

@@ -239,6 +239,77 @@ export const AuthProvider = ({ children }) => {
     };
 
     /**
+     * Google sign-in.
+     *
+     * `idToken` is the credential Google's button hands back. Returns
+     * `{ linkRequired: true }` when the email already has a password account:
+     * no session was issued and the caller must collect that password and call
+     * `linkGoogle` with the same token. That refusal is a step in the flow, not
+     * an error — see the note on `authApi.googleSignIn`.
+     */
+    const signInWithGoogle = async (idToken, referralCode) => {
+        try {
+            setLoading(true);
+            setError(null);
+
+            const response = await authApi.googleSignIn(idToken, referralCode);
+            if (response.success && response.user) {
+                setUser(response.user);
+                await checkOwnerProperty(response.user);
+                return { success: true, user: response.user };
+            }
+            return { success: false, message: response.message || 'Google sign-in failed' };
+        } catch (err) {
+            const errorData = err.response?.data;
+
+            if (errorData?.code === 'GOOGLE_LINK_REQUIRED') {
+                return { success: false, linkRequired: true, email: errorData.email };
+            }
+
+            const message = errorData?.message || 'Google sign-in failed. Please try again.';
+            setError(message);
+            return { success: false, message, errorData };
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const linkGoogle = async (idToken, password) => {
+        try {
+            setLoading(true);
+            setError(null);
+
+            const response = await authApi.googleLink(idToken, password);
+            if (response.success && response.user) {
+                setUser(response.user);
+                await checkOwnerProperty(response.user);
+                return { success: true, user: response.user };
+            }
+            return { success: false, message: response.message || 'Could not connect Google' };
+        } catch (err) {
+            const errorData = err.response?.data;
+            const message = errorData?.message || 'Could not connect Google. Please try again.';
+            return { success: false, message, errorData };
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // --- Just-in-time phone verification ---------------------------------
+
+    const sendPhoneOtp = (phone) => authApi.sendPhoneOtp(phone);
+
+    /**
+     * Verifies the code and folds the updated user straight into state, so the
+     * page behind the modal reflects the new `phoneVerified` without a refetch.
+     */
+    const verifyPhoneOtp = async (otp) => {
+        const response = await authApi.verifyPhoneOtp(otp);
+        if (response?.user) setUser(response.user);
+        return response;
+    };
+
+    /**
      * Logout handler - clears session on server.
      * No localStorage cleanup needed for tokens - only user cache.
      */
@@ -294,7 +365,18 @@ export const AuthProvider = ({ children }) => {
     // 'user' and 'buyer' are equivalent roles (buyers/property seekers)
     const isBuyer = user?.role === 'user' || user?.role === 'buyer';
 
+    /**
+     * "This account is usable" — not proof of anything, despite the name.
+     *
+     * `registerUser` sets it after a PHONE OTP and `registerUserDirect` sets it
+     * at creation with no proof at all, so it has never meant a verified email.
+     * Kept because `loginUser` still answers 400 EMAIL_NOT_VERIFIED against it.
+     * Use `phoneVerified` for any real decision.
+     */
     const isVerified = user?.isVerified === true;
+
+    /** Proved by entering an OTP sent to that number. What the gate reads. */
+    const phoneVerified = user?.phoneVerified === true;
 
     const hasRole = (role) => {
         if (!user) return false;
@@ -313,8 +395,22 @@ export const AuthProvider = ({ children }) => {
 
     const canAccessOwnerFeatures = isAuthenticated && (isOwner || user?.role === 'owner');
 
-    // Owner can add property only if verified AND hasn't posted yet
-    const canAddProperty = isAuthenticated && isOwner && isVerified && !ownerHasProperty;
+    /**
+     * Who may reach the "post a listing" form.
+     *
+     * The `isOwner && isVerified` half is gone, deliberately. Posting a listing
+     * is now what MAKES an account an owner — `ensureOwnerRole` grants the role
+     * server-side at that moment, behind the phone check — so requiring the
+     * role first would hide the button from exactly the people the new flow
+     * exists to let through, and there would be no other way to get it.
+     *
+     * The one-listing cap is untouched. That is a separate product rule and it
+     * stays until someone decides otherwise.
+     *
+     * The server is still the authority: `POST /properties/add` runs
+     * `requirePhoneVerified` and `ensureOwnerRole` whatever this says.
+     */
+    const canAddProperty = isAuthenticated && !ownerHasProperty;
 
     // ============================================
     // CONTEXT VALUE
@@ -331,6 +427,7 @@ export const AuthProvider = ({ children }) => {
         isOwner,
         isBuyer,
         isVerified,
+        phoneVerified,
         ownerHasProperty,
 
         // Role helpers
@@ -341,6 +438,10 @@ export const AuthProvider = ({ children }) => {
         // Actions
         login,
         register,
+        signInWithGoogle,
+        linkGoogle,
+        sendPhoneOtp,
+        verifyPhoneOtp,
         logout,
         checkAuth,
         updateUser,

@@ -104,7 +104,32 @@ describe('account deletion is re-authenticated', () => {
   });
 
   test('the password hash is explicitly selected (req.user has none)', () => {
-    assert.match(fn, /select\(["']\+password["']\)/);
+    // googleId rides along in the same select now — sanitizeUser strips both,
+    // and the Google confirmation path below needs to compare against it.
+    assert.match(fn, /select\(["']\+password[^"']*["']\)/);
+  });
+
+  test('a Google account confirms with a token instead, and only its own', () => {
+    // A passwordless account must still be deletable — otherwise Google users
+    // cannot close their accounts, which fails both data-rights obligations and
+    // App Store review. The equality check is what stops any valid Google token
+    // deleting whichever account the session happens to hold.
+    assert.match(fn, /GOOGLE_CONFIRMATION_REQUIRED/);
+    assert.match(fn, /verifyGoogleIdToken/);
+    assert.match(
+      fn,
+      /identity\.googleId\s*!==\s*accountForAuth\.googleId/,
+      'the token must be tied to this account, not merely valid'
+    );
+
+    const verifyAt = fn.indexOf('verifyGoogleIdToken');
+    const destructive = ['deleteUserAggregate', 'deletePropertyAssets', 'deleteMany', 'findByIdAndDelete']
+      .map((m) => fn.indexOf(m))
+      .filter((i) => i !== -1);
+    assert.ok(
+      verifyAt < Math.min(...destructive),
+      'the Google check must run before the first destructive operation'
+    );
   });
 
   test('the success message no longer claims all data was deleted', () => {

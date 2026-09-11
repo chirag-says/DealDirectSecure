@@ -110,15 +110,60 @@ export const fetchCsrfToken = async () => {
 // REQUEST INTERCEPTOR
 // ============================================
 
+/**
+ * One in-flight bootstrap, shared by every caller that needs the token.
+ *
+ * Without it, a page firing two mutations at once fetches the token twice.
+ */
+let csrfBootstrap = null;
+
+/**
+ * The `csrf_token` cookie, fetching one first if the browser does not have it.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS NEEDED, AND WHY IT WAS NOT BEFORE
+ *
+ * The double-submit pattern needs the cookie to EXIST before the first guarded
+ * mutation. Nothing ever bootstrapped it: the backend attaches it to whichever
+ * response the browser happens to receive first, and until now every guarded
+ * route was one a visitor could only reach after some earlier GET, so the
+ * cookie was always incidentally already there.
+ *
+ * Google sign-in broke that assumption. It is the FIRST request a logged-out
+ * visitor makes on a freshly loaded /login page — `checkAuth` does not call the
+ * API at all without a `session_exists` cookie — so there was no prior
+ * response, no cookie, no header, and `requireCsrf` answered "Security token
+ * missing. Please refresh the page and try again." Refreshing did not help,
+ * because the reload made no backend request either.
+ *
+ * Fetching on demand fixes every guarded route at once, not just the two that
+ * happened to expose the gap (the phone-verification routes have the same
+ * shape: they can be the first mutation a session makes).
+ */
+const ensureCsrfToken = async () => {
+    const existing = getCookie(CSRF_COOKIE_NAME);
+    if (existing) return existing;
+
+    if (!csrfBootstrap) {
+        csrfBootstrap = fetchCsrfToken().finally(() => {
+            csrfBootstrap = null;
+        });
+    }
+
+    return csrfBootstrap;
+};
+
 api.interceptors.request.use(
-    (config) => {
+    async (config) => {
         // For state-changing requests (POST, PUT, PATCH, DELETE),
-        // include the CSRF token from the cookie in the header
+        // include the CSRF token from the cookie in the header.
         const method = (config.method || '').toUpperCase();
         const stateChangingMethods = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
         if (stateChangingMethods.includes(method)) {
-            const csrfToken = getCookie(CSRF_COOKIE_NAME);
+            // The /csrf-token call inside this helper is a GET, so it cannot
+            // re-enter this branch and recurse.
+            const csrfToken = await ensureCsrfToken();
             if (csrfToken) {
                 config.headers[CSRF_HEADER_NAME] = csrfToken;
             }
@@ -140,6 +185,53 @@ let onAuthError = null;
 
 export const setAuthErrorHandler = (handler) => {
     onAuthError = handler;
+};
+
+// ============================================
+// JUST-IN-TIME PHONE VERIFICATION
+//
+// Six backend actions answer 403 PHONE_VERIFICATION_REQUIRED until the account
+// has proved a mobile number: listing a property, editing a listing, expressing
+// interest, closing a deal, signing an agreement, claiming a reward.
+//
+// Handled per page that would be six copies of the same catch-open-modal-and-
+// resume, and the sixth is the one that gets forgotten — leaving one action
+// dead-ending on a permissions error the user cannot act on.
+//
+// So it is handled once, here, in the response interceptor: raise the modal,
+// wait, and REPLAY the original request. The page sees a slower response and
+// nothing else. The user presses "I'm interested", verifies, and the enquiry
+// they were making goes through, rather than being discarded.
+// ============================================
+
+const PHONE_GATE_CODE = 'PHONE_VERIFICATION_REQUIRED';
+
+/** Set by PhoneVerificationModal. Resolves true when the phone is verified. */
+let presentPhoneVerification = null;
+
+export const setPhoneVerificationPresenter = (presenter) => {
+    presentPhoneVerification = presenter;
+};
+
+/**
+ * One shared in-flight verification.
+ *
+ * A page can easily fire two gated requests at once. Without coalescing that is
+ * two modals, two OTPs sent and two SMS charges, so every waiter queues behind
+ * the first.
+ */
+let phoneVerificationInFlight = null;
+
+const requestPhoneVerification = () => {
+    if (!presentPhoneVerification) return Promise.resolve(false);
+
+    if (!phoneVerificationInFlight) {
+        phoneVerificationInFlight = Promise.resolve(presentPhoneVerification()).finally(() => {
+            phoneVerificationInFlight = null;
+        });
+    }
+
+    return phoneVerificationInFlight;
 };
 
 api.interceptors.response.use(
@@ -220,6 +312,27 @@ api.interceptors.response.use(
                 }
             }
 
+            // The phone gate, intercepted before anything treats it as a
+            // permission failure. Raise the modal, then replay the request the
+            // user actually made so it completes instead of being thrown away.
+            //
+            // `_phoneGateRetried` marks the replay. A replay that is STILL gated
+            // must not reopen the modal: something is wrong that another code
+            // cannot fix, and retrying would spin the user in a loop with no
+            // way out. The second refusal is allowed through as an ordinary
+            // error.
+            if (status === 403 && data?.code === PHONE_GATE_CODE) {
+                const original = error.config || {};
+                if (!original._phoneGateRetried) {
+                    return requestPhoneVerification().then((verified) => {
+                        if (!verified) return Promise.reject(error);
+                        original._phoneGateRetried = true;
+                        return api.request(original);
+                    });
+                }
+                return Promise.reject(error);
+            }
+
             // Handle forbidden errors
             if (status === 403) {
                 console.warn('Access forbidden');
@@ -270,9 +383,57 @@ export const authApi = {
         return response.data;
     },
 
-    // Register
+    /**
+     * Register.
+     *
+     * `/users/register-direct`, not `/users/register`. The account is created
+     * and the session established in one call, with no OTP and no phone number
+     * — the number is collected later by the phone gate, at the first action
+     * that needs one, and the owner role is granted server-side on the first
+     * listing. `/users/register` is the legacy OTP path and is no longer used
+     * by this site.
+     */
     register: async (userData) => {
-        const response = await api.post('/users/register', userData);
+        const response = await api.post('/users/register-direct', userData);
+        return response.data;
+    },
+
+    // --- Google sign-in ---------------------------------------------------
+
+    /**
+     * Exchange Google's signed credential for a DealDirect session.
+     *
+     * A 409 `GOOGLE_LINK_REQUIRED` is NOT a failure: it means the email already
+     * has a password account, no session was issued, and the caller must
+     * collect that password and call `linkGoogle` with the SAME idToken. The
+     * backend refuses to merge on an email match alone because registration
+     * here has never verified email, so an unlinked account could belong to
+     * anyone who typed that address.
+     */
+    googleSignIn: async (idToken, referralCode) => {
+        const response = await api.post('/users/auth/google', { idToken, referralCode });
+        return response.data;
+    },
+
+    googleLink: async (idToken, password) => {
+        const response = await api.post('/users/auth/google/link', { idToken, password });
+        return response.data;
+    },
+
+    // --- Just-in-time phone verification ----------------------------------
+
+    sendPhoneOtp: async (phone) => {
+        const response = await api.post('/users/phone/send-otp', { phone });
+        return response.data;
+    },
+
+    verifyPhoneOtp: async (otp) => {
+        const response = await api.post('/users/phone/verify-otp', { otp });
+        return response.data;
+    },
+
+    phoneStatus: async () => {
+        const response = await api.get('/users/phone/status');
         return response.data;
     },
 

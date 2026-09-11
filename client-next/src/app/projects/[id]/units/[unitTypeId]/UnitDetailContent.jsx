@@ -12,6 +12,49 @@ import ddAdminPfp from '../../../../../assets/clientadminpfp.png';
 const fmt = (n) => !n ? null : n >= 1e7 ? `₹${(n/1e7).toFixed(2)} Cr` : `₹${(n/1e5).toFixed(2)} L`;
 const inp = 'w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition';
 
+/**
+ * A refusal from the booking API, with a way out where one exists.
+ *
+ * Shared by both modals so the two cannot drift — the enquiry modal hits the
+ * same DUPLICATE_ENQUIRY guard as the booking one.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE LINK MATTERS
+ *
+ * "You already have an open enquiry for this unit type." is true, and on its
+ * own it is a dead end: the enquiry it refers to is not visible from this
+ * modal, and nothing here says where to find it. The honest reading from the
+ * user's side is that the booking button is broken.
+ *
+ * The backend's own rule is the way out — `bookingController` counts only
+ * `enquiry` and `payment_submitted` as open, so withdrawing frees the slot at
+ * once. That is a two-click fix the user cannot discover. So say it.
+ */
+function ErrorNotice({ message, code }) {
+  if (!message) return null;
+
+  const isDuplicate = code === 'DUPLICATE_ENQUIRY';
+
+  return (
+    <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-4 py-2.5 rounded-lg">
+      <p className="flex items-center gap-2"><AlertTriangle size={14} className="shrink-0"/>{message}</p>
+      {isDuplicate && (
+        <Link
+          href="/my-bookings"
+          className="mt-2 inline-flex items-center gap-1 font-semibold text-red-700 underline underline-offset-2 hover:text-red-800"
+        >
+          View it in My Bookings <ChevronRight size={13}/>
+        </Link>
+      )}
+      {isDuplicate && (
+        <p className="mt-1 text-xs text-red-500">
+          Withdraw it there and you can start again straight away.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ── Booking Modal ── */
 function BookingModal({ ut, project, onClose, user }) {
   const [step, setStep] = useState(1);
@@ -26,6 +69,14 @@ function BookingModal({ ut, project, onClose, user }) {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  // The backend's error CODE, kept alongside the message.
+  //
+  // Some refusals are not failures, they are a state the user can act on — and
+  // the message alone cannot say what to do about them. DUPLICATE_ENQUIRY is
+  // the one that matters here: it names an open enquiry the user cannot see
+  // from this modal and offers no way to reach it, which reads as "the booking
+  // button is broken" rather than "you already started this".
+  const [errCode, setErrCode] = useState('');
   // Booking amount now lives on the unit type (paymentTerms); fall back to the
   // legacy project-level field for older records that predate the move.
   const token = ut?.paymentTerms?.bookingAmount ?? project?.financials?.bookingAmount ?? 0;
@@ -44,8 +95,8 @@ function BookingModal({ ut, project, onClose, user }) {
   }, []);
 
   const doStep1 = async () => {
-    if (!form.name.trim() || !form.phone.trim()) { setErr('Name and phone are required.'); return; }
-    setErr(''); setLoading(true);
+    if (!form.name.trim() || !form.phone.trim()) { setErr('Name and phone are required.'); setErrCode(''); return; }
+    setErr(''); setErrCode(''); setLoading(true);
     try {
       const d = await bookingApi.create({
         unitTypeId: ut._id,
@@ -58,20 +109,20 @@ function BookingModal({ ut, project, onClose, user }) {
       });
       if (!d.success) throw new Error(d.message);
       setBookingId(d.data.bookingId); setStep(2);
-    } catch(e) { setErr(e?.response?.data?.message || e.message || 'Failed.'); }
+    } catch(e) { setErr(e?.response?.data?.message || e.message || 'Failed.'); setErrCode(e?.response?.data?.code || ''); }
     finally { setLoading(false); }
   };
 
   const doStep3 = async () => {
-    if (!utr.trim() && !file) { setErr('Enter UTR or upload screenshot.'); return; }
-    setErr(''); setLoading(true);
+    if (!utr.trim() && !file) { setErr('Enter UTR or upload screenshot.'); setErrCode(''); return; }
+    setErr(''); setErrCode(''); setLoading(true);
     try {
       const fd = new FormData();
       if (utr.trim()) fd.append('utrNumber', utr.trim());
       if (file) fd.append('screenshot', file);
       await bookingApi.submitPayment(bookingId, fd);
       setStep(4);
-    } catch(e) { setErr(e?.response?.data?.message || e.message || 'Failed.'); }
+    } catch(e) { setErr(e?.response?.data?.message || e.message || 'Failed.'); setErrCode(e?.response?.data?.code || ''); }
     finally { setLoading(false); }
   };
 
@@ -94,7 +145,7 @@ function BookingModal({ ut, project, onClose, user }) {
         </div>
         {/* Body */}
         <div className="px-5 py-5 overflow-y-auto space-y-4">
-          {err && <p className="text-sm text-red-600 bg-red-50 border border-red-200 px-4 py-2.5 rounded-lg flex items-center gap-2"><AlertTriangle size={14}/>{err}</p>}
+          <ErrorNotice message={err} code={errCode} />
           {step===1 && (<>
             <div className="space-y-3">
               <div><label className="text-xs font-semibold text-gray-500 block mb-1">Full Name *</label><input className={inp} placeholder="Rahul Mehta" value={form.name} onChange={e=>set('name',e.target.value)}/></div>
@@ -171,11 +222,14 @@ function EnquiryModal({ ut, project, onClose, user }) {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState('');
+  // This modal hits the same DUPLICATE_ENQUIRY guard as the booking one, so it
+  // needs the same route out. See ErrorNotice.
+  const [errCode, setErrCode] = useState('');
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const submit = async () => {
-    if (!form.name.trim() || !form.phone.trim()) { setErr('Name and phone are required.'); return; }
-    setErr(''); setLoading(true);
+    if (!form.name.trim() || !form.phone.trim()) { setErr('Name and phone are required.'); setErrCode(''); return; }
+    setErr(''); setErrCode(''); setLoading(true);
     try {
       const d = await bookingApi.create({
         unitTypeId: ut._id,
@@ -215,7 +269,7 @@ function EnquiryModal({ ut, project, onClose, user }) {
               <button onClick={onClose} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition">Close</button>
             </div>
           ) : (<>
-            {err && <p className="text-sm text-red-600 bg-red-50 border border-red-200 px-4 py-2.5 rounded-lg flex items-center gap-2"><AlertTriangle size={14} />{err}</p>}
+            <ErrorNotice message={err} code={errCode} />
             <p className="text-sm text-gray-500">
               Ask us anything about this unit — availability, pricing, site visits. No payment at this stage.
             </p>

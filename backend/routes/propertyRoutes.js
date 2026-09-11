@@ -30,6 +30,7 @@ import { authMiddleware } from "../middleware/authUser.js";
 import { memoryUpload, validateAndUploadToCloudinary, uploadConcurrencyGuard } from "../middleware/upload.js";
 import { documentUpload, uploadDocumentsToCloudinary } from "../middleware/documentUpload.js";
 import { ownerOnlyListingAccess } from "../middleware/roleGuard.js";
+import { requirePhoneVerified, ensureOwnerRole } from "../middleware/requirePhoneVerified.js";
 import {
   validatePropertyCreate,
   validatePropertyUpdate,
@@ -71,11 +72,20 @@ router.get("/filter", (req, res) =>
 // 🔒 Protected: User's Own Properties (Owners only)
 router.get("/my-properties", authMiddleware, getMyProperties);
 
-// 🔒 Protected: Add Property (Owners only with validation)
+// 🔒 Protected: Add Property
+//
+// This is where an account becomes an owner. Registration no longer asks, so
+// the phone gate runs first and the promotion follows it — in that order, since
+// the verified phone is the whole justification for granting the role.
+//
+// `ownerOnlyListingAccess` is gone from THIS route only, because it would
+// reject every buyer before ensureOwnerRole could promote them. It stays on
+// every other listing route below, where the account is already an owner.
 router.post(
   "/add",
   authMiddleware,
-  ownerOnlyListingAccess, // Role enforcement: only Owners can add
+  requirePhoneVerified,
+  ensureOwnerRole,
   uploadConcurrencyGuard, // SECURITY: Prevent DoS via concurrent uploads
   memoryUpload.fields([
     { name: "images", maxCount: 15 },
@@ -104,6 +114,7 @@ router.get(
 router.put(
   "/my-properties/:id",
   authMiddleware,
+  requirePhoneVerified,
   ownerOnlyListingAccess,
   validateMongoId('id'),
   uploadConcurrencyGuard, // SECURITY: Prevent DoS via concurrent uploads
@@ -120,7 +131,11 @@ router.get("/saved", authMiddleware, getSavedProperties);
 router.delete("/saved/:id", authMiddleware, validateMongoId('id'), removeSavedProperty);
 
 // 🔒 Protected: Interest routes (Buyers can express interest)
-router.post("/interested/:id", authMiddleware, validateMongoId('id'), markInterested);
+//
+// Gated: expressing interest puts the buyer in front of a real owner and
+// creates a lead someone will act on. Checking and removing interest are not
+// gated — they only touch the buyer's own record.
+router.post("/interested/:id", authMiddleware, requirePhoneVerified, validateMongoId('id'), markInterested);
 router.get("/interested/:id/check", authMiddleware, validateMongoId('id'), checkInterested);
 router.delete("/interested/:id", authMiddleware, validateMongoId('id'), removeInterest);
 
@@ -131,6 +146,7 @@ router.post("/:id/report", authMiddleware, validatePropertyReport, reportPropert
 router.post(
   "/:id/close-deal",
   authMiddleware,
+  requirePhoneVerified,
   uploadConcurrencyGuard,
   documentUpload.fields([{ name: "documents", maxCount: 5 }]),
   uploadDocumentsToCloudinary,
@@ -138,7 +154,7 @@ router.post(
 );
 
 // 🔒 Protected: Claim deal reward (Owner or Buyer claims after admin approval)
-router.post("/claim-deal-reward/:verificationId", authMiddleware, claimDealReward);
+router.post("/claim-deal-reward/:verificationId", authMiddleware, requirePhoneVerified, claimDealReward);
 
 // ============================================
 // ADMIN ROUTES (Admin authentication required)

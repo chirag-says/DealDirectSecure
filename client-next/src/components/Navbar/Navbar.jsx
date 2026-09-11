@@ -40,10 +40,11 @@ const CalendarCheck = (props) => (
 );
 import logo from "../../assets/dealdirect_logo.png";
 
-const EmailVerificationModal = dynamic(
-  () => import("../EmailVerificationModal/EmailVerificationModal"),
-  { ssr: false }
-);
+// EmailVerificationModal was dynamically imported here and rendered for a
+// buyer who pressed "List property". Removed with the buyer-to-owner upgrade:
+// the role is granted server-side on the first listing, so there is nothing to
+// upgrade through, and the modal's OTP went to a phone number a Google account
+// does not have.
 import api from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 
@@ -78,7 +79,6 @@ function Navbar() {
   const [isDetectingCity, setIsDetectingCity] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const userDropdownRef = useRef(null);
@@ -383,36 +383,25 @@ function Navbar() {
       return;
     }
 
-    // Check if user is a buyer (user role) - needs email verification to list property
     const userRole = (user.role || "user").toLowerCase();
 
-    if (userRole === "user" || userRole === "buyer") {
-      // Buyer needs to verify email first
-      setIsVerificationModalOpen(true);
+    // An owner is held to the one-listing cap. Everyone else goes straight to
+    // the form.
+    //
+    // A buyer used to be stopped here and shown the upgrade modal, which ran
+    // its own OTP against /users/send-upgrade-otp. That is retired: posting a
+    // listing is now what grants the owner role (`ensureOwnerRole`, behind the
+    // phone check), so stopping a buyer here would block the only door into it.
+    // The modal was also broken for accounts created with Google, which have no
+    // phone for it to text.
+    if (userRole === "owner" && ownerHasProperty) {
+      toast.info(
+        "You can list only one property as an owner. Please edit your existing listing from My Properties.",
+      );
+      router.push("/my-properties");
       return;
     }
 
-    // For agents, keep existing behaviour
-    if (userRole === "agent") {
-      router.push("/add-property");
-      return;
-    }
-
-    // For owners - canAddProperty from context already checks if they have a property
-    if (userRole === "owner") {
-      if (ownerHasProperty) {
-        toast.info(
-          "You can list only one property as an owner. Please edit your existing listing from My Properties.",
-        );
-        router.push("/my-properties");
-        return;
-      }
-      router.push("/add-property");
-    }
-  };
-
-  const handleVerificationSuccess = () => {
-    // After successful verification, navigate to add property
     router.push("/add-property");
   };
 
@@ -431,14 +420,6 @@ function Navbar() {
   return (
     <>
 
-      {isVerificationModalOpen && (
-        <EmailVerificationModal
-          isOpen={isVerificationModalOpen}
-          onClose={() => setIsVerificationModalOpen(false)}
-          user={user}
-          onVerified={handleVerificationSuccess}
-        />
-      )}
       <nav className={navWrapperClass}>
         <div className="mx-auto flex items-center justify-between px-4 sm:px-6 lg:px-8 max-w-[1400px] gap-4">
           {/* Logo & Global City */}

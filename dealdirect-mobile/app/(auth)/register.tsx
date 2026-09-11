@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
@@ -13,8 +14,8 @@ import {
   useAuth,
   type RegisterValues,
 } from '@/auth';
-import { gesture } from '@/theme';
-import { Button, Chip, Input, Text } from '@/ui';
+import { gesture, radius, spacing, useTheme } from '@/theme';
+import { Button, Input, PressableScale, Text } from '@/ui';
 
 /**
  * Registration.
@@ -37,7 +38,9 @@ import { Button, Chip, Input, Text } from '@/ui';
  */
 export default function RegisterScreen() {
   const { register, registerDirect } = useAuth();
+  const theme = useTheme();
   const [formError, setFormError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const { control, handleSubmit, formState, watch, setValue, getValues } =
     useForm<RegisterValues>({
@@ -103,9 +106,9 @@ export default function RegisterScreen() {
           ? 'You will receive a 6-digit code by SMS to verify your number.'
           : 'Takes a minute. No verification code needed.'
       }
-      // The longest form in the app. Centring it would push the title above
-      // the top of the scroll view, out of reach.
-      center={false}
+      // The longest form in the app: the short photograph, so the first
+      // field is on screen before any scrolling.
+      band="compact"
       footer={
         <View className="flex-row items-center justify-center">
           <Text variant="callout" tone="secondary">
@@ -124,14 +127,20 @@ export default function RegisterScreen() {
       <Text variant="subhead" tone="secondary" className="mb-sm">
         I want to
       </Text>
-      <View className="mb-lg flex-row gap-sm">
-        <Chip
-          label="Buy or rent"
+      {/* Two cards, not two chips. The choice changes what the account can
+          do, and a chip the size of a filter did not look like a decision. */}
+      <View className="mb-lg flex-row" style={{ gap: spacing.sm }}>
+        <RoleCard
+          icon="search-outline"
+          title="Buy or rent"
+          detail="Browse and enquire"
           selected={role === 'user'}
           onPress={() => setValue('role', 'user')}
         />
-        <Chip
-          label="List a property"
+        <RoleCard
+          icon="home-outline"
+          title="List a property"
+          detail="Sell or let it out"
           selected={role === 'owner'}
           onPress={() => setValue('role', 'owner')}
         />
@@ -144,6 +153,7 @@ export default function RegisterScreen() {
           <Input
             label="Full name"
             placeholder="Your name"
+            leading={<Ionicons name="person-outline" size={18} color={theme.colors.textMuted} />}
             autoComplete="name"
             textContentType="name"
             value={field.value}
@@ -161,6 +171,7 @@ export default function RegisterScreen() {
           <Input
             label="Email"
             placeholder="you@example.com"
+            leading={<Ionicons name="mail-outline" size={18} color={theme.colors.textMuted} />}
             autoCapitalize="none"
             autoComplete="email"
             keyboardType="email-address"
@@ -217,7 +228,22 @@ export default function RegisterScreen() {
           <Input
             label="Password"
             placeholder="Choose a password"
-            secureTextEntry
+            leading={<Ionicons name="lock-closed-outline" size={18} color={theme.colors.textMuted} />}
+            trailing={
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                hitSlop={gesture.hitSlop}
+                onPress={() => setShowPassword((v) => !v)}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={20}
+                  color={theme.colors.textMuted}
+                />
+              </Pressable>
+            }
+            secureTextEntry={!showPassword}
             autoCapitalize="none"
             autoComplete="new-password"
             textContentType="newPassword"
@@ -237,6 +263,7 @@ export default function RegisterScreen() {
           <Input
             label="Referral code (optional)"
             placeholder="Enter a code if you have one"
+            leading={<Ionicons name="gift-outline" size={18} color={theme.colors.textMuted} />}
             autoCapitalize="characters"
             value={field.value ?? ''}
             onChangeText={field.onChange}
@@ -259,5 +286,72 @@ export default function RegisterScreen() {
         onPress={() => void onSubmit()}
       />
     </AuthShell>
+  );
+}
+
+/**
+ * One of the two account types, as a card: glyph, what it is called, what it
+ * lets you do. Selected reads as a filled outline in the accent, unselected
+ * as a plain surface, so the pair reads as one question with two answers.
+ */
+function RoleCard({
+  icon,
+  title,
+  detail,
+  selected,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  detail: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <PressableScale
+      accessibilityRole="radio"
+      accessibilityLabel={`${title}. ${detail}`}
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      activeScale={0.97}
+      style={{
+        flex: 1,
+        padding: spacing.md,
+        borderRadius: radius.lg,
+        borderWidth: 1.5,
+        borderColor: selected ? theme.colors.accent : theme.colors.border,
+        backgroundColor: selected ? theme.colors.accentMuted : theme.colors.surface,
+      }}
+    >
+      <View className="flex-row items-center justify-between">
+        <View
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: selected ? theme.colors.accent : theme.colors.surfaceMuted,
+          }}
+        >
+          <Ionicons
+            name={icon}
+            size={18}
+            color={selected ? theme.colors.surface : theme.colors.textSecondary}
+          />
+        </View>
+        {selected ? (
+          <Ionicons name="checkmark-circle" size={20} color={theme.colors.accent} />
+        ) : null}
+      </View>
+      <Text variant="bodyEmphasis" className="mt-sm">
+        {title}
+      </Text>
+      <Text variant="caption" tone="secondary" className="mt-xs">
+        {detail}
+      </Text>
+    </PressableScale>
   );
 }
