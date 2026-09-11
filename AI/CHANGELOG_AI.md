@@ -53,6 +53,50 @@ did NOT update the docs, say so explicitly — that is a debt marker.
 
 ---
 
+## 2026-09-11 — Auth unification, phase 1: Google Sign-In and the just-in-time phone gate (backend only)
+
+**Files changed**
+- `models/userModel.js` — added `googleId` (unique, sparse, select:false), `emailVerified`, `phoneVerified`, `phoneVerifiedAt`, and the `pendingPhone` subdocument. `password` is now conditionally required (`this.isNew && !this.googleId`). `googleId` and `pendingPhone` stripped in `toJSON` and `getSafeFields`. Index on `phoneVerified`.
+- `services/googleIdentity.js` — **new.** The only place a Google ID token is judged. Verifies signature/issuer/expiry/audience via `google-auth-library`, and refuses `email_verified !== true`.
+- `services/registrationHooks.js` — **new.** `completeRegistrationSideEffects`, extracted from the two hand-maintained copies in `verifyOtp` and `registerUserDirect` (which had already drifted on the WhatsApp role label).
+- `utils/otp.js` — **new.** `generateSecureOTP` / `hashOTP` / `verifyOTPHash` moved verbatim out of `userController.js`. Same secret, same hashes.
+- `controllers/authGoogleController.js` — **new.** `googleSignIn`, `googleLinkAccount`.
+- `controllers/phoneVerificationController.js` — **new.** `sendPhoneOtp`, `verifyPhoneOtp`, `getPhoneStatus`.
+- `middleware/requirePhoneVerified.js` — **new.** `requirePhoneVerified` and `ensureOwnerRole`.
+- `controllers/userController.js` — `sanitizeUserResponse` exported and now returns `emailVerified` / `phoneVerified`. Passwordless-account handling added to `loginUser`, `changePassword`, `forgotPassword` and `deleteAccount`.
+- `middleware/authUser.js` — `sanitizeUser` also strips `googleId` and `pendingPhone`.
+- `routes/{userRoutes,propertyRoutes,agreementRoutes}.js` — new routes; gate applied.
+- `server.js` — four new entries on the `csrfGuard` list.
+- `scripts/migrate-auth-flags.js` — **new.** Backfill with `--dry-run` / `--up` / `--down` / `--force-reverify`.
+- `package.json` — `google-auth-library` added; `--experimental-test-module-mocks` added to `test:integration`.
+
+**Reason**
+Registration asked every user to declare Buyer or Owner and to pass an SMS OTP before the account existed. Both were friction at the worst possible moment. The OTP now fires just in time, at the first action that needs a real person behind a real number, and the role is derived from behaviour instead of declared on a form.
+
+**Architectural impact**
+
+1. **`isVerified` still means only "this account is usable".** It never proved an email, despite `requireVerified`'s wording, and `registerUserDirect` sets it at creation with no proof of anything. New code must read `phoneVerified` (proved by OTP) or `emailVerified` (proved by Google). Nothing new reads `isVerified`.
+2. **A user document may now have no password and no phone.** Any code doing `bcrypt.compare(x, user.password)` must check for the hash first, or it throws. Four call sites were fixed; a fifth appearing later will crash.
+3. **Role is assigned server-side by `ensureOwnerRole` on `POST /properties/add`.** `ownerOnlyListingAccess` was removed from that one route (it would reject the buyer before promotion could happen) and remains on every other listing route. The client never sends a role.
+4. **New 403 contract:** `{ code: "PHONE_VERIFICATION_REQUIRED" }` on the gated routes. Both frontends will key their verification sheet off that code and replay the original request, so it must not change without changing them.
+5. **Google email match does not auto-merge.** An unlinked password account gets `409 GOOGLE_LINK_REQUIRED` and no session; linking costs one entry of the existing password. This is deliberate: registration never verifies email, so silent merge would enable account pre-hijacking. Reasoning in the header of `authGoogleController.js`.
+6. **Phone-link OTP state lives in `pendingPhone`, not the shared `otp` field.** `otp` is written by registration, the owner upgrade and password reset, which would clobber each other.
+7. **OTP guessing and sending are capped** (5 attempts, 3 sends per 15 min, per account). The registration OTP path still has neither — it is untouched legacy.
+8. Legacy endpoints (`register`, `register-direct`, `verify-otp`, `send-upgrade-otp`, `verify-upgrade-otp`) are unchanged and still live, for published app builds.
+
+**Migration notes**
+- Run `node scripts/migrate-auth-flags.js` (dry run) then `--up`. It grants `phoneVerified: true` to users who have a phone and `isVerified: true` — grandfathering, since those accounts can already perform every gated action today. `--down` is a complete reversal; nothing existing is touched.
+- New env vars: `GOOGLE_CLIENT_ID_WEB` / `_ANDROID` / `_IOS`, documented in `.env.example`. All unset ⇒ the Google endpoints answer 503 and nothing else changes, so the backend is safe to deploy before any client work lands.
+- Deploy order: **backend first**, then website, then the store build. The backend change is additive and backward compatible, which is what makes that order safe.
+
+**Verification**
+753 unit tests and 1106 integration tests pass. New suites: `tests/integration/phone-verification.test.js` (26) and `tests/integration/google-auth.test.js` (32). The latter mocks `services/googleIdentity.js` only — a real ID token needs a Google-signed key and a JWKS fetch the egress block correctly refuses. Every layer after that module is exercised for real.
+
+**Docs updated**
+`CHANGELOG_AI.md` only. **`AI/AUTH_SYSTEM.md` and `AI/API_REFERENCE.md` are now stale** — they describe the old registration flow and do not list the six new endpoints. Debt marker, deliberately left: phases 2 and 3 (mobile, website) will change the same surface again, and documenting it twice is waste.
+
+---
+
 ## 2026-09-05 — Mobile: the hero redrawn to measurements of the reference (mobile only)
 
 **Files changed**

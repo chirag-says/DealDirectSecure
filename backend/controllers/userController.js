@@ -27,6 +27,8 @@ import { deleteUserAggregate } from "../utils/aggregateDelete.js";
 import PushToken from "../models/PushToken.js";
 import { sendNewUserWhatsApp } from "../services/whatsappService.js";
 import { sendWelcomeEmail } from "../utils/emailService.js";
+import { generateSecureOTP, hashOTP, verifyOTPHash } from "../utils/otp.js";
+import { verifyGoogleIdToken } from "../services/googleIdentity.js";
 
 // ============================================
 // EMAIL CONFIGURATION
@@ -60,30 +62,10 @@ const getTransporter = () => {
 // HELPER FUNCTIONS
 // ============================================
 
-// Generate cryptographically secure 6-digit OTP
-const generateSecureOTP = () => {
-  return crypto.randomInt(100000, 999999).toString();
-};
-
-// ============================================
-// SECURITY FIX: Hash OTP before storage
-// Prevents OTP exposure in case of database breach
-// ============================================
-const hashOTP = (otp) => {
-  const secret = process.env.OTP_SECRET || process.env.JWT_SECRET;
-  return crypto.createHash('sha256').update(otp + secret).digest('hex');
-};
-
-// Verify OTP by comparing hash
-const verifyOTPHash = (providedOtp, storedHash) => {
-  const providedHash = hashOTP(providedOtp);
-  // Constant-time comparison to prevent timing attacks
-  try {
-    return crypto.timingSafeEqual(Buffer.from(providedHash), Buffer.from(storedHash));
-  } catch {
-    return false;
-  }
-};
+// OTP generation, hashing and constant-time verification moved to
+// utils/otp.js (imported above) when the just-in-time phone link became a
+// second caller. Same secret, same hashes, so codes issued before the move
+// still verify.
 
 // ============================================
 // SECURITY FIX: Strong password validation
@@ -118,7 +100,9 @@ const isValidPhoneNumber = (phone) => {
 };
 
 // Sanitize user for API response - NEVER expose sensitive fields
-const sanitizeUserResponse = (user) => {
+// Exported so the Google and phone-verification controllers return an
+// identically shaped user object. A second whitelist would drift from this one.
+export const sanitizeUserResponse = (user) => {
   const safeUser = user.toObject ? user.toObject() : { ...user };
 
   // Whitelist approach - only include safe fields
@@ -136,6 +120,11 @@ const sanitizeUserResponse = (user) => {
     bio: safeUser.bio,
     role: safeUser.role,
     isVerified: safeUser.isVerified,
+    // The two explicit proofs. Clients read `phoneVerified` to decide whether a
+    // gated action will bounce, so it has to ride along on every auth response
+    // or every screen needs a second round trip to find out.
+    emailVerified: !!safeUser.emailVerified,
+    phoneVerified: !!safeUser.phoneVerified,
     isBlocked: safeUser.isBlocked,
     blockReason: safeUser.blockReason,
     preferences: safeUser.preferences,
@@ -589,6 +578,22 @@ export const loginUser = async (req, res) => {
       });
     }
 
+    // A Google account has no password. bcrypt.compare against undefined
+    // throws, which would turn this into a 500 — and a 500 here is worse than
+    // unhelpful, it distinguishes "Google-only account" from "no such account"
+    // by status code, which is exactly what a generic 401 exists to hide.
+    //
+    // The message does name the reason, on purpose. Email enumeration is
+    // already possible through registration ("Email is already registered"), so
+    // withholding it here protects nothing, while a bare "invalid password"
+    // strands someone who simply forgot which door they used.
+    if (!user.password) {
+      return res.status(401).json({
+        message: "This account signs in with Google. Use Continue with Google.",
+        code: "USE_GOOGLE_SIGNIN",
+      });
+    }
+
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
@@ -698,6 +703,17 @@ export const forgotPassword = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         message: "No account found with this phone number. Please register first.",
+      });
+    }
+
+    // Reset delivery is SMS-only. A Google account that has not yet linked a
+    // phone has nowhere to receive the code, which used to fall through to a
+    // generic 500 further down. That state is common now rather than rare, so
+    // it gets an answer that tells the user what to do.
+    if (!user.phone) {
+      return res.status(400).json({
+        message: "This account has no mobile number yet. Sign in with Google, then add and verify a number.",
+        code: "NO_PHONE_ON_ACCOUNT",
       });
     }
 
@@ -1009,6 +1025,16 @@ export const changePassword = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    // A Google-only account has nothing to compare against. Say so plainly
+    // rather than letting bcrypt throw a 500 at someone who is already
+    // authenticated and simply has no password yet.
+    if (!user.password) {
+      return res.status(400).json({
+        message: "This account signs in with Google and has no password to change.",
+        code: "NO_PASSWORD_SET",
+      });
+    }
+
     const isMatch = await bcrypt.compare(currentPassword, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "Current password is incorrect" });
@@ -1269,34 +1295,63 @@ export const deleteAccount = async (req, res) => {
     // unattended device, or a cross-site request — this route is also now on
     // the CSRF list in server.js).
     // ============================================
-    const { password } = req.body || {};
+    // A Google account has no password, so "re-enter your password" cannot be
+    // the only proof accepted here — that would leave those accounts
+    // undeletable, which is both a data-rights failure and an app-store
+    // rejection. A freshly minted Google ID token for the SAME account is the
+    // equivalent proof: it requires passing Google's own challenge right now,
+    // which a stale session alone cannot do.
+    const { password, idToken } = req.body || {};
 
-    if (!password || typeof password !== "string") {
-      return res.status(400).json({
-        success: false,
-        message: "Please enter your current password to confirm account deletion.",
-        code: "PASSWORD_REQUIRED",
-      });
-    }
-
-    // req.user comes from sanitizeUser and carries no password hash.
-    const accountForAuth = await User.findById(userId).select("+password");
+    // req.user comes from sanitizeUser and carries neither hash nor googleId.
+    const accountForAuth = await User.findById(userId).select("+password +googleId");
 
     if (!accountForAuth) {
       return res.status(404).json({ success: false, message: "User account not found." });
     }
 
-    const passwordMatches = await bcrypt.compare(password, accountForAuth.password);
+    if (accountForAuth.password) {
+      if (!password || typeof password !== "string") {
+        return res.status(400).json({
+          success: false,
+          message: "Please enter your current password to confirm account deletion.",
+          code: "PASSWORD_REQUIRED",
+        });
+      }
 
-    if (!passwordMatches) {
-      // Deliberately not incrementing the login lockout counter: this caller is
-      // already authenticated, and locking the account here would let a
-      // mistyped password block the session that is trying to close it.
-      return res.status(401).json({
-        success: false,
-        message: "Incorrect password. Account was not deleted.",
-        code: "INVALID_PASSWORD",
-      });
+      const passwordMatches = await bcrypt.compare(password, accountForAuth.password);
+
+      if (!passwordMatches) {
+        // Deliberately not incrementing the login lockout counter: this caller
+        // is already authenticated, and locking the account here would let a
+        // mistyped password block the session that is trying to close it.
+        return res.status(401).json({
+          success: false,
+          message: "Incorrect password. Account was not deleted.",
+          code: "INVALID_PASSWORD",
+        });
+      }
+    } else {
+      if (!idToken || typeof idToken !== "string") {
+        return res.status(400).json({
+          success: false,
+          message: "Confirm with Google to delete your account.",
+          code: "GOOGLE_CONFIRMATION_REQUIRED",
+        });
+      }
+
+      const verified = await verifyGoogleIdToken(idToken);
+
+      // The token must belong to THIS account. Without the googleId equality
+      // check, any valid Google token would delete whichever account the
+      // session happened to hold.
+      if (!verified.ok || verified.identity.googleId !== accountForAuth.googleId) {
+        return res.status(401).json({
+          success: false,
+          message: "Google confirmation failed. Account was not deleted.",
+          code: "INVALID_GOOGLE_CONFIRMATION",
+        });
+      }
     }
 
     // The cascade itself lives in utils/aggregateDelete.js as

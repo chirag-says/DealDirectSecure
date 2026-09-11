@@ -914,6 +914,19 @@ app.post("/api/chat/conversation/start", csrfGuard);
 // Also gated on a current-password re-check in userController.deleteAccount.
 app.delete("/api/users/me", csrfGuard);
 
+// — Google sign-in: login CSRF is a real attack, not a theoretical one —
+// These run before a session exists, which is exactly why they belong here: an
+// attacker who can silently force your browser into THEIR session collects
+// everything you do next under their account. /link additionally carries a
+// password, so a forged submission is worth blocking on its own.
+app.post("/api/users/auth/google", csrfGuard);
+app.post("/api/users/auth/google/link", csrfGuard);
+
+// — Phone verification: sends a real SMS, and grants the account the right to
+// list, transact and claim rewards —
+app.post("/api/users/phone/send-otp", csrfGuard);
+app.post("/api/users/phone/verify-otp", csrfGuard);
+
 // Deliberately not a hard-coded count — the list above changes, and a stale
 // number in the boot log is worse than no number.
 console.log(`🛡️ CSRF Phase 1: ${process.env.CSRF_ENFORCE === 'false' ? 'DISABLED via CSRF_ENFORCE=false' : 'ENABLED (route list in server.js)'}`);

@@ -187,6 +187,15 @@ test('no state-changing route became accidentally exempt', async (t) => {
     ['post', '/api/bookings'],
     ['post', '/api/bookings/000000000000000000000000/payment'],
     ['post', '/api/bookings/000000000000000000000000/cancel'],
+    // Auth unification. The Google routes run before a session exists, which is
+    // the reason they are guarded rather than a reason to skip them: login CSRF
+    // drops the victim into the attacker's account, and everything they do next
+    // happens there. The phone routes spend real money on an SMS and, once
+    // passed, unlock listing, transacting and reward claims.
+    ['post', '/api/users/auth/google'],
+    ['post', '/api/users/auth/google/link'],
+    ['post', '/api/users/phone/send-otp'],
+    ['post', '/api/users/phone/verify-otp'],
   ];
 
   for (const [method, path] of GUARDED) {

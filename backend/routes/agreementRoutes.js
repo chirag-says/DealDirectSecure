@@ -11,6 +11,7 @@ import express from "express";
 import { authMiddleware, requireRole } from "../middleware/authUser.js";
 import { protectAdmin } from "../middleware/authAdmin.js";
 import { requireUserRole, blockRetiredRoles } from "../middleware/roleGuard.js";
+import { requirePhoneVerified } from "../middleware/requirePhoneVerified.js";
 import { validateMongoId } from "../middleware/validators/index.js";
 import {
   generateAgreement,
@@ -69,9 +70,14 @@ router.use(authMiddleware);
 router.use(blockRetiredRoles); // Global block for retired roles
 
 // Generate agreement (Owners and Buyers only)
+//
+// Gated on a verified phone, as is signing below. The two GETs are not: reading
+// agreements you are already a party to harms nobody, and blocking them would
+// strand a user who verified on one device and opened the app on another.
 router.post(
   "/generate",
   requireUserRole('owner', 'user'),
+  requirePhoneVerified,
   generateAgreement
 );
 
@@ -94,6 +100,7 @@ router.get(
 router.post(
   "/:id/sign",
   requireUserRole('owner', 'user'),
+  requirePhoneVerified,
   validateMongoId('id'),
   signAgreement
 );
