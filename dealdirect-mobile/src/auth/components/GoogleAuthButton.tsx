@@ -1,9 +1,8 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Image as ExpoImage } from 'expo-image';
 import { useState } from 'react';
 import { View } from 'react-native';
 
 import { ApiError } from '@/api';
-import { useTheme } from '@/theme';
 import { Button, Text } from '@/ui';
 import { useAuth, type GoogleSignInOutcome } from '../AuthProvider';
 import {
@@ -11,6 +10,9 @@ import {
   GoogleSignInUnavailable,
   isGoogleSignInConfigured,
 } from '../googleSignIn';
+
+/** Google's "G" mark, the official four-colour asset. */
+const GOOGLE_G = require('../../../assets/brand/google-g.svg');
 
 export interface GoogleAuthButtonProps {
   /** Carried through a first-time sign-in so referral attribution is not lost. */
@@ -40,7 +42,6 @@ export function GoogleAuthButton({
   onSignedIn,
 }: GoogleAuthButtonProps) {
   const { signInWithGoogle } = useAuth();
-  const theme = useTheme();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -103,14 +104,21 @@ export function GoogleAuthButton({
         fullWidth
         loading={busy}
         /*
-          Ionicons' monochrome glyph rather than Google's multi-colour "G".
-          The project has no SVG renderer installed, and adding one for one
-          16-pixel mark is not a trade worth making. If brand review ever
-          matters, the options are `GoogleSigninButton` from the SDK (official
-          asset, its own fixed styling, which will not match this button) or
-          react-native-svg with the supplied mark.
+          Google's four-colour "G", as the brand guidelines ask for on a
+          "Continue with Google" control. It used to be Ionicons' monochrome
+          glyph on the grounds that the project had no SVG renderer; it does
+          not need one. `expo-image` decodes SVG natively on both platforms and
+          Metro already treats .svg as an asset, so the mark is one file and
+          no new native module (which would have changed the build fingerprint).
         */
-        leading={<Ionicons name="logo-google" size={18} color={theme.colors.textPrimary} />}
+        leading={
+          <ExpoImage
+            source={GOOGLE_G}
+            style={{ width: 18, height: 18 }}
+            contentFit="contain"
+            accessible={false}
+          />
+        }
         onPress={() => void onPress()}
       />
       {error ? (
