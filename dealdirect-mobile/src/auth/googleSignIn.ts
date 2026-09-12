@@ -62,6 +62,9 @@ import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from '@/config/env';
  */
 const NATIVE_MODULE_NAME = 'RNGoogleSignin';
 
+/** GoogleSignInStatusCodes.DEVELOPER_ERROR, as the SDK stringifies it. */
+const DEVELOPER_ERROR_STATUS = '10';
+
 function nativeModulePresent(): boolean {
   try {
     return TurboModuleRegistry.get<TurboModule>(NATIVE_MODULE_NAME) != null;
@@ -207,9 +210,33 @@ export async function signInWithGoogle(): Promise<string> {
           throw new GoogleSignInUnavailable(
             'Google Play Services is not available on this device. Please sign in with email instead.'
           );
+        // Play Services status 10. Not a network problem and not the user's
+        // doing: Google has no Android OAuth client matching this app's package
+        // name and signing-certificate SHA-1. Surfaced as "Could not reach
+        // Google" it cost a full debugging loop on 2026-09-12; named, it is a
+        // two-minute fix in Google Cloud Console.
+        // The SDK rejects with the NUMERIC status as a string (ErrorDto.kt:
+        // `code = codeInt.toString()`), so this is '10', not 'DEVELOPER_ERROR'.
+        // The name only appears in `message`. Both are matched so a future SDK
+        // that switches to names does not silently fall through again.
+        case DEVELOPER_ERROR_STATUS:
+        case 'DEVELOPER_ERROR':
+          throw new GoogleSignInUnavailable(
+            __DEV__
+              ? "Google rejected this build (DEVELOPER_ERROR): no Android OAuth client is registered for package in.dealdirect.mobile with this build's signing SHA-1. Add one in Google Cloud Console."
+              : 'Google sign-in is not available in this build. Please sign in with email instead.'
+          );
         default:
           break;
       }
+
+      // Anything else: keep the generic line for users, but never hide the
+      // SDK's own code from a developer again.
+      throw new GoogleSignInUnavailable(
+        __DEV__
+          ? `Could not reach Google (${String(error.code)}: ${error.message ?? 'no message'}).`
+          : 'Could not reach Google. Please try again.'
+      );
     }
 
     throw new GoogleSignInUnavailable('Could not reach Google. Please try again.');
