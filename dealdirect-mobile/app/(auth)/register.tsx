@@ -9,6 +9,7 @@ import {
   AuthShell,
   GoogleAuthButton,
   GoogleLinkSheet,
+  isGoogleSignInConfigured,
   registerSchema,
   resumeAfterAuth,
   useAuth,
@@ -120,13 +121,17 @@ export default function RegisterScreen() {
         onSignedIn={resumeAfterAuth}
       />
 
-      <View className="mb-base flex-row items-center gap-sm">
-        <View className="h-px flex-1 bg-border" />
-        <Text variant="footnote" tone="muted">
-          or sign up with email
-        </Text>
-        <View className="h-px flex-1 bg-border" />
-      </View>
+      {/* The divider belongs to the Google button: with no button above it, an
+          "or" announces an alternative that is not there. */}
+      {isGoogleSignInConfigured() ? (
+        <View className="mb-base flex-row items-center gap-sm">
+          <View className="h-px flex-1 bg-border" />
+          <Text variant="footnote" tone="muted">
+            or sign up with email
+          </Text>
+          <View className="h-px flex-1 bg-border" />
+        </View>
+      ) : null}
 
       <Controller
         control={control}
