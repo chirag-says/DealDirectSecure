@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Source-level guards on how the Google SDK is loaded.
@@ -11,7 +13,10 @@ import { describe, it } from 'node:test';
  * Both were real failures on 2026-09-12: the first a white screen at launch,
  * the second a red error overlay on the login screen.
  */
-const src = readFileSync(new URL('./googleSignIn.ts', import.meta.url), 'utf8')
+// A path string, not a URL object: this project's tsconfig loads the DOM lib,
+// whose global `URL` is not the `URL` node:fs accepts, and the mismatch makes
+// TypeScript pick the Buffer-returning overload.
+const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'googleSignIn.ts'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/\/\/[^\r\n]*/g, '');
 
