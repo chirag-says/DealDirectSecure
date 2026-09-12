@@ -1,82 +1,135 @@
 import React, { useEffect, useState } from "react";
 import adminApi from "../api/adminApi";
 import { toast } from "react-toastify";
-import { useNavigate } from "react-router-dom"; // Import useNavigate
+import { useNavigate } from "react-router-dom";
 import {
-  BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
 import {
-  Home, Users, TrendingUp, CheckCircle, Clock,
-  ArrowUp, ArrowDown, Loader2, Building, UserCheck,
-  ExternalLink,
-  AlertCircle, Zap, Target, Activity, RefreshCw, Calendar
+  ArrowUpRight,
+  Building2,
+  Clock,
+  ImageOff,
+  RefreshCw,
+  Target,
+  Users,
 } from "lucide-react";
+import {
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  CHART,
+  EmptyState,
+  Loading,
+  PageHeader,
+  Stat,
+  statusChartColor,
+  Table,
+  TableWrap,
+  TBody,
+  TD,
+  TH,
+  THead,
+  toneForStatus,
+  TR,
+} from "../components/ui";
 
 const API_URL = import.meta.env.VITE_API_BASE_URL;
 
-// Enhanced Metric Card with gradient backgrounds
-// 🎨 Added 'to' prop and onClick handler for navigation
-const MetricCard = ({ title, value, icon: Icon, subtitle, trend, trendValue, gradient, to, navigate }) => (
-  <div
-    className={`relative overflow-hidden rounded-2xl p-6 text-white shadow-lg transition-all duration-300 ${gradient} ${to ? 'cursor-pointer hover:shadow-xl hover:-translate-y-1' : ''}`}
-    onClick={to ? () => navigate(to) : null}
+/**
+ * Secondary counters.
+ *
+ * Six of these used to be six separate cards, each with its own coloured icon
+ * chip — six hues for six equivalent numbers, which made the row read as six
+ * unrelated things instead of one breakdown. They are one strip now, divided
+ * by hairlines, ranked below the primary metrics by size alone.
+ */
+const CounterStrip = ({ items }) => (
+  <Card className="overflow-hidden">
+    {/*
+      `gap-px` over a line-coloured background draws the hairlines. Doing it
+      with `divide-x` would follow DOM order rather than grid position, so the
+      rules would land in the wrong places once the grid wraps to two columns.
+    */}
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-line">
+      {items.map(({ label, value }) => (
+        <div key={label} className="bg-surface px-4 py-3">
+          <p className="type-label text-ink-muted truncate">{label}</p>
+          <p className="mt-1 text-lg font-semibold tracking-tight text-ink tabular leading-none">
+            {value}
+          </p>
+        </div>
+      ))}
+    </div>
+  </Card>
+);
+
+/**
+ * Shared axis/grid setup, so all four charts sit on the same visual grid.
+ *
+ * Recharts flattens fragments when it scans for axis children, so returning
+ * one here is safe. `cursor` differs by chart type: a line reads correctly
+ * against a continuous area, a tinted band against discrete bars.
+ */
+const chartAxes = (cursor = { stroke: CHART.grid }) => (
+  <>
+    <CartesianGrid strokeDasharray="2 4" stroke={CHART.grid} vertical={false} />
+    <XAxis dataKey="label" tick={CHART.tick} axisLine={false} tickLine={false} />
+    <YAxis tick={CHART.tick} axisLine={false} tickLine={false} width={32} allowDecimals={false} />
+    <Tooltip
+      contentStyle={CHART.tooltip}
+      labelStyle={CHART.tooltipLabel}
+      cursor={cursor}
+    />
+  </>
+);
+
+/**
+ * Status control in the listings table.
+ *
+ * Kept as a real <select> because approving from the dashboard is the point,
+ * but bordered and chevroned so it reads as something you can change. The old
+ * version was a borderless pill, which looked exactly like the read-only
+ * status badges elsewhere in the panel.
+ */
+const STATUS_SELECT_TONES = {
+  ok: "border-ok-line bg-ok-soft text-ok",
+  warn: "border-warn-line bg-warn-soft text-warn",
+  danger: "border-danger-line bg-danger-soft text-danger",
+  info: "border-accent-line bg-accent-soft text-accent",
+  neutral: "border-neutral-line bg-neutral-soft text-ink-muted",
+};
+
+const StatusSelect = ({ value, onChange }) => (
+  <select
+    value={value}
+    onChange={onChange}
+    aria-label="Listing status"
+    className={`rounded-control border px-2 py-1 text-micro font-medium capitalize cursor-pointer transition-colors ${STATUS_SELECT_TONES[toneForStatus(value)]
+      }`}
   >
-    {/* Background Pattern */}
-    <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 rounded-full bg-white/10"></div>
-    <div className="absolute bottom-0 left-0 -mb-6 -ml-6 w-20 h-20 rounded-full bg-white/5"></div>
-
-    <div className="relative z-10 flex items-start justify-between">
-      <div>
-        <p className="text-sm font-medium text-white/80">{title}</p>
-        <p className="text-4xl font-bold mt-2">{value}</p>
-        {subtitle && <p className="text-sm text-white/70 mt-1">{subtitle}</p>}
-        {trend && (
-          <div className={`flex items-center mt-3 text-sm ${trend === 'up' ? 'text-green-200' : 'text-red-200'}`}>
-            {trend === 'up' ? <ArrowUp className="w-4 h-4 mr-1" /> : <ArrowDown className="w-4 h-4 mr-1" />}
-            <span>{trendValue}</span>
-          </div>
-        )}
-      </div>
-      <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-        <Icon className="w-7 h-7" />
-      </div>
-    </div>
-  </div>
+    <option value="pending">Pending</option>
+    <option value="approved">Approved</option>
+  </select>
 );
-
-// Quick Stats Mini Card (No changes needed, keeping for completeness)
-const QuickStatCard = ({ label, value, icon: Icon, color }) => (
-  <div className="bg-white rounded-xl p-4 border border-gray-100 hover:border-gray-200 transition-colors">
-    <div className="flex items-center gap-3">
-      <div className={`p-2 rounded-lg ${color}`}>
-        <Icon className="w-5 h-5 text-white" />
-      </div>
-      <div>
-        <p className="text-2xl font-bold text-gray-800">{value}</p>
-        <p className="text-xs text-gray-500">{label}</p>
-      </div>
-    </div>
-  </div>
-);
-
-const COLORS = ['#6366F1', '#22C55E', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
-const GRADIENT_COLORS = [
-  'bg-gradient-to-br from-blue-500 to-blue-700',
-  'bg-gradient-to-br from-emerald-500 to-teal-700',
-  'bg-gradient-to-br from-violet-500 to-purple-700',
-  'bg-gradient-to-br from-orange-500 to-red-600',
-  'bg-gradient-to-br from-pink-500 to-rose-700',
-  'bg-gradient-to-br from-cyan-500 to-blue-600',
-  'bg-gradient-to-br from-amber-500 to-orange-600',
-];
 
 const Dashboard = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Initialize useNavigate
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -94,7 +147,6 @@ const Dashboard = () => {
         // If the backend only returns the current month, that's what the chart shows.
         // Empty arrays cause the existing empty-state UI to render naturally.
         setStats(data.data);
-
       }
     } catch (error) {
       console.error("Failed to fetch dashboard stats:", error);
@@ -107,10 +159,12 @@ const Dashboard = () => {
 
   const handleStatusChange = async (id, newStatus) => {
     try {
-      const action = newStatus === 'approved' ? 'approve' : 'disapprove';
+      const action = newStatus === "approved" ? "approve" : "disapprove";
       // Using adminApi with automatic cookie authentication
       await adminApi.put(`/api/properties/${action}/${id}`, {});
-      toast.success(`Property ${newStatus === 'approved' ? 'published' : 'unpublished'} successfully!`);
+      toast.success(
+        `Property ${newStatus === "approved" ? "published" : "unpublished"} successfully!`
+      );
       fetchDashboardStats();
     } catch (err) {
       console.error("Status update failed:", err);
@@ -119,513 +173,398 @@ const Dashboard = () => {
   };
 
   const formatPrice = (price) => {
-    if (!price) return "N/A";
+    if (!price) return "—";
     if (price >= 10000000) return `₹${(price / 10000000).toFixed(1)}Cr`;
     if (price >= 100000) return `₹${(price / 100000).toFixed(1)}L`;
-    return `₹${price.toLocaleString()}`;
+    return `₹${price.toLocaleString("en-IN")}`;
   };
 
   const resolveImage = (img) => {
-    if (!img) return "https://via.placeholder.com/100x80?text=No+Image";
+    if (!img) return null;
     if (img.startsWith("http")) return img;
     if (img.startsWith("/uploads")) return `${API_URL}${img}`;
     return `${API_URL}/uploads/${img}`;
   };
 
   if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[80vh] gap-4">
-        <div className="relative">
-          <div className="w-16 h-16 border-4 border-blue-200 rounded-full animate-pulse"></div>
-          <Loader2 className="w-16 h-16 animate-spin text-blue-500 absolute top-0 left-0" />
-        </div>
-        <p className="text-gray-500 font-medium">Loading dashboard...</p>
-      </div>
-    );
+    return <Loading label="Loading dashboard" className="h-[60vh]" />;
   }
 
   const leadStatusData = stats?.leadStats
     ? Object.entries(stats.leadStats)
-      .filter(([key]) => key !== 'total' && key !== 'undefined' && key !== 'contacted' && key !== 'negotiating')
-      .map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value }))
-      .filter(item => item.value > 0)
+      .filter(
+        ([key]) =>
+          key !== "total" &&
+          key !== "undefined" &&
+          key !== "contacted" &&
+          key !== "negotiating"
+      )
+      .map(([name, value]) => ({
+        name: name.charAt(0).toUpperCase() + name.slice(1),
+        value,
+      }))
+      .filter((item) => item.value > 0)
     : [];
 
-  const conversionRate = stats?.leadStats?.converted && stats?.leadStats?.total
-    ? ((stats.leadStats.converted / stats.leadStats.total) * 100).toFixed(1)
-    : 0;
+  const conversionRate =
+    stats?.leadStats?.converted && stats?.leadStats?.total
+      ? ((stats.leadStats.converted / stats.leadStats.total) * 100).toFixed(1)
+      : 0;
+
+  const today = new Date().toLocaleDateString("en-IN", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 
   return (
-    <main className="p-6 min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 overflow-auto">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
-          <p className="text-gray-500 mt-1">Welcome back! Here's what's happening today.</p>
-        </div>
-        <div className="flex items-center gap-3 mt-4 md:mt-0">
-          <button
+    <>
+      <PageHeader
+        title="Dashboard"
+        subtitle={today}
+        actions={
+          <Button
+            icon={RefreshCw}
+            loading={refreshing}
             onClick={() => fetchDashboardStats(true)}
             disabled={refreshing}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            <span className="text-sm font-medium">Refresh</span>
-          </button>
-          <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg">
-            <Calendar className="w-4 h-4 text-gray-500" />
-            <span className="text-sm text-gray-600">{new Date().toLocaleDateString('en-IN', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric'
-            })}</span>
-          </div>
-        </div>
+            Refresh
+          </Button>
+        }
+      />
+
+      {/*
+        Primary metrics. Still no coloured cards — the operator is comparing
+        magnitudes across the row, and a different fill behind each number
+        makes that harder. What each tile does carry is the series behind the
+        figure, so the total reads with its direction attached.
+      */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        <Stat
+          label="Total properties"
+          value={stats?.counts?.totalProperties ?? 0}
+          hint={`${stats?.counts?.approvedProperties ?? 0} approved`}
+          series={stats?.charts?.properties}
+          seriesLabel="new per month"
+          icon={Building2}
+          onClick={() => navigate("/all-properties")}
+        />
+        <Stat
+          label="Registered users"
+          value={stats?.counts?.totalUsers ?? 0}
+          series={stats?.charts?.users}
+          seriesLabel="signups per month"
+          icon={Users}
+          onClick={() => navigate("/all-clients")}
+        />
+        <Stat
+          label="Total leads"
+          value={stats?.counts?.totalLeads ?? 0}
+          hint={`${conversionRate}% converted`}
+          series={stats?.charts?.leads}
+          seriesLabel="new per month"
+          icon={Target}
+          onClick={() => navigate("/lead-monitoring")}
+        />
+        {/*
+          The only metric that gets colour, and only when there is something
+          in the queue. A pending count of zero is good news and should look
+          like every other number on the row.
+        */}
+        <Stat
+          label="Pending review"
+          value={stats?.counts?.pendingProperties ?? 0}
+          hint="Awaiting approval"
+          tone={stats?.counts?.pendingProperties > 0 ? "warn" : "default"}
+          icon={Clock}
+          onClick={() => navigate("/all-properties")}
+        />
+      </section>
+
+      <div className="mb-6">
+        <CounterStrip
+          items={[
+            { label: "For rent", value: stats?.counts?.rentCount ?? 0 },
+            { label: "For sale", value: stats?.counts?.saleCount ?? 0 },
+            { label: "Approved", value: stats?.counts?.approvedProperties ?? 0 },
+            { label: "New leads", value: stats?.leadStats?.new ?? 0 },
+            { label: "Contacted", value: stats?.leadStats?.contacted ?? 0 },
+            { label: "Converted", value: stats?.leadStats?.converted ?? 0 },
+          ]}
+        />
       </div>
 
-      {/* Primary Metrics */}
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {/* Added 'to' and 'navigate' props for redirection */}
-        <MetricCard
-          title="Total Properties"
-          value={stats?.counts?.totalProperties || 0}
-          subtitle={`${stats?.counts?.approvedProperties || 0} approved`}
-          icon={Home}
-          gradient={GRADIENT_COLORS[0]}
-          to="/all-properties"
-          navigate={navigate}
-        />
-        <MetricCard
-          title="Active Users"
-          value={stats?.counts?.totalUsers || 0}
-          subtitle="Registered users"
-          icon={Users}
-          gradient={GRADIENT_COLORS[1]}
-          to="/all-clients" // Assuming clients and owners are covered under 'Users'
-          navigate={navigate}
-        />
-        <MetricCard
-          title="Total Leads"
-          value={stats?.counts?.totalLeads || 0}
-          subtitle={`${conversionRate}% conversion rate`}
-          icon={Target}
-          gradient={GRADIENT_COLORS[2]}
-          to="/lead-monitoring"
-          navigate={navigate}
-        />
-        <MetricCard
-          title="Pending Review"
-          value={stats?.counts?.pendingProperties || 0}
-          subtitle="Awaiting approval"
-          icon={Clock}
-          gradient={GRADIENT_COLORS[3]}
-          to="/all-properties" // Redirect to all properties, where filtering can be done
-          navigate={navigate}
-        />
+      {/* Trends. One measure per chart, therefore one colour per chart. */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        <Card>
+          <CardHeader title="Property listings" subtitle="New listings per month" />
+          <CardBody className="pl-1 pr-3">
+            {stats?.charts?.properties?.length > 0 ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={stats.charts.properties} margin={{ top: 4, right: 4 }}>
+                  <defs>
+                    <linearGradient id="propertyFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={CHART.series} stopOpacity={0.16} />
+                      <stop offset="100%" stopColor={CHART.series} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  {chartAxes()}
+                  <Area
+                    type="monotone"
+                    dataKey="value"
+                    name="Properties"
+                    stroke={CHART.series}
+                    strokeWidth={2}
+                    fill="url(#propertyFill)"
+                    dot={false}
+                    activeDot={{ r: 3, strokeWidth: 0 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyState title="No listings yet" description="New listings will appear here as owners publish them." />
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Lead generation" subtitle="New leads per month" />
+          <CardBody className="pl-1 pr-3">
+            {stats?.charts?.leads?.length > 0 ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={stats.charts.leads} margin={{ top: 4, right: 4 }}>
+                  <defs>
+                    <linearGradient id="leadFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={CHART.series} stopOpacity={0.16} />
+                      <stop offset="100%" stopColor={CHART.series} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  {chartAxes()}
+                  <Area
+                    type="monotone"
+                    dataKey="value"
+                    name="Leads"
+                    stroke={CHART.series}
+                    strokeWidth={2}
+                    fill="url(#leadFill)"
+                    dot={false}
+                    activeDot={{ r: 3, strokeWidth: 0 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyState title="No leads yet" description="Buyer enquiries will appear here once they start coming in." />
+            )}
+          </CardBody>
+        </Card>
       </section>
 
-      {/* Quick Stats Row */}
-      <section className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8">
-        <QuickStatCard
-          label="For Rent"
-          value={stats?.counts?.rentCount || 0}
-          icon={Building}
-          color="bg-teal-500"
-        />
-        <QuickStatCard
-          label="For Sale"
-          value={stats?.counts?.saleCount || 0}
-          icon={TrendingUp}
-          color="bg-indigo-500"
-        />
-        <QuickStatCard
-          label="Approved"
-          value={stats?.counts?.approvedProperties || 0}
-          icon={CheckCircle}
-          color="bg-green-500"
-        />
-        <QuickStatCard
-          label="New Leads"
-          value={stats?.leadStats?.new || 0}
-          icon={Zap}
-          color="bg-amber-500"
-        />
-        <QuickStatCard
-          label="Contacted"
-          value={stats?.leadStats?.contacted || 0}
-          icon={UserCheck}
-          color="bg-blue-500"
-        />
-        <QuickStatCard
-          label="Converted"
-          value={stats?.leadStats?.converted || 0}
-          icon={Activity}
-          color="bg-emerald-500"
-        />
-      </section>
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        {/* Lead status. Slices take their colour from the status itself, so a
+            slice and the badge for the same status agree. */}
+        <Card>
+          <CardHeader title="Lead status" subtitle="Share of pipeline" />
+          <CardBody>
+            {leadStatusData.length > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height={180}>
+                  <PieChart>
+                    <Pie
+                      data={leadStatusData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={52}
+                      outerRadius={76}
+                      paddingAngle={2}
+                      dataKey="value"
+                      stroke="none"
+                    >
+                      {leadStatusData.map((entry, index) => (
+                        <Cell key={entry.name} fill={statusChartColor(entry.name, index)} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={CHART.tooltip} labelStyle={CHART.tooltipLabel} />
+                  </PieChart>
+                </ResponsiveContainer>
 
-      {/* Charts Row 1 */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {/* Properties Over Time - Area Chart (Unchanged) */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-lg font-bold text-gray-800">Property Listings</h2>
-              <p className="text-sm text-gray-500">Last 6 months trend</p>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="w-3 h-3 rounded-full bg-blue-500"></span>
-              <span className="text-gray-600">Properties</span>
-            </div>
-          </div>
-          {stats?.charts?.properties?.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280} className="focus:outline-none">
-              <AreaChart data={stats.charts.properties}>
-                <defs>
-                  <linearGradient id="propertyGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#6B7280' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#fff',
-                    border: 'none',
-                    borderRadius: '12px',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke="#3B82F6"
-                  strokeWidth={3}
-                  fill="url(#propertyGradient)"
-                  name="Properties"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-64 flex flex-col items-center justify-center text-gray-400">
-              <AlertCircle className="w-12 h-12 mb-3 text-gray-300" />
-              <p>No data available yet</p>
-            </div>
-          )}
-        </div>
-
-        {/* Leads Over Time - Line Chart (Unchanged) */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-lg font-bold text-gray-800">Lead Generation</h2>
-              <p className="text-sm text-gray-500">Last 6 months performance</p>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
-              <span className="text-gray-600">Leads</span>
-            </div>
-          </div>
-          {stats?.charts?.leads?.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280} className="focus:outline-none">
-              <AreaChart data={stats.charts.leads}>
-                <defs>
-                  <linearGradient id="leadGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#6B7280' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#fff',
-                    border: 'none',
-                    borderRadius: '12px',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke="#10B981"
-                  strokeWidth={3}
-                  fill="url(#leadGradient)"
-                  name="Leads"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-64 flex flex-col items-center justify-center text-gray-400">
-              <AlertCircle className="w-12 h-12 mb-3 text-gray-300" />
-              <p>No leads data yet</p>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Charts Row 2 */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        {/* Lead Status Distribution - Donut Chart (Unchanged) */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-lg font-bold text-gray-800">Lead Status</h2>
-              <p className="text-sm text-gray-500">Distribution by status</p>
-            </div>
-          </div>
-          {leadStatusData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280} className="focus:outline-none">
-              <PieChart>
-                <Pie
-                  data={leadStatusData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={70}
-                  outerRadius={100}
-                  paddingAngle={3}
-                  dataKey="value"
-                >
+                <ul className="mt-4 space-y-1.5">
                   {leadStatusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    <li
+                      key={entry.name}
+                      className="flex items-center gap-2 type-label"
+                    >
+                      <span
+                        className="h-2 w-2 rounded-full shrink-0"
+                        style={{ backgroundColor: statusChartColor(entry.name, index) }}
+                      />
+                      <span className="type-label text-ink-body truncate">{entry.name}</span>
+                      <span className="ml-auto type-label text-ink-muted tabular">{entry.value}</span>
+                    </li>
                   ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#fff',
-                    border: 'none',
-                    borderRadius: '12px',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-64 flex flex-col items-center justify-center text-gray-400">
-              <Target className="w-12 h-12 mb-3 text-gray-300" />
-              <p>No leads yet</p>
-            </div>
-          )}
-          {/* Legend */}
-          {leadStatusData.length > 0 && (
-            <div className="flex flex-wrap justify-center gap-4 mt-4">
-              {leadStatusData.map((entry, index) => (
-                <div key={entry.name} className="flex items-center gap-2">
-                  <span
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                  ></span>
-                  <span className="text-sm text-gray-600">{entry.name} ({entry.value})</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                </ul>
+              </>
+            ) : (
+              <EmptyState icon={Target} title="No leads yet" />
+            )}
+          </CardBody>
+        </Card>
 
-        {/* User Registrations - **MODIFIED TO STYLED BAR CHART** */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 lg:col-span-2 [&_.recharts-wrapper]:!outline-none">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-lg font-bold text-gray-800">User Growth</h2>
-              <p className="text-sm text-gray-500">New registrations over time</p>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="w-3 h-3 rounded-full bg-violet-500"></span>
-              <span className="text-gray-600">Users</span>
-            </div>
-          </div>
-          {stats?.charts?.users?.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280}>
-              {/* Changed back to BarChart */}
-              <BarChart data={stats.charts.users} barSize={40}>
-                <defs>
-                  {/* Defined gradient for the bars */}
-                  <linearGradient id="userBarGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#8B5CF6" stopOpacity={1} />
-                    <stop offset="100%" stopColor="#6366F1" stopOpacity={1} />
-                  </linearGradient>
-                  {/* Added a secondary gradient/pattern for the 'active' effect similar to the image's rising line */}
-                  <linearGradient id="userTrendGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#FBBF24" stopOpacity={1} />
-                    <stop offset="100%" stopColor="#F59E0B" stopOpacity={1} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#6B7280' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#fff',
-                    border: 'none',
-                    borderRadius: '12px',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
-                  }}
-                  cursor={{ fill: 'rgba(139, 92, 246, 0.1)' }}
-                />
-
-                {/* Bar Component with gradient fill and rounded top corners */}
-                <Bar
-                  dataKey="value"
-                  fill="url(#userBarGradient)"
-                  radius={[8, 8, 0, 0]}
-                  name="Users"
-                />
-
-                {/* Optional: Add a subtle Area/Line on top for the trend visualization seen in the image, using the same data */}
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke="#FBBF24"
-                  strokeWidth={3}
-                  fill="transparent"
-                  dot={false}
-                  name="Trend"
-                />
-
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-64 flex flex-col items-center justify-center text-gray-400">
-              <Users className="w-12 h-12 mb-3 text-gray-300" />
-              <p>No user data available</p>
-            </div>
-          )}
-        </div>
+        <Card className="lg:col-span-2">
+          <CardHeader title="User growth" subtitle="New registrations per month" />
+          <CardBody className="pl-1 pr-3">
+            {stats?.charts?.users?.length > 0 ? (
+              <ResponsiveContainer width="100%" height={220}>
+                {/*
+                  The previous version drew an amber <Area> on top of these
+                  bars, labelled "Trend", plotting the exact same dataKey. It
+                  was the same numbers twice in two colours, so it is gone.
+                */}
+                <BarChart data={stats.charts.users} margin={{ top: 4, right: 4 }} barSize={28}>
+                  {chartAxes(CHART.cursor)}
+                  <Bar
+                    dataKey="value"
+                    name="Users"
+                    fill={CHART.series}
+                    radius={[3, 3, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyState icon={Users} title="No registrations yet" />
+            )}
+          </CardBody>
+        </Card>
       </section>
 
-      {/* Recent Listings Table */}
-      <section className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-8 overflow-hidden">
-        <div className="p-6 border-b border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-gray-800">Recent Listings</h2>
-              <p className="text-sm text-gray-500">Latest properties added to the platform</p>
-            </div>
-            <a href="/all-properties" className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium">
-              View All <ExternalLink className="w-4 h-4" />
-            </a>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Property</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Location</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Owner</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Price</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Listed</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
+      <Card className="mb-4 overflow-hidden">
+        <CardHeader
+          title="Recent listings"
+          subtitle="Latest properties added to the platform"
+          action={
+            <Button
+              as="a"
+              href="/all-properties"
+              variant="ghost"
+              size="sm"
+              className="text-accent hover:text-accent-hover"
+            >
+              View all
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </Button>
+          }
+        />
+        <TableWrap>
+          <Table>
+            <THead>
+              <TR className="hover:bg-transparent">
+                <TH>Property</TH>
+                <TH>Location</TH>
+                <TH>Status</TH>
+                <TH>Owner</TH>
+                <TH align="right">Price</TH>
+                <TH align="right">Listed</TH>
+              </TR>
+            </THead>
+            <TBody>
               {stats?.recentProperties?.length > 0 ? (
-                stats.recentProperties.map((property) => (
-                  <tr key={property._id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-4">
-                        <img
-                          src={resolveImage(property.image)}
-                          alt={property.title}
-                          className="w-14 h-12 rounded-lg object-cover border border-gray-200"
-                        />
-                        <div>
-                          <p className="font-semibold text-gray-800 truncate max-w-[220px]">
-                            {property.title}
-                          </p>
-                          <p className="text-xs text-gray-500 capitalize">{property.listingType}</p>
+                stats.recentProperties.map((property) => {
+                  const src = resolveImage(property.image);
+                  return (
+                    <TR key={property._id}>
+                      <TD>
+                        <div className="flex items-center gap-3">
+                          {/*
+                            A missing image renders a local placeholder tile.
+                            This used to point at via.placeholder.com, an
+                            external service the panel would sit waiting on.
+                          */}
+                          {src ? (
+                            <img
+                              src={src}
+                              alt=""
+                              className="h-9 w-12 rounded-control object-cover border border-line shrink-0"
+                            />
+                          ) : (
+                            <div className="h-9 w-12 rounded-control border border-line bg-surface-sunken flex items-center justify-center shrink-0">
+                              <ImageOff className="h-3.5 w-3.5 text-ink-faint" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-medium text-ink truncate max-w-[220px]">
+                              {property.title}
+                            </p>
+                            <p className="type-label text-ink-muted capitalize">
+                              {property.listingType}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-gray-700">{property.city || 'N/A'}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <select
-                        value={property.isApproved ? "approved" : "pending"}
-                        onChange={(e) => handleStatusChange(property._id, e.target.value)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-semibold appearance-none cursor-pointer border-0 outline-none focus:ring-2 ring-offset-1 transition-all ${property.isApproved
-                          ? "bg-green-100 text-green-700 hover:bg-green-200 focus:ring-green-500"
-                          : "bg-amber-100 text-amber-700 hover:bg-amber-200 focus:ring-amber-500"
-                          }`}
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="approved">Approved</option>
-                      </select>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-gray-700">{property.owner || 'Unknown'}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="font-semibold text-gray-800">{formatPrice(property.price)}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-gray-500 text-sm">
-                        {new Date(property.createdAt).toLocaleDateString('en-IN', {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric'
+                      </TD>
+                      <TD>{property.city || "—"}</TD>
+                      <TD>
+                        <StatusSelect
+                          value={property.isApproved ? "approved" : "pending"}
+                          onChange={(e) =>
+                            handleStatusChange(property._id, e.target.value)
+                          }
+                        />
+                      </TD>
+                      <TD>{property.owner || "Unknown"}</TD>
+                      <TD numeric className="font-medium text-ink">
+                        {formatPrice(property.price)}
+                      </TD>
+                      <TD numeric className="text-ink-muted">
+                        {new Date(property.createdAt).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
                         })}
-                      </p>
-                    </td>
-                  </tr>
-                ))
+                      </TD>
+                    </TR>
+                  );
+                })
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center">
-                    <Home className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                    <p className="text-gray-500">No properties listed yet</p>
+                  <td colSpan={6}>
+                    <EmptyState
+                      icon={Building2}
+                      title="No properties listed yet"
+                      description="Listings appear here as soon as owners publish them."
+                    />
                   </td>
                 </tr>
               )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+            </TBody>
+          </Table>
+        </TableWrap>
+      </Card>
 
-      {/* Top Owners */}
+      {/* Top owners. Was five cards, the first one gold-gradient with a crown
+          emoji. It is a ranked list, so it is a list now. */}
       {stats?.topOwners?.length > 0 && (
-        <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-lg font-bold text-gray-800">Top Property Owners</h2>
-              <p className="text-sm text-gray-500">Users with most listings</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <Card>
+          <CardHeader title="Top property owners" subtitle="Ranked by listing count" />
+          <ul className="divide-y divide-line">
             {stats.topOwners.map((owner, index) => (
-              <div
+              <li
                 key={owner._id}
-                className={`relative p-5 rounded-xl text-center transition-all hover:-translate-y-1 hover:shadow-lg ${index === 0
-                  ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white'
-                  : 'bg-gray-50 hover:bg-gray-100'
-                  }`}
+                className="flex items-center gap-3 px-4 py-2.5"
               >
-                {index === 0 && (
-                  <div className="absolute -top-2 -right-2 w-8 h-8 bg-yellow-300 rounded-full flex items-center justify-center shadow-lg">
-                    <span className="text-yellow-800 text-sm">👑</span>
-                  </div>
-                )}
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 font-bold text-lg ${index === 0 ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-600'
-                  }`}>
-                  #{index + 1}
-                </div>
-                <p className={`font-semibold truncate ${index === 0 ? 'text-white' : 'text-gray-800'}`}>
-                  {owner.name}
-                </p>
-                <p className={`text-sm mt-1 ${index === 0 ? 'text-white/80' : 'text-gray-500'}`}>
-                  {owner.propertyCount} {owner.propertyCount === 1 ? 'property' : 'properties'}
-                </p>
-              </div>
+                <span className="w-5 type-label text-ink-faint tabular text-right">
+                  {index + 1}
+                </span>
+                <span className="type-body text-ink truncate">{owner.name}</span>
+                <span className="ml-auto type-label text-ink-muted tabular whitespace-nowrap">
+                  {owner.propertyCount}{" "}
+                  {owner.propertyCount === 1 ? "property" : "properties"}
+                </span>
+              </li>
             ))}
-          </div>
-        </section>
+          </ul>
+        </Card>
       )}
-    </main>
+    </>
   );
 };
 

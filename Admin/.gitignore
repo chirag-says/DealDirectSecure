@@ -1,30 +1,33 @@
-# ==============================================================
-# DealDirect — Admin Panel (Vite 6 + React 19)
-#
-# This repo is standalone: nothing above this folder is ignored on
-# its behalf, so everything needed must be listed here.
-# ==============================================================
+# DealDirect admin dashboard — Vite + React, own repo, own hosting.
 
-# ---------- Dependencies ----------
+# ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
 node_modules/
 .npm/
 .pnpm-store/
 
-# ---------- Build output ----------
+# ---------------------------------------------------------------------------
+# Build output
+# ---------------------------------------------------------------------------
 dist/
 dist-ssr/
 build/
 .vite/
+*.tsbuildinfo
 
-# ---------- Secrets ----------
-# Only VITE_API_BASE_URL lives here today, which is public by nature
-# (anything VITE_-prefixed is inlined into the browser bundle).
-# Still ignored, because the moment someone adds a real key to a
-# .env file it must not be committed.
+# ---------------------------------------------------------------------------
+# Secrets
 #
-# NOTE: .env.production was previously TRACKED in git. Ignoring it
-# here does NOT untrack it — run this once:
-#     git rm --cached .env.production
+# Every VITE_* value is inlined into the browser bundle at build time, so
+# nothing here is truly secret — but these files still pin an environment and
+# do not belong in a shared repo.
+#
+# One exception is deliberate: Admin/.env.production is tracked in the ROOT
+# repository. It contains only VITE_API_BASE_URL, which is public, and the
+# build reads it. Leaving it there is fine; just do not add anything else to
+# that file expecting it to stay private.
+# ---------------------------------------------------------------------------
 .env
 .env.*
 !.env.example
@@ -33,8 +36,11 @@ build/
 *.key
 *.p12
 *.pfx
+credentials.json
 
-# ---------- Logs ----------
+# ---------------------------------------------------------------------------
+# Logs, coverage
+# ---------------------------------------------------------------------------
 logs/
 *.log
 npm-debug.log*
@@ -43,19 +49,40 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# ---------- Ad-hoc diagnostics ----------
-test-*.js
-__*.js
+coverage/
+.nyc_output/
+
+# ---------------------------------------------------------------------------
+# SCRATCH
+#
+# The previous file carried `test-*.js`. This dashboard is where an admin
+# screen would most plausibly be named something like `test-connection.js`,
+# so the pattern is replaced with markers that cannot collide with real code.
+# ---------------------------------------------------------------------------
+scratch/
+*.scratch.js
+*.scratch.jsx
 *.local.js
 tmp/
 temp/
 *.tmp
 
-# ---------- Testing / coverage ----------
-coverage/
-.nyc_output/
+# Exports produced by the admin screens (lead exports, audit-log downloads).
+exports/
+/*.xlsx
+/*.csv
+/*.pdf
 
-# ---------- Editors & tooling ----------
+# Database dumps, in case one is ever taken from this directory.
+dump/
+dumps/
+backups/
+*.bson
+*.archive
+
+# ---------------------------------------------------------------------------
+# Editors and OS
+# ---------------------------------------------------------------------------
 .vscode/*
 !.vscode/extensions.json
 .idea/
@@ -69,24 +96,10 @@ coverage/
 *~
 .gemini/
 .claude/
-
-# ---------- OS ----------
 .DS_Store
-.DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
-ehthumbs.db
 Thumbs.db
+ehthumbs.db
 desktop.ini
-
-# ==============================================================
-# DELIBERATELY NOT IGNORED
-#
-#   package-lock.json — was previously ignored; reversed so the
-#   built bundle is reproducible. Run once to start tracking:
-#       git add -f package-lock.json
-#
-#   public/_redirects and public/.htaccess — required for SPA
-#   routing on the host. Without them a deep link 404s.
-# ==============================================================

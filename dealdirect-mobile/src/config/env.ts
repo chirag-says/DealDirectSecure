@@ -81,6 +81,29 @@ export const WEB_URL: string = process.env.EXPO_PUBLIC_WEB_URL?.trim()
   ? process.env.EXPO_PUBLIC_WEB_URL.trim().replace(/\/+$/, '')
   : DEFAULT_WEB_URL;
 
+/**
+ * Google OAuth client IDs.
+ *
+ * OPTIONAL, and optional on purpose: unset, `isGoogleSignInConfigured()` is
+ * false, the Google buttons are not rendered, and email + password continues to
+ * work exactly as before. A build without these is a usable build, not a broken
+ * one — which is what lets the backend and the app ship on separate days.
+ *
+ * WEB is the one that must always be set, on every platform including Android.
+ * The Android SDK uses it as `webClientId` to mint a token audienced to our
+ * backend; without it `idToken` comes back null and the failure presents as a
+ * server problem rather than a configuration one.
+ *
+ * A client ID is public by construction — it identifies the app to Google and
+ * authorises nothing on its own — so it belongs with the other EXPO_PUBLIC_
+ * values rather than in a secret store.
+ */
+export const GOOGLE_WEB_CLIENT_ID: string =
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ?? '';
+
+export const GOOGLE_IOS_CLIENT_ID: string =
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() ?? '';
+
 export const APP_VERSION = Constants.expoConfig?.version ?? '0.0.0';
 
 export const IS_DEV = __DEV__;
@@ -89,6 +112,8 @@ export const config = {
   API_URL,
   SOCKET_URL,
   WEB_URL,
+  GOOGLE_WEB_CLIENT_ID,
+  GOOGLE_IOS_CLIENT_ID,
   APP_VERSION,
   IS_DEV,
 } as const;

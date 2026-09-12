@@ -35,7 +35,7 @@ import {
 } from '@/features/properties';
 import { EnquirySheet, useSavedProperties } from '@/features/saved';
 import { OwnerReviewsSheet } from '@/features/reviews';
-import { RewardReveal } from '@/features/rewards';
+import { SpinWheel } from '@/features/rewards';
 import { useSimilarProperties } from '@/features/search';
 import { relativeDay } from '@/lib';
 import { screenPadding, spacing, useTheme } from '@/theme';
@@ -814,7 +814,13 @@ export default function PropertyDetailScreen() {
 
       {/* Marking interest earns points. The response says how many, and until
           2026-08-13 that was discarded — see `interest.ts`. */}
-      <RewardReveal reward={interest.lastReward} onDismiss={interest.clearReward} />
+      {/*
+        The enquiry's points, revealed on the wheel the website uses. The
+        server has already drawn and credited them (see `useInterest`); the
+        wheel lands on that amount. Null when the daily cap has been reached,
+        in which case nothing opens, as before.
+      */}
+      <SpinWheel reward={interest.lastReward} onDismiss={interest.clearReward} />
     </Screen>
   );
 }

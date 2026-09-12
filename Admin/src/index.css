@@ -1,15 +1,247 @@
 @import "tailwindcss";
+
+/* ============================================================
+   Design tokens
+   ============================================================
+
+   The panel is an operator tool: someone sits in it for hours
+   approving listings and chasing leads. So the rules are:
+
+   - One neutral scale carries structure. Borders separate things,
+     not shadows, and not background colour.
+   - Colour is a signal, never decoration. The accent means
+     "interactive"; the status tones mean approved / pending /
+     rejected. If a colour is not saying one of those things it
+     does not belong on the screen.
+   - Numbers are the content. They get tabular figures and the
+     largest type on the page; labels stay small and quiet.
+
+   The accent is deliberately Tailwind's blue-600. Screens that
+   have not been converted yet still hardcode `blue-600`, so
+   matching it exactly keeps the panel one colour during the
+   migration instead of two competing blues.
+   ============================================================ */
+
+@theme {
+  /* Surfaces ------------------------------------------------
+     A four-step ladder, and the gaps between the steps have to be
+     wide enough to see. The first pass used #f6f7f9 for the canvas
+     against #ffffff cards — a 3% difference that vanished on a
+     large monitor, so the sidebar, the header, the page and the
+     cards all read as one undifferentiated white field. */
+  --color-canvas: #eceef2; /* page background — the floor */
+  --color-sidebar: #f7f8fa; /* navigation rail, between floor and card */
+  --color-surface: #ffffff; /* cards, tables, header — the top */
+  --color-surface-sunken: #f7f8fa; /* table headers, inset rows */
+  --color-surface-hover: #f1f3f7; /* row / nav item hover */
+
+  /* Lines --------------------------------------------------- */
+  --color-line: #e2e5ea; /* default border */
+  --color-line-strong: #cbd1da; /* input borders, dividers that must read */
+
+  /* Text ---------------------------------------------------- */
+  --color-ink: #14181f; /* headings, values */
+  --color-ink-body: #3f4855; /* body copy, table cells */
+  --color-ink-muted: #6b7480; /* labels, secondary text */
+  --color-ink-faint: #9aa2ad; /* placeholders, disabled */
+
+  /* Accent — interactive only ------------------------------- */
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-soft: #eef4ff; /* active nav row, selected state */
+  --color-accent-line: #bfd4fe;
+
+  /* Status — meaning only ----------------------------------- */
+  --color-ok: #15803d;
+  --color-ok-soft: #edf7f0;
+  --color-ok-line: #bbe3c8;
+
+  --color-warn: #a16207;
+  --color-warn-soft: #fdf6e7;
+  --color-warn-line: #f0dca6;
+
+  --color-danger: #b42318;
+  --color-danger-soft: #fdf2f1;
+  --color-danger-line: #f4c9c4;
+
+  --color-neutral-soft: #f2f4f6;
+  --color-neutral-line: #dfe3e8;
+
+  /* Radii — restrained. Admin tables are not app cards. ------ */
+  --radius-control: 6px; /* buttons, inputs, badges */
+  --radius-card: 8px; /* cards, panels, modals */
+
+  /* Type ----------------------------------------------------
+     Inter, self-hosted. Segoe UI was doing the job badly at both
+     ends of the scale: its 11px uppercase labels muddy and its
+     lining figures are proportional, so a column of numbers never
+     lined up. Inter was drawn for screen UI at these sizes and
+     ships true tabular figures. */
+  --text-micro: 0.6875rem; /* 11px — table column headers */
+  --text-label: 0.75rem; /* 12px — metric labels, meta */
+
+  --font-sans: "Inter Variable", "Inter", "Segoe UI", -apple-system,
+    BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Cascadia Mono", "SF Mono", "Roboto Mono", Consolas, monospace;
+
+  /* Elevation — only for things that float above the page.
+     Cards use borders instead. */
+  --shadow-popover: 0 6px 16px -4px rgb(16 24 40 / 0.12),
+    0 2px 6px -2px rgb(16 24 40 / 0.06);
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink-body);
+  font-family: var(--font-sans);
+}
+
+/* Any figure the operator compares down a column needs to line
+   up digit-for-digit. Applied to metrics, table numerics, and
+   chart axes rather than globally, so prose keeps proportional
+   figures. */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ============================================================
+   Type scale
+   ============================================================
+
+   Six roles, each bundling size + weight + tracking + leading,
+   because those four are one decision and splitting them across
+   four utility classes is how a scale drifts.
+
+   Tracking follows the size: Inter is drawn loose enough to read
+   at 11px, which means it needs tightening as it grows and
+   opening up as it shrinks. Setting size alone and leaving
+   tracking at zero is most of why type looks generic.
+   ============================================================ */
+
+@utility type-page {
+  font-size: 1.25rem; /* 20px */
+  font-weight: 600;
+  letter-spacing: -0.019em;
+  line-height: 1.2;
+}
+
+@utility type-metric {
+  font-size: 1.75rem; /* 28px */
+  font-weight: 620;
+  letter-spacing: -0.028em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+@utility type-card {
+  font-size: 0.875rem; /* 14px */
+  font-weight: 600;
+  letter-spacing: -0.008em;
+  line-height: 1.35;
+}
+
+@utility type-body {
+  font-size: 0.875rem; /* 14px */
+  font-weight: 400;
+  letter-spacing: -0.003em;
+  line-height: 1.5;
+}
+
+@utility type-label {
+  font-size: 0.75rem; /* 12px */
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+/* Column headers and status pills. Uppercase at 11px closes up
+   badly, so this is the one role that gets positive tracking. */
+@utility type-micro {
+  font-size: 0.6875rem; /* 11px */
+  font-weight: 600;
+  letter-spacing: 0.045em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+/* Keyboard focus should be obvious; mouse focus should not shout.
+   `:focus-visible` gives us both from one rule. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}
+
+/* ============================================================
+   Scrollbars — thin, so a scrolling table does not lose a
+   column's worth of width to chrome.
+   ============================================================ */
+
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--color-line-strong);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-ink-faint);
+  }
+}
+
+/* ============================================================
+   Motion — short, and only on things the user just did.
+   Honours reduced-motion.
+   ============================================================ */
+
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: scale(0.96);
+    transform: translateY(-4px);
   }
   to {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0);
   }
 }
 
 .animate-fadeIn {
-  animation: fadeIn 0.2s ease-out;
+  animation: fadeIn 0.12s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

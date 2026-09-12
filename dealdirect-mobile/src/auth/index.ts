@@ -1,4 +1,17 @@
-export { AuthProvider, useAuth, type AuthStatus } from './AuthProvider';
+export {
+  AuthProvider,
+  useAuth,
+  type AuthStatus,
+  type GoogleSignInOutcome,
+} from './AuthProvider';
+export {
+  signInWithGoogle,
+  forgetGoogleAccount,
+  isGoogleSignInConfigured,
+  GoogleSignInCancelled,
+  GoogleSignInUnavailable,
+} from './googleSignIn';
+export { isPhoneGateError, requestPhoneVerification, setPhoneGatePresenter } from './phoneGate';
 export {
   captureSessionCookie,
   restoreSessionCookie,
@@ -28,6 +41,9 @@ export { AuthResult, type AuthResultProps, type AuthResultTone } from './compone
 export { OwnerOnly, type OwnerOnlyProps } from './components/OwnerOnly';
 export { SignInPrompt, type SignInPromptProps } from './components/SignInPrompt';
 export { RequireAuth, type RequireAuthProps } from './components/RequireAuth';
+export { PhoneVerificationSheet } from './components/PhoneVerificationSheet';
+export { GoogleAuthButton, type GoogleAuthButtonProps } from './components/GoogleAuthButton';
+export { GoogleLinkSheet, type GoogleLinkSheetProps } from './components/GoogleLinkSheet';
 
 export {
   clearPendingIntent,

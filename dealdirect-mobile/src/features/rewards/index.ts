@@ -16,3 +16,4 @@ export {
 } from './hooks';
 export { useHubbleSession, HUBBLE_INTERNAL_URL, type HubbleSession } from './hubble';
 export { RewardReveal, type RewardRevealProps } from './components/RewardReveal';
+export { SpinWheel, type SpinWheelProps } from './components/SpinWheel';

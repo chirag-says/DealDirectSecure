@@ -6,7 +6,16 @@ import { Controller, useForm } from 'react-hook-form';
 import { Pressable, View } from 'react-native';
 
 import { ApiError } from '@/api';
-import { AuthShell, loginSchema, resumeAfterAuth, useAuth, type LoginValues } from '@/auth';
+import {
+  AuthShell,
+  GoogleAuthButton,
+  GoogleLinkSheet,
+  isGoogleSignInConfigured,
+  loginSchema,
+  resumeAfterAuth,
+  useAuth,
+  type LoginValues,
+} from '@/auth';
 import { gesture, useTheme } from '@/theme';
 import { Button, Input, Text } from '@/ui';
 
@@ -28,8 +37,9 @@ import { Button, Input, Text } from '@/ui';
  */
 export default function LoginScreen() {
   const { login, endedReason, clearEndedReason } = useAuth();
-  const theme = useTheme();
   const [formError, setFormError] = useState<string | null>(null);
+  const [pendingLink, setPendingLink] = useState<{ email: string; idToken: string } | null>(null);
+  const theme = useTheme();
   const [showPassword, setShowPassword] = useState(false);
 
   const { control, handleSubmit, formState, getValues } = useForm<LoginValues>({
@@ -55,6 +65,14 @@ export default function LoginScreen() {
           pathname: '/(auth)/verify-otp',
           params: { email: getValues('email') },
         });
+        return;
+      }
+
+      // The account exists but has no password: it was created with Google.
+      // Naming the door that works beats "invalid email or password", which
+      // would leave someone certain their account had vanished.
+      if (error.code === 'USE_GOOGLE_SIGNIN') {
+        setFormError('This account signs in with Google. Use Continue with Google above.');
         return;
       }
 
@@ -99,6 +117,23 @@ export default function LoginScreen() {
       {endedReason ? (
         <View className="mb-base rounded-lg bg-warning-muted p-md">
           <Text variant="footnote">{endedReason}</Text>
+        </View>
+      ) : null}
+
+      <GoogleAuthButton
+        onLinkRequired={(email, idToken) => setPendingLink({ email, idToken })}
+        onSignedIn={resumeAfterAuth}
+      />
+
+      {/* The divider belongs to the Google button: with no button above it, an
+          "or" announces an alternative that is not there. */}
+      {isGoogleSignInConfigured() ? (
+        <View className="mb-base flex-row items-center gap-sm">
+          <View className="h-px flex-1 bg-border" />
+          <Text variant="footnote" tone="muted">
+            or log in with email
+          </Text>
+          <View className="h-px flex-1 bg-border" />
         </View>
       ) : null}
 
@@ -204,6 +239,15 @@ export default function LoginScreen() {
           Continue browsing as a guest
         </Text>
       </Pressable>
+
+      <GoogleLinkSheet
+        pending={pendingLink}
+        onClose={() => setPendingLink(null)}
+        onLinked={() => {
+          setPendingLink(null);
+          resumeAfterAuth();
+        }}
+      />
     </AuthShell>
   );
 }

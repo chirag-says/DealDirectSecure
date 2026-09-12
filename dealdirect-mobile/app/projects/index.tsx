@@ -61,26 +61,36 @@ export default function ProjectsScreen() {
         reach the third at large accessibility sizes, which is exactly the
         reader who can least afford a control to go missing. The Properties
         screen's quick-filter rail scrolls for the same reason.
+
+        Wrapped in a plain View, and that wrapper is load-bearing. A ScrollView
+        carries `flexGrow: 1` by default, so placed straight in this screen's
+        flex column it competed with the list below for height and the two
+        split the screen: a half-screen band holding three chips, the list
+        crammed under it (reported 2026-09-06). Inside a View with no flex of
+        its own, the rail is as tall as its chips and nothing more. Same
+        construction as `QuickFilterBar`.
       */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingHorizontal: screenPadding,
-          paddingBottom: spacing.sm,
-          gap: spacing.sm,
-        }}
-        keyboardShouldPersistTaps="handled"
-      >
-        {CATEGORIES.map((c) => (
-          <Chip
-            key={c}
-            label={c}
-            selected={category === c}
-            onPress={() => setCategory((prev) => (prev === c ? undefined : c))}
-          />
-        ))}
-      </ScrollView>
+      <View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingHorizontal: screenPadding,
+            paddingBottom: spacing.sm,
+            gap: spacing.sm,
+          }}
+          keyboardShouldPersistTaps="handled"
+        >
+          {CATEGORIES.map((c) => (
+            <Chip
+              key={c}
+              label={c}
+              selected={category === c}
+              onPress={() => setCategory((prev) => (prev === c ? undefined : c))}
+            />
+          ))}
+        </ScrollView>
+      </View>
 
       <ProjectList feed={feed} />
     </Screen>

@@ -2,10 +2,9 @@ import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { WEB_URL } from '@/config/env';
 import { HERO_BG, HERO_GLASS, HERO_GLASS_BORDER, HERO_TEXT, HERO_TEXT_FAINT, HERO_TEXT_MUTED } from '@/features/home/heroTheme';
 import { markWelcomeSeen } from '@/features/onboarding';
 import { radius, screenPadding, spacing, useTheme } from '@/theme';
@@ -41,7 +40,9 @@ export default function WelcomeScreen() {
   const leave = useCallback(
     (href: '/(auth)/login' | '/(auth)/register' | '/(tabs)') => {
       markWelcomeSeen();
-      router.replace(href);
+      // Every exit passes through the permissions primer once, and the
+      // primer carries the chosen destination on to where it was going.
+      router.replace({ pathname: '/setup', params: { next: href } });
     },
     [router]
   );
@@ -141,7 +142,7 @@ export default function WelcomeScreen() {
           <Text
             variant="caption"
             style={{ color: HERO_TEXT_MUTED, textDecorationLine: 'underline' }}
-            onPress={() => void Linking.openURL(`${WEB_URL}/terms`)}
+            onPress={() => router.push('/legal/terms')}
             accessibilityRole="link"
           >
             Terms
@@ -150,7 +151,7 @@ export default function WelcomeScreen() {
           <Text
             variant="caption"
             style={{ color: HERO_TEXT_MUTED, textDecorationLine: 'underline' }}
-            onPress={() => void Linking.openURL(`${WEB_URL}/privacy`)}
+            onPress={() => router.push('/legal/privacy')}
             accessibilityRole="link"
           >
             Privacy policy

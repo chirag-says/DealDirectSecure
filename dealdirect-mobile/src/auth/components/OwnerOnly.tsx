@@ -48,10 +48,30 @@ export interface OwnerOnlyProps {
   title: string;
   /** Where the header's back control goes. Defaults to Profile. */
   backTo?: string;
+  /**
+   * Let a signed-in NON-owner through.
+   *
+   * For the one route that is how an account becomes an owner: the create
+   * listing form. Since the auth unification the role is no longer applied for
+   * — `ensureOwnerRole` grants it server-side the moment an account first posts
+   * a listing, behind the phone check. So refusing a buyer here would refuse
+   * them the only door into the role, and the refusal screen's own "List a
+   * property" action would loop straight back to itself.
+   *
+   * Everything else under /owner (leads, analytics, the listing list, the edit
+   * form) genuinely needs an account that already owns something, and stays
+   * refused.
+   */
+  allowNewOwners?: boolean;
   children: React.ReactNode;
 }
 
-export function OwnerOnly({ title, backTo = '/(tabs)/profile', children }: OwnerOnlyProps) {
+export function OwnerOnly({
+  title,
+  backTo = '/(tabs)/profile',
+  allowNewOwners = false,
+  children,
+}: OwnerOnlyProps) {
   const router = useRouter();
   const theme = useTheme();
   const { status, user } = useAuth();
@@ -73,7 +93,7 @@ export function OwnerOnly({ title, backTo = '/(tabs)/profile', children }: Owner
     );
   }
 
-  if (user.role !== 'owner') {
+  if (user.role !== 'owner' && !allowNewOwners) {
     return (
       <Screen>
         <ScreenHeader title={title} backTo={backTo} />
@@ -91,11 +111,18 @@ export function OwnerOnly({ title, backTo = '/(tabs)/profile', children }: Owner
               <Ionicons name="key-outline" size={30} color={theme.colors.accent} />
             </View>
           }
-          title="For owner accounts"
-          description="Listing a property, and the leads and analytics that come with it, need an owner account. You can upgrade from your profile — it takes one verification code."
-          actionLabel="Go to profile"
+          title="Post your first listing"
+          description="Leads and analytics appear here once you have a property listed. Posting one is what turns this into an owner account — you will be asked to verify your mobile number along the way."
+          actionLabel="List a property"
           actionVariant="primary"
-          onAction={() => router.replace('/(tabs)/profile')}
+          // Points at the listing form, not at Profile.
+          //
+          // The old copy sent people to a "become an owner" upgrade sheet, which
+          // was the truth when the role was something you applied for. It is not
+          // any more: `ensureOwnerRole` grants it server-side at the moment an
+          // account first posts a listing. Sending someone to Profile now would
+          // send them to look for a button that no longer needs to exist.
+          onAction={() => router.push('/owner/property/new')}
         />
       </Screen>
     );

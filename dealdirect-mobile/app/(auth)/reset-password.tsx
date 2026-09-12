@@ -76,7 +76,7 @@ export default function ResetPasswordScreen() {
       backTo="/(auth)/forgot-password"
       // Three fields plus two hints is tall enough to scroll on a small phone,
       // and centring would push the title off the top of the scroll view.
-      center={false}
+      band="compact"
     >
       <Controller
         control={control}

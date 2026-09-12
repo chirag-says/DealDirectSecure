@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import { spacing, useTheme } from '@/theme';
 import { Button, Sheet, Text } from '@/ui';
@@ -83,13 +83,26 @@ export function EnquirySheet({
       visible={visible}
       onClose={onCancel}
       title="Send enquiry?"
-      // The default 0.6. Sized against the tallest state — three two-line
-      // consequences, the quota line and two buttons — on the shortest phone
-      // still shipping (667pt), where 0.6 leaves about 40pt of headroom.
-      // Anything past the default accessibility text sizes will need this to
-      // become a scroll; flagged rather than pre-built.
+      // The default ceiling. The sheet is content-sized since 2026-09-06, so
+      // this only bounds it; the tallest state (three two-line consequences,
+      // the quota line and two buttons) sits well under it at default text
+      // sizes, and Cancel is laid out inside the sheet rather than clipped
+      // by it, as it was on Android with three-button navigation.
     >
-      <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.lg }}>
+      {/*
+        The words scroll, the buttons do not. The body is a ScrollView that
+        shrinks first when the sheet meets its ceiling, and the two buttons
+        sit in a footer below it, so whatever the text size or the phone,
+        "Send enquiry" and "Cancel" are the last things on the sheet and are
+        never the things that get clipped (2026-09-06).
+      */}
+      <View style={{ flexShrink: 1 }}>
+        <ScrollView
+          style={{ flexShrink: 1 }}
+          contentContainerStyle={{ paddingHorizontal: spacing.lg }}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
         {subtitle ? (
           <Text variant="callout" tone="secondary" numberOfLines={2}>
             {subtitle}
@@ -126,14 +139,18 @@ export function EnquirySheet({
           </View>
         ) : null}
 
-        <Button label="Send enquiry" className="mt-lg" fullWidth onPress={onConfirm} />
-        <Button
-          label="Cancel"
-          variant="ghost"
-          align="center"
-          className="mt-xs"
-          onPress={onCancel}
-        />
+        </ScrollView>
+
+        <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.lg }}>
+          <Button label="Send enquiry" className="mt-lg" fullWidth onPress={onConfirm} />
+          <Button
+            label="Cancel"
+            variant="ghost"
+            align="center"
+            className="mt-xs"
+            onPress={onCancel}
+          />
+        </View>
       </View>
     </Sheet>
   );

@@ -1,19 +1,60 @@
 /**
- * Content: the blog, the FAQ, and the links out to the website's legal pages.
+ * Content: the blog, and the website's help and legal pages rendered natively.
  *
  * ---------------------------------------------------------------------------
- * WHY PRIVACY AND TERMS ARE LINKS AND NOT SCREENS
+ * WHY THE LEGAL PAGES ARE SCREENS NOW, AND WHAT THAT COSTS — 2026-09-12
  *
- * The website ships `/privacy` and `/terms` as full pages, and the obvious
- * parity move is to port the copy. That would be a mistake: legal text has to
- * have exactly one source of truth. Two copies drift, and the app's copy would
- * drift SILENTLY — an app-store binary cannot be corrected the way a web page
- * can, so a terms change would leave stale terms live on every installed
- * device until the next release ships and is adopted.
+ * Until today the privacy policy and terms opened the website, first in the
+ * browser and then in a WebView, on the argument that legal text needs one
+ * source of truth and a copy baked into a store binary drifts silently. That
+ * argument was sound and it lost to two facts:
  *
- * So they open the website. `WEB_URL` is the one place the origin is
- * configured, and `LEGAL_LINKS` below is the one place the paths are.
+ *   1. Store review reads the policy INSIDE the app. A WebView of a web page
+ *      is a web page: it needs a network, it renders in the website's theme
+ *      with the website's nav, and reviewers flag apps that wrap their site.
+ *      The owner's instruction was explicit: everything Play Store checks has
+ *      to be in the APK itself, themed like the app.
+ *
+ *   2. The website's pages are bespoke JSX, so there was never a shared data
+ *      source the app could have read. The choice was "copy the text" or
+ *      "show the website"; there was no third option short of building one.
+ *
+ * So the copy is here, as DATA (`pages/*.ts`, one file per website route),
+ * rendered by one component (`components/ContentPageView.tsx`). The drift risk
+ * is real and is handled, not wished away:
+ *
+ *   - each page file names the website file it mirrors, and the rule is that
+ *     a change to one lands in the other in the same commit;
+ *   - every page keeps an "Open on website" action, so the canonical text is
+ *     one tap away and a stale copy is comparable, not hidden;
+ *   - dates are carried as text from the source, never computed, so a page
+ *     cannot claim to be newer than it is;
+ *   - the FAQ, the one page whose website source IS data, is checked against
+ *     that source by `pages/pages.test.ts` when both checkouts are present.
+ *
+ * `SUPPORT_CONTACT` is how to reach a human; `pages/contact.ts` explains why
+ * it differs from the website's contact page.
  */
 
 export { useBlogFeed, useBlogPost } from './blog';
-export { LEGAL_LINKS, SUPPORT_CONTACT, type ExternalPage } from './pages';
+export { SUPPORT_CONTACT } from './support';
+export {
+  CONTENT_PAGES,
+  CONTENT_GROUP_TITLES,
+  contactPage,
+  contentPagesByGroup,
+  getContentPage,
+  webUrlFor,
+  type ContentGroup,
+  type ContentPageEntry,
+} from './pages';
+export {
+  parseRichText,
+  type Block,
+  type ContentPage,
+  type ContentPart,
+  type RichText,
+  type Section,
+} from './pages/model';
+export { ContentPageView, type ContentPageViewProps } from './components/ContentPageView';
+export { ContactForm } from './components/ContactForm';

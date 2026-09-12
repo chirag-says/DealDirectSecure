@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDownIcon, Bars3Icon, ArrowLeftStartOnRectangleIcon, KeyIcon } from "@heroicons/react/24/outline";
+import { ChevronDown, LockKeyhole, LogOut, PanelLeft, PanelLeftClose } from "lucide-react";
 import logoSrc from "../assets/dd.jpg";
 import ddAdminPfp from "../assets/dealdirectadminpfp.png";
 import { useAdmin } from "../context/AdminContext";
 
-const Header = ({ toggleSidebar }) => {
+const Header = ({ toggleSidebar, isSidebarOpen }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const dropdownRef = useRef(null);
     const { admin, logout } = useAdmin();
@@ -23,6 +23,15 @@ const Header = ({ toggleSidebar }) => {
         };
     }, [dropdownRef]);
 
+    // Escape closes the menu. A dropdown you can only dismiss with the mouse
+    // is a trap for anyone driving the panel from the keyboard.
+    useEffect(() => {
+        if (!menuOpen) return;
+        const onKeyDown = (e) => e.key === "Escape" && setMenuOpen(false);
+        document.addEventListener("keydown", onKeyDown);
+        return () => document.removeEventListener("keydown", onKeyDown);
+    }, [menuOpen]);
+
     // Logout Function - now uses context
     const handleLogout = async () => {
         await logout();
@@ -34,106 +43,102 @@ const Header = ({ toggleSidebar }) => {
     const adminEmail = admin?.email || "N/A";
     const adminRole = admin?.role?.displayName || admin?.role?.name || "Administrator";
 
-    // Get Avatar Text (e.g., 'A' for Admin)
-    const getAvatarText = (name) => {
-        return name.charAt(0).toUpperCase();
-    };
-
-    // Get role badge color based on role
-    const getRoleBadgeColor = (role) => {
-        const roleName = (role || "").toLowerCase();
-        if (roleName.includes("super")) return "bg-purple-100 text-purple-700";
-        if (roleName.includes("admin")) return "bg-blue-100 text-blue-700";
-        if (roleName.includes("manager")) return "bg-green-100 text-green-700";
-        return "bg-gray-100 text-gray-700"; // Viewer or default
-    };
-
     return (
-        <header className="sticky top-0 z-40 bg-white border-b border-gray-100 p-3 sm:p-4 flex justify-between items-center shadow-md">
-            {/* Left Side: Toggle & Logo */}
-            <div className="flex items-center px-5 space-x-3 sm:space-x-4 flex-shrink-0">
+        // One header, one border, no shadow. This element used to be wrapped in
+        // a second <header> in App.jsx that carried its own shadow, stacking two
+        // elevations on the same edge.
+        <header className="shrink-0 z-40 bg-surface border-b border-line h-14 px-3 sm:px-4 flex items-center justify-between">
+            <div className="flex items-center gap-2.5 min-w-0">
+                {/*
+                  The collapse control lives here, not in the sidebar.
+                  In the sidebar it occupied a 48px row of its own above the
+                  first nav item — a whole row of chrome to hold one 18px
+                  icon. Here it sits with the other global controls, and the
+                  navigation starts at the top of its own panel.
+                */}
                 <button
+                    type="button"
                     onClick={toggleSidebar}
-                    className="lg:hidden p-1.5 sm:p-2 text-gray-600 hover:bg-gray-100 rounded-lg focus:outline-none transition"
-                    aria-label="Toggle Sidebar"
+                    className="p-1.5 -ml-1 text-ink-muted hover:bg-surface-hover hover:text-ink rounded-control transition-colors"
+                    aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+                    aria-expanded={isSidebarOpen}
                 >
-                    <Bars3Icon className="h-6 w-6" />
+                    {isSidebarOpen ? (
+                        <PanelLeftClose className="h-4.5 w-4.5" />
+                    ) : (
+                        <PanelLeft className="h-4.5 w-4.5" />
+                    )}
                 </button>
-                <img src={logoSrc} alt="DealDirect Logo" className="h-7 sm:h-10 w-auto object-contain" />
+                <img
+                    src={logoSrc}
+                    alt="DealDirect"
+                    className="h-7 w-auto object-contain"
+                />
             </div>
 
-            {/* Right Side */}
-            <div className="flex items-center space-x-3 sm:space-x-5 relative flex-shrink-1 min-w-0">
+            <div ref={dropdownRef} className="relative">
+                <button
+                    type="button"
+                    onClick={() => setMenuOpen(!menuOpen)}
+                    className="flex items-center gap-2 py-1 pl-1 pr-2 rounded-control hover:bg-surface-hover transition-colors"
+                    aria-expanded={menuOpen}
+                    aria-haspopup="menu"
+                    aria-controls="profile-menu"
+                >
+                    <img
+                        src={ddAdminPfp}
+                        alt=""
+                        className="h-7 w-7 rounded-full object-cover shrink-0"
+                    />
+                    <span className="hidden md:block type-body font-medium text-ink truncate max-w-[140px]">
+                        {adminName}
+                    </span>
+                    <ChevronDown className="h-4 w-4 text-ink-faint shrink-0" />
+                </button>
 
-                {/* Admin Profile + Dropdown */}
-                <div ref={dropdownRef} className="relative flex-shrink-1">
-                    <button
-                        onClick={() => setMenuOpen(!menuOpen)}
-                        className="flex items-center space-x-1 sm:space-x-2 p-1.5 rounded-full bg-gray-50 hover:bg-gray-100 transition focus:outline-none"
-                        aria-expanded={menuOpen}
-                        aria-controls="profile-menu"
+                {menuOpen && (
+                    <div
+                        id="profile-menu"
+                        role="menu"
+                        className="absolute right-0 top-full mt-1.5 w-60 bg-surface border border-line rounded-card shadow-popover z-50 origin-top-right animate-fadeIn overflow-hidden"
                     >
-                        {/* Profile Avatar */}
-                        <div className="flex-shrink-0 h-9 w-9 sm:h-10 sm:w-10 rounded-full overflow-hidden shadow-md border-2 border-white">
-                            <img src={ddAdminPfp} alt="DD Admin" className="w-full h-full object-cover" />
-                        </div>
-
-                        {/* Info and Chevron */}
-                        <div className="hidden md:flex flex-col items-start min-w-0">
-                            <span className="text-sm font-semibold text-gray-800 truncate max-w-[120px]">
-                                {adminName}
-                            </span>
-                            <span className="text-xs text-gray-500 truncate max-w-[120px]">
+                        <div className="px-3 py-2.5 border-b border-line">
+                            <p className="type-body font-medium text-ink truncate">{adminName}</p>
+                            <p className="type-label text-ink-muted truncate">{adminEmail}</p>
+                            {/*
+                              One neutral badge. The old version tinted this
+                              purple / blue / green by substring-matching the
+                              role name, which implied a hierarchy the product
+                              does not have — there is a single admin role.
+                            */}
+                            <span className="mt-1.5 inline-flex items-center rounded-control border border-neutral-line bg-neutral-soft px-1.5 py-0.5 type-micro text-ink-muted">
                                 {adminRole}
                             </span>
                         </div>
 
-                        <ChevronDownIcon className="h-4 w-4 text-gray-500 flex-shrink-0" />
-                    </button>
+                        <div className="p-1">
+                            <Link
+                                to="/admin/change-password"
+                                role="menuitem"
+                                onClick={() => setMenuOpen(false)}
+                                className="flex items-center gap-2.5 px-2.5 py-2 rounded-control type-body text-ink-body hover:bg-surface-hover transition-colors"
+                            >
+                                <LockKeyhole className="h-4 w-4 text-ink-faint" />
+                                Change password
+                            </Link>
 
-                    {/* Dropdown Menu */}
-                    {menuOpen && (
-                        <div
-                            id="profile-menu"
-                            className="absolute right-0 top-full mt-2 w-64 bg-white border border-gray-100 rounded-lg shadow-xl z-50 origin-top-right animate-fade-in-down"
-                        >
-                            <div className="p-4 border-b border-gray-100">
-                                <p className="font-bold text-gray-800 truncate">{adminName}</p>
-                                <p className="text-sm text-gray-500 truncate">{adminEmail}</p>
-                                <span className={`mt-2 inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${getRoleBadgeColor(adminRole)}`}>
-                                    {adminRole}
-                                </span>
-                            </div>
-
-                            <ul className="py-2">
-                                {/* Change Password */}
-                                <li>
-                                    <Link
-                                        to="/admin/change-password"
-                                        onClick={() => setMenuOpen(false)}
-                                        className="w-full flex items-center space-x-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
-                                    >
-                                        <KeyIcon className="h-5 w-5 text-gray-400" />
-                                        <span>Change Password</span>
-                                    </Link>
-                                </li>
-
-                                <div className="border-t border-gray-100 my-1"></div>
-
-                                {/* Logout Button */}
-                                <li>
-                                    <button
-                                        onClick={handleLogout}
-                                        className="w-full flex items-center space-x-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition"
-                                    >
-                                        <ArrowLeftStartOnRectangleIcon className="h-5 w-5" />
-                                        <span>Logout</span>
-                                    </button>
-                                </li>
-                            </ul>
+                            <button
+                                type="button"
+                                role="menuitem"
+                                onClick={handleLogout}
+                                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-control type-body text-danger hover:bg-danger-soft transition-colors"
+                            >
+                                <LogOut className="h-4 w-4" />
+                                Log out
+                            </button>
                         </div>
-                    )}
-                </div>
+                    </div>
+                )}
             </div>
         </header>
     );

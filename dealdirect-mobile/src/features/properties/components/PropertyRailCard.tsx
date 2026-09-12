@@ -3,7 +3,7 @@ import { memo, useCallback } from 'react';
 import { View } from 'react-native';
 
 import { radius, spacing, useTheme } from '@/theme';
-import { Image, PressableScale, PriceLabel, Text } from '@/ui';
+import { Image, PressableScale, PriceLabel, Text, railImageHeight } from '@/ui';
 import type { PropertySummary } from '../types';
 
 /**
@@ -48,7 +48,12 @@ import type { PropertySummary } from '../types';
  * real reason it should not carry the control.
  */
 
-const IMAGE_HEIGHT = 180;
+/**
+ * Points of card below the image: padding, price, type line, location and
+ * the facts row, at the default text size. The rail's skeleton is built from
+ * this plus the image height so the row does not resize when data lands.
+ */
+export const RAIL_CARD_TEXT_HEIGHT = 116;
 
 /**
  * The fields this card actually draws, and nothing more.
@@ -148,7 +153,9 @@ function PropertyRailCardComponent({
         overflow: 'hidden',
       }}
     >
-      <View style={{ height: IMAGE_HEIGHT }}>
+      {/* 4:3 of the card's width, the ratio most listing photos are shot
+          at, so cover fitting shows the whole frame; see `railImageHeight`. */}
+      <View style={{ height: railImageHeight(width) }}>
         {property.coverImage ? (
           <Image uri={property.coverImage} size="thumb" style={{ width: '100%', height: '100%' }} />
         ) : (

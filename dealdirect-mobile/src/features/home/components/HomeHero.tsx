@@ -17,13 +17,15 @@ import type { City } from '../cities';
 import {
   HEADER_ROW_PX,
   HEADER_TOP_PX,
-  HERO_BG,
+  HERO_BOTTOM_PX,
   HERO_GLASS,
   HERO_GLASS_BORDER,
   HERO_HEADLINE_TOP_PX,
   HERO_INSET_PX,
+  HERO_SEARCH_GAP_PX,
   HERO_TEXT,
   HERO_TEXT_MUTED,
+  useHeroScheme,
   useMockScale,
 } from '../heroTheme';
 import { SEARCH_PIN_WINDOW } from './HomeHeader';
@@ -41,7 +43,8 @@ import { HomeSearchField } from './HomeSearchField';
  *   chips           top 429 (27 below the subtitle), 68 tall, 22 apart
  *                   Buy is red with 52 of side padding; the others glass, 35
  *   search pill     top 528 (31 below the chips), 86 tall
- *   next section    34 below the pill — supplied by the page, not by this block
+ *   slab bottom     34 below the pill, inside this block (its curved edge)
+ *   next section    the page's own gap after that
  *
  * WHAT DID NOT CHANGE, deliberately: `HomeSearchField` and everything behind
  * it. Same component, same handlers, same autocomplete, same handover to the
@@ -85,14 +88,22 @@ export function HomeHero({
   const insets = useSafeAreaInsets();
   const mockPx = useMockScale();
   const { width } = useWindowDimensions();
+  const hero = useHeroScheme();
 
   const [fieldY, setFieldY] = useState(0);
   const [searchFocused, setSearchFocused] = useState(false);
 
-  // The header's bottom edge, in the hero's coordinates: the field reaches
-  // the bar when it has scrolled up by its own offset minus that.
+  // The header's bottom edge, in the hero's coordinates: the pill reaches
+  // the bar when it has scrolled up by its own top minus that.
+  //
+  // The pill's top, not the wrapper's: `HomeSearchField` carries the gap
+  // from the chips inside itself, so the wrapper's layout y is that gap
+  // ABOVE the pill. Measuring the wrapper handed over early by exactly that
+  // much, and the bar appeared while the hero still had a strip to go
+  // (reported 2026-09-06).
   const headerBottom = insets.top + mockPx(HEADER_TOP_PX + HEADER_ROW_PX);
-  const pinOffset = fieldY > 0 ? Math.max(fieldY - headerBottom, 0) : 0;
+  const pillY = fieldY > 0 ? fieldY + mockPx(HERO_SEARCH_GAP_PX) : 0;
+  const pinOffset = pillY > 0 ? Math.max(pillY - headerBottom, 0) : 0;
 
   useEffect(() => onPinOffsetChange(pinOffset), [pinOffset, onPinOffsetChange]);
 
@@ -122,26 +133,28 @@ export function HomeHero({
   return (
     <View
       style={{
-        backgroundColor: HERO_BG,
+        backgroundColor: hero.slab,
         overflow: 'hidden',
         paddingHorizontal: mockPx(HERO_INSET_PX),
         // The photograph runs up under the transparent header, so this block
         // pays the status inset AND the header, then the measured gap to the
         // headline. All three are the header's own constants.
         paddingTop: insets.top + mockPx(HERO_HEADLINE_TOP_PX),
-        // The page supplies the gap to the next section; the reference has
-        // nothing of this block below the pill but its colour.
-        paddingBottom: 0,
+        // Breathing room under the search pill before the block's curved
+        // bottom edge. The header's pinned row ends the same distance under
+        // its copy of the pill, so the two bottoms meet at the handover.
+        paddingBottom: mockPx(HERO_BOTTOM_PX),
+        // The header's fill carries the same two corners; see `HomeHeader`.
         borderBottomLeftRadius: radius.xl,
         borderBottomRightRadius: radius.xl,
       }}
     >
-      {/* The photograph: full width, top-anchored, its native 3:2. It ends
-          above the search pill; below it the block is the slab's own colour,
-          which is also the colour of the photograph's last rows, so there is
-          no edge to see. */}
+      {/* The photograph: full width, top-anchored, its native 3:2, one per
+          colour scheme. It ends above the search pill; below it the block is
+          the slab's own colour, which is also the colour of the photograph's
+          last rows, so there is no edge to see. */}
       <ExpoImage
-        source={require('../../../../assets/home/brand/hero-dusk.webp')}
+        source={hero.image}
         style={{ position: 'absolute', top: 0, left: 0, width, height: (width * 1024) / 1536 }}
         contentFit="cover"
         cachePolicy="memory"

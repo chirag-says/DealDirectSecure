@@ -2,7 +2,7 @@ import { Redirect } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 
 import { useAuth } from '@/auth';
-import { hasSeenWelcome, resolveEntryRoute } from '@/features/onboarding';
+import { hasSeenSetup, hasSeenWelcome, resolveEntryRoute } from '@/features/onboarding';
 
 /**
  * The entry route. Waits for the session probe, then sends the person to
@@ -17,7 +17,7 @@ import { hasSeenWelcome, resolveEntryRoute } from '@/features/onboarding';
 export default function Bootstrap() {
   const { status } = useAuth();
 
-  const route = resolveEntryRoute(status, hasSeenWelcome());
+  const route = resolveEntryRoute(status, hasSeenWelcome(), hasSeenSetup());
 
   if (!route) {
     return (

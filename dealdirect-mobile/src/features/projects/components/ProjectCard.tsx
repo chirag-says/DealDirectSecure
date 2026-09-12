@@ -3,7 +3,7 @@ import { memo, useCallback } from 'react';
 import { View } from 'react-native';
 
 import { radius, spacing, useTheme } from '@/theme';
-import { Image, PressableScale, PriceLabel, Scrim, Text } from '@/ui';
+import { Image, PressableScale, PriceLabel, railImageHeight, Scrim, Text } from '@/ui';
 import type { ProjectSummary } from '../types';
 
 /**
@@ -26,7 +26,8 @@ import type { ProjectSummary } from '../types';
  * That is worth a badge in a way that a generic "Featured" ribbon is not.
  */
 
-const IMAGE_HEIGHT = 150;
+/** Points of card below the image; the rail's skeleton adds the image. */
+export const PROJECT_CARD_TEXT_HEIGHT = 110;
 
 export interface ProjectCardProps {
   project: ProjectSummary;
@@ -76,7 +77,9 @@ function ProjectCardComponent({ project, width, onPress }: ProjectCardProps) {
         overflow: 'hidden',
       }}
     >
-      <View style={{ height: IMAGE_HEIGHT }}>
+      {/* 4:3 of the card's width, so a builder's render is shown whole; see
+          `railImageHeight`. */}
+      <View style={{ height: railImageHeight(width) }}>
         {project.coverImage ? (
           <Image uri={project.coverImage} size="thumb" style={{ width: '100%', height: '100%' }} />
         ) : (

@@ -53,6 +53,37 @@ did NOT update the docs, say so explicitly — that is a debt marker.
 
 ---
 
+## 2026-09-12 — Mobile: the website's help and legal pages rendered natively (mobile only)
+
+**Files changed** (`dealdirect-mobile/`)
+- `src/features/content/pages/model.ts` — **new.** The content model: `ContentPage` → sections (or tabbed parts) → blocks (paragraph, heading, bullets, callout, cards, stats, quote, tags, faq, contact, actions). `RichText` is a string with `**bold**` runs; `parseRichText` is the only thing that reads the markers.
+- `src/features/content/pages/{privacy,terms,rewardsTerms,faq,about,whyUs,contact}.ts` — **new.** One file per website route, copy verbatim (contact excepted, see its module doc). `pages/index.ts` is the registry the Support screen lists from.
+- `src/features/content/components/ContentPageView.tsx` — **new.** The one renderer. Prose blocks share a card; structural blocks sit on the page; inside an accordion everything is flat.
+- `src/features/content/components/ContactForm.tsx` — **new.** `POST /contact` (session required); guests see `SignInPrompt` in its place.
+- `src/features/content/pages/pages.test.ts` — **new.** Structural guards, plus a parity check that reads each page's website source (when `../client-next` is beside the mobile checkout) and fails if a sentence in the app is no longer on the website.
+- `app/legal/[id].tsx` — WebView removed; renders from the registry. `app/legal/contact.tsx` — **new** static route (wins over `[id]`).
+- `app/support.tsx` — rows come from the registry, grouped Help / About / Legal; "Send us a message" added under Talk to us.
+- `src/features/content/index.ts`, `support.ts` — registry exports; `pages.ts` (the `LEGAL_LINKS` web-link builder) **deleted**.
+
+**Reason**
+Store review reads the privacy policy and terms inside the app. A WebView of the website needs a network, renders the website's chrome, and is what reviewers flag as a wrapped site. The owner asked for every page Play Store checks to be in the APK, themed like the app. The website's pages are bespoke JSX with no shared data source, so the copy was ported as data rather than fetched.
+
+**Architectural impact**
+- The legal text now has TWO copies. The rule: a change to a website page under `client-next/src/app/{privacy,terms,faq,about,why-us,rewards/terms}` lands in the matching `pages/*.ts` in the same commit. `pages.test.ts` enforces this whenever both checkouts are present.
+- `/legal/<id>` ids are the registry's: `faq`, `about`, `why-us`, `privacy`, `terms`, `rewards-terms`, plus the static `contact`. `welcome.tsx` already pushes `/legal/terms` and `/legal/privacy`.
+- `react-native-webview` is still a dependency (property map, video, redeem use it); nothing here removed native code, so the fingerprint is unchanged and this ships as an OTA update.
+- Content dates are carried as text from the source, never computed. The rewards terms page shows no date because the website computes one.
+
+**Known content issues, not fixed here**
+- The privacy policy and terms describe a B2B goods marketplace (orders, shipments, warehousing, GST), not a property app, and do not mention location, photos or Google sign-in. Play's Data Safety review compares the policy against what the app collects. Rewrite before submission is the owner's call.
+- The website's contact page shows placeholder-looking numbers (`+91 98765 43210`, `+91 22 1234 5678`) and support@/business@ addresses that appear nowhere else; the app uses the footer's contact@ and +91 92-8963 8963 instead.
+
+**Migration notes**
+None.
+
+**Docs updated**
+This entry. `AI/` has no mobile content-page section to correct; the mobile parity audit deliverables at the repo root still describe the WebView and are stale on this point.
+
 ## 2026-09-05 — Mobile: the hero redrawn to measurements of the reference (mobile only)
 
 **Files changed**

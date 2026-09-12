@@ -59,6 +59,15 @@ export interface City {
    */
   aliases: readonly [string, ...string[]];
   /**
+   * Where the city is, for detecting it from a coordinate (2026-09-06).
+   *
+   * The centre and a radius that covers the metropolitan area the tile means:
+   * Mumbai's reaches Thane, Navi Mumbai and Panvel; Delhi's stops short of
+   * Gurgaon and Noida, which have their own tiles. See `nearestCity`.
+   */
+  center: { latitude: number; longitude: number };
+  radiusKm: number;
+  /**
    * Optional since 2026-08-22.
    *
    * `CityGrid` builds its tiles from type alone and stops reading this — see
@@ -78,48 +87,64 @@ export interface City {
 export const CITIES: readonly City[] = [
   {
     id: 'mumbai',
+    center: { latitude: 19.0760, longitude: 72.8777 },
+    radiusKm: 50,
     label: 'Mumbai',
     aliases: ['mumbai', 'navi mumbai', 'panvel'],
     image: require('../../../assets/home/cities/mumbai.png'),
   },
   {
     id: 'delhi',
+    center: { latitude: 28.6139, longitude: 77.2090 },
+    radiusKm: 35,
     label: 'Delhi NCR',
     aliases: ['delhi', 'delhi ncr', 'new delhi'],
     image: require('../../../assets/home/cities/delhi.png'),
   },
   {
     id: 'bangalore',
+    center: { latitude: 12.9716, longitude: 77.5946 },
+    radiusKm: 45,
     label: 'Bangalore',
     aliases: ['bangalore', 'bengaluru'],
     image: require('../../../assets/home/cities/bangalore.png'),
   },
   {
     id: 'hyderabad',
+    center: { latitude: 17.3850, longitude: 78.4867 },
+    radiusKm: 45,
     label: 'Hyderabad',
     aliases: ['hyderabad', 'secunderabad'],
     image: require('../../../assets/home/cities/hyderabad.png'),
   },
   {
     id: 'pune',
+    center: { latitude: 18.5204, longitude: 73.8567 },
+    radiusKm: 40,
     label: 'Pune',
     aliases: ['pune', 'pimpri', 'pimpri-chinchwad'],
     image: require('../../../assets/home/cities/pune.png'),
   },
   {
     id: 'chennai',
+    center: { latitude: 13.0827, longitude: 80.2707 },
+    radiusKm: 45,
     label: 'Chennai',
     aliases: ['chennai', 'madras'],
     image: require('../../../assets/home/cities/chennai.png'),
   },
   {
     id: 'kolkata',
+    center: { latitude: 22.5726, longitude: 88.3639 },
+    radiusKm: 40,
     label: 'Kolkata',
     aliases: ['kolkata', 'calcutta', 'howrah'],
     image: require('../../../assets/home/cities/kolkata.png'),
   },
   {
     id: 'ahmedabad',
+    center: { latitude: 23.0225, longitude: 72.5714 },
+    radiusKm: 40,
     label: 'Ahmedabad',
     // "Ahamdabad" is a live misspelling, not a variant. Carried so the listing
     // is findable; the data itself should be corrected.
@@ -128,24 +153,32 @@ export const CITIES: readonly City[] = [
   },
   {
     id: 'gurgaon',
+    center: { latitude: 28.4595, longitude: 77.0266 },
+    radiusKm: 20,
     label: 'Gurgaon',
     aliases: ['gurgaon', 'gurugram'],
     image: require('../../../assets/home/cities/gurgaon.png'),
   },
   {
     id: 'noida',
+    center: { latitude: 28.5700, longitude: 77.3600 },
+    radiusKm: 25,
     label: 'Noida',
     aliases: ['noida', 'greater noida'],
     image: require('../../../assets/home/cities/noida.png'),
   },
   {
     id: 'chandigarh',
+    center: { latitude: 30.7333, longitude: 76.7794 },
+    radiusKm: 25,
     label: 'Chandigarh',
     aliases: ['chandigarh', 'mohali', 'panchkula'],
     image: require('../../../assets/home/cities/chandigarh.png'),
   },
   {
     id: 'jaipur',
+    center: { latitude: 26.9124, longitude: 75.7873 },
+    radiusKm: 35,
     label: 'Jaipur',
     aliases: ['jaipur'],
     image: require('../../../assets/home/cities/jaipur.png'),
@@ -163,6 +196,8 @@ export const CITIES: readonly City[] = [
       addition that actually produces a tile.
     */
     id: 'ranchi',
+    center: { latitude: 23.3441, longitude: 85.3096 },
+    radiusKm: 30,
     label: 'Ranchi',
     aliases: ['ranchi'],
   },
@@ -189,6 +224,68 @@ export function matchCity(raw: string | undefined): City | undefined {
   if (!normalized) return undefined;
 
   return CITIES.find((city) => city.aliases.includes(normalized));
+}
+
+/**
+ * Like `matchCity`, but accepts a name that CONTAINS an alias as a word.
+ *
+ * For names from the device's geocoder, which are administrative rather than
+ * colloquial: Android answers "Bengaluru Urban", "Mumbai Suburban", "South
+ * West Delhi" and "Pune Division", none of which is a listing's `city` and so
+ * none of which `matchCity` should learn. Word-bounded, so "Delhi" does not
+ * match "New Delhi Road" by accident, and longest alias first so "greater
+ * noida" wins over "noida" and "navi mumbai" over "mumbai".
+ */
+export function matchCityLoosely(raw: string | undefined): City | undefined {
+  const exact = matchCity(raw);
+  if (exact) return exact;
+
+  const normalized = normalizeCityName(raw);
+  if (!normalized) return undefined;
+
+  const candidates = CITIES.flatMap((city) => city.aliases.map((alias) => ({ city, alias })));
+  candidates.sort((a, b) => b.alias.length - a.alias.length);
+  const hit = candidates.find(({ alias }) => new RegExp(`(^|\\s)${alias}(\\s|$)`).test(normalized));
+  return hit?.city;
+}
+
+const EARTH_RADIUS_KM = 6371;
+
+/** Great-circle distance, good to a fraction of a percent at these scales. */
+function distanceKm(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number }
+): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h));
+}
+
+/**
+ * The tile a coordinate falls in, or undefined if it is in none.
+ *
+ * The primary way "use my location" resolves a city (2026-09-06). It used to
+ * rely on the geocoder's name alone, which failed for most of the country:
+ * the OS names the district, not the city, so a user standing in Koramangala
+ * was told the app is "not in Bengaluru Urban yet". A coordinate against the
+ * table's own centres cannot be misspelled, needs no network, and settles the
+ * NCR by nearest centre, so Gurgaon is Gurgaon and not Delhi.
+ */
+export function nearestCity(point: { latitude: number; longitude: number }): City | undefined {
+  let best: { city: City; score: number } | undefined;
+  for (const city of CITIES) {
+    // Distance as a fraction of the city's own radius, not raw kilometres:
+    // where Delhi and Gurgaon overlap, a point in Dwarka is nearer Gurgaon's
+    // centre in km but well inside Delhi's much larger area, and it is Delhi.
+    const score = distanceKm(point, city.center) / city.radiusKm;
+    if (score > 1) continue;
+    if (!best || score < best.score) best = { city, score };
+  }
+  return best?.city;
 }
 
 /** The free-text term a tile sends to the browse screen. */

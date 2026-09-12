@@ -408,6 +408,8 @@ export default function HomeScreen() {
         onOpenProfile={() => router.push('/(tabs)/profile')}
         onOpenUpdates={() => router.push('/(tabs)/updates')}
         onOpenCityPicker={() => setCityPickerOpen(true)}
+        canList={listingState.kind === 'ownerEmpty'}
+        onAddListing={openListing}
       />
 
       <CityPickerSheet

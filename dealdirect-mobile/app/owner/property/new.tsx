@@ -115,14 +115,20 @@ function NewPropertyScreenContent() {
 }
 
 /**
- * Owner-gated. See `auth/components/OwnerOnly.tsx` for why a role the
- * server already enforces still needs a client-side refusal: without it a
- * buyer who reaches this route is shown an error state for something that
- * is not an error.
+ * Sign-in gated, but deliberately NOT owner-gated.
+ *
+ * This is the route that makes an owner. `ensureOwnerRole` grants the role
+ * server-side when an account first posts a listing, behind the phone check, so
+ * a buyer standing here is not in the wrong place — they are one form away from
+ * being an owner. Refusing them would close the only door into the role, and
+ * the refusal screen's own "List a property" action would loop back here.
+ *
+ * A signed-OUT visitor is still refused, and every other /owner route still
+ * requires an account that already owns something.
  */
 export default function NewPropertyScreen() {
   return (
-    <OwnerOnly title="Add listing">
+    <OwnerOnly title="Add listing" allowNewOwners>
       <NewPropertyScreenContent />
     </OwnerOnly>
   );

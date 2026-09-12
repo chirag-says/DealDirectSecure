@@ -1,19 +1,35 @@
-# ╔══════════════════════════════════════════════════════════╗
-# ║          DealDirect — Master .gitignore                  ║
-# ║  Covers: backend / client-next / Admin / dealdirect-mobile║
-# ╚══════════════════════════════════════════════════════════╝
+# DealDirect — repository root
+#
+# This tree holds four independently hosted applications, each with its own
+# git repository AND its own .gitignore. Files here are therefore tracked
+# twice: once by the app repo that deploys them, once by this one. Keep this
+# file to cross-cutting concerns and let each app's file own its build system.
+#
+# Two rules this file is built around, both learned the hard way:
+#
+#   1. Never glob a word prefix against a source extension. `test*.js` reads
+#      as "scratch files" and matches `testimonialController.js`; `check*.js`
+#      matches `checkoutController.js`. The file is then invisible to git and
+#      absent from the next clone, with no error anywhere. Scratch work is
+#      marked by an explicit suffix instead — see SCRATCH below.
+#
+#   2. A negation cannot rescue a file whose parent directory is excluded.
+#      `uploads/` followed by `!uploads/.gitkeep` does NOT keep the file; the
+#      directory is gone before the negation is read. Exclude the CONTENTS
+#      (`uploads/*`) when something inside has to survive.
 
-# ===========================================================
-# 1. DEPENDENCIES
-# ===========================================================
+# ---------------------------------------------------------------------------
+# Dependencies and build output
+# ---------------------------------------------------------------------------
 node_modules/
 **/node_modules/
 .pnp
-.pnp.js
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/versions
 
-# ===========================================================
-# 2. BUILD OUTPUTS
-# ===========================================================
 dist/
 **/dist/
 build/
@@ -22,33 +38,31 @@ out/
 **/out/
 dist-ssr/
 **/dist-ssr/
-
-# Next.js
 .next/
 **/.next/
-
-# Vite
 .vite/
 **/.vite/
-
-# Turbopack
 .turbo/
+**/.turbo/
+web-build/
+.eslintcache
+*.tsbuildinfo
 
-# ===========================================================
-# 3. ENVIRONMENT & SECRETS (CRITICAL)
-#    Only .env.example files are allowed through.
-# ===========================================================
+# ---------------------------------------------------------------------------
+# Secrets
+#
+# .env.example files are templates and are meant to be committed; every other
+# .env variant is not. The per-app negations exist because the broad `.env.*`
+# rule above them would otherwise swallow the templates too.
+# ---------------------------------------------------------------------------
 .env
 .env.*
 !.env.example
+!*/.env.example
 
-# Explicit sub-project env blocking
 backend/.env
 backend/.env.*
 !backend/.env.example
-client/.env
-client/.env.*
-!client/.env.example
 client-next/.env
 client-next/.env.*
 !client-next/.env.example
@@ -59,157 +73,140 @@ dealdirect-mobile/.env
 dealdirect-mobile/.env.*
 !dealdirect-mobile/.env.example
 
-# Secret keys and certificates
+# Keys, certificates and credential files
 *.pem
-*.crt
 *.key
+*.crt
+*.cer
 *.p12
 *.pfx
 *.jks
 *.keystore
+*.p8
+*.gpg
+*.asc
 *.secret
 *.secrets
 secrets/
 .secrets/
-
-# Credentials and tokens
-.npmrc
-.yarnrc
-.docker/config.json
 credentials.json
 service-account*.json
 *-credentials.json
 *-serviceaccount.json
+google-services.json
+GoogleService-Info.plist
+.npmrc
+.yarnrc
+.docker/config.json
 
-# ===========================================================
-# 4. SEEDING, MIGRATION & DEBUG SCRIPTS
-#    These often contain credentials or test data.
-#    Uses glob patterns so NEW scripts are auto-caught.
-# ===========================================================
+# ---------------------------------------------------------------------------
+# Database dumps and backups
+#
+# A mongodump run from the repository root drops a directory of .bson here.
+# Those carry every user record in the database in plain form, so they must
+# never reach a remote — including a private one.
+# ---------------------------------------------------------------------------
+dump/
+dumps/
+backup/
+backups/
+*.bson
+*.archive
+*.dump
+*.bak
+*.backup
+*.sql
+*.sqlite
+*.sqlite3
+mongodump-*/
+*-dump-*/
 
-# -- Wildcard patterns (catch everything, any directory) --
-**/seed*.js
-**/seed*.ts
-**/seed*.mjs
-**/migrate*.js
-**/migrate*.ts
-**/migrate*.mjs
-**/fix*.js
-**/debug*.js
-**/test*.js
+# ---------------------------------------------------------------------------
+# SCRATCH
+#
+# Throwaway files use an explicit marker so no real module can collide with
+# the pattern. Anything named `foo.scratch.js`, or anything under `scratch/`,
+# is local-only by construction.
+# ---------------------------------------------------------------------------
+scratch/
+**/scratch/
+*.scratch.*
+*.local.js
+*.local.mjs
+*.local.ts
+tmp/
+temp/
+.tmp/
+.temp/
+*.tmp
+*.temp
+.cache/
+**/.cache/
 
-# -- Backend test directory --
-# The committed regression suite lives here and IS tracked. The patterns above
-# (test*.js, debug*.js, fix*.js) exist to keep throwaway diagnostic scripts out
-# of the repo; this directory is the real suite and must survive a clone.
-# Anything in here that is not a *.test.js file stays ignored.
-backend/tests/*
-!backend/tests/*.test.js
-
-# -- Integration suite --
-# A negation cannot reach inside a directory git has been told to ignore, so
-# backend/tests/integration must be re-included before anything under it can be.
-# Each level is then re-ignored and its real files named explicitly, which keeps
-# the "scratch work stays out" rule intact one directory deeper.
-!backend/tests/integration/
-backend/tests/integration/*
-!backend/tests/integration/*.test.js
-!backend/tests/integration/test.env
-!backend/tests/integration/setup/
-backend/tests/integration/setup/*
-!backend/tests/integration/setup/*.js
-
-# -- Explicit files (already known) --
+# One-off operational scripts that are deliberately not shipped. Listed by
+# exact path rather than by prefix, so adding `seedCategories.js` later is a
+# decision someone makes, not something this file makes for them.
 backend/seed.js
-backend/scripts/seedRbac.js
 backend/scripts/seedBlogs.js
 backend/scripts/fixAdminRole.js
 backend/scripts/debugRbac.js
 backend/scripts/testAdminLogin.js
-backend/scripts/migrateLegacyUsers.js
+backend/generate_report.js
+generate_task_sheet.py
 
-# -- Keep normalizeCategoryName.js (legitimate utility) --
-!backend/scripts/normalizeCategoryName.js
-
-# -- Keep the database migration tooling (reviewed 2026-08-17) --
-# migrate.js matches **/migrate*.js above, which exists because migration
-# scripts often carry credentials. This one does not: both connection strings
-# are read from backend/.env and backend/.env.new at runtime, are passed to
-# mongodump/mongorestore through a temporary 0600 config file rather than argv,
-# and no script in that directory prints anything but host and database name.
-# The dumps they produce stay ignored via backend/scripts/db-migration/.gitignore.
-!backend/scripts/db-migration/migrate.js
-
-# ===========================================================
-# 5. DATABASE DUMPS & BACKUPS
-# ===========================================================
-*.sql
-*.dump
-*.bak
-*.backup
-*.sqlite
-*.sqlite3
-
-# ===========================================================
-# 6. LOGS
-# ===========================================================
+# ---------------------------------------------------------------------------
+# Logs, coverage, test artifacts
+# ---------------------------------------------------------------------------
 logs/
 **/logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
+yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-error.log*
-debug.log*
-
-# ===========================================================
-# 7. LINT & TEST OUTPUTS
-# ===========================================================
 lint-output.json
 **/lint-output.json
+
 coverage/
 **/coverage/
-.coverage/
 .nyc_output/
 test-results/
 playwright-report/
-.env.test
-.env.testing
-*.test.env
 
-# ===========================================================
-# 8. DEBUG & SCRATCH FILES
-# ===========================================================
-head_check.txt
-page_source_check.txt
-generate_task_sheet.py
-generate_report.js
-backend/generate_report.js
-
-# ===========================================================
-# 9. UPLOADED FILES (user-generated, not source code)
-# ===========================================================
-uploads/
-backend/uploads/
+# ---------------------------------------------------------------------------
+# Runtime data
+#
+# `uploads/*` and not `uploads/`, so .gitkeep survives and a fresh clone still
+# has the directory multer writes into.
+# ---------------------------------------------------------------------------
+backend/uploads/*
 !backend/uploads/.gitkeep
 
-# ===========================================================
-# 10. OS & SYSTEM FILES
-# ===========================================================
-.DS_Store
-**/.DS_Store
-Thumbs.db
-Desktop.ini
-ehthumbs.db
-*.swp
-*.swo
-*~
+# ---------------------------------------------------------------------------
+# Mobile build output
+# ---------------------------------------------------------------------------
+.expo/
+**/.expo/
+.eas/
+.metro-health-check*
+*.hprof
+*.apk
+*.aab
+*.ipa
+dealdirect-mobile/android/build/
+dealdirect-mobile/android/app/build/
+dealdirect-mobile/android/.gradle/
+dealdirect-mobile/android/local.properties
+dealdirect-mobile/ios/Pods/
+dealdirect-mobile/ios/build/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
 
-# ===========================================================
-# 11. EDITOR & IDE FILES
-# ===========================================================
-.vscode/
+# ---------------------------------------------------------------------------
+# Editors, tooling and OS
+# ---------------------------------------------------------------------------
+.vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
 .idea/
@@ -218,147 +215,73 @@ ehthumbs.db
 *.ntvs*
 *.njsproj
 *.sln
+*.swp
+*.swo
 *.sw?
-.eslintcache
-*.tsbuildinfo
-*.local
-
-# ===========================================================
-# 12. AI ASSISTANT / TOOLING METADATA
-# ===========================================================
+*~
 .gemini/
 .claude/
 .cursor/
 .copilot/
 .antigravityignore
-CLAUDE.md
-client-next-standalone/
-
-# ===========================================================
-# 13. SENTRY SOURCE MAPS
-# ===========================================================
 .sentryclirc
 .sentry/
+.DS_Store
+**/.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+desktop.ini
 
-# ===========================================================
-# 14. ROOT PACKAGE-LOCK (empty, no root dependencies)
-#     Sub-project lockfiles (backend/, client-next/, Admin/)
-#     are intentionally tracked for reproducible builds.
-# ===========================================================
-/package-lock.json
-
-# ===========================================================
-# 15. TEMPORARY FILES & CACHES
-# ===========================================================
-tmp/
-temp/
-.temp/
-.tmp/
-*.tmp
-*.temp
-.cache/
-**/.cache/
-
-# ===========================================================
-# 16. MOBILE APP — EXPO / REACT NATIVE
-# ===========================================================
-# Expo
-.expo/
-**/.expo/
-web-build/
-
-# React Native
-*.hprof
-
-# Android
-dealdirect-mobile/android/app/build/
-dealdirect-mobile/android/.gradle/
-dealdirect-mobile/android/build/
-dealdirect-mobile/android/local.properties
-*.apk
-*.aab
-
-# iOS (if added later)
-dealdirect-mobile/ios/Pods/
-dealdirect-mobile/ios/build/
-*.ipa
-*.xcworkspace/xcuserdata/
-*.xcodeproj/xcuserdata/
-
-# EAS Build
-.eas/
-
-# Metro bundler
-.metro-health-check*
-
-# ===========================================================
-# 17. NON-CODE PROJECT FILES
-#     Plans, reports, contracts, diagrams, analysis docs,
-#     debug dumps, and one-off scripts that are NOT source
-#     code. Only README.md and .gitignore belong at root.
-# ===========================================================
-
-# --- Implementation Plans & Guides ---
+# ---------------------------------------------------------------------------
+# Working documents and generated reports
+#
+# Deliberately kept out of version control. Retained from the previous file;
+# note that DEALDIRECT-FLOW-IMPROVEMENT-ROADMAP.md is among them, which means
+# the roadmap exists on one machine only. Move it above this block if that is
+# not intended.
+# ---------------------------------------------------------------------------
 implementation_plan.md
+PLAN.md
 BLOG_IMPLEMENTATION_PLAN.md
 CLIENT_APP_IMPLEMENTATION_GUIDE.md
 MIGRATION_EXECUTION_PLAN.md
+MOBILE_APP_ARCHITECTURE_PLAN.md
+group_buying_implementation_plan.md
 HOSTINGER_DEPLOYMENT.md
 SMARTPING_SMS_SETUP_GUIDE.md
-MOBILE_APP_ARCHITECTURE_PLAN.md
-PLAN.md
-group_buying_implementation_plan.md
-
-# --- Security & Technical Review Docs ---
 SECURITY_FIXES_SUMMARY.md
 TECHNICAL_REVIEW_FIXES.md
 Technical_Review_Response.md
-
-# --- Project Reports & Completion Docs ---
-DealDirect_Project_Completion_Report.md.resolved
-DealDirect_Project_Completion_ReportShort.md
-DealDirect_SOA_Report.md
-
-# --- Flow & Architecture Docs ---
+mongodb_vs_postgresql_analysis.md
+adminfixes.md
+any.md
 DEALDIRECT-FLOW-GRAPHS.md
 DEALDIRECT-FLOW-IMPROVEMENT-ROADMAP.md
 DEALDIRECT-FLOW-INVENTORY.md
 DEALDIRECT-SYSTEM-FLOW-AUDIT.md
-DealDirect_SOA_Architecture_Diagram.png
+DealDirect_Project_Completion_Report.md.resolved
+DealDirect_Project_Completion_ReportShort.md
+DealDirect_SOA_Report.md
 
-# --- BRD & Task Reports (spreadsheets/CSV) ---
-DealDirect_BRD_Report.xlsx
-DealDirect_Task_Completion_Report.xlsx
-DealDirect_Task_Report_v2.xlsx
-BRD_Feature_Report.csv
-
-# --- Client Contracts & Legal Documents ---
-AMC_Support_Agreement.docx
-Infrastructure_Exclusions_Addendum.docx
-
-# --- Database Analysis ---
-mongodb_vs_postgresql_analysis.md
-
-# --- Admin Fixes & Misc Notes ---
-adminfixes.md
-any.md
-
-# --- Debug / Scratch Dumps ---
-head_check.txt
-page_source_check.txt
-
-# --- One-off Utility Scripts ---
-generate_task_sheet.py
-
-# --- WhatsApp & misc images at root ---
-WhatsApp Image*
-
-# --- Catch-all: block common non-code formats at root ---
+# Generated binaries and exports at the root only, so a legitimate asset
+# inside an app's src/ is unaffected.
 /*.docx
 /*.xlsx
 /*.csv
+/*.pdf
 /*.resolved
-/*.jpeg
-/*.jpg
 /*.png
+/*.jpg
+/*.jpeg
+DealDirect_SOA_Architecture_Diagram.png
+WhatsApp Image*
+head_check.txt
+page_source_check.txt
+
+/package-lock.json
+client-next-standalone/
 !README.md

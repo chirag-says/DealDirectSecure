@@ -1,4 +1,5 @@
 export {
+  hasNotificationPermission,
   requestNotificationPermissionOnce,
   presentLocalNotification,
   type LocalNotificationData,

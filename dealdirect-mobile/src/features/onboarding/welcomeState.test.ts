@@ -26,4 +26,19 @@ describe('resolveEntryRoute', () => {
   test('a returning guest goes straight to the app', () => {
     assert.equal(resolveEntryRoute('guest', true), '/(tabs)');
   });
+
+  test('anyone past the welcome who has not seen the primer sees it once', () => {
+    assert.equal(resolveEntryRoute('guest', true, false), '/setup');
+    assert.equal(resolveEntryRoute('authenticated', true, false), '/setup');
+    assert.equal(resolveEntryRoute('authenticated', false, false), '/setup');
+  });
+
+  test('a first-time guest goes to the welcome, which hands over to the primer', () => {
+    assert.equal(resolveEntryRoute('guest', false, false), '/welcome');
+  });
+
+  test('the primer never shows again once dismissed', () => {
+    assert.equal(resolveEntryRoute('guest', true, true), '/(tabs)');
+    assert.equal(resolveEntryRoute('authenticated', true, true), '/(tabs)');
+  });
 });

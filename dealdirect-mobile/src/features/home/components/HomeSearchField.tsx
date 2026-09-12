@@ -7,7 +7,14 @@ import { RecentSearches, useRecentSearches, useSearchPreview } from '@/features/
 import { gesture, radius, spacing, useTheme } from '@/theme';
 import { PressableScale, Skeleton, Text, useTextInputStyle } from '@/ui';
 import type { City } from '../cities';
-import { HERO_SEARCH_BLUE, HERO_SEARCH_INK, HERO_SEARCH_PLACEHOLDER, useMockScale } from '../heroTheme';
+import {
+  HERO_SEARCH_BLUE,
+  HERO_SEARCH_GAP_PX,
+  HERO_SEARCH_INK,
+  HERO_SEARCH_PILL_PX,
+  HERO_SEARCH_PLACEHOLDER,
+  useMockScale,
+} from '../heroTheme';
 
 /**
  * The hero's search field — a real input that answers with real listings.
@@ -132,24 +139,26 @@ export function HomeSearchField({
   const more = Math.max(preview.total - previewItems.length, 0);
 
   return (
-    <View style={{ marginTop: flush ? 0 : mockPx(31) }}>
+    <View style={{ marginTop: flush ? 0 : mockPx(HERO_SEARCH_GAP_PX) }}>
       {/* The search pill, to the reference (measured pass): a white pill 86
           tall with the glyph 30 from its left edge, and the blue submit — an
-          84 circle — set over the pill's right end so it protrudes 28 beyond
-          it. Same input, same handlers, same submit; only the dress changed. */}
-      <View style={{ height: mockPx(86), justifyContent: 'center' }}>
+          84 circle — INSIDE the pill's right end, one pixel in from its edge.
+          It used to hang 28 beyond the pill, which read as the button drifting
+          off to the right (2026-09-06). Same input, same handlers, same
+          submit; only the dress changed. */}
+      <View style={{ height: mockPx(HERO_SEARCH_PILL_PX), justifyContent: 'center' }}>
         <View
           style={{
             position: 'absolute',
             left: 0,
-            right: mockPx(28),
+            right: 0,
             top: 0,
             bottom: 0,
             flexDirection: 'row',
             alignItems: 'center',
             gap: mockPx(24),
             paddingLeft: mockPx(30),
-            paddingRight: mockPx(70),
+            paddingRight: mockPx(100),
             borderRadius: mockPx(43),
             backgroundColor: '#FFFFFF',
           }}
@@ -203,7 +212,7 @@ export function HomeSearchField({
           activeScale={0.94}
           style={{
             position: 'absolute',
-            right: 0,
+            right: mockPx(1),
             top: mockPx(1),
             width: mockPx(84),
             height: mockPx(84),

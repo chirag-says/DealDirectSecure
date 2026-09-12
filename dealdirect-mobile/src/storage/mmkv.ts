@@ -129,6 +129,12 @@ export const PREF_KEYS = {
    * this install has been introduced, not anything about an account.
    */
   welcomeSeen: 'onboarding.welcomeSeen',
+  /**
+   * The one-time permissions primer (`app/setup.tsx`) has been dismissed.
+   * Device-level, like `welcomeSeen`: it records that this install has been
+   * asked, not what it answered; the OS holds the answers.
+   */
+  setupSeen: 'onboarding.setupSeen',
   /** Usage events not yet delivered to `POST /events`. See `analytics/queue.ts`. */
   analyticsQueue: 'analytics.queue',
   /**

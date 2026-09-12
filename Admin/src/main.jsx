@@ -1,6 +1,9 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import axios from 'axios'
+// Self-hosted so the panel does not make a request to Google's CDN on every
+// cold load. The variable build is one file for every weight we use.
+import '@fontsource-variable/inter'
 import './index.css'
 import App from './App.jsx'
 import { ToastContainer } from 'react-toastify'

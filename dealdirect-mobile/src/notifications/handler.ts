@@ -85,6 +85,17 @@ export async function requestNotificationPermissionOnce(): Promise<void> {
   }
 }
 
+/** Whether the OS permission is granted right now, without prompting. */
+export async function hasNotificationPermission(): Promise<boolean> {
+  if (!Notifications) return false;
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    return status === 'granted';
+  } catch {
+    return false;
+  }
+}
+
 export interface LocalNotificationData {
   kind: 'chat';
   conversationId: string;

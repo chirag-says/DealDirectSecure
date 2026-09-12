@@ -100,7 +100,7 @@ export function AnimatedSplash({ onDone }: AnimatedSplashProps) {
     >
       <Animated.View style={markStyle}>
         <ExpoImage
-          source={require('../../../../assets/splash-icon.png')}
+          source={require('../../../../assets/icon.png')}
           style={{ width: MARK_WIDTH, height: MARK_WIDTH }}
           contentFit="contain"
           cachePolicy="memory"

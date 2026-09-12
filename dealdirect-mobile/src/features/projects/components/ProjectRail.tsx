@@ -2,9 +2,9 @@ import { useCallback } from 'react';
 import { View } from 'react-native';
 
 import { radius, spacing } from '@/theme';
-import { Rail, Skeleton, useRailItemWidth } from '@/ui';
+import { Rail, Skeleton, railImageHeight, useRailItemWidth } from '@/ui';
 import type { ProjectSummary } from '../types';
-import { ProjectCard } from './ProjectCard';
+import { PROJECT_CARD_TEXT_HEIGHT, ProjectCard } from './ProjectCard';
 
 /**
  * A horizontal row of builder projects.
@@ -50,9 +50,14 @@ export function ProjectRail({
         accessibilityLabel="Loading projects"
       >
         {Array.from({ length: SKELETON_COUNT }, (_, index) => (
-          // 150pt image plus roughly 110pt of text, matching the real card so
-          // the row does not resize when data lands.
-          <Skeleton key={index} width={width} height={260} radius={radius.lg} />
+          // A 4:3 image plus the text block, matching the real card so the
+          // row does not resize when data lands.
+          <Skeleton
+            key={index}
+            width={width}
+            height={railImageHeight(width) + PROJECT_CARD_TEXT_HEIGHT}
+            radius={radius.lg}
+          />
         ))}
       </View>
     );

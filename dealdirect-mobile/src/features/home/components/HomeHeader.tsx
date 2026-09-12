@@ -11,17 +11,18 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { gesture } from '@/theme';
+import { gesture, radius, useTheme } from '@/theme';
 import { Avatar, PressableScale, Text } from '@/ui';
 import type { City } from '../cities';
 import {
   HEADER_ROW_PX,
   HEADER_TOP_PX,
-  HERO_BG,
+  HERO_BOTTOM_PX,
   HERO_HEADER_GLASS,
   HERO_HEADER_INK,
+  HERO_SEARCH_PILL_PX,
   HERO_TEXT,
-  HERO_TEXT_FAINT,
+  useHeroScheme,
   useMockScale,
 } from '../heroTheme';
 import { HomeSearchField } from './HomeSearchField';
@@ -32,13 +33,19 @@ import { HomeSearchField } from './HomeSearchField';
  * Every number below is a reference pixel through `mockPx`; see
  * `heroTheme.ts` for why. Measured from the mockup:
  *
- *   wordmark        x 40, y 95 (25 below the status bar), 250 wide
- *   tagline 1       "Zero Brokerage Property Deals", white, 24 px semibold
- *   tagline 2       "Buy · Rent · Sell directly from owners", grey, 19 px
- *   city chip       right-aligned group, 60 tall, pale glass, dark text
+ *   wordmark        x 40, y 95 (25 below the status bar), 258 wide
+ *   city chip       right-aligned group, 48 tall, pale glass, dark text
  *   bell            60 circle, pale glass, dark glyph
  *   avatar          60 circle, white, dark glyph; 30 from the right edge
- *   controls        centred on the wordmark's line, 18–20 apart
+ *   controls        centred on the wordmark's line, 14 apart
+ *
+ * The wordmark is the website's `dealdirect_logo.png`, drawn as it is: no
+ * tagline under it (2026-09-06). The city chip is smaller than the two
+ * circles beside it so the wordmark keeps its full width on a narrow phone;
+ * before, a 230-wide chip left the logo's `flex: 1` column too little room
+ * and the image shrank to fit. The bell and the avatar use the dock's own
+ * glyphs at rest, `notifications-outline` and `person-outline`, so the same
+ * destination looks the same at the top of the screen and the bottom.
  *
  * ---------------------------------------------------------------------------
  * TRANSPARENT AT REST, SOLID ONCE SCROLLED
@@ -49,8 +56,12 @@ import { HomeSearchField } from './HomeSearchField';
  * field arrives, so the moment the bar has content to separate from, it has
  * a colour to do it with.
  *
- * THE SEARCH HANDOVER IS UNCHANGED: the pinned copy of the hero's field, its
- * measurement and the crossfade window are the same code they were.
+ * THE HANDOVER IS ONE SLAB REPLACING ANOTHER (2026-09-06). The bar's fill has
+ * the hero's two bottom corners, and its pinned row ends the same distance
+ * under the pill that the hero's block does. The hero reports the pin from
+ * the pill's own top, so at the moment the hero's curved bottom edge reaches
+ * the bar's bottom, the bar's identical curved edge is already there, and
+ * the eye sees the hero stop rather than a second bar appear over it.
  */
 
 export interface HomeHeaderProps {
@@ -73,13 +84,24 @@ export interface HomeHeaderProps {
   onOpenProfile: () => void;
   onOpenUpdates: () => void;
   onOpenCityPicker: () => void;
+  /**
+   * The signed-in user is an owner with no listing yet. The city chip gives
+   * way to "Add listing" for them (2026-09-06): an owner account exists to
+   * post one property, and until it has, that is the thing the top of Home
+   * should offer. Everyone else keeps the city chip.
+   */
+  canList?: boolean;
+  onAddListing?: () => void;
 }
 
 /** How many scrolled pixels the crossfade between the two field copies takes. */
 export const SEARCH_PIN_WINDOW = 10;
 
-/** The search pill's reference height plus the breathing room under it. */
-const SEARCH_ROW_PX = 86 + 16;
+/**
+ * The pinned row: the pill plus the same room under it that the hero keeps,
+ * so the bar's bottom lands where the hero's bottom was. See the module doc.
+ */
+const SEARCH_ROW_PX = HERO_SEARCH_PILL_PX + HERO_BOTTOM_PX;
 
 const FOCUSED_HEIGHT = Dimensions.get('window').height;
 
@@ -101,9 +123,13 @@ export function HomeHeader({
   onOpenProfile,
   onOpenUpdates,
   onOpenCityPicker,
+  canList = false,
+  onAddListing,
 }: HomeHeaderProps) {
   const insets = useSafeAreaInsets();
   const mockPx = useMockScale();
+  const hero = useHeroScheme();
+  const theme = useTheme();
 
   const [searchFocused, setSearchFocused] = useState(false);
 
@@ -158,7 +184,17 @@ export function HomeHeader({
 
       <Animated.View
         pointerEvents="none"
-        style={[StyleSheet.absoluteFillObject, { backgroundColor: HERO_BG }, fillStyle]}
+        style={[
+          StyleSheet.absoluteFillObject,
+          {
+            backgroundColor: hero.slab,
+            // The hero's own corners, so the pinned bar reads as the hero's
+            // slab held in place rather than a strip laid over the page.
+            borderBottomLeftRadius: radius.xl,
+            borderBottomRightRadius: radius.xl,
+          },
+          fillStyle,
+        ]}
       />
 
       <View
@@ -180,25 +216,6 @@ export function HomeHeader({
             accessibilityLabel="DealDirect"
             cachePolicy="memory"
           />
-          <Text
-            variant="bodyEmphasis"
-            numberOfLines={1}
-            style={{
-              color: HERO_TEXT,
-              fontSize: mockPx(24),
-              lineHeight: mockPx(30),
-              marginTop: mockPx(4),
-            }}
-          >
-            Zero Brokerage Property Deals
-          </Text>
-          <Text
-            variant="body"
-            numberOfLines={1}
-            style={{ color: HERO_TEXT_FAINT, fontSize: mockPx(19), lineHeight: mockPx(24) }}
-          >
-            Buy · Rent · Sell directly from owners
-          </Text>
         </View>
 
         {/* The controls sit on the wordmark's line, not the block's centre. */}
@@ -208,37 +225,64 @@ export function HomeHeader({
             alignItems: 'center',
             height: mockPx(LOGO_HEIGHT_PX),
             marginTop: mockPx(-8),
-            gap: mockPx(18),
+            gap: mockPx(14),
           }}
         >
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel={
-              city ? `Searching in ${city.label}. Change city` : 'Choose a city to search in'
-            }
-            onPress={onOpenCityPicker}
-            activeScale={0.96}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: mockPx(10),
-              height: mockPx(60),
-              maxWidth: mockPx(230),
-              paddingHorizontal: mockPx(22),
-              borderRadius: mockPx(30),
-              backgroundColor: HERO_HEADER_GLASS,
-            }}
-          >
-            <Ionicons name="location-outline" size={mockPx(28)} color={HERO_HEADER_INK} />
-            <Text
-              variant="bodyEmphasis"
-              numberOfLines={1}
-              style={{ color: HERO_HEADER_INK, fontSize: mockPx(26), lineHeight: mockPx(32), flexShrink: 1 }}
+          {canList && onAddListing ? (
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Add your listing"
+              onPress={onAddListing}
+              activeScale={0.96}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: mockPx(8),
+                height: mockPx(48),
+                paddingHorizontal: mockPx(18),
+                borderRadius: mockPx(24),
+                backgroundColor: theme.colors.brand,
+              }}
             >
-              {city ? city.label : 'All cities'}
-            </Text>
-            <Ionicons name="chevron-down" size={mockPx(24)} color={HERO_HEADER_INK} />
-          </PressableScale>
+              <Ionicons name="add-circle-outline" size={mockPx(22)} color={HERO_TEXT} />
+              <Text
+                variant="bodyEmphasis"
+                numberOfLines={1}
+                style={{ color: HERO_TEXT, fontSize: mockPx(21), lineHeight: mockPx(26) }}
+              >
+                Add listing
+              </Text>
+            </PressableScale>
+          ) : (
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel={
+                city ? `Searching in ${city.label}. Change city` : 'Choose a city to search in'
+              }
+              onPress={onOpenCityPicker}
+              activeScale={0.96}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: mockPx(8),
+                height: mockPx(48),
+                maxWidth: mockPx(210),
+                paddingHorizontal: mockPx(16),
+                borderRadius: mockPx(24),
+                backgroundColor: HERO_HEADER_GLASS,
+              }}
+            >
+              <Ionicons name="location-outline" size={mockPx(22)} color={HERO_HEADER_INK} />
+              <Text
+                variant="bodyEmphasis"
+                numberOfLines={1}
+                style={{ color: HERO_HEADER_INK, fontSize: mockPx(21), lineHeight: mockPx(26), flexShrink: 1 }}
+              >
+                {city ? city.label : 'All cities'}
+              </Text>
+              <Ionicons name="chevron-down" size={mockPx(18)} color={HERO_HEADER_INK} />
+            </PressableScale>
+          )}
 
           <PressableScale
             accessibilityRole="button"
@@ -275,7 +319,7 @@ export function HomeHeader({
             {name ? (
               <Avatar uri={avatarUri} name={name} size="sm" />
             ) : (
-              <Ionicons name="person" size={mockPx(34)} color={HERO_HEADER_INK} />
+              <Ionicons name="person-outline" size={mockPx(32)} color={HERO_HEADER_INK} />
             )}
           </PressableScale>
         </View>

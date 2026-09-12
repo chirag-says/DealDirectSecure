@@ -2,8 +2,8 @@ import { useCallback, useState } from 'react';
 import { View } from 'react-native';
 
 import { radius, spacing, useTheme } from '@/theme';
-import { Rail, Skeleton, useRailItemWidth } from '@/ui';
-import { PropertyRailCard, type RailProperty } from './PropertyRailCard';
+import { Rail, Skeleton, railImageHeight, useRailItemWidth } from '@/ui';
+import { PropertyRailCard, RAIL_CARD_TEXT_HEIGHT, type RailProperty } from './PropertyRailCard';
 
 /**
  * A horizontal row of property cards.
@@ -59,10 +59,15 @@ export function PropertyRail({
         accessibilityLabel="Loading properties"
       >
         {Array.from({ length: SKELETON_COUNT }, (_, i) => (
-          // Matched to the real card's geometry — 180pt of image plus roughly
-          // 116pt of text block — so the row does not resize when data lands
-          // and shove everything below it up the screen.
-          <Skeleton key={i} width={width} height={296} radius={radius.lg} />
+          // Matched to the real card's geometry — a 4:3 image plus the text
+          // block — so the row does not resize when data lands and shove
+          // everything below it up the screen.
+          <Skeleton
+            key={i}
+            width={width}
+            height={railImageHeight(width) + RAIL_CARD_TEXT_HEIGHT}
+            radius={radius.lg}
+          />
         ))}
       </View>
     );

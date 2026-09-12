@@ -90,6 +90,7 @@ function EditPropertyScreenContent() {
           onChangeExistingPhotos={setExistingPhotos}
           newPhotos={newPhotos}
           onChangeNewPhotos={setNewPhotos}
+          allStepsReached
           onSubmit={() => void handleSubmit()}
           submitLabel="Save changes"
           isSubmitting={isPending}

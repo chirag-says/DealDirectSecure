@@ -5,10 +5,21 @@
  */
 
 export type EntryStatus = 'restoring' | 'authenticated' | 'guest';
-export type EntryRoute = '/(tabs)' | '/welcome';
+export type EntryRoute = '/(tabs)' | '/welcome' | '/setup';
 
-export function resolveEntryRoute(status: EntryStatus, welcomeSeen: boolean): EntryRoute | null {
+/**
+ * `setupSeen` (2026-09-06): the permissions primer. A first-time guest still
+ * goes to the welcome screen, which hands over to the primer itself. Anyone
+ * else who has not been through the primer, signed in or not, sees it once
+ * before the app; that covers installs from before it existed.
+ */
+export function resolveEntryRoute(
+  status: EntryStatus,
+  welcomeSeen: boolean,
+  setupSeen = true
+): EntryRoute | null {
   if (status === 'restoring') return null;
-  if (status === 'authenticated') return '/(tabs)';
-  return welcomeSeen ? '/(tabs)' : '/welcome';
+  if (status === 'authenticated') return setupSeen ? '/(tabs)' : '/setup';
+  if (!welcomeSeen) return '/welcome';
+  return setupSeen ? '/(tabs)' : '/setup';
 }

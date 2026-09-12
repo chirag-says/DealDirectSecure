@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Link, router } from 'expo-router';
+import { Link } from 'expo-router';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Pressable, View } from 'react-native';
@@ -8,79 +8,70 @@ import { Pressable, View } from 'react-native';
 import { ApiError } from '@/api';
 import {
   AuthShell,
-  normalizeIndianMobile,
+  GoogleAuthButton,
+  GoogleLinkSheet,
+  isGoogleSignInConfigured,
   registerSchema,
   resumeAfterAuth,
   useAuth,
   type RegisterValues,
 } from '@/auth';
-import { gesture, radius, spacing, useTheme } from '@/theme';
-import { Button, Input, PressableScale, Text } from '@/ui';
+import { gesture, useTheme } from '@/theme';
+import { Button, Input, Text } from '@/ui';
 
 /**
- * Registration.
+ * Registration. One form, for everyone.
  *
- * Creates an UNVERIFIED account and sends a 6-digit OTP. It does not establish
- * a session; `verify-otp` does that, and going straight there afterwards is
- * the whole flow.
+ * ---------------------------------------------------------------------------
+ * WHAT USED TO BE HERE, AND WHY IT IS GONE
  *
- * The role choice is offered up front because it changes what the account can
- * do: `owner` unlocks listing creation, leads and agreements. Choosing "buyer"
- * is not a dead end, since the buyer-to-owner upgrade exists behind an OTP,
- * but making the choice visible here avoids a surprise later.
+ * This screen used to open with "I want to: Buy or rent / List a property",
+ * and that choice decided everything after it. "List a property" sent the user
+ * through an SMS OTP before the account existed; "Buy or rent" did not.
  *
- * The backend rejects anything that is not the literal string "owner" down to
- * "user", so only those two values are ever sent.
+ * Two problems. The choice was asked at the worst possible moment — before
+ * anyone has seen a single listing, they are made to declare which kind of
+ * person they are — and it was wrong as often as not, since most owners browse
+ * before they list. And the OTP was a toll gate on a stranger who had not yet
+ * been given a reason to spend one.
  *
- * Password rules mirror the backend exactly (see auth/schemas.ts) and are shown
- * as a hint rather than only on failure, because a rule the user cannot see is
- * a rule they will break.
+ * So neither is asked here now. The account is created immediately, and both
+ * facts are established later at the moment they actually matter:
+ *
+ *   - the ROLE is granted server-side the first time the account lists a
+ *     property (middleware/requirePhoneVerified.js, `ensureOwnerRole`)
+ *   - the PHONE is verified just in time, by a sheet the API layer raises when
+ *     a gated action is refused (src/auth/phoneGate.ts)
+ *
+ * The phone field is gone from this form entirely. Collecting a number here
+ * and verifying it later would mean asking for the same thing twice.
  */
 export default function RegisterScreen() {
-  const { register, registerDirect } = useAuth();
-  const theme = useTheme();
+  const { registerDirect } = useAuth();
   const [formError, setFormError] = useState<string | null>(null);
+  const [pendingLink, setPendingLink] = useState<{ email: string; idToken: string } | null>(null);
+  const theme = useTheme();
   const [showPassword, setShowPassword] = useState(false);
 
-  const { control, handleSubmit, formState, watch, setValue, getValues } =
-    useForm<RegisterValues>({
-      resolver: zodResolver(registerSchema),
-      defaultValues: {
-        name: '',
-        email: '',
-        phone: '',
-        password: '',
-        role: 'user',
-        referralCode: '',
-      },
-    });
-
-  const role = watch('role');
+  const { control, handleSubmit, formState, getValues } = useForm<RegisterValues>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      name: '',
+      email: '',
+      password: '',
+      referralCode: '',
+    },
+  });
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
 
     try {
-      if (values.role === 'owner') {
-        await register({
-          ...values,
-          referralCode: values.referralCode?.trim() || undefined,
-        });
-        router.push({
-          pathname: '/(auth)/verify-otp',
-          params: {
-            email: getValues('email'),
-            phone: getValues('phone'),
-            referralCode: getValues('referralCode') || undefined,
-          },
-        });
-      } else {
-        await registerDirect({
-          ...values,
-          referralCode: values.referralCode?.trim() || undefined,
-        });
-        resumeAfterAuth();
-      }
+      await registerDirect({
+        ...values,
+        referralCode: values.referralCode?.trim() || undefined,
+      });
+      resumeAfterAuth();
     } catch (error) {
       if (!(error instanceof ApiError)) {
         setFormError('Something went wrong. Please try again.');
@@ -92,8 +83,15 @@ export default function RegisterScreen() {
         return;
       }
 
-      // The backend returns a specific 400 for an email or phone that already
-      // belongs to a verified account, and it names which one. Pass it through.
+      // An email that already belongs to a Google account cannot take a
+      // password here. Point at the door that works rather than at the error.
+      if (error.code === 'USE_GOOGLE_SIGNIN') {
+        setFormError('This email already signs in with Google. Use Continue with Google above.');
+        return;
+      }
+
+      // The backend names an email or phone that is already registered. Pass
+      // that through: it is more specific than anything written here.
       setFormError(error.message);
     }
   });
@@ -101,11 +99,7 @@ export default function RegisterScreen() {
   return (
     <AuthShell
       title="Create account"
-      subtitle={
-        role === 'owner'
-          ? 'You will receive a 6-digit code by SMS to verify your number.'
-          : 'Takes a minute. No verification code needed.'
-      }
+      subtitle="Takes a minute. No verification code needed."
       // The longest form in the app: the short photograph, so the first
       // field is on screen before any scrolling.
       band="compact"
@@ -124,27 +118,23 @@ export default function RegisterScreen() {
         </View>
       }
     >
-      <Text variant="subhead" tone="secondary" className="mb-sm">
-        I want to
-      </Text>
-      {/* Two cards, not two chips. The choice changes what the account can
-          do, and a chip the size of a filter did not look like a decision. */}
-      <View className="mb-lg flex-row" style={{ gap: spacing.sm }}>
-        <RoleCard
-          icon="search-outline"
-          title="Buy or rent"
-          detail="Browse and enquire"
-          selected={role === 'user'}
-          onPress={() => setValue('role', 'user')}
-        />
-        <RoleCard
-          icon="home-outline"
-          title="List a property"
-          detail="Sell or let it out"
-          selected={role === 'owner'}
-          onPress={() => setValue('role', 'owner')}
-        />
-      </View>
+      <GoogleAuthButton
+        referralCode={getValues('referralCode')?.trim() || undefined}
+        onLinkRequired={(email, idToken) => setPendingLink({ email, idToken })}
+        onSignedIn={resumeAfterAuth}
+      />
+
+      {/* The divider belongs to the Google button: with no button above it, an
+          "or" announces an alternative that is not there. */}
+      {isGoogleSignInConfigured() ? (
+        <View className="mb-base flex-row items-center gap-sm">
+          <View className="h-px flex-1 bg-border" />
+          <Text variant="footnote" tone="muted">
+            or sign up with email
+          </Text>
+          <View className="h-px flex-1 bg-border" />
+        </View>
+      ) : null}
 
       <Controller
         control={control}
@@ -184,43 +174,6 @@ export default function RegisterScreen() {
         )}
       />
 
-      {/*
-        THE COUNTRY CODE IS SHOWN, NEVER SENT.
-
-        The backend validates `/^[6-9]\d{9}$/` — ten digits, no country code —
-        so "+91" is a fixed label rather than part of the value. Showing it is
-        not decoration: without it a user has to guess whether a mobile number
-        field wants 9876543210, 09876543210 or +919876543210, and two of those
-        three are rejected by a regex that cannot explain itself. Every Indian
-        portal prints the code beside the field for exactly this reason.
-
-        Digits are stripped on the way in rather than only validated on the way
-        out. `number-pad` stops most non-digits being typed, but a pasted
-        number carries spaces, hyphens or a leading +91 — and rejecting a
-        correct number because of how it was formatted is the most annoying
-        possible failure on a registration form.
-      */}
-      <Controller
-        control={control}
-        name="phone"
-        render={({ field, fieldState }) => (
-          <Input
-            label="Mobile number"
-            prefix="+91"
-            placeholder="9876543210"
-            keyboardType="number-pad"
-            maxLength={10}
-            autoComplete="tel"
-            textContentType="telephoneNumber"
-            value={field.value}
-            onChangeText={(text) => field.onChange(normalizeIndianMobile(text))}
-            onBlur={field.onBlur}
-            error={fieldState.error?.message}
-            hint="We send your verification code here"
-          />
-        )}
-      />
-
       <Controller
         control={control}
         name="password"
@@ -229,6 +182,9 @@ export default function RegisterScreen() {
             label="Password"
             placeholder="Choose a password"
             leading={<Ionicons name="lock-closed-outline" size={18} color={theme.colors.textMuted} />}
+            /* Show/hide, because a password typed on a phone keyboard is
+               mistyped often enough that seeing it is the fix, and the
+               field is the one place a user cannot check what they wrote. */
             trailing={
               <Pressable
                 accessibilityRole="button"
@@ -285,73 +241,15 @@ export default function RegisterScreen() {
         loading={formState.isSubmitting}
         onPress={() => void onSubmit()}
       />
+
+      <GoogleLinkSheet
+        pending={pendingLink}
+        onClose={() => setPendingLink(null)}
+        onLinked={() => {
+          setPendingLink(null);
+          resumeAfterAuth();
+        }}
+      />
     </AuthShell>
-  );
-}
-
-/**
- * One of the two account types, as a card: glyph, what it is called, what it
- * lets you do. Selected reads as a filled outline in the accent, unselected
- * as a plain surface, so the pair reads as one question with two answers.
- */
-function RoleCard({
-  icon,
-  title,
-  detail,
-  selected,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  detail: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-
-  return (
-    <PressableScale
-      accessibilityRole="radio"
-      accessibilityLabel={`${title}. ${detail}`}
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      activeScale={0.97}
-      style={{
-        flex: 1,
-        padding: spacing.md,
-        borderRadius: radius.lg,
-        borderWidth: 1.5,
-        borderColor: selected ? theme.colors.accent : theme.colors.border,
-        backgroundColor: selected ? theme.colors.accentMuted : theme.colors.surface,
-      }}
-    >
-      <View className="flex-row items-center justify-between">
-        <View
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: 17,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: selected ? theme.colors.accent : theme.colors.surfaceMuted,
-          }}
-        >
-          <Ionicons
-            name={icon}
-            size={18}
-            color={selected ? theme.colors.surface : theme.colors.textSecondary}
-          />
-        </View>
-        {selected ? (
-          <Ionicons name="checkmark-circle" size={20} color={theme.colors.accent} />
-        ) : null}
-      </View>
-      <Text variant="bodyEmphasis" className="mt-sm">
-        {title}
-      </Text>
-      <Text variant="caption" tone="secondary" className="mt-xs">
-        {detail}
-      </Text>
-    </PressableScale>
   );
 }

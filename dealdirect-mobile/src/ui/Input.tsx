@@ -24,6 +24,12 @@ export interface InputProps extends Omit<TextInputProps, 'className'> {
   /** Rendered inside the field, after the text. */
   trailing?: React.ReactNode;
   /**
+   * Rendered inside the field, before the text: a glyph that says what the
+   * field is for at a glance, so a form of six fields can be scanned rather
+   * than read. Purely visual; the label still carries the accessible name.
+   */
+  leading?: React.ReactNode;
+  /**
    * Rendered inside the field, BEFORE the text, and not editable.
    *
    * For a fixed part of the value the user must see but must not type — a
@@ -36,7 +42,7 @@ export interface InputProps extends Omit<TextInputProps, 'className'> {
 }
 
 export const Input = forwardRef<TextInput, InputProps>(function Input(
-  { label, error, hint, trailing, prefix, containerClassName = '', onBlur, onFocus, ...rest },
+  { label, error, hint, trailing, leading, prefix, containerClassName = '', onBlur, onFocus, ...rest },
   ref
 ) {
   const [focused, setFocused] = useState(false);
@@ -88,6 +94,8 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             )}
           </View>
         ) : null}
+
+        {leading ? <View className="mr-sm">{leading}</View> : null}
 
         <TextInput
           ref={ref}

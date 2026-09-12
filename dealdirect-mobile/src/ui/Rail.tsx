@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import {
   FlatList,
   useWindowDimensions,
@@ -37,7 +37,36 @@ import { spacing } from '@/theme';
  * **The gutter.** Padding lives on the content container, never on the list, so
  * the row scrolls edge to edge under the screen margin instead of being clipped
  * inside it. That difference is most of why a native rail looks native.
+ *
+ * **The shadow room.** A scroll view clips to its own bounds, and the cards
+ * carry a shadow that reaches past theirs. With no vertical padding the shadow
+ * was cut flat at the card's top and bottom edge, which read as the card
+ * itself being cropped (reported 2026-09-06). The content container now pads
+ * vertically by the shadow's reach and the list pulls itself in by the same
+ * amount, so the layout is the height it always was and the shadow has
+ * somewhere to fall.
  */
+
+/**
+ * How far a rail card's shadow extends past its box, in points. Matched to
+ * the cards' `shadowRadius: 12` with a 4pt downward offset; Android's
+ * `elevation: 3` reaches less than this.
+ */
+const SHADOW_REACH = 16;
+
+/**
+ * The image box of a photographic rail card, 4:3 of the card's width.
+ *
+ * A fixed height used to sit here (180pt for properties, 150pt for projects)
+ * against a width that is a fraction of the screen, which made the box
+ * roughly 1.56:1 on a common phone. Listing photos are mostly 4:3, so cover
+ * fitting cut about 15% of every one, top and bottom, and posters lost their
+ * text (reported 2026-09-06). Deriving the height from the width keeps the
+ * box at the photographs' own ratio, so a typical photo is shown whole.
+ */
+export function railImageHeight(width: number): number {
+  return Math.round((width * 3) / 4);
+}
 
 /**
  * Card widths, as viewport fractions rather than fixed points.
@@ -95,13 +124,21 @@ export interface RailProps<T> {
   gap?: number;
   accessibilityLabel?: string;
   /**
-   * Fires with the settled card index as the row is scrolled.
+   * Fires with the nearest card index as the row is scrolled.
    *
-   * Reported on `momentumScrollEnd` rather than per frame: a page indicator
-   * shows which card you LANDED on, and updating it mid-flick makes it flicker
-   * through every card in the throw. This is also why it is a callback rather
-   * than internal state — the indicator is drawn by the section around the
-   * rail, not inside it, and a rail with no indicator pays nothing.
+   * Reported from `onScroll` (throttled to the frame) and only when the index
+   * actually changes, so a page indicator moves the moment a card crosses the
+   * halfway point, the way a native page control does. It used to report only
+   * on `momentumScrollEnd`, which meant the dot moved only after the snap had
+   * fully settled, half a second or more after the finger lifted; and on
+   * Android a drag released at a snap point can end without a momentum event
+   * at all, leaving the dot on the wrong card (reported 2026-09-06). Momentum
+   * end is still handled, as a final correction, and is a no-op when the
+   * scroll pass already reported the settled index.
+   *
+   * A callback rather than internal state because the indicator is drawn by
+   * the section around the rail, not inside it, and a rail with no indicator
+   * pays nothing: neither handler is attached without one.
    */
   onIndexChange?: (index: number) => void;
 }
@@ -118,11 +155,18 @@ export function Rail<T>({
   const itemWidth = useRailItemWidth(size);
   const pitch = itemWidth + gap;
 
-  const handleMomentumEnd = useCallback(
+  // The last index reported, so a scroll frame that lands on the same card
+  // costs nothing: no state update in the section, no re-render of the row.
+  const reported = useRef(0);
+
+  const report = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       if (!onIndexChange) return;
-      const index = Math.round(event.nativeEvent.contentOffset.x / pitch);
-      onIndexChange(Math.max(0, Math.min(data.length - 1, index)));
+      const raw = Math.round(event.nativeEvent.contentOffset.x / pitch);
+      const index = Math.max(0, Math.min(data.length - 1, raw));
+      if (index === reported.current) return;
+      reported.current = index;
+      onIndexChange(index);
     },
     [onIndexChange, pitch, data.length]
   );
@@ -159,10 +203,20 @@ export function Rail<T>({
       snapToInterval={pitch}
       snapToAlignment="start"
       decelerationRate="fast"
-      onMomentumScrollEnd={onIndexChange ? handleMomentumEnd : undefined}
+      onScroll={onIndexChange ? report : undefined}
+      onMomentumScrollEnd={onIndexChange ? report : undefined}
+      scrollEventThrottle={16}
+      // Pulled in by the shadow room the content container adds below, so the
+      // rail occupies the same height it did without it.
+      style={{ marginVertical: -SHADOW_REACH }}
       // On the content container, not the list: the row must scroll UNDER the
-      // screen margin rather than being clipped inside it.
-      contentContainerStyle={{ paddingHorizontal: spacing.base, gap }}
+      // screen margin rather than being clipped inside it. The vertical padding
+      // is the shadow room; see the module doc.
+      contentContainerStyle={{
+        paddingHorizontal: spacing.base,
+        paddingVertical: SHADOW_REACH,
+        gap,
+      }}
       accessibilityLabel={accessibilityLabel}
       // Rails hold eight to twelve items, all of which are cheap once their
       // image is cached. Windowing them costs more in blank cells during a

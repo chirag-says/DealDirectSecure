@@ -9,7 +9,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { deceleration, gesture, spring, timing, useTheme } from '@/theme';
 import { Text } from './Text';
@@ -68,11 +68,51 @@ export interface SheetProps {
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
-  /** Fraction of screen height the sheet occupies. */
+  /**
+   * Fraction of screen height the sheet may grow to. A CEILING, not a size
+   * (2026-09-06): the sheet is as tall as its content up to this, and the
+   * content decides. It used to be the sheet's fixed height, and a body a
+   * few points taller than the ratio allowed was clipped at the bottom, which
+   * is where every sheet keeps its Cancel. Sheets whose content can exceed
+   * the ceiling scroll it themselves; the ceiling is what bounds that scroll.
+   */
   heightRatio?: number;
 }
 
-export function Sheet({
+/**
+ * The modal shell. The body is a separate component so that its safe-area
+ * insets come from a provider INSIDE the modal (2026-09-06).
+ *
+ * A React Native Modal on Android is its own native window. The root
+ * provider's insets describe the app's window, not this one, and the two
+ * disagree exactly when it matters: with three-button navigation the modal
+ * either does not extend under the bar (so the root's 48pt bottom inset is
+ * spent on nothing) or does (so it is needed). A provider mounted inside the
+ * modal measures the modal's own window and answers correctly either way,
+ * which is what puts the sheet's Cancel above the bar instead of under it.
+ */
+export function Sheet(props: SheetProps) {
+  return (
+    <Modal
+      visible={props.visible}
+      transparent
+      animationType="none"
+      onRequestClose={props.onClose}
+      // Android. The app draws edge-to-edge, and a Modal that is not told to
+      // do the same gets its own window that stops at the system bars, so the
+      // scrim ended above the navigation bar. With both bars translucent the
+      // modal covers the screen like every other surface.
+      statusBarTranslucent
+      navigationBarTranslucent
+    >
+      <SafeAreaProvider>
+        <SheetBody {...props} />
+      </SafeAreaProvider>
+    </Modal>
+  );
+}
+
+function SheetBody({
   visible,
   onClose,
   title,
@@ -87,6 +127,10 @@ export function Sheet({
   const sheetHeight = Math.round(screenHeight * heightRatio) + insets.bottom;
   const translateY = useSharedValue(sheetHeight);
   const opacity = useSharedValue(0);
+  // The sheet's actual height, measured, since it is content-sized. The
+  // drag-to-dismiss threshold is a fraction of what is on screen, not of the
+  // ceiling: a short sheet should not need to travel half the screen to close.
+  const measured = useSharedValue(sheetHeight);
 
   const close = useCallback(() => onClose(), [onClose]);
 
@@ -123,12 +167,12 @@ export function Sheet({
     .onUpdate((event) => {
       const next = startY.value + event.translationY;
       translateY.value =
-        next < 0 ? rubberband(next, sheetHeight) : next;
+        next < 0 ? rubberband(next, measured.value) : next;
     })
     .onEnd((event) => {
       const projected = translateY.value + project(event.velocityY);
 
-      if (projected > sheetHeight * DISMISS_THRESHOLD) {
+      if (projected > measured.value * DISMISS_THRESHOLD) {
         translateY.value = withSpring(
           sheetHeight,
           {
@@ -156,7 +200,6 @@ export function Sheet({
   const { sheet } = theme.elevation;
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={close}>
       <View className="flex-1 justify-end">
         <Animated.View
           style={[{ backgroundColor: theme.colors.scrim }, scrimStyle]}
@@ -172,9 +215,12 @@ export function Sheet({
 
         <GestureDetector gesture={panGesture}>
           <Animated.View
+            onLayout={(event) => {
+              measured.value = event.nativeEvent.layout.height;
+            }}
             style={[
               {
-                height: sheetHeight,
+                maxHeight: sheetHeight,
                 paddingBottom: insets.bottom,
                 shadowColor: '#000',
                 shadowOpacity: sheet.shadowOpacity,
@@ -196,10 +242,14 @@ export function Sheet({
               </View>
             ) : null}
 
-            <View className="flex-1 px-base pt-base">{children}</View>
+            {/* Shrinkable, not `flex-1`: the body takes its content's height
+                and gives way to the ceiling, which is what lets a consumer's
+                own ScrollView scroll instead of the sheet clipping it. */}
+            <View className="px-base pt-base" style={{ flexShrink: 1 }}>
+              {children}
+            </View>
           </Animated.View>
         </GestureDetector>
       </View>
-    </Modal>
   );
 }

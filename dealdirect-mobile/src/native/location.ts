@@ -77,20 +77,34 @@ export async function getCoordinates(): Promise<LocationResult> {
 }
 
 export type CityResult =
-  | { status: 'ok'; city: string; region?: string }
+  | {
+      status: 'ok';
+      coordinates: Coordinates;
+      /**
+       * Place names the geocoder offered for the coordinate, most specific
+       * first, empty if it offered none. Which of `city`, `subregion` and
+       * `district` is populated varies by platform and by how dense the area
+       * is, so all of them are handed over rather than one guessed at.
+       */
+      names: string[];
+    }
   | { status: 'denied' }
   | { status: 'unavailable' }
   | { status: 'error' };
 
 /**
- * The user's city name, from the device.
+ * Where the user is, as a coordinate plus whatever the device calls it.
  *
  * Uses expo-location's own reverse geocoder — the OS's, on Android — rather
  * than a network call to Nominatim. That keeps the "detect my city" path
- * off the network entirely, and off any third-party geocoding quota. The
- * caller matches the returned name against the app's own city table, so a
- * result the app does not stock ("Coimbatore") simply resolves to nothing and
- * the picker stays where it was.
+ * off the network entirely, and off any third-party geocoding quota.
+ *
+ * The coordinate is the primary answer (2026-09-06). This used to return a
+ * single name and fail when the geocoder returned none or returned a
+ * district, which on Android is the usual case. Now a geocoder failure is
+ * not a detection failure: the caller resolves the coordinate against the
+ * app's own city table first (`nearestCity`) and uses the names only as a
+ * fallback. See `features/home/detectCity.ts`.
  */
 export async function getCurrentCity(): Promise<CityResult> {
   if (!Location) return { status: 'unavailable' };
@@ -100,15 +114,17 @@ export async function getCurrentCity(): Promise<CityResult> {
     return located.status === 'denied' ? { status: 'denied' } : { status: 'error' };
   }
 
+  let names: string[] = [];
   try {
-    const places = await Location.reverseGeocodeAsync(located.coordinates);
-    const first = places[0];
-    const city = first?.city ?? first?.subregion ?? first?.district;
-    if (!city) return { status: 'error' };
-    return { status: 'ok', city, region: first?.region ?? undefined };
+    const [first] = await Location.reverseGeocodeAsync(located.coordinates);
+    names = [first?.city, first?.subregion, first?.district, first?.region].filter(
+      (name): name is string => typeof name === 'string' && name.trim().length > 0
+    );
   } catch {
-    return { status: 'error' };
+    // The coordinate alone is enough; see the doc comment.
   }
+
+  return { status: 'ok', coordinates: located.coordinates, names };
 }
 
 /**

@@ -2,10 +2,11 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
 import { ActivityIndicator, ScrollView, View } from 'react-native';
 
-import { getCurrentCity, locationAvailable } from '@/native';
+import { locationAvailable } from '@/native';
 import { radius, screenPadding, spacing, useTheme } from '@/theme';
 import { PressableScale, Sheet, Text, useToast } from '@/ui';
-import { CITIES, matchCity, type City } from '../cities';
+import { CITIES, type City } from '../cities';
+import { detectCity } from '../detectCity';
 
 /**
  * Which city the session is scoped to.
@@ -40,29 +41,33 @@ export function CityPickerSheet({ visible, selected, onSelect, onClose }: CityPi
   /**
    * Detect the city from the device and select it if the app stocks it.
    *
-   * The OS reverse-geocoder gives a name; `matchCity` resolves it against the
-   * app's own table, which is what turns "Bengaluru" and "Bangalore" into the
-   * one city the search filter understands. A city the app does not carry, or
-   * a denied permission, leaves the picker exactly as it was and says why —
-   * never a silent no-op, and never a wrong city.
+   * `detectCity` resolves the coordinate against the app's own table first
+   * and the device's place names second; see that file for why the name
+   * alone was failing. A city the app does not carry, or a denied permission,
+   * leaves the picker exactly as it was and says why — never a silent no-op,
+   * and never a wrong city.
    */
   const detectMyCity = async () => {
     setLocating(true);
     try {
-      const result = await getCurrentCity();
-      if (result.status === 'denied') {
-        toast.show('Location permission is off. Turn it on to detect your city.', 'neutral');
-        return;
-      }
-      if (result.status !== 'ok') {
-        toast.show('Could not detect your location.', 'neutral');
-        return;
-      }
-      const matched = matchCity(result.city);
-      if (matched) {
-        choose(matched);
-      } else {
-        toast.show(`We are not in ${result.city} yet. Showing all cities.`, 'neutral');
+      const result = await detectCity();
+      switch (result.status) {
+        case 'found':
+          choose(result.city);
+          return;
+        case 'denied':
+          toast.show('Location permission is off. Turn it on to detect your city.', 'neutral');
+          return;
+        case 'outside':
+          toast.show(
+            result.placeName
+              ? `We are not in ${result.placeName} yet. Showing all cities.`
+              : 'We are not in your area yet. Showing all cities.',
+            'neutral'
+          );
+          return;
+        default:
+          toast.show('Could not get a location fix. Check that location is on and try again.', 'neutral');
       }
     } finally {
       setLocating(false);

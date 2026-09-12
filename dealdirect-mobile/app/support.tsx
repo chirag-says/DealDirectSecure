@@ -1,64 +1,39 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
+import { router } from 'expo-router';
 import { Linking, ScrollView } from 'react-native';
 
-import { LEGAL_LINKS, SUPPORT_CONTACT } from '@/features/content';
-import { screenPadding, scrollBottomPadding, useTheme } from '@/theme';
+import { SUPPORT_CONTACT, contentPagesByGroup } from '@/features/content';
+import { screenPadding, scrollBottomPadding } from '@/theme';
 import { ListGroup, ListRow, Screen, ScreenHeader, Text } from '@/ui';
 
 /**
- * Help & support — how to reach a human, the legal links, and the build.
+ * Help & support — how to reach a human, the help and legal pages, the build.
  *
  * ---------------------------------------------------------------------------
- * THE FAQ IS GONE — 2026-08-24
+ * THE FAQ AND THE LEGAL PAGES ARE BACK, AS SCREENS — 2026-09-12
  *
- * This screen carried eleven questions in four collapsible categories, copied
- * verbatim from the website's `/faq` page. Reproducing the copy was the right
- * call at the time and the wrong artefact: an FAQ is what a website builds
- * when it cannot answer a question at the moment the question occurs. An app
- * can.
+ * On 2026-08-24 this screen lost its FAQ (the app answers those questions on
+ * the screens where they arise) and kept only two links out to the website's
+ * privacy policy and terms. That was the right shape for an app and the wrong
+ * shape for a store submission: review wants the policy, the terms and the
+ * help content INSIDE the binary, in the app's own theme, with no network
+ * between the reader and the text. The owner asked for exactly that.
  *
- * Every entry was checked before it was deleted rather than after:
+ * So the website's help and legal pages are rendered natively now, from data,
+ * and this screen lists them. The rows come from `features/content/pages`, so
+ * adding a page there adds a row here. What has not changed: reaching a human
+ * comes first, works signed out, and needs no page at all.
  *
- *   "What is DealDirect?" and "Is it really broker-free?" are the pitch. The
- *   person reading them has installed the app. They belong on the website,
- *   which still has them.
- *
- *   "Can I edit or delete my post?", "How do I report a listing?" and "How do
- *   I refer someone?" are answered by the interface — the buttons exist, on
- *   the screens where those things happen. A help entry describing a visible
- *   control is a symptom, not documentation.
- *
- *   "Why can I only post one property?" was the one entry carrying information
- *   the app never showed. It has moved to `owner/properties`, which is where
- *   an owner is standing when they wonder. See the note there.
- *
- *   "How do I earn rewards?" and "What can I do with my points?" are already
- *   stated on the Rewards screen, in its empty state and its redemption card.
- *
- *   "Is my data safe?" is a privacy question with a legal answer, and the
- *   privacy policy is linked below. A paraphrase in a binary that cannot be
- *   corrected without a store release is the exact hazard `content/index.ts`
- *   describes for terms.
- *
- * What is left is what an app's help screen is for: reaching a human, the
- * legal source of truth, and which build you are on when you do.
- *
- * The website's seven content routes (`/about`, `/why-us`, `/faq`, `/contact`,
- * `/privacy`, `/terms`, `/press-impressions`) remain the website's. The two
- * legal ones open there — see `features/content/pages.ts` for why legal text
- * is deliberately not copied into the binary. Press & impressions is not
- * offered at all: it is aimed at journalists, and nothing about it belongs in
- * a buyer's or owner's app.
+ * Press & impressions is still not offered. It is aimed at journalists, and
+ * nothing about it belongs in a buyer's or owner's app.
  */
 export default function SupportScreen() {
-  const theme = useTheme();
-  const legalLinks = LEGAL_LINKS();
-
   const appVersion = Constants.expoConfig?.version ?? null;
 
   return (
-    <Screen edges={['top']}>
+    // Both safe-area edges: this is a stack screen with no tab bar beneath it,
+    // and with only the top edge the version caption sat under the gesture bar.
+    <Screen>
       <ScreenHeader title="Help & support" backTo="/(tabs)/profile" />
 
       <ScrollView
@@ -83,26 +58,26 @@ export default function SupportScreen() {
             chevron={false}
             onPress={() => void Linking.openURL(`tel:${SUPPORT_CONTACT.phone}`)}
           />
+          <ListRow
+            icon="chatbubble-ellipses-outline"
+            label="Send us a message"
+            detail="Office address, hours, and a contact form"
+            onPress={() => router.push('/legal/contact')}
+          />
         </ListGroup>
 
-        {/* Omitted entirely when no web origin is configured, rather than
-            rendering links that would open nothing. */}
-        {legalLinks.length > 0 ? (
-          <ListGroup title="More" className="mt-lg">
-            {legalLinks.map(({ page, url }) => (
+        {contentPagesByGroup().map(({ group, title, entries }) => (
+          <ListGroup key={group} title={title} className="mt-lg">
+            {entries.map((entry) => (
               <ListRow
-                key={page.id}
-                label={page.label}
-                detail="Opens in your browser"
-                chevron={false}
-                trailing={
-                  <Ionicons name="open-outline" size={17} color={theme.colors.textMuted} />
-                }
-                onPress={() => void Linking.openURL(url)}
+                key={entry.page.id}
+                icon={entry.icon}
+                label={entry.label}
+                onPress={() => router.push(`/legal/${entry.page.id}`)}
               />
             ))}
           </ListGroup>
-        ) : null}
+        ))}
 
         {appVersion ? (
           <Text variant="caption" tone="muted" className="mt-2xl text-center">

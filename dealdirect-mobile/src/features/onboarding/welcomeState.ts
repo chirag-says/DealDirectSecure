@@ -27,3 +27,12 @@ export function hasSeenWelcome(): boolean {
 export function markWelcomeSeen(): void {
   prefsStorage.set(PREF_KEYS.welcomeSeen, '1');
 }
+
+/** The permissions primer (`app/setup.tsx`) has been dismissed on this install. */
+export function hasSeenSetup(): boolean {
+  return prefsStorage.getString(PREF_KEYS.setupSeen) === '1';
+}
+
+export function markSetupSeen(): void {
+  prefsStorage.set(PREF_KEYS.setupSeen, '1');
+}
