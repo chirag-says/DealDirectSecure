@@ -10,7 +10,7 @@ import type { ContentPage } from './model';
 export const rewardsTermsPage: ContentPage = {
   id: 'rewards-terms',
   eyebrow: 'Legal',
-  title: 'Rewards: Terms & Fair Play',
+  title: 'Rewards terms',
   intro:
     'At Deal Direct, we believe in rewarding genuine engagement. Our rewards program is designed to build a high-quality, broker-free community. To keep the ecosystem fair for everyone, the following terms apply:',
   webPath: '/rewards/terms',

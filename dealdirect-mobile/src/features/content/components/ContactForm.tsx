@@ -1,12 +1,12 @@
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { ApiError, call, contactEndpoints } from '@/api';
 import { SignInPrompt, useAuth } from '@/auth';
-import { spacing } from '@/theme';
+import { radius, spacing, useTheme } from '@/theme';
 import type { CreateInquiryRequest } from '@/types/backend/misc';
-import { Button, Card, Input, Select, Text, useToast } from '@/ui';
+import { Button, Input, Select, Text, useToast } from '@/ui';
 
 /**
  * The contact page's message form. `POST /contact`, which needs a session.
@@ -39,6 +39,7 @@ const MESSAGE_MAX = 2000;
 export function ContactForm() {
   const { status, user } = useAuth();
   const toast = useToast();
+  const theme = useTheme();
 
   const [subject, setSubject] = useState('');
   const [category, setCategory] = useState<Category>('general');
@@ -65,17 +66,22 @@ export function ContactForm() {
 
   if (sent) {
     return (
-      <Card radius="xl">
-        <View style={{ gap: spacing.sm }}>
-          <Text variant="title3">Message sent</Text>
-          <Text variant="body" tone="secondary">
-            Our support team will reply to {user.email} shortly.
-          </Text>
-          <View style={{ marginTop: spacing.sm }}>
-            <Button label="Send another" variant="secondary" onPress={() => setSent(false)} />
-          </View>
+      <View
+        style={{
+          backgroundColor: theme.colors.successMuted,
+          borderRadius: radius.lg,
+          padding: spacing.base,
+          gap: spacing.sm,
+        }}
+      >
+        <Text variant="title3">Message sent</Text>
+        <Text variant="body" tone="secondary">
+          Our support team will reply to {user.email} shortly.
+        </Text>
+        <View style={{ marginTop: spacing.sm }}>
+          <Button label="Send another" variant="secondary" onPress={() => setSent(false)} />
         </View>
-      </Card>
+      </View>
     );
   }
 
@@ -107,15 +113,24 @@ export function ContactForm() {
   };
 
   return (
-    <View style={{ gap: spacing.md }}>
-      <View>
-        <Text variant="title3">Send us a message</Text>
-        <Text variant="footnote" tone="muted">
+    <View>
+      {/* The same rule-and-heading the page's sections use, so the form reads
+          as one more section and not as a widget dropped under them. */}
+      <View
+        style={{
+          height: StyleSheet.hairlineWidth,
+          backgroundColor: theme.colors.border,
+          marginBottom: spacing.lg,
+        }}
+      />
+      <View style={{ marginBottom: spacing.base, gap: spacing.xs }}>
+        <Text variant="title2">Send us a message</Text>
+        <Text variant="callout" tone="muted">
           Got a question about a property, or want to partner with us? We will reply to {user.email}.
         </Text>
       </View>
 
-      <Card radius="xl">
+      <View>
         <Input
           label="Subject"
           placeholder="Regarding a listing, a partnership…"
@@ -157,7 +172,7 @@ export function ContactForm() {
           loading={mutation.isPending}
           onPress={() => void submit()}
         />
-      </Card>
+      </View>
     </View>
   );
 }

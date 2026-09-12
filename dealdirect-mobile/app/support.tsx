@@ -31,7 +31,9 @@ export default function SupportScreen() {
   const appVersion = Constants.expoConfig?.version ?? null;
 
   return (
-    <Screen edges={['top']}>
+    // Both safe-area edges: this is a stack screen with no tab bar beneath it,
+    // and with only the top edge the version caption sat under the gesture bar.
+    <Screen>
       <ScreenHeader title="Help & support" backTo="/(tabs)/profile" />
 
       <ScrollView

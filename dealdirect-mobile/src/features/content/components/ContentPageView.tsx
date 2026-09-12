@@ -1,18 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { Linking, Pressable, ScrollView, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { LinearTransition, useReducedMotion } from 'react-native-reanimated';
 
-import {
-  radius,
-  screenPadding,
-  scrollBottomPadding,
-  spacing,
-  touchTarget,
-  typography,
-  useTheme,
-} from '@/theme';
+import { radius, screenPadding, scrollBottomPadding, spacing, touchTarget, useTheme } from '@/theme';
 import {
   Button,
   Card,
@@ -44,23 +36,25 @@ import {
  * Renders a `ContentPage`: the one screen behind every help and legal page.
  *
  * ---------------------------------------------------------------------------
- * LAYOUT RULES, SO EVERY PAGE READS THE SAME
+ * THE LAYOUT IS THE PROPERTY PAGE'S — 2026-09-12
  *
- * Prose blocks (paragraphs, headings, bullets, callouts, quotes, contacts, FAQ
- * rows) sit on a white surface; a run of them shares one card. Structural
- * blocks (card grids, stats, tags, actions) sit directly on the page, because
- * a card inside a card states its edge twice. Inside an accordion everything
- * is flat: the accordion is the surface.
+ * The first version put every run of prose in a white card and every section
+ * title behind an icon tile. On a phone that read as a stack of boxes, and the
+ * owner said so. The property details screen is the reference for how this
+ * app lays out long content, and it uses no cards for text at all: a hairline
+ * rule, a heading, the copy, and 32pt before the next section. That is what
+ * this does now. The only surface left is the stats grid, which is a fact
+ * strip and gets the same treatment as the property page's facts.
  *
- * Bold runs inside a paragraph inherit the paragraph's size and take the
- * primary tone, so a defined term stands out by weight and colour and never
- * by growing.
+ * Three type levels, and only three, so the hierarchy is legible at a glance:
+ *
+ *   title2  22pt  a section ("Information We Collect", "Earning Rewards")
+ *   title3  18pt  a sub-heading inside it, an accordion row, a feature title
+ *   body    16pt  everything a person reads; secondary tone, bold runs primary
  *
  * Nothing here knows which page it is rendering. A page that needs a new kind
  * of block gets a new `Block` variant and a case below, not a special screen.
  */
-
-const STRUCTURAL: ReadonlySet<Block['type']> = new Set(['cards', 'stats', 'tags', 'actions']);
 
 export interface ContentPageViewProps {
   page: ContentPage;
@@ -89,15 +83,15 @@ export function ContentPageView({ page, backTo = '/support', children }: Content
       <KeyboardAvoider className="flex-1">
         <ScrollView
           contentContainerStyle={{
-            padding: screenPadding,
+            paddingHorizontal: screenPadding,
+            paddingTop: spacing.md,
             paddingBottom: scrollBottomPadding,
-            gap: spacing.xl,
           }}
           keyboardShouldPersistTaps="handled"
         >
           <PageIntro page={page} />
           {page.parts ? <Parts parts={page.parts} /> : <Sections sections={page.sections} />}
-          {children}
+          {children ? <View style={{ marginTop: spacing['2xl'] }}>{children}</View> : null}
         </ScrollView>
       </KeyboardAvoider>
     </Screen>
@@ -105,7 +99,6 @@ export function ContentPageView({ page, backTo = '/support', children }: Content
 }
 
 function PageIntro({ page }: { page: ContentPage }) {
-  if (!page.intro && !page.meta) return null;
   return (
     <View style={{ gap: spacing.sm }}>
       <Text variant="overline" tone="accent">
@@ -130,18 +123,22 @@ function Parts({ parts }: { parts: ContentPart[] }) {
 
   return (
     <>
-      <Segmented
-        options={parts.map((part) => ({ label: part.label, value: part.id }))}
-        value={active.id}
-        onChange={setActiveId}
-        accessibilityLabel="Part of the terms"
-      />
+      <View style={{ marginTop: spacing.xl }}>
+        <Segmented
+          options={parts.map((part) => ({ label: part.label, value: part.id }))}
+          value={active.id}
+          onChange={setActiveId}
+          accessibilityLabel="Part of the terms"
+        />
+      </View>
       {/* Keyed so switching parts resets every accordion to its own default
           rather than carrying one part's open state into another's clauses. */}
-      <View key={active.id} style={{ gap: spacing.xl }}>
-        {/* Flat, like the page intro above it: the preamble is callouts and a
-            paragraph, and a tinted box inside a white card is a box in a box. */}
-        {active.blocks?.length ? <BlockList blocks={active.blocks} nested /> : null}
+      <View key={active.id}>
+        {active.blocks?.length ? (
+          <View style={{ marginTop: spacing.xl }}>
+            <BlockList blocks={active.blocks} />
+          </View>
+        ) : null}
         <Sections sections={active.sections} />
       </View>
     </>
@@ -151,10 +148,22 @@ function Parts({ parts }: { parts: ContentPart[] }) {
 /* ------------------------------------------------------------- sections */
 
 function Sections({ sections }: { sections: Section[] }) {
-  // Accordions stack tight, like rows; open sections need air between them.
+  const theme = useTheme();
+  // Accordion rows read as a list: one rule above the first, one under each.
   const allCollapsible = sections.every((section) => section.collapsible);
+
   return (
-    <View style={{ gap: allCollapsible ? spacing.sm : spacing.xl }}>
+    <View
+      style={
+        allCollapsible
+          ? {
+              marginTop: spacing.xl,
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: theme.colors.border,
+            }
+          : undefined
+      }
+    >
       {sections.map((section) =>
         section.collapsible ? (
           <Accordion key={section.id} section={section} />
@@ -166,28 +175,29 @@ function Sections({ sections }: { sections: Section[] }) {
   );
 }
 
+/** The property page's `Section`: a rule, a heading, the content. */
 function OpenSection({ section }: { section: Section }) {
+  const theme = useTheme();
   return (
-    <View style={{ gap: spacing.md }}>
+    <View style={{ marginTop: spacing['2xl'] }}>
       {section.title ? (
-        // Top-aligned, with the icon nudged to sit centred on the title's
-        // FIRST line. Centring on the whole block sent the icon drifting
-        // down whenever a title wrapped.
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }}>
-          {section.icon ? (
-            <View style={{ marginTop: (typography.title3.lineHeight - ICON_BOX) / 2 }}>
-              <IconBox name={section.icon} />
-            </View>
-          ) : null}
-          <View style={{ flex: 1 }}>
-            <Text variant="title3">{section.title}</Text>
+        <>
+          <View
+            style={{
+              height: StyleSheet.hairlineWidth,
+              backgroundColor: theme.colors.border,
+              marginBottom: spacing.lg,
+            }}
+          />
+          <View style={{ marginBottom: spacing.base, gap: spacing.xs }}>
+            <Text variant="title2">{section.title}</Text>
             {section.blurb ? (
-              <Text variant="footnote" tone="muted">
+              <Text variant="callout" tone="muted">
                 {section.blurb}
               </Text>
             ) : null}
           </View>
-        </View>
+        </>
       ) : null}
       <BlockList blocks={section.blocks} />
     </View>
@@ -200,128 +210,71 @@ function Accordion({ section }: { section: Section }) {
   const [expanded, setExpanded] = useState(section.defaultOpen ?? false);
 
   return (
-    <Animated.View layout={reduceMotion ? undefined : LinearTransition}>
-      <Card radius="xl" padded={false}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ expanded }}
-          accessibilityLabel={section.title}
-          onPress={() => setExpanded((value) => !value)}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: spacing.md,
-            padding: spacing.base,
-            minHeight: touchTarget.min,
-          }}
-        >
-          {section.icon ? <IconBox name={section.icon} /> : null}
-          <Text variant="bodyEmphasis" style={{ flex: 1 }}>
-            {section.title}
-          </Text>
-          <Ionicons
-            name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={18}
-            color={theme.colors.textMuted}
-          />
-        </Pressable>
-
-        {expanded ? (
-          <View
-            style={{
-              paddingHorizontal: spacing.base,
-              paddingBottom: spacing.base,
-              paddingTop: spacing.md,
-              borderTopWidth: 1,
-              borderTopColor: theme.colors.border,
-            }}
-          >
-            <BlockList blocks={section.blocks} nested />
-          </View>
-        ) : null}
-      </Card>
-    </Animated.View>
-  );
-}
-
-const ICON_BOX = 32;
-
-function IconBox({ name }: { name: IconName }) {
-  const theme = useTheme();
-  return (
-    <View
-      style={{
-        width: ICON_BOX,
-        height: ICON_BOX,
-        borderRadius: radius.md,
-        backgroundColor: theme.colors.accentMuted,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
+    <Animated.View
+      layout={reduceMotion ? undefined : LinearTransition}
+      style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border }}
     >
-      <Ionicons name={name} size={17} color={theme.colors.accent} />
-    </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={section.title}
+        onPress={() => setExpanded((value) => !value)}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.md,
+          paddingVertical: spacing.base,
+          minHeight: touchTarget.min,
+        }}
+      >
+        <Text variant="title3" style={{ flex: 1 }}>
+          {section.title}
+        </Text>
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={20}
+          color={theme.colors.textMuted}
+        />
+      </Pressable>
+
+      {expanded ? (
+        <View style={{ paddingBottom: spacing.xl }}>
+          <BlockList blocks={section.blocks} />
+        </View>
+      ) : null}
+    </Animated.View>
   );
 }
 
 /* --------------------------------------------------------------- blocks */
 
-/**
- * Lays out a section's blocks. Consecutive prose blocks share one card;
- * structural blocks stand on the page. `nested` (inside an accordion) drops
- * the cards and renders everything flat.
- */
-function BlockList({ blocks, nested = false }: { blocks: Block[]; nested?: boolean }) {
-  if (nested) {
-    return (
-      <View style={{ gap: spacing.md }}>
-        {blocks.map((block, index) => (
-          <BlockView key={index} block={block} nested />
-        ))}
-      </View>
-    );
-  }
-
-  type Group = { prose: true; blocks: Block[] } | { prose: false; block: Block };
-  const groups: Group[] = [];
-  for (const block of blocks) {
-    const last = groups[groups.length - 1];
-    if (STRUCTURAL.has(block.type)) groups.push({ prose: false, block });
-    else if (last?.prose) last.blocks.push(block);
-    else groups.push({ prose: true, blocks: [block] });
-  }
-
+function BlockList({ blocks }: { blocks: Block[] }) {
   return (
-    <View style={{ gap: spacing.md }}>
-      {groups.map((group, index) =>
-        group.prose ? (
-          <Card key={index} radius="xl">
-            <View style={{ gap: spacing.md }}>
-              {group.blocks.map((block, blockIndex) => (
-                <BlockView key={blockIndex} block={block} nested />
-              ))}
-            </View>
-          </Card>
-        ) : (
-          <BlockView key={index} block={group.block} />
-        )
-      )}
+    <View style={{ gap: spacing.base }}>
+      {blocks.map((block, index) => (
+        <BlockView key={index} block={block} />
+      ))}
     </View>
   );
 }
 
-function BlockView({ block, nested = false }: { block: Block; nested?: boolean }) {
+function BlockView({ block }: { block: Block }) {
   switch (block.type) {
     case 'paragraph':
       return <Rich text={block.text} />;
     case 'heading':
-      return <Text variant="bodyEmphasis">{block.text}</Text>;
+      // A sub-heading sits closer to what follows it than to what precedes it.
+      return (
+        <Text variant="title3" style={{ marginTop: spacing.sm, marginBottom: -spacing.xs }}>
+          {block.text}
+        </Text>
+      );
     case 'bullets':
       return <Bullets items={block.items} />;
     case 'callout':
       return <Callout tone={block.tone} title={block.title} text={block.text} items={block.items} />;
     case 'cards':
-      return <Cards items={block.items} nested={nested} />;
+      return <Features items={block.items} />;
     case 'stats':
       return <Stats items={block.items} />;
     case 'quote':
@@ -334,7 +287,7 @@ function BlockView({ block, nested = false }: { block: Block; nested?: boolean }
       return <Contact {...block} />;
     case 'actions':
       return (
-        <View style={{ gap: spacing.sm }}>
+        <View style={{ gap: spacing.sm, marginTop: spacing.xs }}>
           {block.items.map((action) => (
             <Button
               key={action.label}
@@ -432,7 +385,14 @@ function Callout({
   const { fill, ink } = palette[tone];
 
   return (
-    <View style={{ backgroundColor: fill, borderRadius: radius.lg, padding: spacing.base, gap: spacing.sm }}>
+    <View
+      style={{
+        backgroundColor: fill,
+        borderRadius: radius.lg,
+        padding: spacing.base,
+        gap: spacing.sm,
+      }}
+    >
       {title ? (
         <Text variant="bodyEmphasis" style={{ color: ink }}>
           {title}
@@ -444,25 +404,33 @@ function Callout({
   );
 }
 
-function Cards({ items, nested }: { items: CardItem[]; nested: boolean }) {
+/** Feature and plan lists: a glyph, a title, the copy. No surfaces. */
+function Features({ items }: { items: CardItem[] }) {
+  const theme = useTheme();
   return (
-    <View style={{ gap: spacing.md }}>
-      {items.map((item) => {
-        const body = (
-          <View style={{ gap: spacing.sm }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-              {item.icon ? <IconBox name={item.icon} /> : null}
-              <View style={{ flex: 1 }}>
-                <Text variant="bodyEmphasis">{item.title}</Text>
-                {item.meta ? (
-                  <Text variant="caption" tone="muted">
-                    {item.meta}
-                  </Text>
-                ) : null}
-              </View>
+    <View style={{ gap: spacing.xl }}>
+      {items.map((item) => (
+        <View key={item.title} style={{ flexDirection: 'row', gap: spacing.md }}>
+          {item.icon ? (
+            <Ionicons
+              name={item.icon}
+              size={22}
+              color={theme.colors.accent}
+              // Centred on the title's first line (title3 leading is 23).
+              style={{ marginTop: 1 }}
+            />
+          ) : null}
+          <View style={{ flex: 1, gap: spacing.sm }}>
+            <View>
+              <Text variant="title3">{item.title}</Text>
+              {item.meta ? (
+                <Text variant="footnote" tone="muted" style={{ marginTop: spacing.xs }}>
+                  {item.meta}
+                </Text>
+              ) : null}
             </View>
             {item.text.split('\n\n').map((paragraph, index) => (
-              <Rich key={index} text={paragraph} variant="callout" />
+              <Rich key={index} text={paragraph} />
             ))}
             {item.footnote ? (
               <Text variant="footnote" tone="muted">
@@ -470,39 +438,45 @@ function Cards({ items, nested }: { items: CardItem[]; nested: boolean }) {
               </Text>
             ) : null}
           </View>
-        );
-        return nested ? (
-          <View
-            key={item.title}
-            className="rounded-lg bg-surface-muted"
-            style={{ padding: spacing.base }}
-          >
-            {body}
-          </View>
-        ) : (
-          <Card key={item.title} radius="lg">
-            {body}
-          </Card>
-        );
-      })}
+        </View>
+      ))}
     </View>
   );
 }
 
+/** A fact strip, like the property page's: one surface, hairlines between cells. */
 function Stats({ items }: { items: { value: string; label: string }[] }) {
+  const theme = useTheme();
+  const perRow = 2;
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
-      {items.map((item) => (
-        <Card key={item.label} radius="lg" style={{ flexBasis: '46%', flexGrow: 1 }}>
-          <Text variant="title2" tone="accent">
-            {item.value}
-          </Text>
-          <Text variant="caption" tone="muted">
-            {item.label.toUpperCase()}
-          </Text>
-        </Card>
-      ))}
-    </View>
+    <Card radius="xl" padded={false}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {items.map((item, index) => {
+          const firstInRow = index % perRow === 0;
+          const firstRow = index < perRow;
+          return (
+            <View
+              key={item.label}
+              style={{
+                width: `${100 / perRow}%`,
+                paddingVertical: spacing.base,
+                paddingHorizontal: spacing.base,
+                borderLeftWidth: firstInRow ? 0 : StyleSheet.hairlineWidth,
+                borderTopWidth: firstRow ? 0 : StyleSheet.hairlineWidth,
+                borderColor: theme.colors.border,
+              }}
+            >
+              <Text variant="title2" tone="accent" numberOfLines={1}>
+                {item.value}
+              </Text>
+              <Text variant="caption" tone="muted" numberOfLines={1} style={{ marginTop: 2 }}>
+                {item.label.toUpperCase()}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </Card>
   );
 }
 
@@ -514,6 +488,7 @@ function Quote({ text }: { text: string }) {
         borderLeftWidth: 3,
         borderLeftColor: theme.colors.brand,
         paddingLeft: spacing.base,
+        marginTop: spacing.xs,
       }}
     >
       <Text variant="body" style={{ fontStyle: 'italic' }}>
@@ -529,7 +504,7 @@ function Tags({ items }: { items: string[] }) {
       {items.map((item) => (
         <View
           key={item}
-          className="rounded-full border border-border bg-surface"
+          className="rounded-full bg-surface-muted"
           style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.xs }}
         >
           <Text variant="footnote" tone="secondary">
@@ -555,17 +530,16 @@ function Faq({ items }: { items: FaqItem[] }) {
     });
 
   return (
-    <Animated.View layout={reduceMotion ? undefined : LinearTransition}>
-      {items.map((item, index) => {
+    <Animated.View
+      layout={reduceMotion ? undefined : LinearTransition}
+      style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border }}
+    >
+      {items.map((item) => {
         const expanded = open.has(item.id);
         return (
           <View
             key={item.id}
-            style={
-              index < items.length - 1
-                ? { borderBottomWidth: 1, borderBottomColor: theme.colors.border }
-                : undefined
-            }
+            style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border }}
           >
             <Pressable
               accessibilityRole="button"
@@ -575,7 +549,7 @@ function Faq({ items }: { items: FaqItem[] }) {
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: spacing.md,
-                paddingVertical: spacing.md,
+                paddingVertical: spacing.base,
                 minHeight: touchTarget.min,
               }}
             >
@@ -584,12 +558,12 @@ function Faq({ items }: { items: FaqItem[] }) {
               </Text>
               <Ionicons
                 name={expanded ? 'chevron-up' : 'chevron-down'}
-                size={18}
+                size={20}
                 color={theme.colors.textMuted}
               />
             </Pressable>
             {expanded ? (
-              <View style={{ paddingBottom: spacing.base }}>
+              <View style={{ paddingBottom: spacing.lg }}>
                 <Rich text={item.answer} />
               </View>
             ) : null}
@@ -609,24 +583,36 @@ function Contact({
   phone,
   hours,
 }: Extract<Block, { type: 'contact' }>) {
+  // A person: name, then their role, then the organisation. An office with no
+  // named person: the organisation first, and the role ("Corporate office")
+  // describes it.
+  const roleLine = role ? (
+    <Text variant="footnote" tone="muted">
+      {role}
+    </Text>
+  ) : null;
+
   return (
-    <View style={{ gap: spacing.sm }}>
+    <View style={{ gap: spacing.xs }}>
       {name ? <Text variant="title3">{name}</Text> : null}
-      {role ? (
-        <Text variant="footnote" tone="muted">
-          {role}
+      {name ? roleLine : null}
+      {org ? (
+        <Text variant="bodyEmphasis" style={name ? { marginTop: spacing.sm } : undefined}>
+          {org}
         </Text>
       ) : null}
-      {org ? <Text variant="bodyEmphasis">{org}</Text> : null}
+      {!name ? roleLine : null}
       {address ? (
         <Text variant="body" tone="secondary">
           {address}
         </Text>
       ) : null}
-      {email ? <ContactRow icon="mail-outline" label={email} url={`mailto:${email}`} /> : null}
-      {phone ? (
-        <ContactRow icon="call-outline" label={phone} url={`tel:${phone.replace(/[^\d+]/g, '')}`} />
-      ) : null}
+      <View style={{ marginTop: spacing.sm }}>
+        {email ? <ContactRow icon="mail-outline" label={email} url={`mailto:${email}`} /> : null}
+        {phone ? (
+          <ContactRow icon="call-outline" label={phone} url={`tel:${phone.replace(/[^\d+]/g, '')}`} />
+        ) : null}
+      </View>
       {hours ? (
         <Text variant="footnote" tone="muted">
           {hours}
