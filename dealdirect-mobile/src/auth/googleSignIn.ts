@@ -28,6 +28,8 @@
  * this cannot be delivered as an OTA update.
  */
 
+import { TurboModuleRegistry, type TurboModule } from 'react-native';
+
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from '@/config/env';
 
 /**
@@ -43,17 +45,40 @@ import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from '@/config/env';
  * static import crashes the ENTIRE APP on launch in Expo Go, before any screen
  * renders. Not "Google sign-in is unavailable": a white screen.
  *
- * A require() inside a try means a build without the native side degrades to
- * "no Google button" and everything else in the app keeps working. That is what
- * makes the rest of this release testable in Expo Go while Google itself needs
- * a dev build.
+ * A try/catch around the require() is NOT enough on its own. Metro reports a
+ * module-evaluation failure to LogBox (the red error overlay) before the throw
+ * ever reaches the catch, so the app survives but the user still sees an
+ * error on the login screen. The package must not be EVALUATED at all unless
+ * its native half is present — and that is checkable up front, cheaply and
+ * without loading anything, through `TurboModuleRegistry.get`, which returns
+ * null where `getEnforcing` throws. `RNGoogleSignin` is the name the package
+ * registers itself under (it is the name in the error this replaced).
+ *
+ * The result: a build without the native side degrades to "no Google button"
+ * and everything else in the app keeps working, with nothing in the log. That
+ * is what makes the rest of this release testable in Expo Go, or in a dev
+ * client built before this module was added, while Google itself needs a
+ * fresh native build.
  */
+const NATIVE_MODULE_NAME = 'RNGoogleSignin';
+
+function nativeModulePresent(): boolean {
+  try {
+    return TurboModuleRegistry.get<TurboModule>(NATIVE_MODULE_NAME) != null;
+  } catch {
+    return false;
+  }
+}
 type GoogleSdk = typeof import('@react-native-google-signin/google-signin');
 
 let sdk: GoogleSdk | null | undefined;
 
 function loadSdk(): GoogleSdk | null {
   if (sdk !== undefined) return sdk;
+  if (!nativeModulePresent()) {
+    sdk = null;
+    return null;
+  }
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     sdk = require('@react-native-google-signin/google-signin') as GoogleSdk;
