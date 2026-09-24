@@ -99,6 +99,11 @@ const config = {
   android: {
     package: 'in.dealdirect.mobile',
     edgeToEdgeEnabled: true,
+    // SYSTEM_ALERT_WINDOW (draw over other apps) exists only for the React
+    // Native dev menu overlay and has no use in a release build; Play flags it.
+    // READ/WRITE_EXTERNAL_STORAGE stay: expo-image-picker requests them on
+    // Android 12 and below, and blocking them breaks photo picking there.
+    blockedPermissions: ['android.permission.SYSTEM_ALERT_WINDOW'],
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#FFFFFF',
@@ -172,6 +177,10 @@ const config = {
       {
         photosPermission: 'DealDirect needs access to your photos to add listing images.',
         cameraPermission: 'DealDirect needs access to your camera to photograph a listing.',
+        // Every picker call is `mediaTypes: ['images']`; no video, so no audio.
+        // Left on, the plugin declares RECORD_AUDIO and Play asks us to justify
+        // a microphone the app never opens.
+        microphonePermission: false,
       },
     ],
     // Client-side only (M13): local/in-app notifications for new chat

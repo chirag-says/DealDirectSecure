@@ -34,6 +34,7 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "https://backend.dealdirect.in/api",
         "EXPO_PUBLIC_SOCKET_URL": "https://backend.dealdirect.in",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "1075779807590-dc7hj59kfhb2gqem57esitu2iusalr73.apps.googleusercontent.com"
       }
     }
