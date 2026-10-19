@@ -51,7 +51,7 @@ export async function generateMetadata(props) {
 
     return {
         title: `${name} in ${city} | DealDirect`,
-        description: project.basics?.description?.substring(0, 160) || `Explore ${name} — a verified builder project in ${city}. Buy directly with DealDirect.`,
+        description: project.basics?.description?.substring(0, 160) || `Explore ${name} — a builder project in ${city}. Buy directly with DealDirect.`,
         openGraph: {
             title: `${name} | DealDirect`,
             description: project.basics?.description?.substring(0, 160),

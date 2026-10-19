@@ -177,10 +177,6 @@ export default function Register() {
                 <CheckCircle className="w-5 h-5 text-blue-400" />
                 <span>Zero brokerage fees</span>
               </li>
-              <li className="flex items-center gap-3">
-                <CheckCircle className="w-5 h-5 text-blue-400" />
-                <span>Verified property listings</span>
-              </li>
             </ul>
           </div>
 

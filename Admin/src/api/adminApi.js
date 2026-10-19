@@ -323,6 +323,12 @@ export const dealVerificationsApi = {
         const response = await adminApi.post(`/api/admin/verifications/${id}/reject`, { adminNotes });
         return response.data;
     },
+
+    /** `{ url, expiresAt }` for one privately stored proof document; the link expires in minutes. */
+    documentLink: async (id, index) => {
+        const response = await adminApi.get(`/api/admin/verifications/${id}/documents/${index}`);
+        return response.data.data;
+    },
 };
 
 // ============================================

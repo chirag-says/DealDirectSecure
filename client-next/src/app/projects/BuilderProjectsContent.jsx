@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
     MapPin, Search, X, Building2, Users, Bookmark, BookmarkCheck,
-    CalendarDays, ShieldCheck, Sparkles, Construction, KeyRound, BadgeCheck,
+    CalendarDays, Sparkles, Construction, KeyRound, BadgeCheck,
     LayoutGrid, ArrowUpDown, ArrowRight, SlidersHorizontal,
 } from "lucide-react";
 import Link from 'next/link';
@@ -229,9 +229,11 @@ function ProjectCard({ project, isBookmarked, onBookmark }) {
 
                     {/* Trust + timing */}
                     <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500">
+                        {/* The registration number as entered, not a "verified" badge:
+                            nothing checks it against a state RERA register. */}
                         {reraNumber && (
-                            <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
-                                <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" /> RERA Verified
+                            <span className="inline-flex items-center gap-1.5">
+                                RERA <strong className="font-semibold text-slate-700">{reraNumber}</strong>
                             </span>
                         )}
                         {possession && (

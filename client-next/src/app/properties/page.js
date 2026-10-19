@@ -9,15 +9,15 @@ export const dynamic = 'force-dynamic';
 
 export const metadata = {
     title: 'Properties for Sale & Rent',
-    description: 'Browse thousands of verified properties for sale and rent directly from owners. No brokerage, full transparency.',
+    description: 'Browse thousands of properties for sale and rent directly from owners. No brokerage, full transparency.',
     openGraph: {
         title: 'Properties for Sale & Rent | DealDirect',
-        description: 'Browse thousands of verified properties for sale and rent directly from owners. No brokerage, full transparency.',
+        description: 'Browse thousands of properties for sale and rent directly from owners. No brokerage, full transparency.',
     },
     twitter: {
         card: 'summary',
         title: 'Properties for Sale & Rent | DealDirect',
-        description: 'Browse verified properties directly from owners.',
+        description: 'Browse properties directly from owners.',
     },
     alternates: {
         canonical: 'https://dealdirect.in/properties',
@@ -66,7 +66,7 @@ export default async function PropertiesPage() {
             {/* Hidden SEO content that crawlers can read */}
             <div className="sr-only" aria-hidden="true">
                 <h1>Properties for Sale and Rent on DealDirect</h1>
-                <p>Browse {properties.length} verified properties directly from owners. No brokerage fees.</p>
+                <p>Browse {properties.length} properties directly from owners. No brokerage fees.</p>
                 <ul>
                     {properties.slice(0, 20).map((p) => (
                         <li key={p._id}>

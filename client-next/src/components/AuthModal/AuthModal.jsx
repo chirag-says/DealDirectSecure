@@ -175,7 +175,7 @@ const AuthModal = ({ isOpen, onClose }) => {
                                 <ul className="space-y-4 text-gray-300">
                                     <li className="flex items-center gap-3">
                                         <CheckCircle className="w-5 h-5 text-blue-400" />
-                                        <span>Connect with verified, high-intent buyers</span>
+                                        <span>Connect with high-intent buyers</span>
                                     </li>
                                     <li className="flex items-center gap-3">
                                         <CheckCircle className="w-5 h-5 text-blue-400" />

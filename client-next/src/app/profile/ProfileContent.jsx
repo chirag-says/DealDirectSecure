@@ -997,10 +997,9 @@ const Profile = () => {
                       <span className="text-slate-500">Account Type:</span>
                       <p className="font-medium text-slate-800 capitalize">{user?.role || "User"}</p>
                     </div>
-                    <div>
-                      <span className="text-slate-500">Email Verified:</span>
-                      <p className="font-medium text-green-600 flex items-center gap-1">Verified <Check size={14} /></p>
-                    </div>
+                    {/* An "Email Verified" row stood here and said Verified to
+                        every account. Registration never verifies email, so
+                        it was removed rather than reworded. */}
                   </div>
                 </div>
               </div>
@@ -1112,20 +1111,19 @@ const Profile = () => {
                       </span>
                     </div>
 
-                    {/* Email Verification */}
+                    {/* Email. This row used to carry a "Verified" badge for
+                        every account; registration never verifies email, so
+                        the badge is gone and the address is shown as is. */}
                     <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
                       <div className="flex items-center gap-4">
                         <div className="p-3 bg-green-100 rounded-xl">
                           <Mail size={20} className="text-green-600" />
                         </div>
                         <div>
-                          <h4 className="font-medium text-slate-800">Email Verification</h4>
+                          <h4 className="font-medium text-slate-800">Email</h4>
                           <p className="text-sm text-slate-500">{formData.email}</p>
                         </div>
                       </div>
-                      <span className="px-3 py-1.5 rounded-full text-sm font-medium bg-green-100 text-green-700 flex items-center gap-1.5">
-                        <Check size={14} /> Verified
-                      </span>
                     </div>
 
                     {/* Member Since */}
@@ -1258,7 +1256,7 @@ const Profile = () => {
                       <div>
                         <h4 className="font-medium text-red-800">Delete Account</h4>
                         <p className="text-sm text-red-600">
-                          Permanently delete your account and all data
+                          Permanently delete your account. Records shared with another party are kept.
                         </p>
                       </div>
                       <button 

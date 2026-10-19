@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 export const metadata = {
     title: 'Builder Projects | DealDirect',
-    description: 'Explore premium builder projects across India\'s top cities. Buy directly from verified developers — no middlemen.',
+    description: 'Explore premium builder projects across India\'s top cities. Buy directly from developers — no middlemen.',
     openGraph: {
         title: 'Builder Projects | DealDirect',
         description: 'Explore premium builder projects across India\'s top cities.',
@@ -45,7 +45,7 @@ export default async function BuilderProjectsPage() {
             {/* Hidden SEO content */}
             <div className="sr-only" aria-hidden="true">
                 <h1>Builder Projects for Sale on DealDirect</h1>
-                <p>Browse {projects.length} verified builder projects directly from developers.</p>
+                <p>Browse {projects.length} builder projects directly from developers.</p>
                 <ul>
                     {projects.slice(0, 20).map((p) => (
                         <li key={p._id}>

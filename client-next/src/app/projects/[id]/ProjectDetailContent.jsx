@@ -136,18 +136,17 @@ export default function ProjectDetailContent({ project, unitTypes = [], campaign
                   "RERA Verified" with no number is precisely the pattern state
                   regulators penalise — MahaRERA and GujRERA both require the
                   number displayed prominently in advertisements, and a listing
-                  page is an advertising surface. */}
+                  page is an advertising surface.
+                  Neutral styling, no tick: the number is shown as entered, and
+                  nothing checks it against the register. */}
               {p.basics?.reraNumber && (
                 <a
                   href="https://maharera.maharashtra.gov.in/"
                   target="_blank"
                   rel="noopener noreferrer"
                   title="Verify this registration on the state RERA register"
-                  className="text-xs text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 font-medium flex items-center gap-1.5 hover:bg-emerald-100 transition"
+                  className="text-xs text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-medium flex items-center gap-1.5 hover:bg-slate-50 transition"
                 >
-                  <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
-                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3 5.5L6.5 2" stroke="white" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  </span>
                   RERA: {p.basics?.reraNumber}
                 </a>
               )}

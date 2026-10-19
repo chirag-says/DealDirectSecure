@@ -3,6 +3,8 @@ import {
   CheckCircle, XCircle, Eye, Clock, Search, Filter,
   Building2, Phone, Mail, FileText, ExternalLink, RefreshCw,
 } from 'lucide-react';
+import PrivateFile from '../components/PrivateFile';
+import { isPrivateFileRef, fetchPrivateLink } from '../utils/privateFiles';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:9000/api';
 
@@ -80,7 +82,16 @@ function PaymentProofModal({ booking, onClose, onAction, loading }) {
               </div>
             ) : <p className="text-sm text-slate-500 mb-3">No UTR provided</p>}
 
-            {booking.payment?.screenshotUrl ? (
+            {booking.payment?.screenshotUrl && isPrivateFileRef(booking.payment.screenshotUrl) ? (
+              <div>
+                <p className="text-xs text-slate-500 mb-2">Payment Screenshot</p>
+                <PrivateFile
+                  value={booking.payment.screenshotUrl}
+                  label="Payment screenshot"
+                  fetchLink={() => fetchPrivateLink(`${API}/bookings/${booking._id}/payment-screenshot`)}
+                />
+              </div>
+            ) : booking.payment?.screenshotUrl ? (
               <div>
                 <p className="text-xs text-slate-500 mb-2">Payment Screenshot</p>
                 <a href={booking.payment.screenshotUrl} target="_blank" rel="noopener noreferrer" className="block group">

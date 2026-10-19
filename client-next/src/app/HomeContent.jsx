@@ -23,8 +23,7 @@ import {
     FaUserFriends,
     FaUsers,
     FaRegClock,
-    FaArrowRight,
-    FaCheckCircle
+    FaArrowRight
 } from "react-icons/fa";
 import {
     Sparkles,
@@ -215,9 +214,11 @@ function BuilderProjectCard({ project, onOpen }) {
                             ? <p className="truncate text-lg font-bold leading-none tracking-tight text-gray-900 tabular-nums">{priceLabel}</p>
                             : <p className="text-sm leading-none text-slate-400">On request</p>}
                     </div>
+                    {/* The number as entered, not a tick: nothing checks it
+                        against a state RERA register. */}
                     {project.basics?.reraNumber && (
-                        <span className="inline-flex shrink-0 items-center gap-1 pb-0.5 text-xs font-semibold text-emerald-700">
-                            <FaCheckCircle className="text-[10px]" aria-hidden="true" /> RERA
+                        <span className="min-w-0 max-w-[50%] truncate pb-0.5 text-xs text-slate-500">
+                            RERA {project.basics.reraNumber}
                         </span>
                     )}
                 </div>
@@ -403,7 +404,7 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
                                     Builder <span className="text-blue-700">Projects</span>
                                 </h2>
                                 <p className="text-gray-500 mt-2 text-sm sm:text-base text-center sm:text-left max-w-lg">
-                                    New construction, straight from RERA-registered developers.
+                                    New construction, straight from developers.
                                 </p>
                             </div>
                             <button

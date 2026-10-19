@@ -8,6 +8,7 @@
 // this is now the only place client Sentry options are set.
 
 import * as Sentry from "@sentry/nextjs";
+import { REPLAY_PRIVACY_OPTIONS, scrubReplayEvent } from "./utils/sentryReplayPrivacy";
 
 Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -50,15 +51,11 @@ Sentry.init({
 
     // Integrations
     integrations: [
-        Sentry.replayIntegration({
-            // Text stays visible so a replay is actually diagnosable; input
-            // values are masked by the SDK's own default and are not unmasked
-            // here. blockAllMedia is on because the media on this site is
-            // property photographs, ID uploads and signed agreement documents,
-            // none of which should be leaving the browser for a bug report.
-            maskAllText: false,
-            blockAllMedia: true,
-        }),
+        // Text, form values, media, iframes, console output and URL query
+        // strings are all masked or dropped. Replays used to keep text
+        // visible, which recorded names, phone numbers and addresses from
+        // every page. See utils/sentryReplayPrivacy.js.
+        Sentry.replayIntegration(REPLAY_PRIVACY_OPTIONS),
         Sentry.browserTracingIntegration(),
     ],
 
@@ -70,3 +67,6 @@ Sentry.init({
         return event;
     },
 });
+
+// The replay event lists every page URL the session visited.
+Sentry.addEventProcessor(scrubReplayEvent);

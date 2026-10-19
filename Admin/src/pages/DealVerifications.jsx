@@ -15,6 +15,8 @@ import {
   AlertCircle,
   Award,
 } from "lucide-react";
+import PrivateFile from "../components/PrivateFile";
+import { isPrivateFileRef, privateFileKind } from "../utils/privateFiles";
 
 const statusConfig = {
   pending: { bg: "bg-amber-100", text: "text-amber-700", icon: Clock, label: "Pending" },
@@ -402,6 +404,26 @@ export default function DealVerifications() {
             </div>
             <div className="space-y-4">
               {showDocModal.documentUrls?.map((url, idx) => {
+                // Stored privately: a link per view, from the API, and never
+                // the third-party viewer the public files below use.
+                if (isPrivateFileRef(url)) {
+                  return (
+                    <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
+                        <span className="text-sm font-medium text-gray-700">
+                          Document {idx + 1} {privateFileKind(url) === "pdf" ? "(PDF)" : "(Image)"}
+                        </span>
+                      </div>
+                      <div className="p-3">
+                        <PrivateFile
+                          value={url}
+                          label={`Document ${idx + 1}`}
+                          fetchLink={() => dealVerificationsApi.documentLink(showDocModal._id, idx)}
+                        />
+                      </div>
+                    </div>
+                  );
+                }
                 const isPdf = url.toLowerCase().includes(".pdf") || url.toLowerCase().includes("/raw/");
                 return (
                   <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden">

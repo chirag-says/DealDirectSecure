@@ -51,16 +51,15 @@ export default function AboutContent() {
                     </h1>
 
                     <p className="text-lg md:text-xl text-gray-500 max-w-3xl mx-auto leading-relaxed mb-12">
-                        <strong className="text-gray-800">DealDirect</strong>, a venture by <strong className="text-gray-800">Agrawal Business Network LLP</strong>, is revolutionizing the way India buys, sells, and rents properties. By connecting you directly with verified property owners, we eliminate middlemen and save you lakhs in brokerage fees — making real estate transactions <strong className="text-gray-800">transparent, simple, and affordable</strong>.
+                        <strong className="text-gray-800">DealDirect</strong>, a venture by <strong className="text-gray-800">Agrawal Business Network LLP</strong>, is revolutionizing the way India buys, sells, and rents properties. By connecting you directly with property owners, we eliminate middlemen and save you lakhs in brokerage fees — making real estate transactions <strong className="text-gray-800">transparent, simple, and affordable</strong>.
                     </p>
 
                     {/* Key Metrics */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 max-w-4xl mx-auto">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 max-w-4xl mx-auto">
                         {[
                             { label: "Brokerage Saved", val: "₹50Cr+", icon: <BsGraphUpArrow className="text-green-500" /> },
                             { label: "Happy Families", val: "10,000+", icon: <FaUsers className="text-blue-500" /> },
-                            { label: "Cities Covered", val: "12+", icon: <FaMapMarkerAlt className="text-orange-500" /> },
-                            { label: "Verified Listings", val: "100%", icon: <FaCheckCircle className="text-red-500" /> }
+                            { label: "Cities Covered", val: "12+", icon: <FaMapMarkerAlt className="text-orange-500" /> }
                         ].map((stat, i) => (
                             <div key={i} className="group bg-white border border-gray-100 p-5 rounded-2xl shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-default">
                                 <div className="text-2xl mb-2">{stat.icon}</div>
@@ -133,7 +132,7 @@ export default function AboutContent() {
 
                     <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
                         {[
-                            { icon: <FaUserShield className="text-3xl" />, title: "100% Verified Owners", desc: "Every property listing is verified. We ensure you deal only with genuine owners — no brokers, no fraud.", color: "bg-blue-600" },
+                            { icon: <FaUserShield className="text-3xl" />, title: "Verified Mobile Numbers", desc: "Owners must confirm their mobile number with a one-time code before they can post a listing.", color: "bg-blue-600" },
                             { icon: <FaHandshake className="text-3xl" />, title: "Zero Brokerage", desc: "Connect directly with owners and save lakhs in brokerage fees. Your money stays in your pocket.", color: "bg-purple-600" },
                             { icon: <FaChartLine className="text-3xl" />, title: "Smart Insights", desc: "Get market trends, price history, and locality data to make informed property decisions.", color: "bg-green-600" },
                             { icon: <FaHeadset className="text-3xl" />, title: "24/7 Support", desc: "Our dedicated support team is always ready to help you through your property journey.", color: "bg-orange-600" }
@@ -180,7 +179,7 @@ export default function AboutContent() {
                                 </div>
                             </div>
                             <p className="text-gray-600 leading-relaxed mb-4">
-                                To ensure every listing is <strong>high-quality and genuine</strong>, we enforce a <strong className="text-blue-700">Strict 1-Post Per User</strong> rule.
+                                To keep listings <strong>high-quality</strong>, we enforce a <strong className="text-blue-700">Strict 1-Post Per User</strong> rule.
                             </p>
                             <div className="space-y-3">
                                 <div className="flex items-start gap-3">
@@ -189,7 +188,7 @@ export default function AboutContent() {
                                 </div>
                                 <div className="flex items-start gap-3">
                                     <FaCheckCircle className="text-green-500 mt-1 shrink-0" />
-                                    <p className="text-sm text-gray-500"><strong className="text-gray-700">The Result:</strong> Every property you see is from the actual owner or primary decision-maker. No clutter, just real options.</p>
+                                    <p className="text-sm text-gray-500"><strong className="text-gray-700">The Result:</strong> Fewer duplicate listings and less clutter.</p>
                                 </div>
                             </div>
                         </div>
@@ -291,7 +290,7 @@ export default function AboutContent() {
                     </p>
 
                     <div className="flex flex-wrap justify-center gap-3 text-sm">
-                        {["Transparent Pricing", "No Hidden Fees", "Verified Listings", "Direct Connections", "Secure Platform"].map((tag, i) => (
+                        {["Transparent Pricing", "No Hidden Fees", "Direct Connections", "Secure Platform"].map((tag, i) => (
                             <span key={i} className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-full text-gray-600 hover:border-red-300 hover:text-red-600 transition-colors cursor-default">
                                 {tag}
                             </span>

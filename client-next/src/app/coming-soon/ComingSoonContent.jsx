@@ -33,7 +33,7 @@ export default function ComingSoonContent() {
     },
     {
       title: "Packers and Movers",
-      description: "Stress-free relocation services with verified, professional packing and moving partners.",
+      description: "Stress-free relocation services with professional packing and moving partners.",
       icon: Truck,
       color: "from-emerald-400 to-teal-600",
       delay: "delay-[200ms]"
@@ -61,7 +61,7 @@ export default function ComingSoonContent() {
     },
     {
       title: "Carpentry Works",
-      description: "Custom furniture crafting, repairs, and premium woodwork by skilled, verified carpenters.",
+      description: "Custom furniture crafting, repairs, and premium woodwork by skilled carpenters.",
       icon: Hammer,
       color: "from-orange-700 to-amber-900",
       delay: "delay-[600ms]"
@@ -147,7 +147,7 @@ export default function ComingSoonContent() {
             <div className="relative z-10">
               <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">Want to be the first to know?</h2>
               <p className="text-slate-300 text-lg mb-8 max-w-2xl mx-auto">
-                We'll notify you as soon as these features launch. In the meantime, explore our massive inventory of verified properties.
+                We'll notify you as soon as these features launch. In the meantime, explore our massive inventory of properties.
               </p>
               <Link 
                 href="/properties" 

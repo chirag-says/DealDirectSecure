@@ -14,7 +14,7 @@ const WhyUs = () => {
           <div className="space-y-3">
             <h2 className="text-xl font-semibold text-slate-900">Direct, No-Broker Model</h2>
             <p className="text-sm text-slate-600">
-              Connect directly with verified owners and genuine tenants/buyers. Save on hefty brokerage and have full control
+              Connect directly with owners, tenants and buyers. Save on hefty brokerage and have full control
               over your conversations and decisions.
             </p>
           </div>
@@ -90,7 +90,7 @@ const WhyUs = () => {
               <h3 className="text-base font-semibold text-slate-900 mb-1">3. Lead Packs (No-Broker)</h3>
               <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Who pays: Owners</p>
               <p className="text-sm text-slate-600 mb-2">
-                Owners can purchase verified, intent-based buyer or tenant contacts, with clear tracking from first
+                Owners can purchase intent-based buyer or tenant contacts, with clear tracking from first
                 enquiry to closure.
               </p>
               <p className="text-xs text-slate-500">Pricing: Rent ₹20–₹50/lead • Sale ₹100–₹200/lead</p>
