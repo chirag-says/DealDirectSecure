@@ -1437,8 +1437,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                     Email me when new properties match this search
                   </label>
                   <p className="mt-1 text-[10px] text-slate-500">
-                    Alerts are currently free as part of our Premium Tools beta and may later move into a small paid
-                    add-on. We&apos;ll always show clear pricing before that.
+                    Alerts are free.
                   </p>
                 </div>
                 <div className="flex sm:flex-col gap-2 sm:items-end">
@@ -1800,61 +1799,6 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [], properti
                           <FaBuilding className="text-[11px]" /> Builder Project
                         </span>
                       </div>
-
-                      {/* ── GROUP BUY — two-string hanging shop sign ── */}
-                      {p.groupBuyEnabled && (
-                        <div style={{
-                          position: 'absolute',
-                          top: 0,
-                          right: '20px',
-                          zIndex: 20,
-                          paddingTop: '20px',
-                          filter: 'drop-shadow(0 4px 10px rgba(0,0,0,0.3))',
-                        }}>
-                          {/* Left string */}
-                          <div style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: '22px',
-                            width: '2px',
-                            height: '20px',
-                            background: '#92400e',
-                            borderRadius: '1px',
-                          }} />
-                          {/* Right string */}
-                          <div style={{
-                            position: 'absolute',
-                            top: 0,
-                            right: '22px',
-                            width: '2px',
-                            height: '20px',
-                            background: '#92400e',
-                            borderRadius: '1px',
-                          }} />
-                          {/* Sign body — flat rectangle */}
-                          <div style={{
-                            position: 'relative',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            background: 'linear-gradient(to right, #fdba74, #fed7aa)',
-                            color: '#1e293b',
-                            padding: '10px 20px',
-                            border: '1.5px dashed rgba(30,41,59,0.45)',
-                            boxShadow: '0 3px 10px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.4)',
-                            whiteSpace: 'nowrap',
-                          }}>
-                            <FaUsers style={{ fontSize: '14px', flexShrink: 0 }} />
-                            <span style={{
-                              fontWeight: 900,
-                              fontSize: '14px',
-                              letterSpacing: '0.06em',
-                              textTransform: 'uppercase',
-                              lineHeight: 1,
-                            }}>GROUP BUY</span>
-                          </div>
-                        </div>
-                      )}
                     </>
                   ) : (
                     /* ── Owner Property badge — top left ─────────────────────── */

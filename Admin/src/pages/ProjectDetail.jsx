@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import { projectApi, unitTypeApi, campaignApi } from "../api/adminApi";
-import { Plus, Building2, IndianRupee, Home, Layers, ChevronRight, Trash2, HardHat, Upload, X, Eye, EyeOff, CheckCircle2, AlertTriangle, XCircle, Circle } from "lucide-react";
+import { projectApi, unitTypeApi } from "../api/adminApi";
+import { Plus, Building2, Home, Layers, ChevronRight, Trash2, HardHat, Upload, X, Eye, EyeOff, CheckCircle2, AlertTriangle, XCircle, Circle } from "lucide-react";
 
 const badge = (status) => {
   const map = {
@@ -19,7 +19,6 @@ export default function ProjectDetail() {
   const navigate = useNavigate();
   const [project, setProject] = useState(null);
   const [unitTypes, setUnitTypes] = useState([]);
-  const [campaigns, setCampaigns] = useState([]);
   const [tab, setTab] = useState("units");
   const [loading, setLoading] = useState(true);
   const [updateForm, setUpdateForm] = useState({ title: "", description: "", percentComplete: "" });
@@ -31,17 +30,15 @@ export default function ProjectDetail() {
 
   const load = async () => {
     try {
-      const [pRes, uRes, cRes, rRes] = await Promise.all([
+      const [pRes, uRes, rRes] = await Promise.all([
         projectApi.getById(id),
         unitTypeApi.getByProject(id),
-        campaignApi.getByProject(id),
         // Readiness must never block the page: a project that fails to
         // evaluate should still be viewable and editable.
         projectApi.getReadiness(id).catch(() => null),
       ]);
       setProject(pRes.data || pRes);
       setUnitTypes(uRes.data || []);
-      setCampaigns(cRes.data || []);
       setReadiness(rRes?.data || null);
     } catch {
       toast.error("Failed to load project.");
@@ -80,7 +77,7 @@ export default function ProjectDetail() {
   const doUnpublish = async () => {
     if (!window.confirm(
       "Take this project off the public site?\n\n" +
-      "Existing bookings and campaigns are not affected."
+      "Existing enquiries are not affected."
     )) return;
     setPublishing(true);
     try {
@@ -233,12 +230,11 @@ export default function ProjectDetail() {
       )}
 
       {/* Stats bar */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         {[
           { label: "Unit Types", value: unitTypes.length, icon: <Layers size={18} className="text-blue-500" /> },
           { label: "Total Units", value: p.overview?.totalUnits || "—", icon: <Home size={18} className="text-green-500" /> },
           { label: "Towers", value: p.overview?.totalTowers || "—", icon: <Building2 size={18} className="text-purple-500" /> },
-          { label: "Active Campaigns", value: campaigns.filter(c => c.status === "active").length, icon: <IndianRupee size={18} className="text-orange-500" /> },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
             <div className="p-2 bg-gray-50 rounded-lg">{s.icon}</div>
@@ -252,10 +248,10 @@ export default function ProjectDetail() {
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
-        {["units", "campaigns", "updates", "info"].map(t => (
+        {["units", "updates", "info"].map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-5 py-2.5 text-sm font-medium capitalize border-b-2 transition-colors ${tab === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
-            {t === "units" ? "Unit Types" : t === "campaigns" ? "Campaigns" : t === "updates" ? "Construction Updates" : "Project Info"}
+            {t === "units" ? "Unit Types" : t === "updates" ? "Construction Updates" : "Project Info"}
           </button>
         ))}
       </div>
@@ -281,9 +277,6 @@ export default function ProjectDetail() {
                     <span className={`px-2 py-0.5 rounded-full text-xs ${u.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
                       {u.isActive ? "Active" : "Inactive"}
                     </span>
-                    {u.activeCampaignCount > 0 && (
-                      <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-xs">{u.activeCampaignCount} campaign(s)</span>
-                    )}
                   </div>
                   <p className="text-sm text-gray-500 mt-0.5">
                     {[u.config?.bedrooms && `${u.config.bedrooms} BHK`, u.area?.carpetSqft && `${u.area.carpetSqft} sqft (carpet)`, u.pricing?.effectivePrice && `₹${(u.pricing.effectivePrice / 1e6).toFixed(2)}L`].filter(Boolean).join(" · ")}
@@ -293,10 +286,6 @@ export default function ProjectDetail() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => navigate(`/project/${id}/campaign/new?unitTypeId=${u._id}`)}
-                    className="px-3 py-1.5 bg-orange-50 text-orange-600 rounded-lg text-xs font-medium hover:bg-orange-100">
-                    + Campaign
-                  </button>
                   <button onClick={() => navigate(`/project/${id}/add-unit-type?edit=${u._id}`)}
                     className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50">
                     <ChevronRight size={16} />
@@ -305,36 +294,6 @@ export default function ProjectDetail() {
                     className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50">
                     <Trash2 size={14} />
                   </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      {tab === "campaigns" && (
-        <div className="space-y-3">
-          {campaigns.length === 0 ? (
-            <div className="text-center py-16 bg-white rounded-xl border border-dashed border-gray-300">
-              <IndianRupee size={40} className="mx-auto text-gray-300 mb-3" />
-              <p className="text-gray-500">No campaigns yet. Add unit types first, then create campaigns.</p>
-            </div>
-          ) : (
-            campaigns.map(c => (
-              <div key={c._id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between hover:shadow-sm transition cursor-pointer"
-                onClick={() => navigate(`/campaign/${c._id}`)}>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-gray-800">{c.basics?.name}</h3>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${c.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>{c.status}</span>
-                  </div>
-                  <p className="text-sm text-gray-500 mt-0.5">
-                    {c.memberCount}/{c.buyerTargets?.maxBuyers} buyers · ₹{c.tokenAmount?.toLocaleString()} token · Ends {new Date(c.duration?.endDate).toLocaleDateString("en-IN")}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-green-600">Save ₹{c.pricing?.savings?.toLocaleString()}</p>
-                  <p className="text-xs text-gray-400">{c.paidMemberCount} paid</p>
                 </div>
               </div>
             ))

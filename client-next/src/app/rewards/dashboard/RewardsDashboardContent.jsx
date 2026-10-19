@@ -323,7 +323,7 @@ export default function RewardsDashboardContent() {
                             <button onClick={() => setActiveTab('redeem')} className="bg-white rounded-xl border border-gray-100 p-5 text-center hover:shadow-md transition-all group">
                                 <Gift className="w-6 h-6 mx-auto text-amber-500 group-hover:scale-110 transition-transform" />
                                 <p className="font-semibold text-gray-800 text-sm mt-2">Redeem Points</p>
-                                <p className="text-xs text-gray-400">Vouchers & cash</p>
+                                <p className="text-xs text-gray-400">Gift cards</p>
                             </button>
                             <Link href="/rewards" className="bg-white rounded-xl border border-gray-100 p-5 text-center hover:shadow-md transition-all group">
                                 <BookOpen className="w-6 h-6 mx-auto text-blue-500 group-hover:scale-110 transition-transform" />

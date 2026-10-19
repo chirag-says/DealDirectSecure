@@ -711,8 +711,8 @@ export default function CreateProject() {
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-gray-800">Sales Contact</h2>
           <p className="text-sm text-gray-500">
-            Booking amounts, GST, stamp duty, and registration charges are now set
-            per unit type (in the Unit Type wizard, Pricing step).
+            GST, stamp duty and registration charges are set per unit type (in the
+            Unit Type wizard, Pricing step).
           </p>
           <h3 className="font-medium text-gray-700 pt-2">Sales Contact</h3>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm">

@@ -628,76 +628,16 @@ export const rewardsApi = {
 
 
 // ============================================
-// CAMPAIGN API METHODS
-// Mounted at: /api/campaigns
-// ============================================
-
-export const campaignApi = {
-    /**
-     * Get all campaigns for a specific unit type (public).
-     * Displayed on the unit detail page as active group-buy offers.
-     */
-    getByUnitType: async (unitTypeId) => {
-        const response = await api.get(`/campaigns/unit-type/${unitTypeId}`);
-        return response.data;
-    },
-
-    /**
-     * Get all campaigns for a project (public).
-     */
-    getByProject: async (projectId) => {
-        const response = await api.get(`/campaigns/project/${projectId}`);
-        return response.data;
-    },
-
-    /**
-     * Get a single campaign by ID (public).
-     */
-    getById: async (id) => {
-        const response = await api.get(`/campaigns/${id}`);
-        return response.data;
-    },
-
-    /**
-     * Join a campaign (authenticated buyer).
-     * Adds the current user to the campaign member list.
-     */
-    join: async (campaignId) => {
-        const response = await api.post(`/campaigns/${campaignId}/join`);
-        return response.data;
-    },
-
-    /**
-     * Exit / withdraw from a campaign (authenticated buyer).
-     */
-    exit: async (campaignId) => {
-        const response = await api.post(`/campaigns/${campaignId}/exit`);
-        return response.data;
-    },
-
-    /**
-     * Upload payment proof for a campaign slot (authenticated buyer).
-     * @param {string} campaignId
-     * @param {FormData} formData — must contain `paymentProof` file field
-     */
-    uploadPaymentProof: async (campaignId, formData) => {
-        const response = await api.post(`/campaigns/${campaignId}/payment-proof`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        return response.data;
-    },
-};
-
-// ============================================
 // BOOKING API METHODS
 // Mounted at: /api/bookings
 // ============================================
 
 export const bookingApi = {
     /**
-     * Create a new booking for a unit type (optionally authenticated).
-     * If the user is logged in, the booking is auto-linked to their account.
-     * @param {object} data — { unitTypeId, projectId, name, phone, email, ... }
+     * Send an enquiry about a builder unit type (optionally authenticated).
+     * If the user is logged in, the enquiry is linked to their account.
+     * DealDirect takes no money, so this is the only thing the endpoint records.
+     * @param {object} data: { unitTypeId, projectId, clientName, clientPhone, clientEmail?, notes? }
      */
     create: async (data) => {
         const response = await api.post('/bookings', data);
@@ -705,19 +645,7 @@ export const bookingApi = {
     },
 
     /**
-     * Submit payment proof (UTR + screenshot) for an existing booking.
-     * @param {string} bookingId
-     * @param {FormData} formData — must contain `screenshot` file field + UTR fields
-     */
-    submitPayment: async (bookingId, formData) => {
-        const response = await api.post(`/bookings/${bookingId}/payment`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        return response.data;
-    },
-
-    /**
-     * Get all bookings for the currently authenticated user.
+     * Get all enquiries for the currently authenticated user.
      */
     getMyBookings: async () => {
         const response = await api.get('/bookings/my');
@@ -725,12 +653,10 @@ export const bookingApi = {
     },
 
     /**
-     * Withdraw your own booking before it is confirmed.
+     * Withdraw your own enquiry.
      *
-     * Allowed from `enquiry` and `payment_submitted` only — once a booking is
-     * confirmed a unit is held out of inventory, and releasing that is an admin
-     * action. NOT a refund: if a payment was already submitted, the UTR and
-     * screenshot stay on the record and the response says a refund may be due.
+     * Allowed while the enquiry is still open (status `enquiry`) only. Once the
+     * team has closed or cancelled it, the API answers 400 NOT_CANCELLABLE.
      */
     cancel: async (bookingId, reason) => {
         const response = await api.post(`/bookings/${bookingId}/cancel`, { reason });

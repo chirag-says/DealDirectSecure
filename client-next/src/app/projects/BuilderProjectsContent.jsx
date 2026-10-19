@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-    MapPin, Search, X, Building2, Users, Bookmark, BookmarkCheck,
+    MapPin, Search, X, Building2, Bookmark, BookmarkCheck,
     CalendarDays, Sparkles, Construction, KeyRound, BadgeCheck,
     LayoutGrid, ArrowUpDown, ArrowRight, SlidersHorizontal,
 } from "lucide-react";
@@ -125,7 +125,6 @@ function ProjectCard({ project, isBookmarked, onBookmark }) {
     const cfg = STATUS[status] || STATUS['New Launch'];
     const StatusIcon = cfg.icon;
 
-    const hasActiveCampaign = (project.activeCampaignCount || 0) > 0;
     const highlights = toHighlights(project.basics?.highlights).slice(0, 2);
     const reraNumber = project.basics?.reraNumber;
 
@@ -173,11 +172,6 @@ function ProjectCard({ project, isBookmarked, onBookmark }) {
                             <StatusIcon className="h-3 w-3" aria-hidden="true" />
                             {status}
                         </span>
-                        {hasActiveCampaign && (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-semibold text-slate-800 shadow-sm">
-                                <Users className="h-3 w-3" aria-hidden="true" /> Group Buy
-                            </span>
-                        )}
                     </div>
 
                     {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -8,7 +8,7 @@
 // this is now the only place client Sentry options are set.
 
 import * as Sentry from "@sentry/nextjs";
-import { REPLAY_PRIVACY_OPTIONS, scrubReplayEvent } from "./utils/sentryReplayPrivacy";
+import { REPLAY_PRIVACY_OPTIONS, dropConsoleBreadcrumb, scrubReplayEvent } from "./utils/sentryReplayPrivacy";
 
 Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -30,6 +30,11 @@ Sentry.init({
     // or form values on its own. Anything Sentry needs is set deliberately —
     // see setSentryUser() in src/utils/sentryUser.js.
     sendDefaultPii: false,
+
+    // Error and performance events carry the breadcrumb trail too, and the
+    // site logs property titles and coordinates to the console. Console
+    // breadcrumbs are dropped before any event can include them.
+    beforeBreadcrumb: dropConsoleBreadcrumb,
 
     // Debug mode - set to true temporarily if issues persist
     debug: false,

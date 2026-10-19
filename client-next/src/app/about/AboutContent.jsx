@@ -7,10 +7,7 @@ import {
     FaHandshake,
     FaUserShield,
     FaChartLine,
-    FaUsers,
     FaCheckCircle,
-    FaMapMarkerAlt,
-    FaHeadset,
     FaSearch,
     FaRegCommentDots,
     FaKey,
@@ -20,7 +17,7 @@ import {
     FaGift,
     FaUserFriends
 } from "react-icons/fa";
-import { BsGraphUpArrow, BsHouseDoor } from "react-icons/bs";
+import { BsHouseDoor } from "react-icons/bs";
 import { useAuth } from "../../context/AuthContext";
 
 export default function AboutContent() {
@@ -43,7 +40,7 @@ export default function AboutContent() {
                 <div className="relative z-10 max-w-6xl mx-auto px-6 text-center">
                     <div className="inline-flex items-center gap-2 mb-6 px-5 py-2 rounded-full border border-red-200 bg-red-50 text-red-600 text-sm font-semibold tracking-wide uppercase">
                         <FaBuilding className="text-red-500" />
-                        <span>India&apos;s Leading PropTech Platform</span>
+                        <span>No-Brokerage Property Platform</span>
                     </div>
 
                     <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight leading-tight mb-6 text-gray-900">
@@ -53,21 +50,6 @@ export default function AboutContent() {
                     <p className="text-lg md:text-xl text-gray-500 max-w-3xl mx-auto leading-relaxed mb-12">
                         <strong className="text-gray-800">DealDirect</strong>, a venture by <strong className="text-gray-800">Agrawal Business Network LLP</strong>, is revolutionizing the way India buys, sells, and rents properties. By connecting you directly with property owners, we eliminate middlemen and save you lakhs in brokerage fees — making real estate transactions <strong className="text-gray-800">transparent, simple, and affordable</strong>.
                     </p>
-
-                    {/* Key Metrics */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 max-w-4xl mx-auto">
-                        {[
-                            { label: "Brokerage Saved", val: "₹50Cr+", icon: <BsGraphUpArrow className="text-green-500" /> },
-                            { label: "Happy Families", val: "10,000+", icon: <FaUsers className="text-blue-500" /> },
-                            { label: "Cities Covered", val: "12+", icon: <FaMapMarkerAlt className="text-orange-500" /> }
-                        ].map((stat, i) => (
-                            <div key={i} className="group bg-white border border-gray-100 p-5 rounded-2xl shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-default">
-                                <div className="text-2xl mb-2">{stat.icon}</div>
-                                <div className="text-2xl md:text-3xl font-bold text-gray-900">{stat.val}</div>
-                                <div className="text-xs text-gray-500 uppercase tracking-wider mt-1">{stat.label}</div>
-                            </div>
-                        ))}
-                    </div>
                 </div>
             </section>
 
@@ -90,9 +72,6 @@ export default function AboutContent() {
                                 </p>
                                 <p>
                                     We realized that in an age of digital connectivity, paying 1-2% brokerage (often lakhs of rupees!) to a middleman was outdated. Property owners and buyers should be able to connect directly.
-                                </p>
-                                <p>
-                                    Today, we&apos;re proud to be India&apos;s fastest-growing PropTech platform, having helped thousands of families find their dream homes while saving them crores in brokerage fees.
                                 </p>
                             </div>
                         </div>
@@ -130,12 +109,11 @@ export default function AboutContent() {
                         </p>
                     </div>
 
-                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {[
                             { icon: <FaUserShield className="text-3xl" />, title: "Verified Mobile Numbers", desc: "Owners must confirm their mobile number with a one-time code before they can post a listing.", color: "bg-blue-600" },
                             { icon: <FaHandshake className="text-3xl" />, title: "Zero Brokerage", desc: "Connect directly with owners and save lakhs in brokerage fees. Your money stays in your pocket.", color: "bg-purple-600" },
                             { icon: <FaChartLine className="text-3xl" />, title: "Smart Insights", desc: "Get market trends, price history, and locality data to make informed property decisions.", color: "bg-green-600" },
-                            { icon: <FaHeadset className="text-3xl" />, title: "24/7 Support", desc: "Our dedicated support team is always ready to help you through your property journey.", color: "bg-orange-600" }
                         ].map((item, i) => (
                             <div key={i} className="group bg-white p-6 md:p-8 rounded-2xl border border-gray-100 shadow-md hover:shadow-xl hover:-translate-y-2 transition-all duration-300">
                                 <div className={`w-14 h-14 rounded-2xl ${item.color} flex items-center justify-center text-white mb-5 group-hover:scale-110 transition-transform`}>
@@ -290,7 +268,7 @@ export default function AboutContent() {
                     </p>
 
                     <div className="flex flex-wrap justify-center gap-3 text-sm">
-                        {["Transparent Pricing", "No Hidden Fees", "Direct Connections", "Secure Platform"].map((tag, i) => (
+                        {["Transparent Pricing", "No Hidden Fees", "Direct Connections"].map((tag, i) => (
                             <span key={i} className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-full text-gray-600 hover:border-red-300 hover:text-red-600 transition-colors cursor-default">
                                 {tag}
                             </span>
@@ -306,7 +284,7 @@ export default function AboutContent() {
                         Ready to Find Your <span className="text-red-600">Dream Home?</span>
                     </h2>
                     <p className="text-gray-500 text-lg mb-10 max-w-2xl mx-auto">
-                        Join thousands of happy families who found their perfect property through Deal Direct — without paying any brokerage.
+                        Find your next property on Deal Direct, without paying any brokerage.
                     </p>
                     <div className="flex flex-wrap justify-center gap-4">
                         <button

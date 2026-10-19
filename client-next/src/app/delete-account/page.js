@@ -136,17 +136,13 @@ export default function DeleteAccountPage() {
 
                 <Section id="kept" title="What is kept, and why">
                     <p>
-                        Some records belong to another person as well as to you, or are the only record of a payment or
-                        a completed deal. These are not deleted with your account, and they keep the name, phone number
-                        and email address they were created with:
+                        Some records belong to another person as well as to you, or are the only record of a completed
+                        deal. These are not deleted with your account, and they keep the name, phone number and email
+                        address they were created with:
                     </p>
                     <ul className="list-disc space-y-2 pl-6">
                         <li>Enquiries you sent to property owners, and enquiries you received as an owner.</li>
-                        <li>
-                            Bookings for builder projects, including any payment reference (UTR) and payment screenshot
-                            you submitted.
-                        </li>
-                        <li>Group-buy campaign memberships, including payment details.</li>
+                        <li>Enquiries you sent about builder projects.</li>
                         <li>Deal closure requests, including the documents uploaded with them.</li>
                         <li>Rental and sale agreements made on DealDirect.</li>
                         <li>

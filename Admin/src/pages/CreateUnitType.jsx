@@ -78,8 +78,9 @@ export default function CreateUnitType() {
     },
     basePrice: "", plc: 0, parkingCharges: 0, clubhouse: 0, legal: 0, maintenance: 0,
     floorRisePerSqft: 0, viewPremium: 0,
-    // Booking / payment terms (moved from project level)
-    bookingAmount: "", gstPercentage: "", stampDutyPercentage: "", registrationCharges: "",
+    // Tax and registration costs (moved from project level), shown to buyers
+    // as cost information only
+    gstPercentage: "", stampDutyPercentage: "", registrationCharges: "",
     totalUnits: "", availableUnits: "", bookedUnits: 0, blockedUnits: 0,
     towerAllocation: [], highlights: [],
     // Feature 4 — plot fields
@@ -155,7 +156,6 @@ export default function CreateUnitType() {
           legal: u.pricing?.additionalCharges?.legal || 0,
           maintenance: u.pricing?.additionalCharges?.maintenance || 0,
           floorRisePerSqft: u.pricing?.floorRisePerSqft || 0, viewPremium: u.pricing?.viewPremium || 0,
-          bookingAmount: u.paymentTerms?.bookingAmount ?? "",
           gstPercentage: u.paymentTerms?.gstPercentage ?? "",
           stampDutyPercentage: u.paymentTerms?.stampDutyPercentage ?? "",
           registrationCharges: u.paymentTerms?.registrationCharges ?? "",
@@ -230,7 +230,7 @@ export default function CreateUnitType() {
       },
       basePrice: "", plc: 0, parkingCharges: 0, clubhouse: 0, legal: 0, maintenance: 0,
       floorRisePerSqft: 0, viewPremium: 0,
-      bookingAmount: "", gstPercentage: "", stampDutyPercentage: "", registrationCharges: "",
+      gstPercentage: "", stampDutyPercentage: "", registrationCharges: "",
       totalUnits: "", availableUnits: "", bookedUnits: 0, blockedUnits: 0,
       towerAllocation: [], highlights: [],
       plotAreaSqft: "", plotLength: "", plotWidth: "",
@@ -288,7 +288,9 @@ export default function CreateUnitType() {
     try {
       const fd = new FormData();
       fd.append("projectId", projectId);
-      const { specifications, facing, highlights, towerAllocation, ...rest } = form;
+      // A draft saved before booking amounts were retired can still carry
+      // `bookingAmount`; it is dropped here so nothing sends it.
+      const { specifications, facing, highlights, towerAllocation, bookingAmount: _retiredBookingAmount, ...rest } = form;
       Object.entries(rest).forEach(([k, v]) => fd.append(k, v));
       fd.append("specifications", JSON.stringify(specifications));
       fd.append("facing", JSON.stringify(facing));
@@ -667,15 +669,14 @@ export default function CreateUnitType() {
             </div>
           )}
 
-          {/* ── Booking / Payment Terms ───────────────────────────────── */}
+          {/* ── Tax and registration costs ──────────────────────────────── */}
           <div className="border-t border-gray-200 pt-4">
-            <h3 className="font-medium text-gray-700 mb-1">Booking &amp; Tax Terms</h3>
+            <h3 className="font-medium text-gray-700 mb-1">Tax &amp; Registration Costs</h3>
             <p className="text-xs text-gray-500 mb-3">
-              These vary per unit type and replace the old project-level payment fields.
+              Shown to buyers as cost information in the all-inclusive price. These vary per unit type.
             </p>
             <div className="grid grid-cols-2 gap-4">
               {[
-                ["bookingAmount", "Booking Amount (₹)", "e.g. 500000"],
                 ["gstPercentage", "GST %", "e.g. 5"],
                 ["stampDutyPercentage", "Stamp Duty %", "e.g. 5"],
                 ["registrationCharges", "Registration Charges (₹)", "e.g. 30000"],

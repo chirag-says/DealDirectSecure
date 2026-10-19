@@ -809,7 +809,7 @@ function Navbar() {
                       </Link>
                       <Link href="/my-bookings" onClick={() => setIsUserDropdownOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-gray-700 hover:bg-gray-50 transition-colors">
                         <CalendarCheck className="w-5 h-5 text-gray-500" />
-                        <span className="font-medium">My Bookings</span>
+                        <span className="font-medium">My Enquiries</span>
                       </Link>
                       {/* AGREEMENTS — HIDDEN (client decision, 2026-08-01)
                       <Link href="/agreements" onClick={() => setIsUserDropdownOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-gray-700 hover:bg-gray-50 transition-colors">
@@ -956,7 +956,7 @@ function Navbar() {
                   </Link>
                   <Link href="/my-bookings" onClick={toggleMenu} className="flex items-center gap-3 px-4 py-3 text-slate-700 font-medium rounded-xl hover:bg-red-50 hover:text-red-600 transition">
                     <CalendarCheck size={18} />
-                    My Bookings
+                    My Enquiries
                   </Link>
                 </>
               )}
@@ -1141,7 +1141,7 @@ function Navbar() {
                       <AiOutlineHeart size={14} /> Saved
                     </Link>
                     <Link href="/my-bookings" onClick={toggleMenu} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 transition">
-                      <CalendarCheck size={14} /> Bookings
+                      <CalendarCheck size={14} /> Enquiries
                     </Link>
                   </div>
 

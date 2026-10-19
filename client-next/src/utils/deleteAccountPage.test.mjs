@@ -54,8 +54,9 @@ test('it promises no complete deletion and no period nobody has set', () => {
 test('it names each kind of record the account cascade keeps (utils/aggregateDelete.js USER_CASCADE.retained)', () => {
   const retained = {
     Lead: /Enquiries you sent to property owners/,
-    ProjectBooking: /Bookings for builder projects/,
-    CampaignMember: /Group-buy campaign memberships/,
+    // Group-buy memberships (CampaignMember) left the cascade on 2026-10-19,
+    // with group buy itself. ProjectBooking now holds enquiries only.
+    ProjectBooking: /Enquiries you sent about builder projects/,
     TransactionVerification: /Deal closure requests/,
     Agreement: /agreements made on DealDirect/,
   };
@@ -63,6 +64,7 @@ test('it names each kind of record the account cascade keeps (utils/aggregateDel
     assert.match(text, phrase, collection);
   }
   assert.match(text, /A listing tied to a pending or approved deal closure/);
+  assert.doesNotMatch(text, /payment|UTR|screenshot|group-buy/i, 'DealDirect takes no money, so no payment record is kept');
 });
 
 test('it states that deletion cannot be undone, and gives a way in for someone who cannot sign in', () => {

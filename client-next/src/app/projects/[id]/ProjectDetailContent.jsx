@@ -92,13 +92,13 @@ function UnitTypeCard({ ut, projectId }) {
       </div>
       <Link href={`/projects/${projectId}/units/${ut._id}`}
         className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition">
-        View Details & Book →
+        View Details →
       </Link>
     </div>
   );
 }
 
-export default function ProjectDetailContent({ project, unitTypes = [], campaigns = [] }) {
+export default function ProjectDetailContent({ project, unitTypes = [] }) {
   const p = project;
   // Full-size viewer for plan drawings. A master plan is dense line art; the
   // page-level thumbnail exists to be clicked, not to be read.
@@ -340,12 +340,6 @@ export default function ProjectDetailContent({ project, unitTypes = [], campaign
           <div className="space-y-4">
 
 
-            {/* GROUP BUY — buyer-facing sections removed (Stage 1).
-                The terms are stored and admin-authorable, and nothing enforces
-                them: no code reads paidMemberCount >= minBuyers, applies
-                discountPerBuyer to any price, or notifies anyone when a goal is
-                met. Advertising a discount no code will honour is the defect.
-                Restore when the mechanic exists. */}
             {/* ── DealDirect Contact Card ── */}
             <div className="bg-white border border-slate-200 rounded-2xl p-5">
               <div className="flex items-center gap-3 mb-5">

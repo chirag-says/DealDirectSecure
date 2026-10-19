@@ -1,9 +1,9 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { FaBed, FaBath, FaRulerCombined, FaCompass, FaFilePdf, FaPhoneAlt, FaWhatsapp } from 'react-icons/fa';
-import { Shield, CheckCircle, Check, Upload, Loader2, X, AlertTriangle, ChevronRight, Home, PlayCircle } from 'lucide-react';
+import { CheckCircle, Loader2, X, AlertTriangle, ChevronRight, Home, PlayCircle } from 'lucide-react';
 import { bookingApi } from '../../../../../utils/api';
 import { useAuth } from '../../../../../context/AuthContext';
 import { toast } from 'react-toastify';
@@ -13,10 +13,7 @@ const fmt = (n) => !n ? null : n >= 1e7 ? `₹${(n/1e7).toFixed(2)} Cr` : `₹${
 const inp = 'w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition';
 
 /**
- * A refusal from the booking API, with a way out where one exists.
- *
- * Shared by both modals so the two cannot drift — the enquiry modal hits the
- * same DUPLICATE_ENQUIRY guard as the booking one.
+ * A refusal from the enquiry API, with a way out where one exists.
  *
  * ---------------------------------------------------------------------------
  * WHY THE LINK MATTERS
@@ -24,11 +21,11 @@ const inp = 'w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm focu
  * "You already have an open enquiry for this unit type." is true, and on its
  * own it is a dead end: the enquiry it refers to is not visible from this
  * modal, and nothing here says where to find it. The honest reading from the
- * user's side is that the booking button is broken.
+ * user's side is that the enquire button is broken.
  *
- * The backend's own rule is the way out — `bookingController` counts only
- * `enquiry` and `payment_submitted` as open, so withdrawing frees the slot at
- * once. That is a two-click fix the user cannot discover. So say it.
+ * The backend's own rule is the way out: only an open enquiry blocks a new
+ * one, so withdrawing frees the slot at once. That is a two-click fix the user
+ * cannot discover. So say it.
  */
 function ErrorNotice({ message, code }) {
   if (!message) return null;
@@ -43,7 +40,7 @@ function ErrorNotice({ message, code }) {
           href="/my-bookings"
           className="mt-2 inline-flex items-center gap-1 font-semibold text-red-700 underline underline-offset-2 hover:text-red-800"
         >
-          View it in My Bookings <ChevronRight size={13}/>
+          View it in My Enquiries <ChevronRight size={13}/>
         </Link>
       )}
       {isDuplicate && (
@@ -55,163 +52,10 @@ function ErrorNotice({ message, code }) {
   );
 }
 
-/* ── Booking Modal ── */
-function BookingModal({ ut, project, onClose, user }) {
-  const [step, setStep] = useState(1);
-  const [form, setForm] = useState({
-    name: user?.name || '',
-    phone: user?.phone || '',
-    email: user?.email || '',
-    notes: '',
-  });
-  const [bookingId, setBookingId] = useState(null);
-  const [utr, setUtr] = useState('');
-  const [file, setFile] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState('');
-  // The backend's error CODE, kept alongside the message.
-  //
-  // Some refusals are not failures, they are a state the user can act on — and
-  // the message alone cannot say what to do about them. DUPLICATE_ENQUIRY is
-  // the one that matters here: it names an open enquiry the user cannot see
-  // from this modal and offers no way to reach it, which reads as "the booking
-  // button is broken" rather than "you already started this".
-  const [errCode, setErrCode] = useState('');
-  // Booking amount now lives on the unit type (paymentTerms); fall back to the
-  // legacy project-level field for older records that predate the move.
-  const token = ut?.paymentTerms?.bookingAmount ?? project?.financials?.bookingAmount ?? 0;
-  const set = (k,v) => setForm(f=>({...f,[k]:v}));
-
-  // Payment config — fetched securely from backend
-  const [qrUrl, setQrUrl] = useState('');
-  const [upiId, setUpiId] = useState('');
-
-  useEffect(() => {
-    const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9000/api';
-    fetch(`${API}/bookings/payment-config`, { credentials: 'include' })
-      .then(r => r.json())
-      .then(d => { if (d.success) { setQrUrl(d.data.qrUrl); setUpiId(d.data.upiId); } })
-      .catch(() => {});
-  }, []);
-
-  const doStep1 = async () => {
-    if (!form.name.trim() || !form.phone.trim()) { setErr('Name and phone are required.'); setErrCode(''); return; }
-    setErr(''); setErrCode(''); setLoading(true);
-    try {
-      const d = await bookingApi.create({
-        unitTypeId: ut._id,
-        projectId: project?._id,
-        clientName: form.name,
-        clientPhone: form.phone,
-        clientEmail: form.email,
-        notes: form.notes,
-        tokenAmount: token,
-      });
-      if (!d.success) throw new Error(d.message);
-      setBookingId(d.data.bookingId); setStep(2);
-    } catch(e) { setErr(e?.response?.data?.message || e.message || 'Failed.'); setErrCode(e?.response?.data?.code || ''); }
-    finally { setLoading(false); }
-  };
-
-  const doStep3 = async () => {
-    if (!utr.trim() && !file) { setErr('Enter UTR or upload screenshot.'); setErrCode(''); return; }
-    setErr(''); setErrCode(''); setLoading(true);
-    try {
-      const fd = new FormData();
-      if (utr.trim()) fd.append('utrNumber', utr.trim());
-      if (file) fd.append('screenshot', file);
-      await bookingApi.submitPayment(bookingId, fd);
-      setStep(4);
-    } catch(e) { setErr(e?.response?.data?.message || e.message || 'Failed.'); setErrCode(e?.response?.data?.code || ''); }
-    finally { setLoading(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <div>
-            <p className="font-bold text-gray-900 text-base">{ut?.config?.name}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{project?.basics?.name}</p>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition"><X size={15}/></button>
-        </div>
-        {/* Step bar */}
-        <div className="flex border-b border-gray-100">
-          {['Details','Payment','Proof','Done'].map((s,i)=>(
-            <div key={i} className={`flex-1 inline-flex items-center justify-center gap-1 py-2.5 text-xs font-semibold transition border-b-2 ${step===i+1?'border-blue-600 text-blue-600':step>i+1?'border-green-400 text-green-600':'border-transparent text-gray-400'}`}>{step>i+1 && <Check size={12} aria-hidden="true"/>}{s}</div>
-          ))}
-        </div>
-        {/* Body */}
-        <div className="px-5 py-5 overflow-y-auto space-y-4">
-          <ErrorNotice message={err} code={errCode} />
-          {step===1 && (<>
-            <div className="space-y-3">
-              <div><label className="text-xs font-semibold text-gray-500 block mb-1">Full Name *</label><input className={inp} placeholder="Rahul Mehta" value={form.name} onChange={e=>set('name',e.target.value)}/></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-xs font-semibold text-gray-500 block mb-1">Phone *</label><input className={inp} type="tel" placeholder="10-digit" value={form.phone} onChange={e=>set('phone',e.target.value)}/></div>
-                <div><label className="text-xs font-semibold text-gray-500 block mb-1">Email</label><input className={inp} type="email" placeholder="Optional" value={form.email} onChange={e=>set('email',e.target.value)}/></div>
-              </div>
-              <div><label className="text-xs font-semibold text-gray-500 block mb-1">Notes</label><textarea className={`${inp} resize-none`} rows={2} value={form.notes} onChange={e=>set('notes',e.target.value)}/></div>
-            </div>
-            {token>0 && <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-4 py-3"><span className="text-sm text-blue-700 font-medium">Token Amount</span><span className="text-xl font-bold text-blue-800">₹{token.toLocaleString('en-IN')}</span></div>}
-            <button onClick={doStep1} disabled={loading} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition disabled:opacity-60 flex items-center justify-center gap-2">
-              {loading?<><Loader2 size={15} className="animate-spin"/>Processing...</>:<>Continue <ChevronRight size={15}/></>}
-            </button>
-          </>)}
-          {step===2 && (<>
-            <p className="text-sm text-gray-600 text-center">Scan the QR code below and pay the token amount to secure your booking.</p>
-            {qrUrl && (
-              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 text-center">
-                <img src={qrUrl} alt="DealDirect UPI QR" className="w-48 h-48 object-contain mx-auto rounded-lg" onError={e => { e.target.style.display='none'; }}/>
-                {upiId && (
-                  <div className="mt-3 bg-blue-50 rounded-xl px-4 py-2">
-                    <p className="text-xs text-gray-500">UPI ID</p>
-                    <p className="font-bold text-blue-700 text-sm">{upiId}</p>
-                  </div>
-                )}
-              </div>
-            )}
-            <div className="bg-gray-900 rounded-xl p-4 text-white text-center">
-              <p className="text-gray-400 text-xs font-semibold mb-1 uppercase tracking-wide">Token Amount to Transfer</p>
-              <p className="text-3xl font-bold">₹{token.toLocaleString('en-IN')}</p>
-            </div>
-            {bookingId && <p className="text-xs text-gray-500 text-center">Booking ref: <span className="font-mono font-bold text-gray-700">#{bookingId.slice(-8).toUpperCase()}</span></p>}
-            <p className="text-xs text-gray-500 text-center flex items-center justify-center gap-1.5"><FaPhoneAlt size={10}/>For queries: +91 6360122696</p>
-            <button onClick={()=>setStep(3)} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition">I've Paid — Upload Proof →</button>
-            <button onClick={onClose} className="w-full text-xs text-gray-400 hover:text-gray-600 text-center">Upload later in My Bookings</button>
-          </>)}
-          {step===3 && (<>
-            <div><label className="text-xs font-semibold text-gray-500 block mb-1">UTR / Transaction ID</label><input className={`${inp} font-mono`} placeholder="e.g. SBIN12345678" value={utr} onChange={e=>setUtr(e.target.value)}/></div>
-            <label className={`flex flex-col items-center gap-2.5 border-2 border-dashed rounded-xl py-7 cursor-pointer transition ${file?'border-green-400 bg-green-50':'border-gray-200 hover:border-blue-300 hover:bg-blue-50/30'}`}>
-              <input type="file" accept="image/*" className="hidden" onChange={e=>setFile(e.target.files[0])}/>
-              {file?<><CheckCircle size={24} className="text-green-500"/><span className="text-sm font-medium text-green-700">{file.name}</span></>:<><Upload size={24} className="text-gray-300"/><span className="text-sm text-gray-500">Upload Payment Screenshot</span><span className="text-xs text-gray-400">JPG or PNG</span></>}
-            </label>
-            <button onClick={doStep3} disabled={loading} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition disabled:opacity-60 flex items-center justify-center gap-2">
-              {loading?<><Loader2 size={15} className="animate-spin"/>Submitting...</>:'Submit Proof →'}
-            </button>
-          </>)}
-          {step===4 && (
-            <div className="text-center py-6">
-              <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4"><CheckCircle size={32} className="text-green-500"/></div>
-              <p className="font-bold text-gray-900 text-lg mb-1">Booking Submitted!</p>
-              <p className="text-gray-500 text-sm mb-5">Our team will verify and confirm within 24 hours.</p>
-              <Link href="/my-bookings" className="inline-block px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition">Track My Bookings →</Link>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ── Enquiry Modal ──
-   The low-commitment door. Deliberately one step and no payment framing: a QR
-   code was the only thing on offer before this, and seven live projects have
-   produced zero bookings. Sends intent:'enquiry', which the API records as
-   source:'enquiry' and exempts from the booking-amount requirement — asking a
-   question must not be gated on the thing that gates paying. */
+   The only door on a builder unit. DealDirect takes no money from buyers, so
+   there is no booking step behind this: the enquiry goes to our team, who call
+   the buyer back. One step, no payment framing. */
 function EnquiryModal({ ut, project, onClose, user }) {
   const [form, setForm] = useState({
     name: user?.name || '',
@@ -222,8 +66,9 @@ function EnquiryModal({ ut, project, onClose, user }) {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState('');
-  // This modal hits the same DUPLICATE_ENQUIRY guard as the booking one, so it
-  // needs the same route out. See ErrorNotice.
+  // The backend's error CODE, kept alongside the message. DUPLICATE_ENQUIRY is
+  // not a failure but a state the user can act on, and the message alone cannot
+  // say where the earlier enquiry lives. See ErrorNotice.
   const [errCode, setErrCode] = useState('');
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -238,12 +83,16 @@ function EnquiryModal({ ut, project, onClose, user }) {
         clientPhone: form.phone,
         clientEmail: form.email,
         notes: form.notes,
+        // The current API records every request as an enquiry and ignores
+        // this. It stays so the page still works against the previous API if
+        // the website ships before the backend.
         intent: 'enquiry',
       });
       if (!d.success) throw new Error(d.message);
       setDone(true);
     } catch (e) {
       setErr(e?.response?.data?.message || e.message || 'Could not send your enquiry.');
+      setErrCode(e?.response?.data?.code || '');
     } finally { setLoading(false); }
   };
 
@@ -265,13 +114,16 @@ function EnquiryModal({ ut, project, onClose, user }) {
                 <CheckCircle size={32} className="text-green-500" />
               </div>
               <p className="font-bold text-gray-900 text-lg mb-1">Enquiry sent</p>
-              <p className="text-gray-500 text-sm mb-5">Our team will call you shortly. No payment is needed.</p>
-              <button onClick={onClose} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition">Close</button>
+              <p className="text-gray-500 text-sm mb-5">Our team will call you shortly. You can see it any time in My Enquiries.</p>
+              <div className="flex items-center justify-center gap-2">
+                <Link href="/my-bookings" className="px-5 py-3 border border-blue-200 text-blue-700 rounded-xl font-semibold text-sm hover:bg-blue-50 transition">My Enquiries</Link>
+                <button onClick={onClose} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition">Close</button>
+              </div>
             </div>
           ) : (<>
             <ErrorNotice message={err} code={errCode} />
             <p className="text-sm text-gray-500">
-              Ask us anything about this unit — availability, pricing, site visits. No payment at this stage.
+              Ask us anything about this unit: availability, pricing, site visits. Enquiring is free.
             </p>
             <div className="space-y-3">
               <div><label className="text-xs font-semibold text-gray-500 block mb-1">Full Name *</label><input className={inp} value={form.name} onChange={e => set('name', e.target.value)} /></div>
@@ -326,12 +178,7 @@ function SpecsSection({ specs }) {
 }
 
 /* ── Main Page ── */
-export default function UnitDetailContent({ unitType:ut, campaigns=[], project, projectId }) {
-  // `campaigns` is accepted and deliberately unrendered (Stage 1): the terms
-  // exist but nothing enforces them. The prop stays so page.js needs no change
-  // when the mechanic lands. See utils/relatedProperties.js for the cost of
-  // letting a page silently stop using data it is handed.
-  const [showModal, setShowModal] = useState(false);
+export default function UnitDetailContent({ unitType:ut, project, projectId }) {
   const [showEnquiry, setShowEnquiry] = useState(false);
   const { isAuthenticated, user } = useAuth();
   const router = useRouter();
@@ -339,16 +186,7 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
   const carpet = ut.area?.carpetSqft;
   const hasCharges = ut.pricing?.additionalCharges && Object.values(ut.pricing.additionalCharges).some(v=>v>0);
 
-  // Login gate — same pattern as "I'm Interested" on owner properties
-  const handleBookClick = () => {
-    if (!isAuthenticated || !user) {
-      toast.info('Please login to book this unit');
-      router.push(`/login?from=/projects/${projectId}/units/${ut._id}`);
-      return;
-    }
-    setShowModal(true);
-  };
-
+  // Login gate, same pattern as "I'm Interested" on owner properties
   const handleEnquireClick = () => {
     if (!isAuthenticated || !user) {
       toast.info('Please login to enquire');
@@ -360,7 +198,6 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {showModal && <BookingModal ut={ut} project={project} user={user} onClose={()=>setShowModal(false)}/>}
       {showEnquiry && <EnquiryModal ut={ut} project={project} user={user} onClose={()=>setShowEnquiry(false)}/>}
 
       {/* Breadcrumb */}
@@ -464,14 +301,6 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
             </div>
           )}
 
-          {/* GROUP BUY — buyer-facing section removed (Stage 1).
-              The terms are stored and admin-authorable, and nothing enforces
-              them: no code reads paidMemberCount >= minBuyers, applies
-              discountPerBuyer to a price, or notifies anyone when a goal is
-              met. Advertising a discount no code will honour is the defect.
-              The `campaigns` prop is still accepted so page.js needs no
-              change when the mechanic lands. */}
-
           {/* Interior Photo Gallery — Feature 3 */}
           {ut.photos?.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-xl p-5">
@@ -542,8 +371,7 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
                   const stamp  = pt?.stampDutyPercentage ? Math.round(base * pt.stampDutyPercentage / 100) : 0;
                   const reg    = pt?.registrationCharges || 0;
                   const total  = base + gst + stamp + reg;
-                  const booking = pt?.bookingAmount || 0;
-                  if (!base || (!gst && !stamp && !reg && !booking)) return null;
+                  if (!base || (!gst && !stamp && !reg)) return null;
                   return (
                     <div className="border-t border-gray-100 pt-3">
                       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">All-Inclusive Cost</p>
@@ -553,12 +381,6 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
                         {stamp > 0 && <div className="flex justify-between text-gray-500"><span>Stamp Duty ({pt.stampDutyPercentage}%)</span><span>{fmt(stamp)}</span></div>}
                         {reg > 0 && <div className="flex justify-between text-gray-500"><span>Registration</span><span>{fmt(reg)}</span></div>}
                         <div className="flex justify-between font-bold text-gray-900 pt-2 border-t border-gray-100"><span>Total (All-in)</span><span>{fmt(total)}</span></div>
-                        {booking > 0 && (
-                          <div className="mt-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 flex justify-between">
-                            <span className="text-blue-700 text-xs font-medium">Pay now to book</span>
-                            <span className="text-blue-800 font-bold text-sm">₹{booking.toLocaleString('en-IN')}</span>
-                          </div>
-                        )}
                       </div>
                     </div>
                   );
@@ -590,17 +412,9 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
                     ))}
                   </div>
                 )}
-                {/* Two doors, not one.
-                    Until now the only way in was the booking modal, which opens
-                    with a QR code and a demand for money — and seven live
-                    projects have produced zero bookings. Enquiring is the
-                    low-commitment path most buyers actually want first, and it
-                    works even on unit types with no booking amount configured. */}
-                <button onClick={handleBookClick} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition">Book This Unit</button>
-                <button onClick={handleEnquireClick}
-                  className="w-full py-2.5 border border-blue-200 text-blue-700 rounded-xl font-semibold text-sm hover:bg-blue-50 transition">
-                  Enquire — no payment needed
-                </button>
+                {/* Enquiry is the only action. DealDirect takes no money from
+                    buyers, so there is no booking step to offer here. */}
+                <button onClick={handleEnquireClick} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition">Enquire About This Unit</button>
                 <Link href={`/projects/${projectId}`} className="w-full py-2.5 border border-gray-200 text-gray-600 rounded-xl font-semibold text-sm hover:bg-gray-50 transition flex items-center justify-center">← Back to Project</Link>
               </div>
             </div>
@@ -631,7 +445,7 @@ export default function UnitDetailContent({ unitType:ut, campaigns=[], project, 
       {/* Mobile sticky CTA */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3 z-40">
         <div className="flex-1"><p className="font-bold text-gray-900">{price ? fmt(price) : 'Price on request'}</p>{ut.inventory?.availableUnits!=null && <p className="text-xs text-green-600">{ut.inventory.availableUnits} units available</p>}</div>
-        <div className="flex gap-2"><button onClick={handleEnquireClick} className="px-4 py-2.5 border border-blue-200 text-blue-700 rounded-xl font-semibold text-sm">Enquire</button><button onClick={handleBookClick} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition">Book Now</button></div>
+        <button onClick={handleEnquireClick} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition">Enquire</button>
       </div>
       <div className="h-20 lg:hidden"/>
     </div>

@@ -449,7 +449,7 @@ export default function BuilderDetail() {
                 <Building2 className="w-14 h-14 text-gray-200 mb-4" />
                 <h3 className="text-lg font-semibold text-gray-700">No projects yet</h3>
                 <p className="text-gray-500 mt-1 text-sm text-center max-w-sm">
-                  Create the first project to start tracking unit types, campaigns, and inventory.
+                  Create the first project to start tracking unit types and inventory.
                 </p>
                 <button
                   onClick={() => navigate(`/create-project?builderId=${builderId}`)}

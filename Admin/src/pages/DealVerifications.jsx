@@ -404,8 +404,7 @@ export default function DealVerifications() {
             </div>
             <div className="space-y-4">
               {showDocModal.documentUrls?.map((url, idx) => {
-                // Stored privately: a link per view, from the API, and never
-                // the third-party viewer the public files below use.
+                // Stored privately: a link per view, from the API.
                 if (isPrivateFileRef(url)) {
                   return (
                     <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden">
@@ -448,15 +447,10 @@ export default function DealVerifications() {
                         className="max-h-[500px] object-contain w-full bg-gray-50"
                       />
                     )}
-                    {isPdf && (
-                      <iframe
-                        src={`https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`}
-                        title={`Document ${idx + 1}`}
-                        className="w-full bg-white"
-                        style={{ height: "500px" }}
-                        frameBorder="0"
-                      />
-                    )}
+                    {/* No inline preview for a PDF. It used to be embedded through
+                        the Google Docs viewer, which hands the document's URL
+                        (a deal's proof papers) to a third party. The "Open in
+                        new tab" link above opens it in the browser directly. */}
                   </div>
                 );
               })}

@@ -32,7 +32,6 @@ import AdminBlogEditor from "./pages/AdminBlogEditor";
 import RewardsManagement from "./pages/RewardsManagement";
 import DealVerifications from "./pages/DealVerifications";
 import PopularProperties from "./pages/PopularProperties";
-import GroupBuyManagement from "./pages/GroupBuyManagement";
 import BuilderManagement from "./pages/BuilderManagement";
 import BuilderDetail from "./pages/BuilderDetail";
 import BuilderProjectsList from "./pages/BuilderProjectsList";
@@ -40,7 +39,6 @@ import AdminAddProperty from "./pages/AdminAddProperty";
 import CreateProject from "./pages/CreateProject";
 import ProjectDetail from "./pages/ProjectDetail";
 import CreateUnitType from "./pages/CreateUnitType";
-import CreateCampaign from "./pages/CreateCampaign";
 
 /**
  * Routes that render without panel chrome.
@@ -288,15 +286,6 @@ function AppContent() {
         />
 
         <Route
-          path="/group-buy"
-          element={
-            <AdminProtectedRoute>
-              <GroupBuyManagement />
-            </AdminProtectedRoute>
-          }
-        />
-
-        <Route
           path="/builder-management"
           element={
             <AdminProtectedRoute>
@@ -353,14 +342,6 @@ function AppContent() {
           element={
             <AdminProtectedRoute>
               <CreateUnitType />
-            </AdminProtectedRoute>
-          }
-        />
-        <Route
-          path="/project/:projectId/campaign/new"
-          element={
-            <AdminProtectedRoute>
-              <CreateCampaign />
             </AdminProtectedRoute>
           }
         />

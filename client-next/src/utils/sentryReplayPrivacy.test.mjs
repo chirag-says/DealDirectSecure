@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   REPLAY_PRIVACY_OPTIONS,
+  dropConsoleBreadcrumb,
   scrubRecordingEvent,
   scrubReplayEvent,
   withoutQuery,
@@ -84,6 +85,12 @@ test('instrumentation-client.js uses these options and registers the replay scru
   }
 });
 
+test('instrumentation-client.js drops console breadcrumbs from every event', () => {
+  const source = readFileSync(join(SRC, 'instrumentation-client.js'), 'utf8');
+  assert.match(source, /import\s*\{[^}]*\bdropConsoleBreadcrumb\b[^}]*\}\s*from\s*["']\.\/utils\/sentryReplayPrivacy["']/);
+  assert.match(source, /^\s*beforeBreadcrumb:\s*dropConsoleBreadcrumb\s*,/m);
+});
+
 /** Every source file under src, this test excepted. */
 function sourceFiles(dir) {
   return readdirSync(dir).flatMap((name) => {
@@ -149,6 +156,25 @@ test('other events pass through untouched', () => {
   assert.equal(scrubRecordingEvent(options), options);
   const snapshot = { type: 2, data: { node: { id: 1 } } };
   assert.equal(scrubRecordingEvent(snapshot), snapshot);
+});
+
+// ---------------------------------------------------------------------------
+// Breadcrumbs on error and performance events (beforeBreadcrumb)
+
+test('console breadcrumbs are dropped before any event can carry them', () => {
+  for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
+    const crumb = { category: 'console', level, message: 'Flat in Indiranagar 12.9716,77.6412' };
+    assert.equal(dropConsoleBreadcrumb(crumb), null, level);
+  }
+});
+
+test('other breadcrumbs pass through as the same object', () => {
+  for (const category of ['ui.click', 'ui.input', 'navigation', 'fetch', 'xhr', 'sentry.event']) {
+    const crumb = { category, message: 'x', data: { a: 1 } };
+    assert.equal(dropConsoleBreadcrumb(crumb), crumb, category);
+  }
+  const uncategorised = { message: 'manual breadcrumb' };
+  assert.equal(dropConsoleBreadcrumb(uncategorised), uncategorised);
 });
 
 // ---------------------------------------------------------------------------

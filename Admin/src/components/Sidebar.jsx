@@ -2,13 +2,12 @@ import React from "react";
 import { NavLink } from "react-router-dom";
 import {
   Building2,
-  CalendarCheck,
   DraftingCompass,
   FileCheck,
   Flag,
   Funnel,
   Gift,
-  Handshake,
+  Inbox,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -64,8 +63,10 @@ import { useAdmin } from "../context/AdminContext";
  *       this pass exists to remove.
  *   Lead Monitoring   Target → Funnel
  *       A lead pipeline is a funnel. A target is a goal or a quota.
- *   Group Buy         Megaphone → Handshake
- *       A megaphone is an announcement. Group buy is a collective deal.
+ *   Enquiries         CalendarCheck → Inbox
+ *       This page was Bookings. DealDirect takes no bookings or money now
+ *       (2026-10-19); the page is an inbox of buyer enquiries, so the icon
+ *       is an inbox rather than a confirmed date.
  *   Reported Messages ShieldAlert → MessageSquareWarning
  *       These are reported chat messages. A shield is generic moderation,
  *       and it did not distinguish this from Property Reports.
@@ -105,12 +106,8 @@ const NAV_SECTIONS = [
     label: "Pipeline",
     items: [
       { path: "/lead-monitoring", name: "Lead Monitoring", icon: Funnel },
-      { path: "/bookings", name: "Bookings", icon: CalendarCheck },
+      { path: "/bookings", name: "Enquiries", icon: Inbox },
       { path: "/deal-verifications", name: "Deal Verifications", icon: FileCheck },
-      // Signpost only: this route renders a "Group Buy Has Moved" notice that
-      // sends you to Builder Management, because campaigns now live at
-      // Project → Unit Type. The nav entry is worth retiring, not re-drawing.
-      { path: "/group-buy", name: "Group Buy", icon: Handshake },
     ],
   },
   {

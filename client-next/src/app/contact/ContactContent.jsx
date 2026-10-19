@@ -95,7 +95,7 @@ export default function ContactContent() {
             <section className="relative py-16 md:py-20 bg-white overflow-hidden">
                 <div className="relative z-10 text-center px-6 max-w-4xl mx-auto">
                     <div className="inline-flex items-center gap-2 mb-4 px-4 py-1.5 rounded-full border border-red-200 bg-red-50 text-red-600 text-xs font-bold uppercase tracking-widest">
-                        <FaHeadset /> 24/7 Support
+                        <FaHeadset /> Support
                     </div>
                     <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-4 text-gray-900">
                         Get in Touch with <br />
@@ -258,7 +258,7 @@ export default function ContactContent() {
                     <div className="p-4 border-l border-r border-gray-200">
                         <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 text-xl"><FaHeadset /></div>
                         <h4 className="font-bold text-gray-900">Direct Support</h4>
-                        <p className="text-gray-500 text-sm mt-1">Dedicated team for premium listings</p>
+                        <p className="text-gray-500 text-sm mt-1">Help with listings and enquiries</p>
                     </div>
                     <div className="p-4">
                         <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto mb-4 text-xl"><FaBuilding /></div>

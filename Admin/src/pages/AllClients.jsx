@@ -492,15 +492,20 @@ export default function AllClients() {
                         <p className="text-xs text-gray-500">
                             Shown publicly on this person's listings and in their deals. Tick only what you have actually checked.
                         </p>
+                        {/* Each switch states its own evidence bar, so "checked" means
+                            the same thing whichever admin turns it on. */}
                         {[
-                            ["identity", "Identity checked"],
-                            ["documents", "Property papers checked"],
-                        ].map(([key, label]) => (
+                            ["identity", "Identity checked", "Turn on only after checking a government photo ID."],
+                            ["documents", "Property papers checked", "Turn on only after checking the property papers (for example the sale deed or tax receipt)."],
+                        ].map(([key, label, rule]) => (
                             <label key={key} className="flex items-center justify-between gap-3 cursor-pointer">
-                                <span className="text-gray-700">{label}</span>
+                                <span className="min-w-0">
+                                    <span className="block text-gray-700">{label}</span>
+                                    <span className="block text-xs text-gray-500 mt-0.5">{rule}</span>
+                                </span>
                                 <input
                                     type="checkbox"
-                                    className="h-4 w-4 accent-emerald-600"
+                                    className="h-4 w-4 shrink-0 accent-emerald-600"
                                     disabled={verifyLoading}
                                     checked={!!selectedUser.verification?.[key]}
                                     onChange={(e) => setVerification(selectedUser.id, { [key]: e.target.checked })}

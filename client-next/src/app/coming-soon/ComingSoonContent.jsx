@@ -3,7 +3,6 @@
 import React from 'react';
 import { 
   Paintbrush, 
-  Landmark, 
   Truck, 
   Sparkles, 
   Wind, 
@@ -23,13 +22,6 @@ export default function ComingSoonContent() {
       icon: Sofa,
       color: "from-amber-400 to-orange-500",
       delay: "delay-[0ms]"
-    },
-    {
-      title: "Apply Home Loan",
-      description: "Get instant loan approvals and compare competitive interest rates directly from top partner banks.",
-      icon: Landmark,
-      color: "from-blue-500 to-indigo-600",
-      delay: "delay-[100ms]"
     },
     {
       title: "Packers and Movers",

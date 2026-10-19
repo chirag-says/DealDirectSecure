@@ -28,6 +28,10 @@
  * Every option is stated explicitly even where it matches the SDK default, so
  * an SDK upgrade that changes a default cannot quietly unmask anything.
  * `sentryReplayPrivacy.test.mjs` pins all of it.
+ *
+ * Breadcrumbs are not only a replay channel. Error and performance events
+ * carry the same trail, so `dropConsoleBreadcrumb` is set as `beforeBreadcrumb`
+ * in `Sentry.init` and keeps console output out of every event type.
  */
 
 /** Attributes whose values are replaced with asterisks in the recording. */
@@ -111,6 +115,19 @@ export function scrubRecordingEvent(event) {
   }
 
   return event;
+}
+
+/**
+ * `beforeBreadcrumb` for `Sentry.init`. Error and performance events carry the
+ * breadcrumb trail as well as replays do, and the site logs property titles
+ * and coordinates to the console. Console breadcrumbs are dropped before any
+ * event can pick them up; every other breadcrumb passes through unchanged.
+ *
+ * The replay's own console check in `scrubRecordingEvent` stays as a second
+ * layer, so removing this hook cannot put console output back into replays.
+ */
+export function dropConsoleBreadcrumb(breadcrumb) {
+  return breadcrumb?.category === 'console' ? null : breadcrumb;
 }
 
 /**

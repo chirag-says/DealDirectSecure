@@ -12,12 +12,6 @@ async function getUnitType(id) {
     return res?.data || null;
 }
 
-async function getCampaigns(unitTypeId) {
-    if (!unitTypeId) return [];
-    const res = await ssrFetch(`/api/campaigns/unit-type/${unitTypeId}`, { revalidate: 60 });
-    return res?.data || [];
-}
-
 async function getProject(id) {
     if (!id) return null;
     const res = await ssrFetch(`/api/projects/${id}`, { revalidate: 120 });
@@ -33,10 +27,11 @@ export async function generateMetadata(props) {
     const name = unitType.config?.name || 'Unit Type';
     const beds = unitType.config?.bedrooms ? `${unitType.config.bedrooms} BHK` : '';
     const area = unitType.area?.carpetSqft ? `${unitType.area.carpetSqft} sqft` : '';
+    const specs = [beds, area].filter(Boolean).join(', ');
 
     return {
         title: `${name} ${beds} ${area} | DealDirect`,
-        description: `Book ${name} — ${beds} ${area}. Get direct developer pricing, floor plans, and group-buy campaigns on DealDirect.`,
+        description: `Explore ${name}${specs ? ` (${specs})` : ''}. Get direct developer pricing and floor plans, and send an enquiry on DealDirect.`,
         alternates: {
             canonical: `https://dealdirect.in/projects/${params.id}/units/${params.unitTypeId}`,
         },
@@ -48,9 +43,8 @@ export default async function UnitDetailPage(props) {
     const params = await props.params;
     const { id: projectId, unitTypeId } = params;
 
-    const [unitType, campaigns, project] = await Promise.all([
+    const [unitType, project] = await Promise.all([
         getUnitType(unitTypeId),
-        getCampaigns(unitTypeId),
         getProject(projectId),
     ]);
 
@@ -65,7 +59,7 @@ export default async function UnitDetailPage(props) {
                 { name: unitType.config?.name || 'Unit', href: `/projects/${projectId}/units/${unitTypeId}` },
             ]} />
             <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-slate-500">Loading unit details...</div>}>
-                <UnitDetailContent unitType={unitType} campaigns={campaigns} project={project} projectId={projectId} />
+                <UnitDetailContent unitType={unitType} project={project} projectId={projectId} />
             </Suspense>
         </>
     );

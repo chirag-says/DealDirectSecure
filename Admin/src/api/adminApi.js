@@ -401,7 +401,7 @@ export const projectApi = {
         return response.data;
     },
 
-    /** Take a published project back to draft. Bookings are unaffected. */
+    /** Take a published project back to draft. Enquiries are unaffected. */
     unpublish: async (id, reason) => {
         const response = await adminApi.post(`/api/projects/${id}/unpublish`, { reason });
         return response.data;
@@ -473,45 +473,6 @@ export const unitTypeApi = {
     },
     delete: async (id) => {
         const response = await adminApi.delete(`/api/unit-types/${id}`);
-        return response.data;
-    },
-};
-
-// ============================================
-// CAMPAIGN API — Builder Project Flow
-// ============================================
-
-export const campaignApi = {
-    getByProject: async (projectId, params = {}) => {
-        const response = await adminApi.get(`/api/campaigns/project/${projectId}`, { params });
-        return response.data;
-    },
-    getByUnitType: async (unitTypeId, params = {}) => {
-        const response = await adminApi.get(`/api/campaigns/unit-type/${unitTypeId}`, { params });
-        return response.data;
-    },
-    getById: async (id) => {
-        const response = await adminApi.get(`/api/campaigns/${id}`);
-        return response.data;
-    },
-    create: async (data) => {
-        const response = await adminApi.post('/api/campaigns', data);
-        return response.data;
-    },
-    update: async (id, data) => {
-        const response = await adminApi.put(`/api/campaigns/${id}`, data);
-        return response.data;
-    },
-    getMembers: async (id, params = {}) => {
-        const response = await adminApi.get(`/api/campaigns/${id}/members`, { params });
-        return response.data;
-    },
-    getPendingPayments: async (id) => {
-        const response = await adminApi.get(`/api/campaigns/${id}/pending-payments`);
-        return response.data;
-    },
-    verifyPayment: async (memberId, data = {}) => {
-        const response = await adminApi.put(`/api/campaigns/members/${memberId}/verify`, data);
         return response.data;
     },
 };

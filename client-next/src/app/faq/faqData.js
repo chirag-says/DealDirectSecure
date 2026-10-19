@@ -22,7 +22,7 @@ export const faqCategories = [
             {
                 id: 'really-broker-free',
                 q: 'Is Deal Direct really free from brokers?',
-                a: 'Yes. Listings pass through filters and a one-post-per-user rule, so the people posting are individuals rather than agencies.',
+                a: 'Yes. Listings pass through filters and a one-post-per-user rule, which keeps bulk agency uploads off the site.',
             },
         ],
     },
@@ -35,7 +35,7 @@ export const faqCategories = [
             {
                 id: 'one-property-only',
                 q: 'Why can I only post one property?',
-                a: 'One active post per user keeps the site free of duplicates and bulk broker uploads. It also means every listing you see came from a real person with a real property.',
+                a: 'One active post per user keeps the site free of duplicates and bulk broker uploads.',
             },
             {
                 id: 'edit-or-delete',
@@ -68,7 +68,7 @@ export const faqCategories = [
             {
                 id: 'point-value',
                 q: 'What can I do with my reward points?',
-                a: 'Redeem them for partner vouchers, premium listing boosts, or cashback. Your dashboard lists the current options.',
+                a: 'Redeem them for gift cards in the rewards store. Your dashboard lists the current options.',
             },
         ],
     },

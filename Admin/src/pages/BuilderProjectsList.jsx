@@ -175,7 +175,7 @@ export default function BuilderProjectsList() {
         <div className="flex flex-col items-center justify-center p-16 bg-white border border-gray-200 border-dashed rounded-2xl shadow-sm">
           <Building2 className="w-16 h-16 text-gray-300 mb-4" />
           <h3 className="text-xl font-semibold text-gray-700">No projects yet for this builder</h3>
-          <p className="text-gray-500 mt-2 text-center max-w-md">Create the first project to start tracking unit types, campaigns, and inventory.</p>
+          <p className="text-gray-500 mt-2 text-center max-w-md">Create the first project to start tracking unit types and inventory.</p>
           <button
             onClick={() => navigate(`/create-project?builderId=${builderId}`)}
             className="mt-5 flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-all shadow-sm"

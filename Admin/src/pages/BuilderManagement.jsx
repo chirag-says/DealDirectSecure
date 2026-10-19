@@ -352,7 +352,7 @@ export default function BuilderManagement() {
     }, [search]);
 
     const handleDeactivate = async (builder) => {
-        if (!window.confirm(`Deactivate "${builder.name}"? This will prevent new Group Buy projects for their properties.`)) return;
+        if (!window.confirm(`Deactivate "${builder.name}"? No new projects can be created for this builder.`)) return;
         try {
             await builderApi.delete(builder._id);
             toast.success("Builder deactivated");
@@ -427,7 +427,7 @@ export default function BuilderManagement() {
                     <div className="flex-1 flex flex-col justify-center items-center text-gray-400 py-24">
                         <Building2 className="w-16 h-16 mb-4 text-gray-200" />
                         <p className="text-lg font-semibold text-gray-600">No builders yet</p>
-                        <p className="text-sm mt-1">Add your first builder to enable Group Buy projects.</p>
+                        <p className="text-sm mt-1">Add your first builder to start listing their projects.</p>
                     </div>
                 ) : (
                     <div className="overflow-x-auto flex-1">

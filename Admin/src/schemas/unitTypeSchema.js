@@ -81,8 +81,9 @@ export const step8Schema = z.object({
   basePrice: optionalPositive,
   floorRisePerSqft: optionalNonNegative,
   viewPremium: optionalNonNegative,
-  // Payment terms — bounds are statutory ceilings, checked only when filled in.
-  bookingAmount: optionalNonNegative,
+  // Tax and registration costs, shown to buyers as cost information. Bounds
+  // are statutory ceilings, checked only when filled in. There is no booking
+  // amount: DealDirect takes no money from buyers.
   gstPercentage: z.preprocess(
     blankToUndefined,
     z.number().min(0, "Cannot be negative").max(28, "GST cannot exceed 28%").optional()

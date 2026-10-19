@@ -3,7 +3,7 @@ import { ExternalLink, Lock, RefreshCw } from 'lucide-react';
 import { privateFileKind } from '../utils/privateFiles';
 
 /**
- * A privately stored payment proof or deal document.
+ * A privately stored deal document.
  *
  * The page never holds a lasting link. `fetchLink` asks the API for one, which
  * checks the admin session, records the access, and returns a signed URL that
