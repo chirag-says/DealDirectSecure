@@ -12,7 +12,6 @@ import {
     AiOutlineHeart
 } from "react-icons/ai";
 import {
-    FaBuilding,
     FaMapMarkerAlt,
     FaChevronLeft,
     FaChevronRight,
@@ -25,13 +24,7 @@ import {
     FaRegClock,
     FaArrowRight
 } from "react-icons/fa";
-import {
-    Sparkles,
-    Construction,
-    KeyRound,
-    BadgeCheck,
-    FileText,
-} from "lucide-react";
+import { FileText } from "lucide-react";
 import HeroSection from "../components/HeroSection/HeroSection";
 const TopLocalities = dynamic(
   () => import("../components/TopLocalities/TopLocalities"),
@@ -43,6 +36,7 @@ const PressMarquee = dynamic(
 );
 import { formatPrice } from "../utils/formatPrice";
 import { cloudinaryImage, isCloudinaryImageUrl } from "../utils/cloudinaryImage";
+import ProjectCard from "../components/Projects/ProjectCard";
 
 import { FaRupeeSign } from "react-icons/fa";
 
@@ -98,26 +92,6 @@ const formatCategoryDisplay = (name) => {
     return value || "Property";
 };
 
-const PROJECT_FALLBACK_IMG = 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800';
-
-/**
- * Status colours match the /projects listing exactly, and every badge pairs the
- * colour with an icon and the status word — colour is never the only carrier.
- */
-const PROJECT_STATUS = {
-    'New Launch': { icon: Sparkles, pill: 'bg-blue-700' },
-    'Under Construction': { icon: Construction, pill: 'bg-amber-600' },
-    'Ready To Move': { icon: KeyRound, pill: 'bg-emerald-600' },
-    'Completed': { icon: BadgeCheck, pill: 'bg-slate-700' },
-};
-
-const compactPrice = (n) => {
-    if (!n || n <= 0) return null;
-    if (n >= 1e7) return `₹${(n / 1e7).toFixed(2).replace(/\.?0+$/, '')} Cr`;
-    if (n >= 1e5) return `₹${(n / 1e5).toFixed(0)} L`;
-    return `₹${n.toLocaleString('en-IN')}`;
-};
-
 /**
  * Width shared by both home rails. Four cards fill the desktop row exactly
  * (the old fixed 300px left the fourth card cut off at 1280px), two on
@@ -125,111 +99,6 @@ const compactPrice = (n) => {
  * scrollable.
  */
 const RAIL_CARD_WIDTH = 'w-[82%] sm:w-[calc((100%-1.5rem)/2)] lg:w-[calc((100%-4.5rem)/4)]';
-
-function BuilderProjectCard({ project }) {
-    const builderName = project.builder?.company || project.builder?.name;
-    const heroImg = project.media?.exteriorImages?.[0];
-    const projectName = project.basics?.name || 'Builder Project';
-    const status = project.basics?.status || 'New Launch';
-    const cfg = PROJECT_STATUS[status] || PROJECT_STATUS['New Launch'];
-    const StatusIcon = cfg.icon;
-    const loc = [project.location?.locality, project.location?.city].filter(Boolean).join(', ');
-    const rera = project.basics?.reraNumber?.trim();
-
-    const min = compactPrice(project.priceRange?.min);
-    const max = compactPrice(project.priceRange?.max);
-    const priceLabel = min && max && max !== min ? `${min} – ${max}` : min;
-
-    const possession = project.overview?.possessionDate
-        ? new Date(project.overview.possessionDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
-        : null;
-    const facts = [
-        ['Possession', possession],
-        ['Units', project.overview?.totalUnits > 0 ? project.overview.totalUnits.toLocaleString('en-IN') : null],
-        ['Type', project.basics?.subType || project.basics?.category],
-    ].filter(([, value]) => value);
-
-    return (
-        <Link
-            href={`/projects/${project._id}`}
-            className={`group flex ${RAIL_CARD_WIDTH} flex-shrink-0 snap-start flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2`}
-        >
-            <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
-                {/* Cloudinary photos are requested at the card size from
-                    Cloudinary itself and marked unoptimized, so the website's
-                    server does not download and resize them through /_next/image.
-                    Other sources (the Unsplash fallback) keep Next's default. */}
-                <Image
-                    src={cloudinaryImage(heroImg, "thumb") || PROJECT_FALLBACK_IMG}
-                    unoptimized={isCloudinaryImageUrl(heroImg)}
-                    alt={projectName}
-                    fill
-                    sizes="(min-width: 1024px) 300px, (min-width: 640px) 50vw, 82vw"
-                    className="object-cover transition-transform duration-700 group-hover:scale-105"
-                    onError={(e) => (e.currentTarget.src = PROJECT_FALLBACK_IMG)}
-                />
-                <span className={`absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm ${cfg.pill}`}>
-                    <StatusIcon className="h-3 w-3" aria-hidden="true" />
-                    {status}
-                </span>
-            </div>
-
-            <div className="flex flex-1 flex-col p-4">
-                <h3 className="line-clamp-2 text-base font-bold leading-snug tracking-tight text-gray-900 transition-colors group-hover:text-blue-800">
-                    {projectName}
-                </h3>
-                {builderName && (
-                    <p className="mt-0.5 truncate text-[13px] text-slate-500">
-                        by <span className="font-medium text-slate-700">{builderName}</span>
-                    </p>
-                )}
-                <p className="mt-2 flex items-center gap-1.5 text-sm text-gray-600">
-                    <FaMapMarkerAlt className="shrink-0 text-xs text-blue-600" aria-hidden="true" />
-                    <span className="truncate">{loc || 'India'}</span>
-                </p>
-
-                {/* Everything from the fact strip down is pinned to the card's
-                    foot as one block, so the strip, price, arrow and RERA line
-                    sit at the same height on every card in the row, whether the
-                    name above runs to one line or two. */}
-                <div className="mt-auto pt-3">
-                    {facts.length > 0 && (
-                        <dl className="flex divide-x divide-slate-200 rounded-xl bg-slate-50 py-2">
-                            {facts.map(([label, value]) => (
-                                <div key={label} className="min-w-0 flex-auto px-2.5">
-                                    <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt>
-                                    <dd className="mt-0.5 truncate text-[13px] font-semibold text-slate-800">{value}</dd>
-                                </div>
-                            ))}
-                        </dl>
-                    )}
-
-                    <div className="flex items-end justify-between gap-3 pt-4">
-                        <div className="min-w-0">
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Price</p>
-                            {priceLabel
-                                ? <p className="mt-0.5 whitespace-nowrap text-[17px] font-bold leading-tight tracking-tight text-gray-900 tabular-nums">{priceLabel}</p>
-                                : <p className="mt-0.5 text-sm font-medium text-slate-500">On request</p>}
-                        </div>
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-700 transition-colors group-hover:bg-blue-700 group-hover:text-white" aria-hidden="true">
-                            <FaArrowRight className="text-xs" />
-                        </span>
-                    </div>
-
-                    {/* The number as entered, not a tick: nothing checks it
-                        against a state RERA register. With no number the line still
-                        holds its height (invisible), keeping the price row level. */}
-                    <p
-                        className={`mt-3 truncate border-t border-slate-100 pt-2.5 text-[11px] text-slate-500 ${rera ? '' : 'invisible'}`}
-                        aria-hidden={rera ? undefined : true}
-                    >
-                        RERA <span className="font-mono text-slate-600">{rera || '-'}</span>
-                    </p>
-                </div>
-            </div>
-        </Link>
-    );
-}
 
 const HomeContent = ({ initialProperties = [], initialCategories = [], initialPropertyTypes = [], initialLatestPosts = [], initialBuilderProjects = [], propertiesUnavailable = false }) => {
     const [properties] = useState(initialProperties);
@@ -437,7 +306,12 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
 
                             <div ref={builderScrollRef} className="flex gap-6 overflow-x-auto pb-8 pt-2 snap-x snap-mandatory scroll-px-2 scrollbar-hide -mx-2 px-2">
                                 {builderProjects.slice(0, 8).map((project) => (
-                                    <BuilderProjectCard key={project._id} project={project} />
+                                    <ProjectCard
+                                        key={project._id}
+                                        project={project}
+                                        className={`${RAIL_CARD_WIDTH} flex-shrink-0 snap-start`}
+                                        sizes="(min-width: 1024px) 300px, (min-width: 640px) 50vw, 82vw"
+                                    />
                                 ))}
                             </div>
                         </div>
