@@ -48,28 +48,6 @@ import logo from "../../assets/dealdirect_logo.png";
 import api from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 
-// Omnibox-style relevance scoring (Same as HeroSection)
-const calculateRelevanceScore = (query, text) => {
-  if (!text) return 0;
-
-  const queryLower = query.toLowerCase();
-  const textLower = text.toLowerCase();
-
-  if (textLower === queryLower) return 100;
-  if (textLower.startsWith(queryLower)) return 90;
-
-  const words = textLower.split(/\s+/);
-  if (words.some(word => word.startsWith(queryLower))) return 80;
-  if (textLower.includes(queryLower)) return 70;
-
-  // Fuzzy match
-  let queryIndex = 0;
-  for (let i = 0; i < textLower.length && queryIndex < queryLower.length; i++) {
-    if (textLower[i] === queryLower[queryIndex]) queryIndex++;
-  }
-  return queryIndex === queryLower.length ? 50 : 0;
-};
-
 function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -190,78 +168,55 @@ function Navbar() {
     };
   }, [isAuthenticated]);
 
-  // Search Suggestions Logic
+  // Search suggestions come from GET /properties/suggestions, which matches
+  // titles, localities and cities in MongoDB and returns at most 8 rows of
+  // { type, value, subtitle, image? }. This used to download the whole
+  // /properties/property-list feed (up to 200 full listings) on every pause in
+  // typing and score it in the browser.
+  //
+  // Each run of this effect owns one AbortController. When the query changes,
+  // the cleanup clears the pending debounce, aborts the request in flight and
+  // marks the run stale, so a slow reply for an earlier query can never
+  // replace the suggestions for the current one.
   useEffect(() => {
+    const controller = new AbortController();
+    let stale = false;
+
     const fetchSuggestions = async () => {
-      if (!searchQuery || searchQuery.trim().length < 2) {
+      const term = searchQuery.trim();
+      if (term.length < 2) {
         setSuggestions([]);
         setShowSuggestions(false);
+        setIsLoadingSuggestions(false);
         return;
       }
 
       setIsLoadingSuggestions(true);
       try {
-        const response = await api.get('/properties/property-list');
-        const properties = response.data.data || [];
-
-        const searchTerm = searchQuery.toLowerCase().trim();
-        const scoredSuggestions = [];
-
-        properties.forEach(property => {
-          if (property.title) {
-            const score = calculateRelevanceScore(searchTerm, property.title);
-            if (score > 0) {
-              scoredSuggestions.push({
-                type: 'project',
-                value: property.title,
-                subtitle: `${property.city || ''} ${property.locality ? '• ' + property.locality : ''}`.trim(),
-                score,
-              });
-            }
-          }
-
-          if (property.locality) {
-            const score = calculateRelevanceScore(searchTerm, property.locality);
-            if (score > 0) {
-              scoredSuggestions.push({
-                type: 'locality',
-                value: property.locality,
-                subtitle: property.city || '',
-                score: score * 0.9,
-              });
-            }
-          }
-
-          if (property.city) {
-            const score = calculateRelevanceScore(searchTerm, property.city);
-            if (score > 0) {
-              scoredSuggestions.push({
-                type: 'city',
-                value: property.city,
-                subtitle: 'City',
-                score: score * 0.8,
-              });
-            }
-          }
+        const response = await api.get('/properties/suggestions', {
+          params: { q: term },
+          signal: controller.signal,
         });
-
-        const uniqueSuggestions = Array.from(
-          new Map(scoredSuggestions.map(item => [`${item.type}-${item.value}`, item])).values()
-        ).sort((a, b) => b.score - a.score).slice(0, 8);
-
-        setSuggestions(uniqueSuggestions);
-        setShowSuggestions(uniqueSuggestions.length > 0);
+        if (stale) return;
+        const list = Array.isArray(response.data?.suggestions) ? response.data.suggestions : [];
+        setSuggestions(list);
+        setShowSuggestions(list.length > 0);
         setSelectedIndex(-1);
       } catch (error) {
+        if (stale || error?.name === 'CanceledError' || error?.name === 'AbortError') return;
         console.error('Error fetching suggestions:', error);
         setSuggestions([]);
       } finally {
-        setIsLoadingSuggestions(false);
+        if (!stale) setIsLoadingSuggestions(false);
       }
     };
 
     const debounceTimer = setTimeout(fetchSuggestions, 200);
-    return () => clearTimeout(debounceTimer);
+    return () => {
+      stale = true;
+      clearTimeout(debounceTimer);
+      controller.abort();
+    };
   }, [searchQuery]);
 
   // Handle Click Outside for Suggestions
