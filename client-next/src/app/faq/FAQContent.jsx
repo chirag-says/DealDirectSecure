@@ -3,17 +3,19 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import {
-    Building2, ClipboardList, Gift, Lock,
     Search, X, Plus, Minus, ArrowRight, MessageCircle, LifeBuoy,
 } from "lucide-react";
+import { AboutIcon, KeyIcon, ListingIcon, ProjectIcon, GiftIcon, ShieldIcon } from "../../components/Icons/TopicIcons";
 import { faqCategories, allFaqs } from "./faqData";
 
 // faqData is serialisable, so it carries an icon *key*. Resolve it here.
 const ICONS = {
-    building: Building2,
-    list: ClipboardList,
-    gift: Gift,
-    lock: Lock,
+    about: AboutIcon,
+    key: KeyIcon,
+    listing: ListingIcon,
+    project: ProjectIcon,
+    gift: GiftIcon,
+    shield: ShieldIcon,
 };
 
 /**
@@ -73,7 +75,17 @@ function QuestionRow({ item, index, open, onToggle }) {
                     </span>
                 </button>
             </h3>
-            <Answer id={panelId} labelledBy={btnId} open={open}>{item.a}</Answer>
+            <Answer id={panelId} labelledBy={btnId} open={open}>
+                {item.a}
+                {item.link && (
+                    <>
+                        {" "}
+                        <Link href={item.link.href} className="font-medium text-red-600 underline underline-offset-2 hover:text-red-700">
+                            {item.link.label}
+                        </Link>
+                    </>
+                )}
+            </Answer>
         </div>
     );
 }
@@ -221,7 +233,7 @@ export default function FAQContent() {
                                                 : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                                                 }`}
                                         >
-                                            <Icon className="h-4 w-4 shrink-0" />
+                                            <Icon className="h-5 w-5 shrink-0" />
                                             {cat.title}
                                             <span className="ml-auto hidden text-xs tabular-nums text-slate-400 lg:inline">
                                                 {cat.questions.length}
@@ -276,7 +288,7 @@ export default function FAQContent() {
                                             aria-labelledby={`cat-h-${cat.id}`}
                                         >
                                             <div className="mb-5 flex items-start gap-3 border-b border-slate-200 pb-4">
-                                                <Icon className="mt-1 h-5 w-5 shrink-0 text-slate-400" />
+                                                <Icon className="mt-0.5 h-7 w-7 shrink-0 text-red-600" />
                                                 <div>
                                                     <h2 id={`cat-h-${cat.id}`} className="text-xl font-bold tracking-tight text-slate-900">
                                                         {cat.title}

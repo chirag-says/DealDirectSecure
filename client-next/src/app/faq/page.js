@@ -3,12 +3,12 @@ import { allFaqs } from "./faqData";
 import { FAQJsonLd, BreadcrumbJsonLd } from "../../components/JsonLd";
 
 export const metadata = {
-    title: "FAQs — Deal Direct",
+    title: "Help centre and FAQs",
     description:
-        "Frequently Asked Questions about DealDirect — learn about our zero brokerage policy, one-post-per-user rule, rewards program, referrals, and how we keep your data safe.",
+        "Answers about DealDirect: contacting owners, listing a property, builder projects, rewards points, and your account and privacy. No brokerage, no fees.",
     openGraph: {
-        title: "FAQs — DealDirect | India's No-Broker Property Platform",
-        description: "Get answers to all your questions about DealDirect — zero brokerage, rewards, referrals, and more.",
+        title: "Help centre and FAQs | DealDirect",
+        description: "How DealDirect works: contacting owners, listing a property, rewards points, and your account and privacy.",
         url: 'https://dealdirect.in/faq',
     },
     alternates: {
