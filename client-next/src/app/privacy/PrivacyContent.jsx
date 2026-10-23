@@ -1,228 +1,435 @@
-'use client';
+import Link from "next/link";
+import LegalDocument, { LegalTable, ToConfirm, legalLink } from "../../components/Legal/LegalDocument";
 
-import React, { useEffect, useState } from "react";
-import {
-    Shield, Lock, Eye, FileText, Server, Share2, Cookie, Mail, ChevronRight
-} from "lucide-react";
+/*
+ * Privacy notice for DealDirect under the Digital Personal Data Protection
+ * Act, 2023 (DPDP Act) and the DPDP Rules, 2025, replacing the earlier B2B
+ * notice. Structured as section 5 of the Act asks: what personal data, for
+ * what purpose, how to withdraw consent, how to exercise rights, how to
+ * complain to the Data Protection Board.
+ *
+ * Every data item, recipient and retention period below was read from the
+ * code on 2026-10-23 (backend models, services, TTL indexes and
+ * utils/aggregateDelete.js; website and app storage). If the code changes,
+ * this page must change with it.
+ *
+ * Draft for legal review. <ToConfirm> marks answers still awaited from the
+ * client (the 12-point list sent 2026-10-22).
+ */
 
-const PrivacyPolicy = () => {
-    const [activeSection, setActiveSection] = useState("introduction");
-    useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); }, []);
+const UPDATED = "23 October 2026";
+const GRIEVANCE_EMAIL = "grievance@dealdirect.in";
 
-    const sections = [
-        { id: "introduction", title: "Introduction", icon: Shield },
-        { id: "information-collection", title: "Information We Collect", icon: FileText },
-        { id: "data-usage", title: "How We Use Your Data", icon: Server },
-        { id: "data-sharing", title: "Data Sharing & Disclosure", icon: Share2 },
-        { id: "security", title: "Data Security", icon: Lock },
-        { id: "cookies", title: "Cookies & Tracking", icon: Cookie },
-        { id: "rights", title: "Your Rights", icon: Eye },
-        { id: "contact", title: "Contact & Grievance", icon: Mail },
-    ];
+const dataRows = [
+  [
+    "Account",
+    "Name, email address, mobile number and password (stored only as a one-way hash). If you sign in with Google: your Google account's name, email address and profile photo.",
+    "To create your account, sign you in and keep it secure.",
+  ],
+  [
+    "Mobile verification",
+    "Your mobile number and the one-time password (OTP) sent to it.",
+    "To confirm the number is yours before you list a property or send an enquiry, and to prevent fake accounts.",
+  ],
+  [
+    "Profile (optional)",
+    "Photo, alternate phone number, address, date of birth, gender and a short bio, if you add them.",
+    "To show your profile and fill in forms for you.",
+  ],
+  [
+    "Listings",
+    "Property address, map location, photos, price, description and features, and any documents you upload for verification.",
+    "To publish your listing and let buyers and tenants find it, and to check that it is genuine.",
+  ],
+  [
+    "Enquiries",
+    "When you tap “I'm interested”: your name, email address and mobile number, and the conversation history, visits and notes on that enquiry. For a builder project enquiry: your name, phone, email and message.",
+    "To put you in touch with the owner, or for our team to call you about the project.",
+  ],
+  [
+    "Saved items and searches",
+    "Your shortlist, saved searches and their alerts, and reviews you write after a verified deal.",
+    "To let you keep and return to properties, alert you to new matches, and show reviews.",
+  ],
+  [
+    "Deal verification",
+    "Documents you upload to show that a sale or letting has completed.",
+    "To verify the deal before reviews and rewards are released.",
+  ],
+  [
+    "Rewards and referrals",
+    "Your points history, referral code and who referred whom. When you open the rewards store, your name, email address and mobile number are passed to Hubble.",
+    "To run the rewards programme and the store.",
+  ],
+  [
+    "Support and reports",
+    "Messages you send us and reports you make about listings or users.",
+    "To answer you and act on reports.",
+  ],
+  [
+    "Device and security",
+    "IP address, browser or device type and user-agent of each signed-in session, app installation ID, push-notification token and app version.",
+    "To keep sessions secure, let you see and sign out of your devices, detect misuse, and deliver notifications.",
+  ],
+  [
+    "Usage",
+    "Actions you take in the app and website (for example, viewing a listing or starting an enquiry), linked to your account or app installation. IP addresses are not stored with these events.",
+    "To understand how DealDirect is used and improve it. We use no third-party analytics or advertising tools.",
+  ],
+  [
+    "Location",
+    "With your browser's or phone's permission, your approximate location, used to work out your city. On a listing, the map pin you set.",
+    "To show properties near you and place listings on the map.",
+  ],
+];
 
-    const scrollToSection = (id) => {
-        const el = document.getElementById(id);
-        if (el) {
-            const offset = 100;
-            const pos = el.getBoundingClientRect().top + window.scrollY - offset;
-            window.scrollTo({ top: pos, behavior: "smooth" });
-            setActiveSection(id);
-        }
-    };
+const recipientRows = [
+  ["Property owners", "When you send an enquiry: your name, email address and mobile number.", "So the owner can reply to you."],
+  ["Everyone on the Platform", "A published listing (without the owner's phone or email), the owner's name, and published reviews.", "This is what listings and reviews are for."],
+  ["Hostinger", "All Platform data, as our web and application host.", "Hosting."],
+  ["MongoDB Atlas", "All account, listing and enquiry data, as our database service.", "Database hosting."],
+  ["Cloudinary", "Profile photos, listing photos and verification documents.", "Image and document storage."],
+  ["Email service", "Your email address and the content of emails we send you.", "Sending account and enquiry emails."],
+  ["Equence", "Your mobile number and the OTP.", "Sending verification SMS."],
+  ["Meta (WhatsApp)", "Your mobile number and the message; for an enquiry, the owner receives the enquirer's name, email and phone.", "Sending WhatsApp notifications."],
+  ["Railway", "Hosts the gateway that sends our team WhatsApp alerts about new sign-ups, enquiries and contact messages (name, email and phone).", "Internal alerts to the DealDirect team."],
+  ["Expo", "Your push token and the notification text.", "Sending app notifications."],
+  ["Google", "Data needed to verify a Google sign-in.", "Sign in with Google."],
+  ["Hubble", "Your name, email address and mobile number, when you open the store.", "The rewards store."],
+  ["OpenStreetMap", "Map coordinates and address searches typed into the map.", "Showing maps and finding addresses."],
+  ["Sentry", "Technical details of errors, linked to an account ID and role. Screen text, form inputs and images are masked.", "Finding and fixing faults."],
+];
 
-    return (
-        <div className="min-h-screen bg-slate-50 font-sans">
-            {/* Header */}
-            <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white py-16 px-6 relative overflow-hidden">
-                <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_70%_50%,#10b981,transparent_70%)]" />
-                <div className="max-w-7xl mx-auto text-center relative z-10">
-                    <div className="flex justify-center mb-6">
-                        <div className="p-4 bg-white/10 rounded-full backdrop-blur-md">
-                            <Shield className="w-12 h-12 text-emerald-400" />
-                        </div>
-                    </div>
-                    <h1 className="text-4xl md:text-5xl font-bold mb-4">Privacy Policy</h1>
-                    <p className="text-slate-400 max-w-2xl mx-auto text-lg">
-                        At DealDirect, operated by <strong className="text-white">Agrawal Business Network LLP</strong>, we value your trust. This policy outlines how we collect, use, and protect your information on our B2B platform.
-                    </p>
-                    <p className="text-slate-500 text-sm mt-4">Last Updated: February 2026</p>
-                </div>
-            </div>
+const storageRows = [
+  ["user_session (cookie)", "Keeps you signed in. Not readable by page scripts.", "7 days"],
+  ["session_exists (cookie)", "Tells the website you are signed in, without exposing the session.", "7 days"],
+  ["csrf_token (cookie)", "Protects forms against cross-site request forgery.", "Session"],
+  ["dd_user_city, dd-theme, dealDirectRecentSearches, dd_proj_bookmarks (browser storage)", "Your city, display theme, recent searches and saved projects, kept on your device.", "Until you clear them"],
+  ["App secure storage and cache", "Your session, preferences and a cache of screens you opened (which can include enquiry details), stored on your phone. Excluded from phone backups on Android.", "Until you sign out or uninstall"],
+];
 
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 flex flex-col lg:flex-row gap-12">
-                {/* Sidebar */}
-                <div className="lg:w-1/4 hidden lg:block">
-                    <div className="sticky top-28 bg-white rounded-2xl shadow-sm border border-gray-200 p-2">
-                        {sections.map((s) => (
-                            <button key={s.id} onClick={() => scrollToSection(s.id)}
-                                className={`w-full flex items-center justify-between p-3 rounded-xl text-sm font-medium transition-all duration-200 ${activeSection === s.id ? "bg-emerald-50 text-emerald-700 shadow-sm" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
-                                <div className="flex items-center gap-3">
-                                    <s.icon className={`w-4 h-4 ${activeSection === s.id ? "text-emerald-600" : "text-gray-400"}`} />
-                                    {s.title}
-                                </div>
-                                {activeSection === s.id && <ChevronRight className="w-4 h-4" />}
-                            </button>
-                        ))}
-                    </div>
-                </div>
+const retentionRows = [
+  ["Signed-in sessions", "7 days, or until you sign out."],
+  ["One-time passwords", "10 minutes."],
+  ["Usage events", "90 days."],
+  ["Notifications you have read", "90 days."],
+  ["Message delivery logs", "8 days."],
+  ["Push tokens", "Removed 30 days after they stop working, or 180 days after a device was last seen."],
+  [
+    "Your account, profile, listings, shortlist, saved searches and notifications",
+    <>
+      Until you delete your account; then deleted, and listing photos are removed from image storage.{" "}
+      <ToConfirm>removal of profile photos from image storage, which is not yet automatic</ToConfirm>
+    </>,
+  ],
+  [
+    "Enquiries, verified deals and project enquiries (with the names and contact details in them)",
+    <>
+      Kept after you delete your account, because the other party to the enquiry or deal also relies on them.{" "}
+      <ToConfirm>how long these are kept</ToConfirm>
+    </>,
+  ],
+  [
+    "Backups and system logs",
+    <>
+      Kept for at least one year where the DPDP Rules require it, then deleted. <ToConfirm>backup and log retention (client question 13)</ToConfirm>
+    </>,
+  ],
+];
 
-                {/* Content */}
-                <div className="lg:w-3/4 space-y-12">
-                    <section id="introduction" className="scroll-mt-28">
-                        <h2 className="text-2xl font-bold text-gray-900 mb-4">Introduction</h2>
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-gray-600 leading-relaxed space-y-4">
-                            <p>Welcome to <strong>DealDirect</strong>, a venture by <strong>Agrawal Business Network LLP</strong>. This Privacy Policy is published in accordance with the provisions of the Information Technology Act, 2000, the Information Technology (Reasonable Security Practices and Procedures and Sensitive Personal Data or Information) Rules, 2011, and the IT (Intermediary Guidelines and Digital Media Ethics Code) Rules, 2021.</p>
-                            <p>This policy explains how we collect, use, disclose, and safeguard your information when you visit our website (<strong>www.dealdirect.in</strong>), use our mobile application, or engage with our B2B services. By using DealDirect, you consent to the data practices described in this policy.</p>
-                            <p>The Platform is a <strong>business-to-business (B2B)</strong> platform. All data collection is done in the context of commercial/business use.</p>
-                        </div>
-                    </section>
+const sections = [
+  {
+    id: "who-we-are",
+    title: "Who we are and what this notice covers",
+    body: (
+      <>
+        <p>
+          DealDirect is operated by <strong>Agrawal Business Network LLP</strong>, Growmore Tower, Sector 2, Plot No. 5,
+          Kharghar, Navi Mumbai 410210, Maharashtra (&ldquo;DealDirect&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;). For
+          the personal data described here, we are the Data Fiduciary under the Digital Personal Data Protection Act,
+          2023.
+        </p>
+        <p>
+          This notice explains what personal data we process when you use the dealdirect.in website or the DealDirect
+          app, why, who receives it, how long we keep it, and the rights you have. It follows the Digital Personal Data
+          Protection Act, 2023 and the Digital Personal Data Protection Rules, 2025, and the Information Technology Act,
+          2000 and the rules under it where they still apply.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "summary",
+    title: "The short version",
+    body: (
+      <ul>
+        <li>We collect what we need to run accounts, listings and enquiries, and to keep the Platform safe.</li>
+        <li>
+          When you send an enquiry, the owner receives your name, email address and mobile number. That is how they
+          reply.
+        </li>
+        <li>We do not sell your personal data, and we use no third-party advertising or analytics tools.</li>
+        <li>
+          You can see, correct and delete your data, withdraw consent, and complain to us or to the Data Protection
+          Board of India.
+        </li>
+      </ul>
+    ),
+  },
+  {
+    id: "data-we-process",
+    title: "Personal data we process, and why",
+    body: (
+      <>
+        <p>
+          We process the following personal data, each for the purpose shown next to it. We ask for your consent when you
+          create an account and when you use features that need more data (such as location). Where you give us data
+          voluntarily for a purpose, such as an enquiry, we use it for that purpose.
+        </p>
+        <LegalTable caption="Personal data and purposes" head={["What", "Personal data", "Why we use it"]} rows={dataRows} />
+        <p>
+          We do not ask for your PAN, Aadhaar or bank details to use the Platform. Do not include them in listings,
+          photos or messages.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "legitimate-uses",
+    title: "Processing without consent",
+    body: (
+      <p>
+        Section 7 of the DPDP Act allows some processing without consent. We rely on it only where it applies, for
+        example to comply with a law or a court order, to respond to a medical emergency or a threat to someone&rsquo;s
+        safety, or to use data you gave us voluntarily for the purpose you gave it for.
+      </p>
+    ),
+  },
+  {
+    id: "sharing",
+    title: "Who receives your personal data",
+    body: (
+      <>
+        <p>
+          We share personal data only as set out below. The service providers listed process it on our behalf, under
+          contract, and only to provide their service to us. <ToConfirm>data processing agreements with each provider (client question 8)</ToConfirm>
+        </p>
+        <LegalTable caption="Recipients of personal data" head={["Recipient", "What they receive", "Why"]} rows={recipientRows} />
+        <p>
+          Builder projects: enquiries reach the DealDirect team.{" "}
+          <ToConfirm>whether, and with what consent, the team passes enquirers&rsquo; details to builders (client question 6)</ToConfirm>
+        </p>
+        <p>
+          We may also disclose personal data to a government agency, court or regulator when the law requires it, and to
+          a successor if DealDirect&rsquo;s business is transferred, under the same protections. We do not sell personal
+          data or share it for others&rsquo; advertising.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "transfers",
+    title: "Processing outside India",
+    body: (
+      <p>
+        Some of the providers above store or process data outside India. Section 16 of the DPDP Act permits this,
+        except to any country the Central Government restricts, and we will follow any such restriction.{" "}
+        <ToConfirm>the countries and regions where each provider holds DealDirect data (client question 8)</ToConfirm>
+      </p>
+    ),
+  },
+  {
+    id: "cookies",
+    title: "Cookies and storage on your device",
+    body: (
+      <>
+        <p>
+          We use only the cookies and device storage needed for the Platform to work and to remember your choices. We do
+          not use advertising or tracking cookies.
+        </p>
+        <LegalTable caption="Cookies and device storage" head={["Name", "What it does", "How long"]} rows={storageRows} />
+      </>
+    ),
+  },
+  {
+    id: "retention",
+    title: "How long we keep personal data",
+    body: (
+      <>
+        <p>
+          We keep personal data only as long as its purpose needs, or as long as the law requires, and then delete it.
+        </p>
+        <LegalTable caption="Retention periods" head={["Data", "How long"]} rows={retentionRows} />
+        <p>
+          <Link href="/delete-account" className={legalLink}>Delete your account</Link> explains how to delete your
+          account and exactly what is removed and what is kept.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "rights",
+    title: "Your rights",
+    body: (
+      <>
+        <p>Under the DPDP Act you have the right to:</p>
+        <ul>
+          <li>
+            <strong>Access:</strong> a summary of the personal data we process about you and the processing we carry
+            out, and the identities of those we have shared it with.
+          </li>
+          <li>
+            <strong>Correction and erasure:</strong> have inaccurate or incomplete data corrected, completed or updated,
+            and have data erased when it is no longer needed. You can edit your profile and listings, and delete your
+            account, yourself in the app or on the website.
+          </li>
+          <li>
+            <strong>Withdraw consent:</strong> at any time, as easily as you gave it (see the next section).
+          </li>
+          <li>
+            <strong>Nominate:</strong> name another person to exercise your rights if you die or become unable to.
+          </li>
+          <li>
+            <strong>Grievance redressal:</strong> complain to us, and then to the Data Protection Board of India.
+          </li>
+        </ul>
+        <p>
+          For anything you cannot do yourself in the app or on the website, write to{" "}
+          <a href={`mailto:${GRIEVANCE_EMAIL}`} className={legalLink}>{GRIEVANCE_EMAIL}</a> from the email address on
+          your account, or include your registered mobile number. We may ask you to confirm your identity. We will
+          respond within the time the DPDP Rules allow, and in any case within 90 days.{" "}
+          <ToConfirm>a shorter response time, if the client commits to one (client question 3)</ToConfirm>
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "consent",
+    title: "Consent and withdrawing it",
+    body: (
+      <>
+        <ul>
+          <li>
+            Location: turn it off in your browser&rsquo;s site settings or your phone&rsquo;s app permissions. You can
+            still choose a city by hand.
+          </li>
+          <li>Notifications: change email, SMS and WhatsApp preferences in your account settings, or turn off app notifications on your phone.</li>
+          <li>
+            Promotional messages: we send them only if you agree to receive them, and every such message explains how to
+            stop them. <ToConfirm>how users opt in to and out of promotional messages (client question 5)</ToConfirm>
+          </li>
+          <li>Everything else: delete your account, or write to us.</li>
+        </ul>
+        <p>
+          Withdrawing consent does not affect processing that took place before. Some features, such as enquiries, cannot
+          work without the data they need, so withdrawing consent for them may mean closing your account.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "children",
+    title: "Children",
+    body: (
+      <p>
+        DealDirect is meant for adults. You must be 18 or older to create an account. We do not knowingly process the
+        personal data of anyone under 18; if we learn that we have, without verifiable consent from a parent or lawful
+        guardian, we will delete it. <ToConfirm>that DealDirect is for adults only (client question 4)</ToConfirm>
+      </p>
+    ),
+  },
+  {
+    id: "security",
+    title: "How we protect personal data",
+    body: (
+      <>
+        <p>We use reasonable security safeguards, including:</p>
+        <ul>
+          <li>encryption of data in transit (HTTPS);</li>
+          <li>passwords stored only as one-way hashes, and sign-in sessions held in cookies that page scripts cannot read;</li>
+          <li>sessions that expire, and a list of your signed-in devices that you can sign out of;</li>
+          <li>limits on repeated sign-in and OTP attempts;</li>
+          <li>access to personal data limited to the staff and providers who need it;</li>
+          <li>error monitoring that masks screen text, form inputs and images.</li>
+        </ul>
+        <p>
+          If a personal data breach affects you, we will tell you without delay, in the way the DPDP Rules require, and
+          report it to the Data Protection Board of India.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "duties",
+    title: "Your duties",
+    body: (
+      <p>
+        The DPDP Act also asks you not to impersonate anyone, not to suppress material information, to give only true
+        information when you ask us to correct your data, and not to file false or frivolous complaints.
+      </p>
+    ),
+  },
+  {
+    id: "changes",
+    title: "Changes to this notice",
+    body: (
+      <p>
+        We will update this notice when our processing or the law changes, and show the date at the top. If a change is
+        material, we will tell you in the app or by email before it takes effect, and ask for fresh consent where the law
+        requires it.
+      </p>
+    ),
+  },
+  {
+    id: "contact",
+    title: "Grievance officer and the Data Protection Board",
+    body: (
+      <>
+        <p>For questions about this notice, to exercise your rights, or to complain, contact our Grievance Officer:</p>
+        <address className="not-italic rounded-xl border border-slate-200 bg-slate-50 p-5 leading-relaxed">
+          <strong>Ms. Arti Jadhav</strong>, Grievance Officer{" "}
+          <ToConfirm>designation and official email (client question 1)</ToConfirm>
+          <br />
+          Agrawal Business Network LLP
+          <br />
+          Growmore Tower, Sector 2, Plot No. 5, Kharghar, Navi Mumbai 410210, Maharashtra
+          <br />
+          Email: <a href={`mailto:${GRIEVANCE_EMAIL}`} className={legalLink}>{GRIEVANCE_EMAIL}</a>
+          <br />
+          Phone: +91 92896 38963, Monday to Friday, 10:00 am to 6:00 pm
+        </address>
+        <p>
+          If you are not satisfied with our response, or we do not respond within the time allowed, you may complain to
+          the Data Protection Board of India in the manner it prescribes.
+        </p>
+        <p>
+          This notice is available in English. On request to{" "}
+          <a href="mailto:info@dealdirect.in" className={legalLink}>info@dealdirect.in</a>, we will provide it in any
+          language listed in the Eighth Schedule to the Constitution of India.{" "}
+          <ToConfirm>which languages to publish in advance (client question 11)</ToConfirm>
+        </p>
+      </>
+    ),
+  },
+];
 
-                    <section id="information-collection" className="scroll-mt-28">
-                        <h2 className="text-2xl font-bold text-gray-900 mb-4">Information We Collect</h2>
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 space-y-6">
-                            <div>
-                                <h3 className="text-lg font-semibold text-gray-800 mb-2">1. Business & Identity Information</h3>
-                                <ul className="list-disc pl-5 text-gray-600 space-y-1">
-                                    <li><strong>Registration Data:</strong> Business name, entity type, name, email, phone number, business address.</li>
-                                    <li><strong>Verification Data:</strong> PAN, Aadhaar, GST registration number, and other documents as required for account verification.</li>
-                                    <li><strong>Bank Details:</strong> Bank account information for payment settlement purposes.</li>
-                                </ul>
-                            </div>
-                            <div>
-                                <h3 className="text-lg font-semibold text-gray-800 mb-2">2. Transaction Data</h3>
-                                <p className="text-gray-600">Order details, product listings, payment history, invoices, delivery notes, and settlement records.</p>
-                            </div>
-                            <div>
-                                <h3 className="text-lg font-semibold text-gray-800 mb-2">3. Communications</h3>
-                                <p className="text-gray-600">Messages exchanged between Buyers and Sellers via the Platform, support tickets, and grievance submissions.</p>
-                            </div>
-                            <div>
-                                <h3 className="text-lg font-semibold text-gray-800 mb-2">4. Technical Data</h3>
-                                <p className="text-gray-600">IP address, browser type, device information, access times, pages viewed, and referring URL.</p>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section id="data-usage" className="scroll-mt-28">
-                        <h2 className="text-2xl font-bold text-gray-900 mb-4">How We Use Your Data</h2>
-                        <div className="grid md:grid-cols-2 gap-4">
-                            {[
-                                { title: "Account Management", desc: "To register and manage your account, verify identity, and maintain your business profile on the Platform." },
-                                { title: "Order Fulfilment", desc: "To process orders, manage logistics, coordinate deliveries, handle payments and settlements between Buyers and Sellers." },
-                                { title: "Communication", desc: "To send OTPs, order confirmations, delivery updates, payment notifications via email, SMS, WhatsApp, or in-app notifications." },
-                                { title: "Legal & Tax Compliance", desc: "To comply with GST, TDS/TCS obligations, and other regulatory requirements under Indian law." },
-                                { title: "Platform Improvement", desc: "To analyse usage patterns, improve services, develop new features, and enhance user experience." },
-                                { title: "Security & Fraud Prevention", desc: "To detect and prevent fraud, unauthorized access, and other illegal activities on the Platform." },
-                            ].map((item, i) => (
-                                <div key={i} className="bg-white p-5 rounded-2xl border border-gray-200">
-                                    <h3 className="font-semibold text-gray-800 mb-2">{item.title}</h3>
-                                    <p className="text-sm text-gray-600">{item.desc}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </section>
-
-                    <section id="data-sharing" className="scroll-mt-28">
-                        <h2 className="text-2xl font-bold text-gray-900 mb-4">Data Sharing & Disclosure</h2>
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-gray-600 space-y-4">
-                            <p>We do not sell your personal data. However, we may share data in the following circumstances:</p>
-                            <ul className="space-y-3">
-                                {[
-                                    { label: "Between Buyers & Sellers", text: "Transaction-related information is shared between parties to facilitate orders, deliveries, and payments." },
-                                    { label: "Third-Party Service Providers", text: "We engage logistics partners, payment processors, warehousing partners, and technology providers who process data on our behalf." },
-                                    { label: "Verification Partners", text: "Identity and business verification services to validate your account information." },
-                                    { label: "Legal Requirements", text: "We may disclose information if required by law, court order, government authority, or to protect our rights and safety." },
-                                    { label: "With Your Consent", text: "Any other sharing will be done with your explicit consent." },
-                                ].map((item, i) => (
-                                    <li key={i} className="flex gap-3">
-                                        <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2" />
-                                        <span><strong>{item.label}:</strong> {item.text}</span>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    </section>
-
-                    <section id="security" className="scroll-mt-28">
-                        <h2 className="text-2xl font-bold text-gray-900 mb-4">Data Security</h2>
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                            <p className="text-gray-600 mb-4">We implement robust security measures to protect your data, including:</p>
-                            <div className="grid md:grid-cols-3 gap-4 text-center">
-                                <div className="p-4 bg-slate-50 rounded-xl">
-                                    <Lock className="w-8 h-8 text-green-500 mx-auto mb-2" />
-                                    <h4 className="font-semibold text-gray-800">Encryption</h4>
-                                    <p className="text-xs text-gray-500">Passwords are hashed. Data is encrypted in transit (SSL/TLS).</p>
-                                </div>
-                                <div className="p-4 bg-slate-50 rounded-xl">
-                                    <Shield className="w-8 h-8 text-blue-500 mx-auto mb-2" />
-                                    <h4 className="font-semibold text-gray-800">Secure Access</h4>
-                                    <p className="text-xs text-gray-500">Token-based authentication and role-based access controls.</p>
-                                </div>
-                                <div className="p-4 bg-slate-50 rounded-xl">
-                                    <Eye className="w-8 h-8 text-purple-500 mx-auto mb-2" />
-                                    <h4 className="font-semibold text-gray-800">Monitoring</h4>
-                                    <p className="text-xs text-gray-500">Regular security audits and infrastructure monitoring.</p>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section id="cookies" className="scroll-mt-28">
-                        <h2 className="text-2xl font-bold text-gray-900 mb-4">Cookies & Tracking</h2>
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-gray-600 space-y-3">
-                            <p>We use cookies and similar tracking technologies to enhance your experience:</p>
-                            <ul className="list-disc pl-5 space-y-2">
-                                <li><strong>Essential Cookies:</strong> Required for authentication, session management, and security.</li>
-                                <li><strong>Analytics Cookies:</strong> Help us understand how users interact with the Platform to improve performance.</li>
-                                <li><strong>Preference Cookies:</strong> Store your language and display preferences.</li>
-                            </ul>
-                            <p>You can manage cookie preferences through your browser settings. Disabling cookies may affect Platform functionality.</p>
-                        </div>
-                    </section>
-
-                    <section id="rights" className="scroll-mt-28">
-                        <h2 className="text-2xl font-bold text-gray-900 mb-4">Your Rights</h2>
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-gray-600 space-y-3">
-                            <p>Subject to applicable law, you have the right to:</p>
-                            <ul className="list-disc pl-5 space-y-2">
-                                <li><strong>Access:</strong> Request access to your personal data held by us.</li>
-                                <li><strong>Correction:</strong> Request correction of inaccurate or incomplete data.</li>
-                                <li><strong>Deletion:</strong> Request deletion of your account and associated data (subject to legal retention requirements).</li>
-                                <li><strong>Withdraw Consent:</strong> Withdraw consent for data processing, where applicable.</li>
-                                <li><strong>Data Portability:</strong> Request a copy of your data in a structured, machine-readable format.</li>
-                            </ul>
-                            <p>To exercise any of these rights, please contact our Grievance Officer using the details below.</p>
-                        </div>
-                    </section>
-
-                    <section id="contact" className="scroll-mt-28 mb-20">
-                        <h2 className="text-2xl font-bold text-gray-900 mb-4">Contact & Grievance Officer</h2>
-                        <div className="bg-slate-900 text-white p-8 rounded-3xl">
-                            <p className="mb-6 text-slate-300">If you have questions about this Privacy Policy, wish to exercise your data rights, or have any grievance, please contact:</p>
-                            <div className="space-y-4">
-                                <div>
-                                    <p className="font-bold text-lg">Arti Jadhav</p>
-                                    <p className="text-slate-400 text-sm">Grievance Officer</p>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <Mail className="text-emerald-400" />
-                                    <span>grievance@dealdirect.in</span>
-                                </div>
-                                <div className="flex items-start gap-3">
-                                    <Server className="text-emerald-400 mt-1" />
-                                    <div>
-                                        <p className="font-semibold">Agrawal Business Network LLP</p>
-                                        <p className="text-slate-400 text-sm">Growmore tower sector 2, plot no 5,<br />kharghar, Navi Mumbai 410210</p>
-                                    </div>
-                                </div>
-                                <p className="text-slate-400 text-sm">Phone: +91 92-8963 8963 | Mon – Fri (10:00 AM – 06:00 PM)</p>
-                            </div>
-                        </div>
-                    </section>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-export default PrivacyPolicy;
+export default function PrivacyContent() {
+  return (
+    <LegalDocument
+      title="Privacy Policy"
+      effective={UPDATED}
+      updated={UPDATED}
+      summary={
+        <p>
+          How DealDirect collects, uses, shares and protects your personal data, and how to exercise your rights under
+          the Digital Personal Data Protection Act, 2023.
+        </p>
+      }
+      sections={sections}
+      related={[
+        { href: "/terms", label: "Terms of Use" },
+        { href: "/delete-account", label: "Delete your account" },
+      ]}
+    />
+  );
+}

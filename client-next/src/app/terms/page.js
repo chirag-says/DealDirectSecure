@@ -3,10 +3,10 @@ import TermsContent from "./TermsContent";
 export const metadata = {
     title: "Terms of Use",
     description:
-        "Read DealDirect's Terms of Use. Understand the rules and obligations governing your use of India's leading no-broker B2B property platform.",
+        "The terms for using DealDirect, a free platform where owners list property and buyers and tenants contact them directly. No brokerage, no fees.",
     openGraph: {
         title: "Terms of Use | DealDirect",
-        description: "Terms and conditions governing the use of the DealDirect platform.",
+        description: "The terms for listing a property, contacting owners and using DealDirect.",
         url: 'https://dealdirect.in/terms',
     },
     alternates: {

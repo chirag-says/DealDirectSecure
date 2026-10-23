@@ -3,10 +3,10 @@ import PrivacyContent from "./PrivacyContent";
 export const metadata = {
     title: "Privacy Policy",
     description:
-        "Read DealDirect's Privacy Policy. Learn how we collect, use, and protect your information on India's leading no-broker property platform.",
+        "How DealDirect collects, uses, shares and protects personal data, and how to exercise your rights under the Digital Personal Data Protection Act, 2023.",
     openGraph: {
         title: "Privacy Policy | DealDirect",
-        description: "How DealDirect handles your data — transparent, secure, and compliant with Indian IT regulations.",
+        description: "What personal data DealDirect processes, who receives it, how long it is kept, and your rights under the DPDP Act, 2023.",
         url: 'https://dealdirect.in/privacy',
     },
     alternates: {
