@@ -21,7 +21,13 @@ export const metadata = {
 // Server-side data fetching with timeout + graceful fallback
 async function getHomeData() {
   const [propsData, catsData, ptData, blogData, projectsData] = await ssrFetchAll([
-    { path: '/api/properties/property-list', revalidate: 120 },
+    // The home page renders 8 listings, picked by highest price. This used to
+    // download the whole /properties/property-list feed (up to 200 listings)
+    // and sort it in HomeContent. /properties/search sorts by price in MongoDB,
+    // returns only the 8 rows shown, and leaves out sold, rented and inactive
+    // listings. Its response is { data, total, page, pages, limit }, so
+    // `propsData.data` below reads it unchanged.
+    { path: '/api/properties/search?sort=priceDesc&limit=8', revalidate: 120 },
     { path: '/api/categories/list-category', revalidate: 3600 },
     { path: '/api/propertyTypes/list-propertytype', revalidate: 3600 },
     { path: '/api/blogs?limit=3', revalidate: 600 },

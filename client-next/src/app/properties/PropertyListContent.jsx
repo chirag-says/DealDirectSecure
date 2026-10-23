@@ -388,7 +388,7 @@ export const buildSearchParams = (filters, page, propertyTypes = []) => {
   return params;
 };
 
-const PropertyPage = ({ initialProperties = [], initialCategories = [], propertiesApiUrl = '/properties/property-list' }) => {
+const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();

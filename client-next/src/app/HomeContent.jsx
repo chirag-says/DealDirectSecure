@@ -82,15 +82,6 @@ const parseBudgetValue = (label) => {
     return Number.isNaN(numeric) ? null : Math.round(numeric);
 };
 
-const normalizePrice = (price, unit) => {
-    const amount = Number(price) || 0;
-    const normalizedUnit = (unit || "").toLowerCase();
-
-    if (normalizedUnit.includes("crore")) return amount * 10000000;
-    if (normalizedUnit.includes("lac") || normalizedUnit.includes("lakh")) return amount * 100000;
-    return amount;
-};
-
 const formatCategoryDisplay = (name) => {
     const value = (name || "").toString();
     const lower = value.toLowerCase();
@@ -337,8 +328,12 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
                             </button>
 
                             <div ref={scrollRef} className="flex gap-6 overflow-x-auto pb-8 pt-2 snap-x snap-mandatory scrollbar-hide px-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                                {[...properties]
-                                    .sort((a, b) => normalizePrice(b.price, b.priceUnit) - normalizePrice(a.price, a.priceUnit))
+                                {/* page.js asks /properties/search for the 8 highest-priced
+                                    listings, already sorted. The browser-side re-sort through
+                                    normalizePrice is gone: it multiplied `price` by 1e5 or 1e7
+                                    from `priceUnit`, which is a display label, not a scale
+                                    (see the note in properties/PropertyListContent.jsx). */}
+                                {properties
                                     .slice(0, 8)
                                     .map((property) => (
                                         <div
