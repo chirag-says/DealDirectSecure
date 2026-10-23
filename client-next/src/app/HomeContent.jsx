@@ -42,6 +42,7 @@ const PressMarquee = dynamic(
   { ssr: false, loading: () => <div style={{ minHeight: '80px' }} /> }
 );
 import { formatPrice } from "../utils/formatPrice";
+import { cloudinaryImage, isCloudinaryImageUrl } from "../utils/cloudinaryImage";
 
 import { FaRupeeSign } from "react-icons/fa";
 
@@ -152,8 +153,13 @@ function BuilderProjectCard({ project, onOpen }) {
                     {project.basics?.subType || project.basics?.category || 'Residential'}
                 </span>
 
+                {/* Cloudinary photos are requested at the 400px card size from
+                    Cloudinary itself and marked unoptimized, so the website's
+                    server does not download and resize them through /_next/image.
+                    Other sources (the Unsplash fallback) keep Next's default. */}
                 <Image
-                    src={heroImg || PROJECT_FALLBACK_IMG}
+                    src={cloudinaryImage(heroImg, "thumb") || PROJECT_FALLBACK_IMG}
+                    unoptimized={isCloudinaryImageUrl(heroImg)}
                     alt={projectName}
                     fill
                     sizes="300px"
@@ -346,8 +352,10 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
                                                     {formatCategoryDisplay(property.category?.name || property.categoryName || property.category || property.propertyCategory)}
                                                 </div>
                                                 <div className="relative h-full w-full">
+                                                    {/* Same Cloudinary handling as the project card above. */}
                                                     <Image
-                                                        src={resolveImageSrc(property.images?.[0])}
+                                                        src={cloudinaryImage(resolveImageSrc(property.images?.[0]), "thumb")}
+                                                        unoptimized={isCloudinaryImageUrl(resolveImageSrc(property.images?.[0]))}
                                                         alt={property.title}
                                                         fill
                                                         sizes="300px"

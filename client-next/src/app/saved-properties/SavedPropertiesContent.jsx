@@ -20,6 +20,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import api from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { formatPrice } from "../../utils/formatPrice";
+import { cloudinaryImage } from "../../utils/cloudinaryImage";
 
 // Property Card Component
 const PropertyCard = ({ property, onRemove, onViewDetails }) => {
@@ -78,7 +79,7 @@ const PropertyCard = ({ property, onRemove, onViewDetails }) => {
         >
             <div className="relative h-52 overflow-hidden">
                 <img
-                    src={getMainImage()}
+                    src={cloudinaryImage(getMainImage(), "thumb")}
                     alt={property.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />

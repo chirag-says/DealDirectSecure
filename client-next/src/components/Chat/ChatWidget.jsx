@@ -15,6 +15,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "react-toastify";
 import VisitModal from "../VisitModal/VisitModal";
+import { cloudinaryImage } from "../../utils/cloudinaryImage";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -91,7 +92,7 @@ const ConversationItem = ({ conversation, isActive, onClick }) => {
       <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-gray-200">
         {propertyImage ? (
           <img
-            src={buildImageUrl(propertyImage)}
+            src={cloudinaryImage(buildImageUrl(propertyImage), "thumb")}
             alt="Property"
             className="w-full h-full object-cover"
           />
@@ -401,7 +402,7 @@ const ChatWidget = () => {
                 <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-200 flex-shrink-0">
                   {currentConversation.property.images?.[0] && (
                     <img
-                      src={buildImageUrl(currentConversation.property.images[0])}
+                      src={cloudinaryImage(buildImageUrl(currentConversation.property.images[0]), "thumb")}
                       alt=""
                       className="w-full h-full object-cover"
                     />

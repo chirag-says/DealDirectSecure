@@ -14,6 +14,7 @@ import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-lea
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import api from "../../../utils/api";
+import { cloudinaryImage } from "../../../utils/cloudinaryImage";
 import { useAuth } from "../../../context/AuthContext";
 import PriceGuidance from "../../../components/PriceGuidance/PriceGuidance";
 
@@ -1228,7 +1229,7 @@ export default function EditProperty() {
                                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                                                     {existingCategorizedImages[category.key]?.map((img, idx) => (
                                                         <div key={`existing-${idx}`} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200">
-                                                            <img src={img} alt={`${category.label} ${idx + 1}`} className="w-full h-full object-cover" />
+                                                            <img src={cloudinaryImage(img, "thumb")} alt={`${category.label} ${idx + 1}`} className="w-full h-full object-cover" />
                                                             <button
                                                                 type="button"
                                                                 onClick={() => removeCategorizedImage(category.key, idx, true)}

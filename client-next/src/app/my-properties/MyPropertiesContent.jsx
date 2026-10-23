@@ -6,6 +6,7 @@ import { toast } from "react-toastify";
 import api from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { formatPrice } from "../../utils/formatPrice";
+import { cloudinaryImage } from "../../utils/cloudinaryImage";
 import {
   Home,
   Building2,
@@ -244,7 +245,7 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, onViewLeads, 
       {/* Image Section */}
       <div className="relative h-48 overflow-hidden rounded-t-xl">
         <img
-          src={getMainImage()}
+          src={cloudinaryImage(getMainImage(), "thumb")}
           alt={property.title}
           loading="lazy"
           onError={(e) => {

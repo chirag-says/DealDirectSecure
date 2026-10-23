@@ -28,6 +28,7 @@ import { toast } from "react-toastify";
 import api from "../../../utils/api";
 import { useAuth } from "../../../context/AuthContext";
 import { formatPrice } from "../../../utils/formatPrice";
+import { cloudinaryImage } from "../../../utils/cloudinaryImage";
 import PriceIntelligence from "../../../components/PriceIntelligence/PriceIntelligence";
 import OwnerSignals from "../../../components/PriceIntelligence/OwnerSignals";
 import SaveButton, { SAVE_PRIVACY_NOTE } from "../../../components/Shortlist/SaveButton";
@@ -987,8 +988,7 @@ const PropertyDetails = ({ initialProperty }) => {
               >
                 <img
                   src={
-                    imgs[activeImage] ||
-                    buildImageUrl(property.image) ||
+                    cloudinaryImage(imgs[activeImage] || buildImageUrl(property.image), "medium") ||
                     FALLBACK_IMAGE
                   }
                   alt={property.title}
@@ -1115,7 +1115,7 @@ const PropertyDetails = ({ initialProperty }) => {
                         }`}
                     >
                       <img
-                        src={img}
+                        src={cloudinaryImage(img, "thumb")}
                         alt=""
                         className="h-20 w-28 object-cover"
                         onError={(e) => {
@@ -1574,7 +1574,7 @@ const PropertyDetails = ({ initialProperty }) => {
 
           {/* Image */}
           <img
-            src={imgs[activeImage] || FALLBACK_IMAGE}
+            src={cloudinaryImage(imgs[activeImage], "full") || FALLBACK_IMAGE}
             alt={property.title}
             onClick={(e) => e.stopPropagation()}
             className="max-h-[85vh] max-w-[92vw] object-contain select-none rounded-lg shadow-2xl"
@@ -1615,7 +1615,7 @@ const PropertyDetails = ({ initialProperty }) => {
                   aria-label={`View image ${i + 1}`}
                 >
                   <img
-                    src={img}
+                    src={cloudinaryImage(img, "thumb")}
                     alt=""
                     className="h-full w-full object-cover"
                     onError={(e) => {

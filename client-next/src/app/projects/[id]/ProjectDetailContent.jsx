@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { FaMapMarkerAlt, FaPhoneAlt, FaWhatsapp, FaEnvelope, FaCheckCircle, FaFilePdf, FaBed, FaBath, FaRulerCombined, FaCompass, FaCouch } from 'react-icons/fa';
 import { Building2, CheckCircle, ChevronLeft, ChevronRight, Layers, ListChecks, Shield, MapPin, Home, Calendar, TreePine, Key, Building, BarChart3, HardHat, Landmark, FileText, Award, PlayCircle, X } from 'lucide-react';
 import ddAdminPfp from '../../../assets/clientadminpfp.png';
+import { cloudinaryImage } from '../../../utils/cloudinaryImage';
 
 // Leaflet reads `window` at module scope, so this cannot be server-rendered —
 // it would not degrade the map, it would throw and take the page with it.
@@ -32,7 +33,7 @@ function ImageGallery({ images = [] }) {
   return (
     <div>
       <div className="relative h-72 sm:h-[400px] rounded-2xl overflow-hidden bg-slate-900">
-        <img src={all[idx] || FALLBACK} alt="Project" className="w-full h-full object-cover" onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK; }} />
+        <img src={cloudinaryImage(all[idx], "medium") || FALLBACK} alt="Project" className="w-full h-full object-cover" onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK; }} />
         {all.length > 1 && (<>
           <button onClick={() => setIdx(i => (i - 1 + all.length) % all.length)} className="absolute left-3 top-1/2 -translate-y-1/2 p-2.5 bg-white/90 text-slate-800 rounded-full hover:bg-white transition shadow-lg"><ChevronLeft size={18} /></button>
           <button onClick={() => setIdx(i => (i + 1) % all.length)} className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 bg-white/90 text-slate-800 rounded-full hover:bg-white transition shadow-lg"><ChevronRight size={18} /></button>
@@ -43,7 +44,7 @@ function ImageGallery({ images = [] }) {
         <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
           {all.map((img, i) => (
             <button key={i} onClick={() => setIdx(i)} className={`flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition ${i === idx ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-transparent hover:border-slate-300'}`}>
-              <img src={img} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK; }} />
+              <img src={cloudinaryImage(img, "thumb")} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK; }} />
             </button>
           ))}
         </div>
@@ -253,7 +254,7 @@ export default function ProjectDetailContent({ project, unitTypes = [] }) {
                       {toArray(u.images).length > 0 && (
                         <div className="grid grid-cols-3 gap-2 mt-3">
                           {toArray(u.images).map((img, j) => (
-                            <img key={j} src={img} alt={`${u.title} ${j + 1}`}
+                            <img key={j} src={cloudinaryImage(img, "thumb")} alt={`${u.title} ${j + 1}`}
                               className="w-full h-24 object-cover rounded-lg border border-slate-100"
                               onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK; }} />
                           ))}
@@ -278,7 +279,7 @@ export default function ProjectDetailContent({ project, unitTypes = [] }) {
               </h2>
               <div className="flex items-start gap-4">
                 {p.builder.logoUrl && (
-                  <img src={p.builder.logoUrl} alt={p.builder.company || p.builder.name}
+                  <img src={cloudinaryImage(p.builder.logoUrl, "thumb")} alt={p.builder.company || p.builder.name}
                     className="w-14 h-14 rounded-xl object-cover border border-slate-200 shrink-0" />
                 )}
                 <div className="min-w-0">
@@ -357,7 +358,7 @@ export default function ProjectDetailContent({ project, unitTypes = [] }) {
                   <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-1">Developer</p>
                   <div className="flex items-center gap-2">
                     {p.builder.logoUrl ? (
-                      <img src={p.builder.logoUrl} alt={p.builder.company || p.builder.name} className="w-7 h-7 rounded-md object-cover border border-slate-200" />
+                      <img src={cloudinaryImage(p.builder.logoUrl, "thumb")} alt={p.builder.company || p.builder.name} className="w-7 h-7 rounded-md object-cover border border-slate-200" />
                     ) : null}
                     <p className="font-semibold text-slate-700 text-sm">{p.builder.company || p.builder.name}</p>
                   </div>
@@ -400,7 +401,7 @@ export default function ProjectDetailContent({ project, unitTypes = [] }) {
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     {toArray(p.media.amenityImages).map((url, i) => (
                       <div key={i} className="rounded-xl overflow-hidden border border-slate-100">
-                        <img src={url} alt={`Amenity ${i + 1}`} className="w-full h-24 object-cover" onError={e => { e.target.onerror = null; e.target.src = FALLBACK; }} />
+                        <img src={cloudinaryImage(url, "thumb")} alt={`Amenity ${i + 1}`} className="w-full h-24 object-cover" onError={e => { e.target.onerror = null; e.target.src = FALLBACK; }} />
                       </div>
                     ))}
                   </div>
@@ -529,7 +530,7 @@ export default function ProjectDetailContent({ project, unitTypes = [] }) {
                   {masterPlanImages.map((img, i) => (
                     <button key={i} onClick={() => setZoomed(img)}
                       className="block w-full rounded-xl overflow-hidden bg-slate-50 border border-slate-100 hover:border-indigo-300 transition group">
-                      <img src={img} alt={`Master Plan ${masterPlanImages.length > 1 ? i + 1 : ''}`}
+                      <img src={cloudinaryImage(img, "medium")} alt={`Master Plan ${masterPlanImages.length > 1 ? i + 1 : ''}`}
                         className="w-full max-h-72 object-contain"
                         onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK; }} />
                       <span className="block text-[11px] text-slate-400 group-hover:text-indigo-500 py-1.5 transition">
@@ -563,7 +564,7 @@ export default function ProjectDetailContent({ project, unitTypes = [] }) {
             <X size={18} className="text-slate-800" />
           </button>
           <img
-            src={zoomed}
+            src={cloudinaryImage(zoomed, "full")}
             alt="Master plan, full size"
             className="max-w-full max-h-full object-contain rounded-lg"
             onClick={(e) => e.stopPropagation()}

@@ -8,6 +8,7 @@ import { bookingApi } from '../../../../../utils/api';
 import { useAuth } from '../../../../../context/AuthContext';
 import { toast } from 'react-toastify';
 import ddAdminPfp from '../../../../../assets/clientadminpfp.png';
+import { cloudinaryImage } from '../../../../../utils/cloudinaryImage';
 
 const fmt = (n) => !n ? null : n >= 1e7 ? `₹${(n/1e7).toFixed(2)} Cr` : `₹${(n/1e5).toFixed(2)} L`;
 const inp = 'w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition';
@@ -242,10 +243,10 @@ export default function UnitDetailContent({ unitType:ut, project, projectId }) {
               <h2 className="font-bold text-gray-900 mb-4">Floor Plans</h2>
               <div className={`grid gap-4 ${ut.floorPlans?.twoDUrl && ut.floorPlans?.threeDUrl ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
                 {ut.floorPlans?.twoDUrl && (
-                  <div><p className="text-xs font-semibold text-gray-400 mb-2">2D PLAN</p><img src={ut.floorPlans.twoDUrl} alt="2D Floor Plan" className="w-full rounded-lg border border-gray-100 object-contain max-h-72 bg-gray-50"/></div>
+                  <div><p className="text-xs font-semibold text-gray-400 mb-2">2D PLAN</p><img src={cloudinaryImage(ut.floorPlans.twoDUrl, "medium")} alt="2D Floor Plan" className="w-full rounded-lg border border-gray-100 object-contain max-h-72 bg-gray-50"/></div>
                 )}
                 {ut.floorPlans?.threeDUrl && (
-                  <div><p className="text-xs font-semibold text-gray-400 mb-2">3D VIEW</p><img src={ut.floorPlans.threeDUrl} alt="3D Floor Plan" className="w-full rounded-lg border border-gray-100 object-contain max-h-72 bg-gray-50"/></div>
+                  <div><p className="text-xs font-semibold text-gray-400 mb-2">3D VIEW</p><img src={cloudinaryImage(ut.floorPlans.threeDUrl, "medium")} alt="3D Floor Plan" className="w-full rounded-lg border border-gray-100 object-contain max-h-72 bg-gray-50"/></div>
                 )}
               </div>
             </div>
@@ -319,7 +320,7 @@ export default function UnitDetailContent({ unitType:ut, project, projectId }) {
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {photos.map((ph, i) => (
                       <div key={i} className="relative rounded-lg overflow-hidden border border-gray-100 bg-gray-50">
-                        <img src={ph.url} alt={ph.caption || room} className="w-full h-28 object-cover" onError={(e) => { e.target.onerror = null; e.target.src = 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800'; }} />
+                        <img src={cloudinaryImage(ph.url, "thumb")} alt={ph.caption || room} className="w-full h-28 object-cover" onError={(e) => { e.target.onerror = null; e.target.src = 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800'; }} />
                         {ph.caption && <p className="text-[10px] text-gray-500 px-2 py-1 truncate">{ph.caption}</p>}
                       </div>
                     ))}

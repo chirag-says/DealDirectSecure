@@ -8,6 +8,7 @@ import {
     LayoutGrid, ArrowUpDown, ArrowRight, SlidersHorizontal,
 } from "lucide-react";
 import Link from 'next/link';
+import { cloudinaryImage } from '../../utils/cloudinaryImage';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:9000';
 const FALLBACK = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800";
@@ -176,7 +177,7 @@ function ProjectCard({ project, isBookmarked, onBookmark }) {
 
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                        src={imgSrc}
+                        src={cloudinaryImage(imgSrc, "thumb")}
                         alt={projectName}
                         className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
                         onError={() => { if (!imgErr) { setImgErr(true); setImgSrc(FALLBACK); } }}
@@ -190,7 +191,7 @@ function ProjectCard({ project, isBookmarked, onBookmark }) {
                             <span className="flex min-w-0 items-center gap-2 text-[13px] font-semibold text-white">
                                 {builderLogo
                                     // eslint-disable-next-line @next/next/no-img-element
-                                    ? <img src={builderLogo} alt="" className="h-5 w-5 shrink-0 rounded-full bg-white object-cover" />
+                                    ? <img src={cloudinaryImage(builderLogo, "thumb")} alt="" className="h-5 w-5 shrink-0 rounded-full bg-white object-cover" />
                                     : <Building2 className="h-4 w-4 shrink-0 text-white/70" aria-hidden="true" />}
                                 <span className="truncate">{builderName}</span>
                             </span>

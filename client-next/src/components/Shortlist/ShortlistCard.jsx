@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { MapPinIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 import { formatPrice } from '../../utils/formatPrice';
+import { cloudinaryImage } from '../../utils/cloudinaryImage';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const FALLBACK_IMG =
@@ -77,7 +78,7 @@ export default function ShortlistCard({ entry, onRemove, removing }) {
                 */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                    src={image}
+                    src={cloudinaryImage(image, 'thumb')}
                     alt={property.title || 'Saved property'}
                     className={`h-full w-full object-cover ${available ? '' : 'opacity-60 grayscale'}`}
                     onError={(e) => {

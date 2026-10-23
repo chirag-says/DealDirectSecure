@@ -8,6 +8,7 @@ import api from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "react-toastify";
 import { formatPrice } from "../../utils/formatPrice";
+import { cloudinaryImage } from "../../utils/cloudinaryImage";
 import SaveButton from "../../components/Shortlist/SaveButton";
 import {
   scoreRelated,
@@ -1206,7 +1207,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
                             </div>
                           ) : suggestion.image ? (
                             <img
-                              src={suggestion.image}
+                              src={cloudinaryImage(suggestion.image, "thumb")}
                               alt=""
                               className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
                               onError={(e) => { e.target.style.display = 'none'; }}
@@ -1556,7 +1557,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
                   >
                     <div className="flex gap-3">
                       <img
-                        src={resolveImageSrc(p.images?.[0]) || FALLBACK_IMG}
+                        src={cloudinaryImage(resolveImageSrc(p.images?.[0]), "thumb") || FALLBACK_IMG}
                         alt={p.title}
                         className="w-24 h-20 object-cover rounded-lg flex-shrink-0"
                         onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK_IMG; }}
@@ -1719,7 +1720,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
                     <Popup>
                       <div className="min-w-[220px]">
                         <img
-                          src={resolveImageSrc(p.images?.[0]) || FALLBACK_IMG}
+                          src={cloudinaryImage(resolveImageSrc(p.images?.[0]), "thumb") || FALLBACK_IMG}
                           alt={p.title}
                           className="w-full h-32 object-cover rounded-lg mb-2"
                           onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK_IMG; }}
@@ -1833,7 +1834,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
                   )}
 
                   <img
-                    src={resolveImageSrc(p.images?.[0]) || FALLBACK_IMG}
+                    src={cloudinaryImage(resolveImageSrc(p.images?.[0]), "thumb") || FALLBACK_IMG}
                     alt={p.title}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                     onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK_IMG; }}
@@ -2034,7 +2035,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
                       <SaveButton propertyId={p._id} variant="icon" />
                     </div>
                     <img
-                      src={resolveImageSrc(p.images?.[0]) || FALLBACK_IMG}
+                      src={cloudinaryImage(resolveImageSrc(p.images?.[0]), "thumb") || FALLBACK_IMG}
                       alt={p.title}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                       onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK_IMG; }}
@@ -2211,7 +2212,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
                     className="flex items-center gap-2 px-2 py-1 rounded-full border border-slate-200 bg-slate-50 text-[11px] sm:text-xs whitespace-nowrap hover:bg-red-50"
                   >
                     <img
-                      src={resolveImageSrc(p.images?.[0]) || FALLBACK_IMG}
+                      src={cloudinaryImage(resolveImageSrc(p.images?.[0]), "thumb") || FALLBACK_IMG}
                       alt={p.title}
                       className="w-7 h-7 rounded-full object-cover flex-shrink-0"
                       onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK_IMG; }}
@@ -2289,7 +2290,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
                     <div key={p._id} className="bg-slate-50 border-b border-slate-200 p-3">
                       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                         <img
-                          src={resolveImageSrc(p.images?.[0]) || FALLBACK_IMG}
+                          src={cloudinaryImage(resolveImageSrc(p.images?.[0]), "thumb") || FALLBACK_IMG}
                           alt={p.title}
                           className="w-full sm:w-24 h-24 object-cover rounded-xl border border-slate-200 flex-shrink-0"
                           onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK_IMG; }}
