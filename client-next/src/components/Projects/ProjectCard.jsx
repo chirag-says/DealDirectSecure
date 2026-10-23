@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Sparkles, Construction, KeyRound, BadgeCheck, MapPin, ArrowRight, Bookmark, BookmarkCheck } from "lucide-react";
 import { cloudinaryImage, isCloudinaryImageUrl } from "../../utils/cloudinaryImage";
+import { projectPriceLabel, projectFacts, projectRera } from "../../utils/projectDisplay";
 
 /**
  * The builder project card, shared by the home page rail and /projects so the
@@ -20,18 +21,6 @@ export const PROJECT_STATUS_ORDER = Object.keys(PROJECT_STATUS);
 
 const FALLBACK_IMG = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800";
 
-export const compactPrice = (n) => {
-    if (!n || n <= 0) return null;
-    if (n >= 1e7) return `₹${(n / 1e7).toFixed(2).replace(/\.?0+$/, "")} Cr`;
-    if (n >= 1e5) return `₹${(n / 1e5).toFixed(0)} L`;
-    return `₹${n.toLocaleString("en-IN")}`;
-};
-
-const monthYear = (d) => {
-    const dt = d ? new Date(d) : null;
-    return dt && !isNaN(dt) ? dt.toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : null;
-};
-
 /**
  * `className` sizes the card (a rail width on the home page, nothing in a
  * grid). Pass `onBookmark` to show the save button; it sits outside the link
@@ -45,17 +34,10 @@ export default function ProjectCard({ project, className = "", sizes = "(min-wid
     const cfg = PROJECT_STATUS[status] || PROJECT_STATUS["New Launch"];
     const StatusIcon = cfg.icon;
     const loc = [project.location?.locality, project.location?.city].filter(Boolean).join(", ");
-    const rera = project.basics?.reraNumber?.trim();
-
-    const min = compactPrice(project.priceRange?.min);
-    const max = compactPrice(project.priceRange?.max);
-    const priceLabel = min && max && max !== min ? `${min} – ${max}` : min;
-
-    const facts = [
-        ["Possession", monthYear(project.overview?.possessionDate)],
-        ["Units", project.overview?.totalUnits > 0 ? project.overview.totalUnits.toLocaleString("en-IN") : null],
-        ["Type", project.basics?.subType || project.basics?.category],
-    ].filter(([, value]) => value);
+    // Price, facts and RERA follow utils/projectDisplay.js, which has tests.
+    const rera = projectRera(project);
+    const priceLabel = projectPriceLabel(project.priceRange);
+    const facts = projectFacts(project);
 
     return (
         <div className={`group relative transition-transform duration-300 hover:-translate-y-1 ${className}`}>
