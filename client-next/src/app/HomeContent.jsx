@@ -118,7 +118,15 @@ const compactPrice = (n) => {
     return `₹${n.toLocaleString('en-IN')}`;
 };
 
-function BuilderProjectCard({ project, onOpen }) {
+/**
+ * Width shared by both home rails. Four cards fill the desktop row exactly
+ * (the old fixed 300px left the fourth card cut off at 1280px), two on
+ * tablets, and on phones the next card peeks in so the rail reads as
+ * scrollable.
+ */
+const RAIL_CARD_WIDTH = 'w-[82%] sm:w-[calc((100%-1.5rem)/2)] lg:w-[calc((100%-4.5rem)/4)]';
+
+function BuilderProjectCard({ project }) {
     const builderName = project.builder?.company || project.builder?.name;
     const heroImg = project.media?.exteriorImages?.[0];
     const projectName = project.basics?.name || 'Builder Project';
@@ -126,34 +134,28 @@ function BuilderProjectCard({ project, onOpen }) {
     const cfg = PROJECT_STATUS[status] || PROJECT_STATUS['New Launch'];
     const StatusIcon = cfg.icon;
     const loc = [project.location?.locality, project.location?.city].filter(Boolean).join(', ');
+    const rera = project.basics?.reraNumber?.trim();
 
     const min = compactPrice(project.priceRange?.min);
     const max = compactPrice(project.priceRange?.max);
-    const priceLabel = min
-        ? (max && project.priceRange?.max !== project.priceRange?.min ? `${min} – ${max}` : min)
-        : null;
+    const priceLabel = min && max && max !== min ? `${min} – ${max}` : min;
 
-    const configs = project.unitTypeCount || 0;
-    const units = project.overview?.totalUnits;
     const possession = project.overview?.possessionDate
         ? new Date(project.overview.possessionDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
         : null;
+    const facts = [
+        ['Possession', possession],
+        ['Units', project.overview?.totalUnits > 0 ? project.overview.totalUnits.toLocaleString('en-IN') : null],
+        ['Type', project.basics?.subType || project.basics?.category],
+    ].filter(([, value]) => value);
 
     return (
-        <article
-            onClick={onOpen}
-            className="group relative flex min-w-[300px] w-[300px] flex-shrink-0 snap-start cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+        <Link
+            href={`/projects/${project._id}`}
+            className={`group flex ${RAIL_CARD_WIDTH} flex-shrink-0 snap-start flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2`}
         >
-            <div className="relative h-48 overflow-hidden">
-                <span className={`absolute left-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm ${cfg.pill}`}>
-                    <StatusIcon className="h-3 w-3" aria-hidden="true" />
-                    {status}
-                </span>
-                <span className="absolute right-3 top-3 z-10 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-sm">
-                    {project.basics?.subType || project.basics?.category || 'Residential'}
-                </span>
-
-                {/* Cloudinary photos are requested at the 400px card size from
+            <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
+                {/* Cloudinary photos are requested at the card size from
                     Cloudinary itself and marked unoptimized, so the website's
                     server does not download and resize them through /_next/image.
                     Other sources (the Unsplash fallback) keep Next's default. */}
@@ -162,65 +164,62 @@ function BuilderProjectCard({ project, onOpen }) {
                     unoptimized={isCloudinaryImageUrl(heroImg)}
                     alt={projectName}
                     fill
-                    sizes="300px"
+                    sizes="(min-width: 1024px) 300px, (min-width: 640px) 50vw, 82vw"
                     className="object-cover transition-transform duration-700 group-hover:scale-105"
                     onError={(e) => (e.currentTarget.src = PROJECT_FALLBACK_IMG)}
                 />
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-950/5 to-transparent" />
-                {builderName && (
-                    <p className="absolute bottom-3 left-3 right-3 flex items-center gap-1.5 truncate text-[13px] font-semibold text-white">
-                        <FaBuilding className="shrink-0 text-[10px] text-white/70" aria-hidden="true" />
-                        <span className="truncate">{builderName}</span>
-                    </p>
-                )}
+                <span className={`absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm ${cfg.pill}`}>
+                    <StatusIcon className="h-3 w-3" aria-hidden="true" />
+                    {status}
+                </span>
             </div>
 
             <div className="flex flex-1 flex-col p-4">
-                <h3 className="truncate text-base font-bold tracking-tight text-gray-900 transition-colors group-hover:text-blue-800">
+                <h3 className="line-clamp-2 text-base font-bold leading-snug tracking-tight text-gray-900 transition-colors group-hover:text-blue-800">
                     {projectName}
                 </h3>
-                <p className="mt-1 flex items-center gap-1.5 truncate text-sm text-gray-500">
-                    <FaMapMarkerAlt className="shrink-0 text-slate-400" aria-hidden="true" />
-                    {loc || 'India'}
+                {builderName && (
+                    <p className="mt-0.5 truncate text-[13px] text-slate-500">
+                        by <span className="font-medium text-slate-700">{builderName}</span>
+                    </p>
+                )}
+                <p className="mt-2 flex items-center gap-1.5 text-sm text-gray-600">
+                    <FaMapMarkerAlt className="shrink-0 text-xs text-blue-600" aria-hidden="true" />
+                    <span className="truncate">{loc || 'India'}</span>
                 </p>
 
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                    {configs > 0 && (
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700">
-                            {configs} Config{configs !== 1 ? 's' : ''}
-                        </span>
-                    )}
-                    {units && (
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700">
-                            {units} Units
-                        </span>
-                    )}
-                    {possession && (
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700">
-                            {possession}
-                        </span>
-                    )}
+                {facts.length > 0 && (
+                    <dl className="mt-3 flex divide-x divide-slate-200 rounded-xl bg-slate-50 py-2">
+                        {facts.map(([label, value]) => (
+                            <div key={label} className="min-w-0 flex-auto px-2.5">
+                                <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt>
+                                <dd className="mt-0.5 truncate text-[13px] font-semibold text-slate-800">{value}</dd>
+                            </div>
+                        ))}
+                    </dl>
+                )}
+
+                <div className="mt-auto flex items-end justify-between gap-3 pt-4">
+                    <div className="min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Price</p>
+                        {priceLabel
+                            ? <p className="mt-0.5 whitespace-nowrap text-[17px] font-bold leading-tight tracking-tight text-gray-900 tabular-nums">{priceLabel}</p>
+                            : <p className="mt-0.5 text-sm font-medium text-slate-500">On request</p>}
+                    </div>
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-700 transition-colors group-hover:bg-blue-700 group-hover:text-white" aria-hidden="true">
+                        <FaArrowRight className="text-xs" />
+                    </span>
                 </div>
 
-                <div className="mt-auto flex items-end justify-between gap-2 border-t border-gray-100 pt-3.5 mt-4">
-                    <div className="min-w-0">
-                        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                            {priceLabel ? 'Starting from' : 'Price'}
-                        </p>
-                        {priceLabel
-                            ? <p className="truncate text-lg font-bold leading-none tracking-tight text-gray-900 tabular-nums">{priceLabel}</p>
-                            : <p className="text-sm leading-none text-slate-400">On request</p>}
-                    </div>
-                    {/* The number as entered, not a tick: nothing checks it
-                        against a state RERA register. */}
-                    {project.basics?.reraNumber && (
-                        <span className="min-w-0 max-w-[50%] truncate pb-0.5 text-xs text-slate-500">
-                            RERA {project.basics.reraNumber}
-                        </span>
-                    )}
-                </div>
+                {/* The number as entered, not a tick: nothing checks it
+                    against a state RERA register. */}
+                {rera && (
+                    <p className="mt-3 border-t border-slate-100 pt-2.5 text-[11px] text-slate-500">
+                        RERA <span className="font-mono text-slate-600 break-all">{rera}</span>
+                    </p>
+                )}
             </div>
-        </article>
+        </Link>
     );
 }
 
@@ -250,7 +249,9 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
     const scroll = (direction, ref) => {
         if (ref.current) {
             const { current } = ref;
-            const scrollAmount = 320;
+            // One card plus the 24px gap, so a click moves the rail by exactly one card.
+            const card = current.firstElementChild;
+            const scrollAmount = card ? card.offsetWidth + 24 : 320;
             if (direction === 'left') {
                 current.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
             } else {
@@ -333,7 +334,7 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
                                 <FaChevronRight className="text-xs sm:text-sm" />
                             </button>
 
-                            <div ref={scrollRef} className="flex gap-6 overflow-x-auto pb-8 pt-2 snap-x snap-mandatory scrollbar-hide px-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                            <div ref={scrollRef} className="flex gap-6 overflow-x-auto pb-8 pt-2 snap-x snap-mandatory scroll-px-2 scrollbar-hide -mx-2 px-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                                 {/* page.js asks /properties/search for the 8 highest-priced
                                     listings, already sorted. The browser-side re-sort through
                                     normalizePrice is gone: it multiplied `price` by 1e5 or 1e7
@@ -345,7 +346,7 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
                                         <div
                                             key={property._id}
                                             onClick={() => handleViewDetails(property)}
-                                            className="group relative bg-white rounded-2xl shadow-md hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border border-gray-100 overflow-hidden cursor-pointer min-w-[300px] w-[300px] flex-shrink-0 snap-start"
+                                            className={`group relative bg-white rounded-2xl shadow-md hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border border-gray-100 overflow-hidden cursor-pointer ${RAIL_CARD_WIDTH} flex-shrink-0 snap-start`}
                                         >
                                             <div className="relative h-48 overflow-hidden">
                                                 <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur text-slate-800 text-xs font-bold px-2 py-1 rounded shadow-sm">
@@ -358,7 +359,7 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
                                                         unoptimized={isCloudinaryImageUrl(resolveImageSrc(property.images?.[0]))}
                                                         alt={property.title}
                                                         fill
-                                                        sizes="300px"
+                                                        sizes="(min-width: 1024px) 300px, (min-width: 640px) 50vw, 82vw"
                                                         className="object-cover group-hover:scale-110 transition-transform duration-700"
                                                         onError={(e) => (e.currentTarget.src = 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=800')}
                                                     />
@@ -426,13 +427,9 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
                                 <FaChevronRight className="text-xs sm:text-sm" />
                             </button>
 
-                            <div ref={builderScrollRef} className="flex gap-6 overflow-x-auto pb-8 pt-2 snap-x snap-mandatory scrollbar-hide px-2">
+                            <div ref={builderScrollRef} className="flex gap-6 overflow-x-auto pb-8 pt-2 snap-x snap-mandatory scroll-px-2 scrollbar-hide -mx-2 px-2">
                                 {builderProjects.slice(0, 8).map((project) => (
-                                    <BuilderProjectCard
-                                        key={project._id}
-                                        project={project}
-                                        onOpen={() => router.push(`/projects/${project._id}`)}
-                                    />
+                                    <BuilderProjectCard key={project._id} project={project} />
                                 ))}
                             </div>
                         </div>
@@ -440,14 +437,14 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
                 </section>
             )}
 
-            {/* How Deal Direct Works Section */}
+            {/* How DealDirect Works Section */}
             <section className="py-8 sm:py-16 bg-white relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-96 h-96 bg-blue-100/50 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
                 <div className="absolute bottom-0 right-0 w-96 h-96 bg-purple-100/50 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
 
                 <div className="max-w-5xl mx-auto text-center px-4 sm:px-6 relative z-10">
                     <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-2 sm:mb-3 tracking-tight">
-                        How Deal Direct Works
+                        How DealDirect Works
                     </h2>
                     <p className="text-gray-500 text-sm sm:text-lg mb-6 sm:mb-12 max-w-2xl mx-auto leading-relaxed">
                         Three simple steps to find your perfect property or sell directly to buyers
