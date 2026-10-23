@@ -1,12 +1,12 @@
 import RewardsContent from "./RewardsContent";
 
 export const metadata = {
-    title: "DealDirect Rewards — Earn Points, Unlock Real Value",
+    title: "DealDirect Rewards: earn points, redeem gift cards",
     description:
-        "Every action on DealDirect earns you coins. List property, send enquiries, refer friends, and redeem points for gift cards. Join DealDirect Rewards today.",
+        "Earn points for verified deals, your first listing, enquiries and referrals, and redeem them for gift cards. Free to join, no fees.",
     openGraph: {
-        title: "DealDirect Rewards — Earn Points, Unlock Real Value",
-        description: "Earn points on every listing, visit, referral, and deal. Redeem them for gift cards.",
+        title: "DealDirect Rewards: earn points, redeem gift cards",
+        description: "Points for verified deals, your first listing, enquiries and referrals, redeemable for gift cards.",
         url: "https://dealdirect.in/rewards",
     },
     alternates: {
