@@ -66,8 +66,8 @@ const sections = [
             Platform. If anyone claiming to be from DealDirect asks you for money, do not pay, and report it to us.
           </li>
           <li>
-            <strong>Listings are written by users.</strong> We review listings before they are published and may
-            verify some owners or documents, but we do not guarantee the accuracy of any listing, its title, its
+            <strong>Listings are written by users.</strong> We may review listings at any time and may verify some
+            owners or documents, but we do not guarantee the accuracy of any listing, its title, its
             price or the identity of its owner. Inspect the property and its documents yourself, and take independent
             legal advice, before you pay anyone or sign anything.
           </li>
@@ -125,9 +125,9 @@ const sections = [
           <li>the property may lawfully be sold or let as described.</li>
         </ul>
         <p>
-          Each owner account can have one listing at a time. Listings are reviewed before they appear publicly. We may
-          correct the category or property type, ask you for changes or documents, decline a listing, or remove it,
-          including where we receive a complaint about it.
+          Each owner account can have one listing at a time. Your listing is published as soon as you submit it. We may
+          review it at any time and may correct the category or property type, ask you for changes or documents,
+          unpublish it, or remove it, including where we receive a complaint about it.
         </p>
       </>
     ),

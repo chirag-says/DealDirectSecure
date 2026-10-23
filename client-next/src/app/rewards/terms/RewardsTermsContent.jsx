@@ -1,127 +1,216 @@
-'use client';
+import Link from "next/link";
+import LegalDocument, { LegalTable, ToConfirm, legalLink } from "../../../components/Legal/LegalDocument";
+import { DRAW_POOLS, FIXED_POINTS, LIMITS, TIERS, poolSummary } from "../../../data/rewardsProgramme.mjs";
 
-import React from 'react';
-import Link from 'next/link';
-import { ArrowLeft, ShieldCheck, Scale, AlertOctagon, HeartHandshake } from 'lucide-react';
+/*
+ * DealDirect Rewards terms. Every rule here is the rule the reward engine
+ * applies (backend services/rewardService.js, controllers/propertyController
+ * claimDealReward, controllers/hubbleController, jobs/pointsExpiry.js), and
+ * every number comes from data/rewardsProgramme.mjs, which the backend test
+ * tests/rewards-website-contract.test.js holds to the engine.
+ *
+ * Points only: no rupee values and no odds, by product decision (2026-10-23).
+ * Draft for legal review; <ToConfirm> marks a commitment still to be agreed.
+ */
+
+const UPDATED = "23 October 2026";
+const pts = (n) => `${n.toLocaleString("en-IN")} points`;
+const range = (key) => {
+  const { rows, top } = poolSummary(DRAW_POOLS[key]);
+  return `${pts(rows[0].points)} to ${pts(top.points)}`;
+};
+
+const drawRows = [
+  [
+    "Close a verified deal",
+    "When our team has verified a sale or letting made through DealDirect, the owner and the buyer or tenant may each claim one draw, once per deal.",
+    range("property_sale"),
+  ],
+  [
+    "List your first property",
+    "One draw when you publish your first listing. Once per account: deleting a listing and listing again does not earn another draw.",
+    range("property_posting"),
+  ],
+  [
+    "Send an enquiry",
+    `One draw per enquiry (“I'm interested”), for up to ${LIMITS.enquiryRewardsPerDay} enquiries a day.`,
+    range("property_enquiry"),
+  ],
+];
+
+const bonusRows = [
+  ["Publish a listing with 5 or more photos", "Counted when the listing is created, once per listing.", pts(FIXED_POINTS.upload_5_photos)],
+  ["A friend signs up with your referral code", "Paid to the referrer.", pts(FIXED_POINTS.referral_signup)],
+  ["Your referred friend makes their first listing or enquiry", "Paid to the referrer, once per friend.", pts(FIXED_POINTS.referral_first_action)],
+  ["Your referred friend closes a verified deal", "Paid to the referrer, once per friend.", pts(FIXED_POINTS.referral_deal_closure)],
+  ["Report a listing", "One report per listing while it is under review.", pts(FIXED_POINTS.report_property)],
+];
+
+const tierRows = TIERS.map((t, i) => {
+  const next = TIERS[i + 1];
+  return [
+    t.name,
+    next ? `${t.min.toLocaleString("en-IN")} to ${(next.min - 1).toLocaleString("en-IN")} lifetime points` : `${t.min.toLocaleString("en-IN")}+ lifetime points`,
+    t.multiplier === 1 ? "Standard" : `+${Math.round((t.multiplier - 1) * 100)}% on every reward`,
+  ];
+});
+
+const sections = [
+  {
+    id: "programme",
+    title: "The programme",
+    body: (
+      <>
+        <p>
+          DealDirect Rewards (the &ldquo;Programme&rdquo;) is run by Agrawal Business Network LLP
+          (&ldquo;DealDirect&rdquo;) for users of the DealDirect website and app. These terms add to our{" "}
+          <Link href="/terms" className={legalLink}>Terms of Use</Link>, which also apply. Taking part is free and
+          needs a DealDirect account.
+        </p>
+        <p>
+          You earn points for the actions below. Points have <strong>no cash value</strong>: they cannot be exchanged
+          for money, withdrawn, or transferred to another account. You can spend them only in the rewards store.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "draws",
+    title: "Actions that earn a draw",
+    body: (
+      <>
+        <p>
+          For each of these actions, the system picks one prize at random from that action&rsquo;s prizes. Smaller
+          prizes come up most often and the top prizes are rare. The prize you receive is shown to you straight away and
+          added to your wallet.
+        </p>
+        <LegalTable caption="Actions that earn a draw" head={["Action", "Rules", "Prizes"]} rows={drawRows} />
+        <p>
+          A deal reward can be claimed only after the deal&rsquo;s verification is approved. Where our checks need
+          more time, the reward is reserved and can be claimed once the confirmation window has passed, which may be up
+          to 60 days.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "bonuses",
+    title: "Fixed bonuses",
+    body: <LegalTable caption="Fixed bonuses" head={["Bonus", "Rules", "Points"]} rows={bonusRows} />,
+  },
+  {
+    id: "tiers",
+    title: "Tiers",
+    body: (
+      <>
+        <p>
+          Your tier is set by the total points you have ever earned, and rises automatically. From then on its bonus
+          multiplies every reward you receive, draws and fixed bonuses alike. Points you spend do not lower your tier.
+        </p>
+        <LegalTable caption="Tiers" head={["Tier", "Lifetime points", "Bonus"]} rows={tierRows} />
+      </>
+    ),
+  },
+  {
+    id: "redeeming",
+    title: "Spending points",
+    body: (
+      <ul>
+        <li>
+          Points are spent on gift cards and vouchers in the rewards store in your account. The store is provided by
+          our partner Hubble, and each item shows its price in points.
+        </li>
+        <li>
+          Gift cards and vouchers are delivered digitally and are subject to Hubble&rsquo;s terms and the issuing
+          brand&rsquo;s terms, including any expiry date on the voucher itself.
+        </li>
+        <li>If an order fails, the points spent on it are returned to your wallet.</li>
+        <li>Items in the store, and their prices in points, may change as brands and stock change.</li>
+      </ul>
+    ),
+  },
+  {
+    id: "fair-play",
+    title: "Fair play",
+    body: (
+      <>
+        <p>Rewards are for genuine use of DealDirect. You may not earn points by:</p>
+        <ul>
+          <li>posting fake, duplicate or other people&rsquo;s listings, or listing as a broker or agent;</li>
+          <li>sending enquiries you do not mean, or enquiries arranged between accounts;</li>
+          <li>reporting listings without a genuine reason;</li>
+          <li>referring yourself, or creating or controlling more than one account;</li>
+          <li>declaring a deal that did not happen, or any other misuse of the Platform.</li>
+        </ul>
+        <p>
+          Where we find any of these, we may cancel the points concerned, suspend rewards on the account, or close it
+          under the Terms of Use. We will tell you why where it is lawful and safe to do so, and you can ask us to look
+          again by writing to the Grievance Officer.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "expiry",
+    title: "Expiry of points",
+    body: (
+      <p>
+        Points do not expire at present. We may introduce expiry after a period of inactivity. If we do, we will
+        announce the period in advance, and remind you at least 14 days before any points lapse; any earning or spending
+        in that time keeps them.
+      </p>
+    ),
+  },
+  {
+    id: "changes",
+    title: "Changes and ending the programme",
+    body: (
+      <p>
+        We may change how points are earned or spent, or end the Programme, by updating these terms and telling you in
+        the app or by email. Points already in your wallet are not taken away by a change. If the Programme ends, you
+        will have time to spend your points before it closes.{" "}
+        <ToConfirm>the notice period for ending the Programme (for example, 30 days)</ToConfirm>
+      </p>
+    ),
+  },
+  {
+    id: "general",
+    title: "Tax, liability and contact",
+    body: (
+      <>
+        <p>
+          You are responsible for any tax that applies to rewards you receive. DealDirect is not responsible for the
+          goods or services supplied under a gift card or voucher; contact the issuing brand or Hubble about those.
+        </p>
+        <p>
+          Questions and complaints about the Programme go to our Grievance Officer at{" "}
+          <a href="mailto:grievance@dealdirect.in" className={legalLink}>grievance@dealdirect.in</a>, as set out in the{" "}
+          <Link href="/terms#grievance" className={legalLink}>Terms of Use</Link>. These terms are governed by the laws
+          of India.
+        </p>
+      </>
+    ),
+  },
+];
 
 export default function RewardsTermsContent() {
   return (
-    <div className="min-h-screen bg-slate-50 pt-28 pb-20 font-sans">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        
-        {/* Back Link */}
-        <div className="mb-8">
-          <Link href="/rewards" className="inline-flex items-center text-red-600 hover:text-red-700 font-medium transition-colors gap-2">
-            <ArrowLeft className="w-4 h-4" />
-            Back to Rewards
-          </Link>
-        </div>
-
-        {/* Header */}
-        <div className="bg-white rounded-t-3xl border-t border-x border-slate-200 p-8 sm:p-12 text-center relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-red-50 rounded-full blur-3xl -z-10 translate-x-1/2 -translate-y-1/2"></div>
-          <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <Scale className="w-8 h-8" />
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 mb-4">Deal Direct Rewards:<br/>Terms & Fair Play</h1>
-          <p className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-            At Deal Direct, we believe in rewarding genuine engagement. Our rewards program is designed to build a high-quality, broker-free community. To keep the ecosystem fair for everyone, the following terms apply:
-          </p>
-        </div>
-
-        {/* Content Body */}
-        <div className="bg-white rounded-b-3xl border-b border-x border-slate-200 p-8 sm:p-12 shadow-sm space-y-12">
-          
-          {/* Section 1 */}
-          <section>
-            <h2 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-3">
-              <span className="w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-sm">1</span>
-              Earning Rewards
-            </h2>
-            <div className="space-y-6 text-slate-600 ml-11">
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Property Posting</h3>
-                <p>Rewards are credited once a listing is verified as a "Direct Owner" or "Direct Tenant" post.</p>
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Making Enquiries</h3>
-                <p>Rewards are granted for genuine inquiries. To prevent "spam-clicking," rewards are capped at a specific number of unique inquiries per day.</p>
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Closing a Deal</h3>
-                <p>Milestone rewards are released once both parties confirm a successful transaction through the portal.</p>
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Referrals</h3>
-                <p>Referral rewards are credited only after the referred user completes their profile and makes their first verified post or inquiry.</p>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 2 */}
-          <section>
-            <h2 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-3">
-              <span className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-sm"><ShieldCheck className="w-4 h-4" /></span>
-              The "Anti-Broker" & Anti-Spam Guardrails
-            </h2>
-            <div className="space-y-6 text-slate-600 ml-11">
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2 text-red-600">The Power of One</h3>
-                <p>Our platform strictly enforces a <strong>1-listing-per-user</strong> limit. Attempting to create multiple accounts to bypass this limit will result in a permanent ban and forfeiture of all accumulated rewards.</p>
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Verification</h3>
-                <p>We reserve the right to verify any listing. If a post is found to be uploaded by a broker or agency, the post will be removed immediately.</p>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 3 */}
-          <section>
-            <h2 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-3">
-              <span className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-sm">3</span>
-              Redemption & Validity
-            </h2>
-            <div className="space-y-6 text-slate-600 ml-11">
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Non-Transferable</h3>
-                <p>Rewards earned on DealDirect.in are tied to your specific account and cannot be transferred to other users.</p>
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Expiry</h3>
-                <p>Rewards may have an expiration period (e.g., 12 months) from the date of credit.</p>
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Platform Rights</h3>
-                <p>Deal Direct reserves the right to modify the reward values or redemption methods to ensure the sustainability of the platform.</p>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 4 */}
-          <section className="bg-slate-50 -mx-8 sm:-mx-12 px-8 sm:px-12 py-8 mt-12 border-t border-slate-200">
-            <h2 className="text-2xl font-bold text-slate-900 mb-4 flex items-center gap-3">
-              <AlertOctagon className="w-7 h-7 text-red-600" />
-              Zero Tolerance for Misuse
-            </h2>
-            <div className="text-slate-600">
-              <p className="mb-4">
-                Any attempt to "game" the system (using bots, fake accounts, or fraudulent enquiries) will lead to an immediate account audit. 
-              </p>
-              <p className="font-bold text-slate-800 flex items-center gap-2">
-                <HeartHandshake className="w-5 h-5 text-emerald-600" />
-                We value real people making real deals.
-              </p>
-            </div>
-          </section>
-
-        </div>
-        
-        {/* Footer info */}
-        <div className="text-center mt-12 text-sm text-slate-500">
-          Last updated: {new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
-        </div>
-      </div>
-    </div>
+    <LegalDocument
+      title="DealDirect Rewards Terms"
+      effective={UPDATED}
+      updated={UPDATED}
+      summary={
+        <p>
+          How you earn, keep and spend DealDirect Rewards points. Points are free to earn, have no cash value, and are
+          spent on gift cards and vouchers in the rewards store.
+        </p>
+      }
+      sections={sections}
+      related={[
+        { href: "/rewards", label: "DealDirect Rewards" },
+        { href: "/terms", label: "Terms of Use" },
+        { href: "/privacy", label: "Privacy Policy" },
+      ]}
+    />
   );
 }
