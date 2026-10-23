@@ -29,6 +29,7 @@ import api from "../../../utils/api";
 import { useAuth } from "../../../context/AuthContext";
 import { formatPrice } from "../../../utils/formatPrice";
 import { cloudinaryImage } from "../../../utils/cloudinaryImage";
+import { normalizeAmenities, amenityLabel, isBlankValue } from "../../../utils/listingDisplay";
 import PriceIntelligence from "../../../components/PriceIntelligence/PriceIntelligence";
 import OwnerSignals from "../../../components/PriceIntelligence/OwnerSignals";
 import SaveButton, { SAVE_PRIVACY_NOTE } from "../../../components/Shortlist/SaveButton";
@@ -63,7 +64,7 @@ const Card = ({ title, icon, children, sticky }) => (
   </div>
 );
 
-const InfoChip = ({ label, value }) => (
+const InfoChip = ({ label, value }) => isBlankValue(value) ? null : (
   <div className="flex flex-col gap-1">
     <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
       {label}
@@ -123,7 +124,8 @@ const PrimaryButton = ({
   );
 };
 
-const Row = ({ label, value, highlight }) => (
+// A fact with nothing to say ("N/A", "N/A sq.ft", empty) is not shown.
+const Row = ({ label, value, highlight }) => isBlankValue(value) ? null : (
   <div
     className={`flex justify-between gap-4 border-b border-slate-100/80 pb-2.5 ${highlight ? "text-emerald-700 font-semibold" : ""
       }`}
@@ -273,6 +275,13 @@ const DEFAULT_COMMERCIAL_FIELDS = [
   "powerLoad",
 ];
 
+// Parking counts can arrive as strings ("0"), which read as true; count them as numbers.
+const parkingText = (parking) => {
+  const covered = Number(parking?.covered) || 0;
+  const open = Number(parking?.open) || 0;
+  return [covered && `${covered} Covered`, open && `${open} Open`].filter(Boolean).join(", ") || null;
+};
+
 // --- Sections (same logic, upgraded Tailwind) ---
 
 const OverviewSection = ({ property, isResidential, isCommercial, ageOfProperty }) => (
@@ -328,15 +337,7 @@ const OverviewSection = ({ property, isResidential, isCommercial, ageOfProperty 
       </>
     )}
 
-    <Row
-      label="Parking"
-      value={
-        property.parking?.covered || property.parking?.open
-          ? `${property.parking?.covered ? `${property.parking.covered} Covered` : ""}${property.parking?.covered && property.parking?.open ? ", " : ""
-          }${property.parking?.open ? `${property.parking.open} Open` : ""}`
-          : "N/A"
-      }
-    />
+    <Row label="Parking" value={parkingText(property.parking)} />
   </div>
 );
 
@@ -356,26 +357,26 @@ const DimensionsSection = ({
       label="Carpet Area"
       value={`${property.area?.carpetSqft || property.carpetArea || "N/A"} sq.ft`}
     />
-    {property.area?.superBuiltUpSqft && (
+    {Number(property.area?.superBuiltUpSqft) > 0 && (
       <Row
         label="Super Built-up"
         value={`${property.area.superBuiltUpSqft} sq.ft`}
       />
     )}
-    {property.area?.plotSqft && (
+    {Number(property.area?.plotSqft) > 0 && (
       <Row label="Plot Area" value={`${property.area.plotSqft} sq.ft`} />
     )}
     <Row label="Expected Price" value={`₹${formattedPrice}`} />
-    <Row label="Booking/Token Amount" value={`₹${bookingAmount || 0}`} />
+    <Row label="Booking/Token Amount" value={Number(bookingAmount) > 0 ? `₹${bookingAmount}` : null} />
     <Row
       label="Maintenance Charges"
       value={
         maintenanceDisplay === "Included"
           ? "Included"
-          : `₹${maintenanceDisplay || 0} / month`
+          : Number(maintenanceDisplay) > 0 ? `₹${maintenanceDisplay} / month` : null
       }
     />
-    {pricePerSqft && (
+    {Number(pricePerSqft) > 0 && (
       <Row
         label="Price / sq.ft"
         value={`₹${pricePerSqft.toLocaleString()}`}
@@ -385,11 +386,9 @@ const DimensionsSection = ({
 );
 
 const AmenitiesSection = ({ property }) => {
-  const list = Array.isArray(property.amenities)
-    ? property.amenities
-    : Array.isArray(property.selectedAmenities)
-      ? property.selectedAmenities
-      : [];
+  const list = normalizeAmenities(
+    property.amenities?.length ? property.amenities : property.selectedAmenities
+  );
 
   if (list.length === 0) return null;
 
@@ -400,10 +399,8 @@ const AmenitiesSection = ({ property }) => {
           key={idx}
           className="flex items-center gap-2 text-sm text-slate-700"
         >
-          <CheckCircleIcon className="w-5 h-5 text-emerald-500" />
-          <span className="capitalize">
-            {String(amenity).replace(/([A-Z])/g, " $1").trim()}
-          </span>
+          <CheckCircleIcon className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+          <span>{amenityLabel(amenity)}</span>
         </div>
       ))}
     </div>
@@ -980,9 +977,12 @@ const PropertyDetails = ({ initialProperty }) => {
         <div className="bg-white/95 border border-slate-200/80 rounded-3xl shadow-[0_22px_60px_rgba(15,32,70,0.16)] overflow-hidden">
           <div className="grid lg:grid-cols-3 gap-0">
             {/* Media */}
-            <div className="lg:col-span-2 relative">
+            {/* The photo stretches to the card's height on desktop, so the
+                column never ends in an empty block under the thumbnails
+                while the details column on the right is still going. */}
+            <div className="lg:col-span-2 relative flex flex-col">
               <div
-                className="group relative h-[380px] sm:h-[480px] lg:h-[520px] bg-slate-100 cursor-zoom-in"
+                className="group relative h-[380px] sm:h-[480px] lg:h-auto lg:flex-1 lg:min-h-[520px] bg-slate-100 cursor-zoom-in"
                 onClick={() => imgs.length > 0 && setLightboxOpen(true)}
                 title="Click to view fullscreen"
               >
@@ -992,7 +992,7 @@ const PropertyDetails = ({ initialProperty }) => {
                     FALLBACK_IMAGE
                   }
                   alt={property.title}
-                  className="w-full h-full object-cover"
+                  className="absolute inset-0 w-full h-full object-cover"
                   onError={(e) => {
                     e.target.onerror = null;
                     e.target.src = FALLBACK_IMAGE;
@@ -1187,7 +1187,7 @@ const PropertyDetails = ({ initialProperty }) => {
                   <span className="text-3xl sm:text-4xl font-semibold text-slate-900">
                     ₹{formattedPrice}
                   </span>
-                  {pricePerSqft && (
+                  {Number(pricePerSqft) > 0 && (
                     <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs sm:text-sm">
                       ₹{pricePerSqft.toLocaleString()} / sq.ft
                     </span>
@@ -1326,8 +1326,9 @@ const PropertyDetails = ({ initialProperty }) => {
               />
             </Card>
 
-            {(property.amenities?.length > 0 ||
-              property.selectedAmenities?.length > 0) && (
+            {normalizeAmenities(
+              property.amenities?.length ? property.amenities : property.selectedAmenities
+            ).length > 0 && (
                 <Card
                   title="Amenities"
                   icon={<TagIcon className="w-5 h-5 text-[#0f4fb5]" />}

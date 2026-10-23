@@ -61,6 +61,17 @@ export default function PriceIntelligence({ data, listingType }) {
 
     if (!dropLine && !daysLine && !position && !medianLine && history.length === 0) return null;
 
+    // Only "listed N days ago" to say: one quiet line under the price, not a
+    // boxed panel with a heading around a single sentence.
+    if (daysLine && !dropLine && !position && !medianLine && history.length === 0) {
+        return (
+            <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                <ClockIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                {daysLine}
+            </p>
+        );
+    }
+
     const marketType = normalizeListingType(
         String(listingType || '').toLowerCase() === 'rent' ? 'rent' : 'sale'
     );
