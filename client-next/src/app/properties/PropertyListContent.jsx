@@ -1973,6 +1973,48 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
           </div>
         )}
 
+        {/* Paging controls for the main results. These sat inside the related-
+            properties section below, so with no related listings (the usual case)
+            the page had no way past the first 12 results. */}
+        {viewMode === "list" && (
+          <>
+          {/* Load more.
+              The page previously showed whatever the first 50 listings were
+              and had no way to reach the rest. This advances the server-side
+              page and appends, keeping the single continuous list the layout
+              already used rather than introducing numbered pages. */}
+          {page < totalPages && (
+            <div className="mt-10 flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((p) => p + 1)}
+                disabled={loadingMore}
+                className="px-8 py-3 rounded-full bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loadingMore ? "Loading…" : "Load more properties"}
+              </button>
+              <p className="text-xs text-slate-500">
+                Showing {filteredProperties.length} of {totalResults}
+              </p>
+            </div>
+          )}
+
+          {/* A failure while appending must not wipe the results already shown. */}
+          {loadError && page > 1 && (
+            <div className="mt-6 text-center">
+              <p className="text-sm text-red-600">{loadError}</p>
+              <button
+                type="button"
+                onClick={() => setRetryToken((t) => t + 1)}
+                className="mt-2 px-5 py-2 rounded-full border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+          </>
+        )}
+
         {/* Related Properties Section - Show when filtered results are less than 6 */}
         {viewMode === "list" && !loading && relatedProperties.length > 0 && (
           <div className="mt-12">
@@ -2157,40 +2199,6 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
               ))}
             </div>
 
-            {/* Load more.
-                The page previously showed whatever the first 50 listings were
-                and had no way to reach the rest. This advances the server-side
-                page and appends, keeping the single continuous list the layout
-                already used rather than introducing numbered pages. */}
-            {page < totalPages && (
-              <div className="mt-10 flex flex-col items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => p + 1)}
-                  disabled={loadingMore}
-                  className="px-8 py-3 rounded-full bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {loadingMore ? "Loading…" : "Load more properties"}
-                </button>
-                <p className="text-xs text-slate-500">
-                  Showing {filteredProperties.length} of {totalResults}
-                </p>
-              </div>
-            )}
-
-            {/* A failure while appending must not wipe the results already shown. */}
-            {loadError && page > 1 && (
-              <div className="mt-6 text-center">
-                <p className="text-sm text-red-600">{loadError}</p>
-                <button
-                  type="button"
-                  onClick={() => setRetryToken((t) => t + 1)}
-                  className="mt-2 px-5 py-2 rounded-full border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50"
-                >
-                  Try again
-                </button>
-              </div>
-            )}
           </div>
         )}
       </main>
