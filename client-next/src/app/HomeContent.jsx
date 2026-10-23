@@ -188,36 +188,44 @@ function BuilderProjectCard({ project }) {
                     <span className="truncate">{loc || 'India'}</span>
                 </p>
 
-                {facts.length > 0 && (
-                    <dl className="mt-3 flex divide-x divide-slate-200 rounded-xl bg-slate-50 py-2">
-                        {facts.map(([label, value]) => (
-                            <div key={label} className="min-w-0 flex-auto px-2.5">
-                                <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt>
-                                <dd className="mt-0.5 truncate text-[13px] font-semibold text-slate-800">{value}</dd>
-                            </div>
-                        ))}
-                    </dl>
-                )}
+                {/* Everything from the fact strip down is pinned to the card's
+                    foot as one block, so the strip, price, arrow and RERA line
+                    sit at the same height on every card in the row, whether the
+                    name above runs to one line or two. */}
+                <div className="mt-auto pt-3">
+                    {facts.length > 0 && (
+                        <dl className="flex divide-x divide-slate-200 rounded-xl bg-slate-50 py-2">
+                            {facts.map(([label, value]) => (
+                                <div key={label} className="min-w-0 flex-auto px-2.5">
+                                    <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt>
+                                    <dd className="mt-0.5 truncate text-[13px] font-semibold text-slate-800">{value}</dd>
+                                </div>
+                            ))}
+                        </dl>
+                    )}
 
-                <div className="mt-auto flex items-end justify-between gap-3 pt-4">
-                    <div className="min-w-0">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Price</p>
-                        {priceLabel
-                            ? <p className="mt-0.5 whitespace-nowrap text-[17px] font-bold leading-tight tracking-tight text-gray-900 tabular-nums">{priceLabel}</p>
-                            : <p className="mt-0.5 text-sm font-medium text-slate-500">On request</p>}
+                    <div className="flex items-end justify-between gap-3 pt-4">
+                        <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Price</p>
+                            {priceLabel
+                                ? <p className="mt-0.5 whitespace-nowrap text-[17px] font-bold leading-tight tracking-tight text-gray-900 tabular-nums">{priceLabel}</p>
+                                : <p className="mt-0.5 text-sm font-medium text-slate-500">On request</p>}
+                        </div>
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-700 transition-colors group-hover:bg-blue-700 group-hover:text-white" aria-hidden="true">
+                            <FaArrowRight className="text-xs" />
+                        </span>
                     </div>
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-700 transition-colors group-hover:bg-blue-700 group-hover:text-white" aria-hidden="true">
-                        <FaArrowRight className="text-xs" />
-                    </span>
-                </div>
 
-                {/* The number as entered, not a tick: nothing checks it
-                    against a state RERA register. */}
-                {rera && (
-                    <p className="mt-3 border-t border-slate-100 pt-2.5 text-[11px] text-slate-500">
-                        RERA <span className="font-mono text-slate-600 break-all">{rera}</span>
+                    {/* The number as entered, not a tick: nothing checks it
+                        against a state RERA register. With no number the line still
+                        holds its height (invisible), keeping the price row level. */}
+                    <p
+                        className={`mt-3 truncate border-t border-slate-100 pt-2.5 text-[11px] text-slate-500 ${rera ? '' : 'invisible'}`}
+                        aria-hidden={rera ? undefined : true}
+                    >
+                        RERA <span className="font-mono text-slate-600">{rera || '-'}</span>
                     </p>
-                )}
+                </div>
             </div>
         </Link>
     );
