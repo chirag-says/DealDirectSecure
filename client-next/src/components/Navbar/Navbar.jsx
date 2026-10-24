@@ -93,11 +93,16 @@ function Navbar() {
     };
     window.addEventListener("scroll", handleScroll);
 
-    // Auto-detect city on page load (triggers browser popup)
-    detectCity();
+    // Show the city chosen in the hero search (HeroSection saves it and raises
+    // "city_changed"). Nothing asks for the device location on load: that
+    // happens only when the user clicks the pill.
+    const syncCity = () => setNavCity(localStorage.getItem("dd_user_city") || "");
+    syncCity();
+    window.addEventListener("city_changed", syncCity);
 
     return () => {
       window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("city_changed", syncCity);
     };
   }, []);
 
@@ -116,11 +121,14 @@ function Navbar() {
           const detected =
             data.address?.city ||
             data.address?.town ||
-            data.address?.state_district ||
-            "Mumbai";
-          setNavCity(detected);
+            data.address?.state_district;
+          if (detected) {
+            setNavCity(detected);
+            localStorage.setItem("dd_user_city", detected);
+            window.dispatchEvent(new Event("city_changed"));
+          }
         } catch {
-          setNavCity("Mumbai");
+          // Lookup failed: keep the city already shown
         } finally {
           setIsDetectingCity(false);
         }
@@ -861,6 +869,7 @@ function Navbar() {
               <span className="text-lg font-bold text-slate-800">Menu</span>
               <button
                 onClick={toggleMenu}
+                aria-label="Close menu"
                 className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition"
               >
                 <AiOutlineClose size={22} />

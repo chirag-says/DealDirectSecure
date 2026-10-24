@@ -1,6 +1,9 @@
 import { Inter } from "next/font/google";
 import "./globals.css";
 import ClientLayout from "./ClientLayout";
+import { apiOriginFromEnv } from "../utils/apiOrigin";
+
+const API_ORIGIN = apiOriginFromEnv();
 
 const inter = Inter({
   variable: "--font-inter",
@@ -67,6 +70,8 @@ export default function RootLayout({ children }) {
         {/* DNS prefetch for Cloudinary CDN (all property/blog images) */}
         <link rel="dns-prefetch" href="https://res.cloudinary.com" />
         <link rel="preconnect" href="https://res.cloudinary.com" crossOrigin="anonymous" />
+        {/* The API is on another origin; open its (credentialed) connection before the first fetch */}
+        {API_ORIGIN && <link rel="preconnect" href={API_ORIGIN} />}
         {/* Dark mode anti-flash: apply theme class before React hydrates */}
         <script
           dangerouslySetInnerHTML={{

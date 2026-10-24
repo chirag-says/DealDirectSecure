@@ -1,6 +1,13 @@
 import { withSentryConfig } from "@sentry/nextjs";
+import { apiOriginFromEnv } from "./src/utils/apiOrigin.js";
 
 const isProduction = process.env.NODE_ENV === 'production';
+
+// The API lives on another origin (localhost:9000 in dev, backend.dealdirect.in
+// in production) and the chat socket upgrades to ws(s) on that same host. Left
+// out of connect-src, every API call is a reported violation and the policy
+// could never be enforced.
+const API_ORIGIN = apiOriginFromEnv();
 
 /**
  * Content Security Policy — REPORT ONLY.
@@ -27,10 +34,16 @@ const CSP_REPORT_ONLY = [
   // the sign-in button. Without it the button never appears and the failure is
   // visible only in the console.
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://sdk.myhubble.money https://sdk.dev.myhubble.money https://accounts.google.com",
-  "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com",
+  // accounts.google.com also loads a stylesheet (gsi/style) for the sign-in button.
+  "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://accounts.google.com",
   "img-src 'self' data: blob: https://res.cloudinary.com https://*.cloudinary.com https://images.unsplash.com https://plus.unsplash.com https://*.tile.openstreetmap.org https://*.gstatic.com https://raw.githubusercontent.com",
   "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com",
-  "connect-src 'self' https://nominatim.openstreetmap.org https://res.cloudinary.com https://*.sentry.io https://accounts.google.com",
+  [
+    "connect-src 'self'",
+    API_ORIGIN,
+    API_ORIGIN && API_ORIGIN.replace(/^http/, 'ws'),
+    "https://nominatim.openstreetmap.org https://res.cloudinary.com https://*.sentry.io https://accounts.google.com",
+  ].filter(Boolean).join(' '),
   // Sentry Session Replay compresses events in a Web Worker built from a blob
   // URL. With no worker-src the browser falls back to script-src, which has no
   // blob: source, so the worker is refused — currently only reported, but it

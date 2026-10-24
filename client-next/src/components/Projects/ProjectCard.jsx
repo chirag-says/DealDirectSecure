@@ -13,7 +13,7 @@ import { projectPriceLabel, projectFacts, projectRera } from "../../utils/projec
  */
 export const PROJECT_STATUS = {
     "New Launch": { icon: Sparkles, pill: "bg-blue-700" },
-    "Under Construction": { icon: Construction, pill: "bg-amber-600" },
+    "Under Construction": { icon: Construction, pill: "bg-amber-700" },
     "Ready To Move": { icon: KeyRound, pill: "bg-emerald-600" },
     "Completed": { icon: BadgeCheck, pill: "bg-slate-700" },
 };
@@ -88,7 +88,7 @@ export default function ProjectCard({ project, className = "", sizes = "(min-wid
                             <dl className="flex divide-x divide-slate-200 rounded-xl bg-slate-50 py-2">
                                 {facts.map(([label, value]) => (
                                     <div key={label} className="min-w-0 flex-auto px-2.5">
-                                        <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt>
+                                        <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
                                         <dd className="mt-0.5 truncate text-[13px] font-semibold text-slate-800">{value}</dd>
                                     </div>
                                 ))}
@@ -97,7 +97,7 @@ export default function ProjectCard({ project, className = "", sizes = "(min-wid
 
                         <div className="flex items-end justify-between gap-3 pt-4">
                             <div className="min-w-0">
-                                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Price</p>
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Price</p>
                                 {priceLabel
                                     ? <p className="mt-0.5 whitespace-nowrap text-[17px] font-bold leading-tight tracking-tight text-gray-900 tabular-nums">{priceLabel}</p>
                                     : <p className="mt-0.5 text-sm font-medium text-slate-500">On request</p>}

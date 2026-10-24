@@ -54,13 +54,8 @@ Sentry.init({
         "Non-Error promise rejection",
     ],
 
-    // Integrations
+    // Integrations. Session Replay is added below, once the page is idle.
     integrations: [
-        // Text, form values, media, iframes, console output and URL query
-        // strings are all masked or dropped. Replays used to keep text
-        // visible, which recorded names, phone numbers and addresses from
-        // every page. See utils/sentryReplayPrivacy.js.
-        Sentry.replayIntegration(REPLAY_PRIVACY_OPTIONS),
         Sentry.browserTracingIntegration(),
     ],
 
@@ -75,3 +70,19 @@ Sentry.init({
 
 // The replay event lists every page URL the session visited.
 Sentry.addEventProcessor(scrubReplayEvent);
+
+// Session Replay is the heaviest client integration: started with the page it
+// forces layout repeatedly before first interaction (Lighthouse showed about
+// 70 ms of forced reflow per page, all inside the replay bundle). It joins
+// once the browser is idle instead, so it never competes with rendering. The
+// sampling rates set above still apply; the first seconds of a session are not
+// recorded. Text, form values, media, iframes, console output and URL query
+// strings stay masked or dropped. See utils/sentryReplayPrivacy.js.
+if (process.env.NEXT_PUBLIC_SENTRY_DSN && typeof window !== "undefined") {
+    const addReplay = () => Sentry.addIntegration(Sentry.replayIntegration(REPLAY_PRIVACY_OPTIONS));
+    if ("requestIdleCallback" in window) {
+        window.requestIdleCallback(addReplay, { timeout: 5000 });
+    } else {
+        setTimeout(addReplay, 3000);
+    }
+}

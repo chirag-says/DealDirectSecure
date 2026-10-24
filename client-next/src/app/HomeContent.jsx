@@ -203,11 +203,11 @@ const HomeContent = ({ initialProperties = [], initialCategories = [], initialPr
                         <p className="text-gray-500 text-lg text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">No popular properties available right now.</p>
                     ) : (
                         <div className="relative group">
-                            <button onClick={() => scroll('left', scrollRef)} className="absolute -left-2 sm:-left-4 top-1/2 -translate-y-1/2 z-10 w-8 h-8 sm:w-10 sm:h-10 bg-white backdrop-blur-sm rounded-full shadow-xl flex items-center justify-center text-gray-800 hover:text-red-600 transition-all border border-gray-100 opacity-0 group-hover:opacity-100">
+                            <button aria-label="Scroll left" onClick={() => scroll('left', scrollRef)} className="absolute -left-2 sm:-left-4 top-1/2 -translate-y-1/2 z-10 w-8 h-8 sm:w-10 sm:h-10 bg-white backdrop-blur-sm rounded-full shadow-xl flex items-center justify-center text-gray-800 hover:text-red-600 transition-all border border-gray-100 opacity-0 group-hover:opacity-100">
                                 <FaChevronLeft className="text-xs sm:text-sm" />
                             </button>
 
-                            <button onClick={() => scroll('right', scrollRef)} className="absolute -right-2 sm:-right-4 top-1/2 -translate-y-1/2 z-10 w-8 h-8 sm:w-10 sm:h-10 bg-white backdrop-blur-sm rounded-full shadow-xl flex items-center justify-center text-gray-800 hover:text-red-600 transition-all border border-gray-100 opacity-0 group-hover:opacity-100">
+                            <button aria-label="Scroll right" onClick={() => scroll('right', scrollRef)} className="absolute -right-2 sm:-right-4 top-1/2 -translate-y-1/2 z-10 w-8 h-8 sm:w-10 sm:h-10 bg-white backdrop-blur-sm rounded-full shadow-xl flex items-center justify-center text-gray-800 hover:text-red-600 transition-all border border-gray-100 opacity-0 group-hover:opacity-100">
                                 <FaChevronRight className="text-xs sm:text-sm" />
                             </button>
 
@@ -529,7 +529,7 @@ function LatestBlogSection({ initialPosts = [] }) {
                                                 {post.title}
                                             </h3>
                                             <p className="text-gray-500 text-xs line-clamp-2 mb-3">{post.excerpt}</p>
-                                            <div className="flex items-center gap-3 text-xs text-gray-400">
+                                            <div className="flex items-center gap-3 text-xs text-gray-500">
                                                 <span>{date}</span>
                                                 <span>·</span>
                                                 <span>{post.readTime} min read</span>

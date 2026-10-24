@@ -71,71 +71,21 @@ const HeroSection = ({ filters, setFilters }) => {
   const cityDropdownRef = useRef(null);
 
   useEffect(() => {
-    // Attempt to load from localStorage first
+    // Restore the city the user last chose, else default to Bangalore. Nothing
+    // here asks for the device location: the permission prompt comes only from
+    // the "Use my location" button in the city dropdown, so a first visit never
+    // sees it (Lighthouse geolocation-on-start; DPDP: no collection unasked).
     const savedCity = localStorage.getItem("dd_user_city");
-    if (savedCity && TOP_CITIES.includes(savedCity)) {
-      setSelectedCity(savedCity);
-      // Give the Navbar a quick heartbeat bump
-      setTimeout(() => window.dispatchEvent(new Event("city_changed")), 100);
-      return;
+    const city = savedCity && TOP_CITIES.includes(savedCity) ? savedCity : "Bangalore";
+    setSelectedCity(city);
+    if (!savedCity) {
+      localStorage.setItem("dd_user_city", city);
+      if (!filters || !filters.search) {
+        setFilters(prev => ({ ...prev, search: city }));
+      }
     }
-
-    // Otherwise, auto-detect location quietly
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          try {
-            const { latitude, longitude } = position.coords;
-            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1&zoom=14`);
-            const data = await res.json();
-            
-            // Try to extract city name from various OSMap address fields
-            const detectedCityRaw = data.address?.city || data.address?.town || data.address?.state_district || "";
-            const detectedLocality = data.address?.suburb || data.address?.neighbourhood || data.address?.road || "";
-            
-            if (detectedLocality && (!filters || !filters.search)) {
-              setFilters(prev => ({ ...prev, search: detectedLocality }));
-            }
-            
-            if (!detectedCityRaw) return;
-
-            // Optional: match against our database/list of cities
-            // If it's a major city in our array, select it.
-            const matchedCity = TOP_CITIES.find(c => detectedCityRaw.toLowerCase().includes(c.toLowerCase()));
-            if (matchedCity) {
-              setSelectedCity(matchedCity);
-              localStorage.setItem("dd_user_city", matchedCity);
-              window.dispatchEvent(new Event("city_changed"));
-            }
-          } catch (err) {
-            console.warn("Auto-location failed", err);
-            localStorage.setItem("dd_user_city", "Bangalore");
-          setSelectedCity("Bangalore");
-          if (!filters || !filters.search) {
-             setFilters(prev => ({ ...prev, search: "Bangalore" }));
-          }
-          window.dispatchEvent(new Event("city_changed"));
-          }
-        },
-        (err) => {
-          console.warn("Geolocation permission denied or failed", err);
-          localStorage.setItem("dd_user_city", "Bangalore");
-          setSelectedCity("Bangalore");
-          if (!filters || !filters.search) {
-             setFilters(prev => ({ ...prev, search: "Bangalore" }));
-          }
-          window.dispatchEvent(new Event("city_changed"));
-        },
-        { timeout: 5000 }
-      );
-    } else {
-      localStorage.setItem("dd_user_city", "Bangalore");
-          setSelectedCity("Bangalore");
-          if (!filters || !filters.search) {
-             setFilters(prev => ({ ...prev, search: "Bangalore" }));
-          }
-          window.dispatchEvent(new Event("city_changed"));
-    }
+    // Give the Navbar a quick heartbeat bump
+    setTimeout(() => window.dispatchEvent(new Event("city_changed")), 100);
   }, []);
 
   const toggleArrayFilter = (filterKey, value) => {
@@ -420,7 +370,7 @@ const HeroSection = ({ filters, setFilters }) => {
     return (
       <>
         {text.substring(0, index)}
-        <span className="text-red-500 font-bold">{text.substring(index, index + query.length)}</span>
+        <span className="text-red-600 font-bold">{text.substring(index, index + query.length)}</span>
         {text.substring(index + query.length)}
       </>
     );
@@ -475,7 +425,7 @@ const HeroSection = ({ filters, setFilters }) => {
                 }}
                 className={`flex-1 px-5 py-2 text-[11px] font-bold transition-all ${
                   activeIntent === intent.value
-                    ? 'bg-white text-blue-500'
+                    ? 'bg-white text-blue-700'
                     : 'bg-black/40 text-white hover:bg-black/60'
                 }`}
               >
@@ -512,7 +462,7 @@ const HeroSection = ({ filters, setFilters }) => {
                   }}
                   className={`flex-1 sm:flex-none px-4 sm:px-6 py-2.5 sm:py-3 text-[11px] sm:text-sm font-bold transition-all ${
                     isActive
-                      ? 'bg-white text-blue-500'
+                      ? 'bg-white text-blue-700'
                       : 'bg-black/40 text-white hover:bg-black/60'
                   }`}
                 >
@@ -539,7 +489,7 @@ const HeroSection = ({ filters, setFilters }) => {
                 }}
                 className={`hidden sm:block px-6 py-3 text-sm font-bold transition-all ${
                   activeIntent === intent.value
-                    ? 'bg-white text-blue-500'
+                    ? 'bg-white text-blue-700'
                     : 'bg-black/40 text-white hover:bg-black/60'
                 }`}
               >
@@ -557,7 +507,7 @@ const HeroSection = ({ filters, setFilters }) => {
               <label className="text-[10px] font-extrabold text-gray-800 uppercase tracking-widest hidden md:block mb-1">Looking For</label>
               <div 
                 onClick={() => setOpenDropdown(openDropdown === 'propertyType' ? null : 'propertyType')}
-                className="flex justify-between items-center cursor-pointer text-gray-400 text-sm md:text-base hover:text-gray-600 transition-colors"
+                className="flex justify-between items-center cursor-pointer text-gray-500 text-sm md:text-base hover:text-gray-600 transition-colors"
               >
                 <span className={`truncate pr-2 ${subFilters.propertyTypes.length > 0 ? 'text-gray-800 font-medium' : ''}`}>
                   {subFilters.propertyTypes.length > 0 ? subFilters.propertyTypes.join(', ') : 'Property Type'}
@@ -608,7 +558,7 @@ const HeroSection = ({ filters, setFilters }) => {
                   {openDropdown === 'city' && (
                     <div className="fixed inset-0 sm:absolute sm:inset-auto sm:top-full sm:left-0 sm:mt-2 bg-white sm:rounded-xl sm:shadow-xl sm:border sm:border-gray-100 sm:py-3 sm:w-64 z-[9999] text-left sm:overflow-hidden">
                       <div className="px-4 pb-2 mb-2 border-b border-gray-100 flex flex-col gap-1">
-                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Select City</h4>
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Select City</p>
                         <button 
                           onClick={() => {
                             setIsLocating(true);
@@ -713,7 +663,7 @@ const HeroSection = ({ filters, setFilters }) => {
                       {/* Recent Searches Section */}
                       {(!filters.search || filters.search.length < 2) && recentSearches.length > 0 && (
                         <div className="mb-2">
-                          <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 px-5 mt-2">Recent Searches</h3>
+                          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 px-5 mt-2">Recent Searches</p>
                           <div className="px-3 space-y-1">
                             {recentSearches.map((suggestion, index) => (
                               <div
@@ -726,7 +676,7 @@ const HeroSection = ({ filters, setFilters }) => {
                                 </div>
                                 <div className="flex-1">
                                   <p className="text-[13px] font-medium text-gray-700 group-hover:text-gray-900">{suggestion.value}</p>
-                                  {suggestion.subtitle && <p className="text-[11px] text-gray-400">{suggestion.subtitle}</p>}
+                                  {suggestion.subtitle && <p className="text-[11px] text-gray-500">{suggestion.subtitle}</p>}
                                 </div>
                               </div>
                             ))}
@@ -739,7 +689,7 @@ const HeroSection = ({ filters, setFilters }) => {
                         <>
                           {suggestions.filter(s => s.type === 'city' || s.type === 'locality').length > 0 && (
                             <div className="mt-1">
-                              <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 px-5 pt-2">Location</h3>
+                              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 px-5 pt-2">Location</p>
                               <ul>
                                 {suggestions.filter(s => s.type === 'city' || s.type === 'locality').map((suggestion, index) => (
                                   <li
@@ -755,7 +705,7 @@ const HeroSection = ({ filters, setFilters }) => {
                                         {highlightMatch(suggestion.value, filters.search)}
                                       </p>
                                       {suggestion.subtitle && (
-                                        <p className="text-[11px] text-gray-400">{suggestion.subtitle}</p>
+                                        <p className="text-[11px] text-gray-500">{suggestion.subtitle}</p>
                                       )}
                                     </div>
                                   </li>
@@ -766,7 +716,7 @@ const HeroSection = ({ filters, setFilters }) => {
 
                           {suggestions.filter(s => s.type === 'project').length > 0 && (
                             <div className="mt-1">
-                              <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 px-5 pt-2">Project</h3>
+                              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 px-5 pt-2">Project</p>
                               <ul>
                                 {suggestions.filter(s => s.type === 'project').map((suggestion, index) => (
                                   <li
@@ -782,7 +732,7 @@ const HeroSection = ({ filters, setFilters }) => {
                                         {highlightMatch(suggestion.value, filters.search)}
                                       </p>
                                       {suggestion.subtitle && (
-                                        <p className="text-[11px] text-gray-400">{suggestion.subtitle}</p>
+                                        <p className="text-[11px] text-gray-500">{suggestion.subtitle}</p>
                                       )}
                                     </div>
                                   </li>
@@ -803,7 +753,7 @@ const HeroSection = ({ filters, setFilters }) => {
               <label className="text-[10px] font-extrabold text-gray-800 uppercase tracking-widest hidden md:block mb-1">Property Size</label>
               <div 
                 onClick={() => setOpenDropdown(openDropdown === 'bhk' ? null : 'bhk')}
-                className="flex justify-between items-center cursor-pointer text-gray-400 text-sm md:text-base hover:text-gray-600 transition-colors"
+                className="flex justify-between items-center cursor-pointer text-gray-500 text-sm md:text-base hover:text-gray-600 transition-colors"
               >
                 <span className={`truncate pr-2 ${subFilters.bhk.length > 0 ? 'text-gray-800 font-medium' : ''}`}>
                   {subFilters.bhk.length > 0 ? subFilters.bhk.join(', ') : 'Bedrooms'}
@@ -838,7 +788,7 @@ const HeroSection = ({ filters, setFilters }) => {
               <label className="text-[10px] font-extrabold text-gray-800 uppercase tracking-widest hidden md:block mb-1">Your Budget</label>
               <div 
                 onClick={() => setOpenDropdown(openDropdown === 'budget' ? null : 'budget')}
-                className="flex justify-between items-center cursor-pointer text-gray-400 text-sm md:text-base hover:text-gray-600 transition-colors"
+                className="flex justify-between items-center cursor-pointer text-gray-500 text-sm md:text-base hover:text-gray-600 transition-colors"
               >
                 <span className={`truncate pr-2 ${subFilters.budget ? 'text-gray-800 font-medium' : ''}`}>
                   {subFilters.budget || 'Max. Price'}

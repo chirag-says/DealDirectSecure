@@ -91,7 +91,7 @@ export default function PressMarquee() {
             aria-labelledby="press-heading"
         >
             <div className="mx-auto mb-10 max-w-6xl px-6 text-center">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Press coverage
                 </p>
                 <h2

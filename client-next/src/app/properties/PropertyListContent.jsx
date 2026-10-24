@@ -1245,6 +1245,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
                     handleFilterChange("search", filters.search);
                     setShowSuggestions(false);
                   }}
+                  aria-label="Search"
                   className="px-4 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors font-medium text-sm shadow-sm flex items-center gap-2 whitespace-nowrap"
                 >
                   <FaSearch className="text-xs" />
@@ -1256,6 +1257,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
               <div className="relative">
                 <select
                   className="appearance-none bg-white border border-slate-200 py-2.5 pl-3 pr-8 rounded-xl text-sm font-medium hover:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100 cursor-pointer shadow-sm transition-all text-red-600 bg-red-50/30"
+                  aria-label="Buy or rent"
                   value={filters.availableFor || ""}
                   onChange={(e) => handleFilterChange("availableFor", e.target.value)}
                 >
@@ -1270,6 +1272,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
               <div className="relative">
                 <select
                   className="appearance-none bg-white border border-slate-200 py-2.5 pl-3 pr-8 rounded-xl text-sm font-medium hover:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100 cursor-pointer shadow-sm transition-all"
+                  aria-label="City"
                   value={filters.city}
                   onChange={(e) => handleFilterChange("city", e.target.value)}
                 >
@@ -1283,6 +1286,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
               <div className="relative">
                 <select
                   className="appearance-none bg-white border border-slate-200 py-2.5 pl-3 pr-8 rounded-xl text-sm font-medium hover:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100 cursor-pointer shadow-sm transition-all"
+                  aria-label="Property type"
                   value={filters.propertyType}
                   onChange={(e) => handleFilterChange("propertyType", e.target.value)}
                 >
@@ -1298,6 +1302,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
               <div className="relative">
                 <select
                   className="appearance-none bg-white border border-slate-200 py-2.5 pl-3 pr-8 rounded-xl text-sm font-medium hover:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100 cursor-pointer shadow-sm transition-all"
+                  aria-label="Price range"
                   value={filters.priceRange}
                   onChange={(e) => handleFilterChange("priceRange", e.target.value)}
                 >
@@ -1332,6 +1337,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
               {/* View Toggle */}
               <div className="flex items-center bg-slate-100 rounded-xl p-1 ml-auto">
                 <button
+                  aria-label="List view"
                   onClick={() => setViewMode("list")}
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${viewMode === "list"
                     ? "bg-white text-slate-800 shadow-sm"
@@ -1342,6 +1348,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
                   <span className="hidden sm:inline">List</span>
                 </button>
                 <button
+                  aria-label="Map view"
                   onClick={() => setViewMode("map")}
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${viewMode === "map"
                     ? "bg-white text-slate-800 shadow-sm"
@@ -1784,7 +1791,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
         ) : (
           /* List View */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredProperties.map((p) => (
+            {filteredProperties.map((p, index) => (
               <div
                 key={p._id}
                 onClick={() => viewDetails(p)}
@@ -1833,10 +1840,14 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
                     </button>
                   )}
 
+                  {/* The first card's photo is the page's LCP image: fetch it first, lazy-load the rest. */}
                   <img
                     src={cloudinaryImage(resolveImageSrc(p.images?.[0]), "thumb") || FALLBACK_IMG}
                     alt={p.title}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                    loading={index < 3 ? "eager" : "lazy"}
+                    fetchPriority={index === 0 ? "high" : "auto"}
+                    decoding="async"
                     onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK_IMG; }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-60 group-hover:opacity-40 transition-opacity" />
@@ -1860,9 +1871,9 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
                 </div>
 
                 <div className="p-5">
-                  <h3 className={`text-lg font-bold line-clamp-1 mb-1.5 transition-colors ${p.builder ? 'text-slate-900 group-hover:text-indigo-700' : 'text-slate-800 group-hover:text-red-600'}`}>
+                  <h2 className={`text-lg font-bold line-clamp-1 mb-1.5 transition-colors ${p.builder ? 'text-slate-900 group-hover:text-indigo-700' : 'text-slate-800 group-hover:text-red-600'}`}>
                     {p.title}
-                  </h3>
+                  </h2>
                   <p className="text-slate-500 text-sm flex items-center gap-1 mb-4 line-clamp-1">
                     <FaMapMarkerAlt className="text-red-500 flex-shrink-0" />
                     {p.address?.city}, {p.address?.state}
@@ -1872,7 +1883,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
                     /* ── Builder card: Price label + indigo price + type pill ── */
                     <div className="border-t border-slate-100 pt-4 flex items-end justify-between gap-2">
                       <div>
-                        <p className="text-xs text-slate-400 font-medium mb-0.5">Price</p>
+                        <p className="text-xs text-slate-500 font-medium mb-0.5">Price</p>
                         <p className="text-2xl font-extrabold text-indigo-700 tracking-tight">
                           {formatPrice(p.price)}
                         </p>
@@ -1961,7 +1972,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
                         >
                           {compareIds.includes(p._id) ? "Added to Compare" : "Compare"}
                         </button>
-                        <span className="text-[11px] text-slate-400 hidden sm:inline">
+                        <span className="text-[11px] text-slate-500 hidden sm:inline">
                           Click card for full details
                         </span>
                       </div>
@@ -2190,7 +2201,7 @@ const PropertyPage = ({ initialProperties = [], initialCategories = [] }) => {
                       >
                         {compareIds.includes(p._id) ? "Added to Compare" : "Compare"}
                       </button>
-                      <span className="text-[11px] text-slate-400 hidden sm:inline">
+                      <span className="text-[11px] text-slate-500 hidden sm:inline">
                         Click card for full details
                       </span>
                     </div>

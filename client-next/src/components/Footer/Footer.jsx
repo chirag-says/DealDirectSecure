@@ -126,7 +126,7 @@ const Footer = () => {
           <div className="col-span-1 md:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-8">
             {Object.entries(quickLinks).map(([category, links]) => (
               <div key={category}>
-                <h4 className="font-bold text-white text-base mb-6">{category}</h4>
+                <h3 className="font-bold text-white text-base mb-6">{category}</h3>
                 <div className="flex flex-col gap-3">
                   {links.map((link, idx) => (
                     <Link
@@ -145,7 +145,7 @@ const Footer = () => {
           {/* Popular Cities — this column also held the newsletter form until 5.11 */}
           <div className="space-y-6">
             <div>
-              <h4 className="font-bold text-white text-base mb-6">Popular Cities</h4>
+              <h3 className="font-bold text-white text-base mb-6">Popular Cities</h3>
               <div className="flex flex-wrap gap-2">
                 {cities.map((city, idx) => (
                   <Link
@@ -163,7 +163,7 @@ const Footer = () => {
         </div>
 
         {/* Bottom Section */}
-        <div className="mt-8 flex flex-col md:flex-row justify-between items-center gap-6 text-gray-500 text-sm">
+        <div className="mt-8 flex flex-col md:flex-row justify-between items-center gap-6 text-gray-400 text-sm">
           <p>&copy; {currentYear} Agrawal Business Network LLP. All rights reserved.</p>
 
           <div className="flex gap-4">
